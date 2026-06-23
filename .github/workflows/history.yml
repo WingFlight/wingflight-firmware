@@ -76,5 +76,5 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: rotorflight-history-${{ env.GIT_VER }}
+        name: wingflight-history-${{ env.GIT_VER }}
         path: 0*.out

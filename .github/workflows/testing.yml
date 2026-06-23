@@ -38,8 +38,8 @@ jobs:
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: rotorflight-test-${{ env.GIT_VER }}
-        path: rotorflight*.hex
+        name: wingflight-test-${{ env.GIT_VER }}
+        path: wingflight*.hex
 
     - name: Delete tag
       run: git push origin :${GITHUB_REF}
