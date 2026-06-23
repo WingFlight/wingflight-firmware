@@ -42,7 +42,7 @@ jobs:
     - name: Create Release
       run: |
         .github/scripts/extract-release-notes.py "${{ env.GIT_VER }}" Releases.md > Notes.md
-        gh release create ${{ env.GIT_TAG }} --notes-file Notes.md --title "Rotorflight ${{ env.GH_TYPE }} ${{ env.GIT_VER }}" obj/*.hex
+        gh release create ${{ env.GIT_TAG }} --notes-file Notes.md --title "Wingflight ${{ env.GH_TYPE }} ${{ env.GIT_VER }}" obj/*.hex
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

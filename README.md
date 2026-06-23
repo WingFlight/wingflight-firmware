@@ -1,36 +1,30 @@
-# Rotorflight
+# Wingflight
 
-[Rotorflight](https://github.com/rotorflight) is a Flight Control software suite designed for
-single-rotor helicopters. It consists of:
+[Wingflight](https://github.com/WingFlight) is a Flight Control software suite designed for
+fixed-wing aircraft. It consists of:
 
-- Rotorflight Flight Controller Firmware (this repository)
-- Rotorflight Configurator, for flashing and configuring the flight controller
-- Rotorflight Blackbox Explorer, for analyzing blackbox flight logs
-- Rotorflight Lua Scripts, for configuring the flight controller using a transmitter
+- Wingflight Flight Controller Firmware (this repository)
+- Wingflight Configurator, for flashing and configuring the flight controller
+- Wingflight Blackbox Explorer, for analyzing blackbox flight logs
+- Wingflight Lua Scripts, for configuring the flight controller using a transmitter
 
-Built on Betaflight 4.3, Rotorflight incorporates numerous advanced features specifically
-tailored for helicopters. It's important to note that Rotorflight does _not_ support multi-rotor
-crafts or airplanes; it's exclusively designed for RC helicopters.
-
-This version of Rotorflight is also known as **Rotorflight 2** or **RF2**.
+Wingflight is a fixed-wing fork of [Rotorflight](https://github.com/rotorflight), which is itself
+built on Betaflight 4.3. It's important to note that Wingflight is exclusively designed for
+fixed-wing aircraft; it does _not_ target multi-rotor or helicopter use, unlike its parent project.
 
 
 ## Information
 
-Tutorials, documentation, and flight videos can be found on the [Rotorflight website](https://www.rotorflight.org/).
+Tutorials, documentation, and flight videos can be found on the [Wingflight GitHub organization](https://github.com/WingFlight).
 
 
 ## Features
 
-Rotorflight has many features:
+Wingflight has many features inherited from Rotorflight and Betaflight:
 
 * Many receiver protocols: CRSF, S.BUS, FBUS, F.Port, SRXL2, IBUS, XBUS, EXBUS, GHOST, CPPM
 * Support for various telemetry protocols: CSRF, S.Port, FBUS, HoTT, etc.
 * ESC telemetry protocols: Hobbywing, Scorpion, Kontronik, Castle, OMP, ZTW, APD, YGE, XDFly, FLYROTOR
-* Advanced PID control algorithms for helicopters
-* Stabilisation modes (6D)
-* Rotor speed governor
-* Motorised tail support with Tail Torque Assist (TTA, also known as TALY)
 * Remote configuration and tuning with the transmitter
   - With knobs / switches assigned to functions
   - With LUA scripts on EdgeTX, OpenTX and Ethos
@@ -53,57 +47,54 @@ Plus lots of features inherited from Betaflight:
 
 And much more...
 
+> Note: this feature list is inherited from Rotorflight and hasn't yet been audited for what
+> applies to fixed-wing aircraft specifically (e.g. heli-only features like rotor speed governor,
+> swash/PID tuning, and Tail Torque Assist have been dropped from the list above, but the
+> remaining items still need a fixed-wing accuracy pass).
+
 
 ## Hardware support
 
-The best hardware for Rotorflight is any Flight Controller especially designed for it.
-See [What board is suitable?](https://www.rotorflight.org/docs/Tutorial-Quickstart/What-Board)
+Wingflight inherits its supported flight controller boards from Rotorflight (see
+[WingFlight/wingflight-targets](https://github.com/WingFlight/wingflight-targets)), which in turn
+supports all flight controller boards supported by Betaflight 4.3, assuming the board has enough
+suitable I/O pins for connecting all the servos and motors required.
 
-Otherwise, Rotorflight supports all flight controller boards that are supported by Betaflight 4.3,
-assuming that the board has enough suitable I/O pins for connecting all the servos and motors required.
-
-Also, the Betaflight boards are labeled for multi-rotor use - thus the user needs to understand how
-these functions can be used for a different purpose with helicopters. Usually this is just about using
-the motor outputs for servos, but in some cases a more advanced remapping may be needed.
-
-Rotorflight supports STM32F405, STM32F722, STM32F745 and STM32H743 MCUs from ST.
+Wingflight supports STM32F405, STM32F722, STM32F745 and STM32H743 MCUs from ST.
 
 The support for lesser MCUs like STM32G474 and STM32F411 is EOL and will be removed soon.
 
 
 ## Installation
 
-Download and flash the Rotorflight firmware with the
-[Rotorflight Configurator](https://github.com/rotorflight/rotorflight-configurator/releases).
+Download and flash the Wingflight firmware with the
+[Wingflight Configurator](https://github.com/WingFlight/wingflight-configurator/releases).
 
-Flashing the Rotorflight firmware with any other flashing tools is not recommended.
-
-Visit the [website](https://www.rotorflight.org/) for more details on setting up and using Rotorflight.
+Flashing the Wingflight firmware with any other flashing tools is not recommended.
 
 
 ## Contributing
 
-Rotorflight is an open-source community project. Anybody can join in and help to make it better by:
+Wingflight is an open-source community project. Anybody can join in and help to make it better by:
 
-* helping other users on Rotorflight Discord or other online forums
-* [reporting](https://github.com/rotorflight?tab=repositories) bugs and issues, and suggesting improvements
+* helping other users in [GitHub Discussions](https://github.com/WingFlight) or other online forums
+* [reporting](https://github.com/WingFlight) bugs and issues, and suggesting improvements
 * testing new software versions, new features and fixes; and providing feedback
 * participating in discussions on new features
-* create or update content on the [Website](https://www.rotorflight.org)
-* [contributing](https://www.rotorflight.org/docs/Contributing/intro) to the software development - fixing bugs, implementing new features and improvements
-* [translating](https://www.rotorflight.org/docs/Contributing/intro#translations) Rotorflight Configurator into a new language, or helping to maintain an existing translation
+* contributing to the software development - fixing bugs, implementing new features and improvements
+* translating Wingflight Configurator into a new language, or helping to maintain an existing translation
 
 
 ## Origins
 
-Rotorflight is software that is **open source** and is available free of charge without warranty.
+Wingflight is software that is **open source** and is available free of charge without warranty.
 
-Rotorflight is forked from [Betaflight](https://github.com/betaflight), which in turn is forked from [Cleanflight](https://github.com/cleanflight).
-Rotorflight borrows ideas and code also from [HeliFlight3D](https://github.com/heliflight3d/), another Betaflight fork for helicopters.
+Wingflight is forked from [Rotorflight](https://github.com/rotorflight), which in turn is forked from
+[Betaflight](https://github.com/betaflight), which in turn is forked from [Cleanflight](https://github.com/cleanflight).
 
 Big thanks to everyone who has contributed along the journey!
 
 
 ## Contact
 
-Team Rotorflight can be contacted by email at rotorflightfc@gmail.com.
+Team Wingflight can be contacted via [GitHub Issues and Discussions](https://github.com/WingFlight).
