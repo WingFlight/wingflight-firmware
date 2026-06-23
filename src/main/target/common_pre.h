@@ -238,6 +238,12 @@ extern uint8_t _dmaram_end__;
 #define USE_GYRO_REGISTER_DUMP  // Adds gyroregisters command to cli to dump configured register values
 #define USE_IMU_CALC
 #define USE_PPM
+
+// ---- Wingflight fork identifier ------------------------------------------
+// Activates WINGFLIGHT_AIRPLANE code paths in all builds of this firmware fork.
+// See src/main/fc/runtime_config.h for the companion documentation comment.
+#define WINGFLIGHT_AIRPLANE
+// --------------------------------------------------------------------------
 #define USE_SERIAL_RX
 #define USE_SERIALRX_CRSF       // Team Black Sheep Crossfire protocol
 #define USE_SERIALRX_GHST       // ImmersionRC Ghost Protocol

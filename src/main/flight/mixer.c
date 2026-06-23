@@ -532,6 +532,13 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_STABILIZED_YAW, pidGetOutput(PID_YAW));
     mixerSetInput(MIXER_IN_STABILIZED_COLLECTIVE, pidGetCollective());
 
+    // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels
+    if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
+        mixer.input[MIXER_IN_STABILIZED_ROLL]  = mixer.input[MIXER_IN_RC_CHANNEL_ROLL];
+        mixer.input[MIXER_IN_STABILIZED_PITCH] = mixer.input[MIXER_IN_RC_CHANNEL_PITCH];
+        mixer.input[MIXER_IN_STABILIZED_YAW]   = mixer.input[MIXER_IN_RC_CHANNEL_YAW];
+    }
+
     // Calculate collective
     mixerUpdateCollective();
 

@@ -86,6 +86,7 @@ typedef enum {
     ALTHOLD_MODE_BIT     = 4,
     RESCUE_MODE_BIT      = 5,
     GPS_RESCUE_MODE_BIT  = 6,
+    PASSTHROUGH_MODE_BIT = 7,
 } flightModeBits_e;
 
 typedef enum {
@@ -96,6 +97,7 @@ typedef enum {
     ALTHOLD_MODE         = BIT(ALTHOLD_MODE_BIT),
     RESCUE_MODE          = BIT(RESCUE_MODE_BIT),
     GPS_RESCUE_MODE      = BIT(GPS_RESCUE_MODE_BIT),
+    PASSTHROUGH_MODE     = BIT(PASSTHROUGH_MODE_BIT),
 } flightModeFlags_e;
 
 extern uint16_t flightModeFlags;
@@ -114,6 +116,7 @@ extern uint16_t flightModeFlags;
    [BOXRESCUE]      = RESCUE_MODE_BIT,                   \
    [BOXGPSRESCUE]   = GPS_RESCUE_MODE_BIT,               \
    [BOXFAILSAFE]    = FAILSAFE_MODE_BIT,                 \
+   [BOXPASSTHROUGH] = PASSTHROUGH_MODE_BIT,              \
 }                                                        \
 /**/
 
@@ -138,3 +141,11 @@ void sensorsClear(uint32_t mask);
 uint32_t sensorsMask(void);
 
 void mwDisarm(void);
+
+/*
+ * Wingflight platform identifier.
+ * Define WINGFLIGHT_AIRPLANE in the target's target.h (or via make EXTRA_FLAGS=-DWINGFLIGHT_AIRPLANE)
+ * to enable fixed-wing-specific code paths. All wing additions should be guarded with this flag
+ * to keep the diff small and upstream-merge-friendly.
+ */
+// #define WINGFLIGHT_AIRPLANE
