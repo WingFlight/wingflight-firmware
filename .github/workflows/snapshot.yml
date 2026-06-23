@@ -39,7 +39,7 @@ jobs:
     - name: Create Snapshot
       run: |
         .github/scripts/extract-release-notes.py "${{ env.GIT_VER }}" Releases.md > Notes.md
-        gh release create ${{ env.GIT_TAG }} --prerelease --notes-file Notes.md --title "Rotorflight Snapshot ${{ env.GIT_VER }}" obj/*.hex
+        gh release create ${{ env.GIT_TAG }} --prerelease --notes-file Notes.md --title "Wingflight Snapshot ${{ env.GIT_VER }}" obj/*.hex
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

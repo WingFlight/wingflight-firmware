@@ -27,6 +27,8 @@
 #include "emfat.h"
 #include "emfat_file.h"
 
+#include "build/version.h"
+
 #include "common/printf.h"
 #include "common/strtol.h"
 #include "common/time.h"
@@ -421,7 +423,7 @@ void emfat_init_files(void)
     }
 #endif // USE_FLASHFS
 
-    emfat_init(&emfat, "Rotorflight", entries);
+    emfat_init(&emfat, FC_FIRMWARE_NAME, entries);
 
     LED0_OFF;
 }
