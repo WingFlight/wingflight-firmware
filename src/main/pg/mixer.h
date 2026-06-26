@@ -131,6 +131,7 @@ typedef struct
     int16_t   weight;           // multiplier applied when the input is >= 0
     int16_t   weightNeg;        // multiplier applied when the input is < 0 (for differential)
     uint8_t   reverse;          // invert the rule's polarity (negates whichever weight applies)
+    uint16_t  speed;            // slew rate limit on this rule's contribution (0=unlimited, same units/scale as servo speed)
 } mixerRule_t;
 
 PG_DECLARE_ARRAY(mixerRule_t, MIXER_RULE_COUNT, mixerRules);

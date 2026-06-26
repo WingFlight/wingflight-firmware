@@ -57,6 +57,7 @@ typedef struct {
 
     float           input[MIXER_INPUT_COUNT];
     float           output[MIXER_OUTPUT_COUNT];
+    float           ruleOutput[MIXER_RULE_COUNT];  // per-rule slew state for mixerRule_t.speed
 
     bitmap_t        mapping[MIXER_OUTPUT_COUNT];
     int16_t         override[MIXER_INPUT_COUNT];
@@ -498,6 +499,11 @@ static void mixerUpdateRules(void)
                 weight = -weight;
             }
             float   out = (mixerRules(i)->offset + weight * val) / 1000.0f;
+
+            if (mixerRules(i)->speed > 0) {
+                out = slewLimit(mixer.ruleOutput[i], out, 1200.0f * pidGetDT() / mixerRules(i)->speed);
+            }
+            mixer.ruleOutput[i] = out;
 
             switch (mixerRules(i)->oper)
             {
