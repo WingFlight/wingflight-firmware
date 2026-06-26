@@ -1656,6 +1656,17 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
           sbufWriteU16(dst, mixerRules(i)->weightNeg);
           sbufWriteU8(dst, mixerRules(i)->reverse);
           sbufWriteU16(dst, mixerRules(i)->speed);
+          sbufWriteU8(dst, mixerRules(i)->curve);
+        }
+        break;
+
+    case MSP_MIXER_CURVES:
+        for (int i = 0; i < MIXER_CURVE_COUNT; i++) {
+            sbufWriteU8(dst, mixerCurves(i)->count);
+            for (int p = 0; p < MIXER_CURVE_POINTS; p++) {
+                sbufWriteU16(dst, mixerCurves(i)->points[p].x);
+                sbufWriteU16(dst, mixerCurves(i)->points[p].y);
+            }
         }
         break;
 
@@ -3480,6 +3491,19 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         mixerRulesMutable(i)->weightNeg = sbufReadU16(src);
         mixerRulesMutable(i)->reverse = sbufReadU8(src);
         mixerRulesMutable(i)->speed = sbufReadU16(src);
+        mixerRulesMutable(i)->curve = sbufReadU8(src);
+        break;
+
+    case MSP_SET_MIXER_CURVE:
+        i = sbufReadU8(src);
+        if (i >= MIXER_CURVE_COUNT) {
+            return MSP_RESULT_ERROR;
+        }
+        mixerCurvesMutable(i)->count = sbufReadU8(src);
+        for (int p = 0; p < MIXER_CURVE_POINTS; p++) {
+            mixerCurvesMutable(i)->points[p].x = sbufReadU16(src);
+            mixerCurvesMutable(i)->points[p].y = sbufReadU16(src);
+        }
         break;
 
     case MSP_SET_MIXER_OVERRIDE:

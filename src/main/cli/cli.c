@@ -2428,7 +2428,7 @@ static void printMixerInputs(dumpFlags_t dumpMask, const mixerInput_t *inputs, c
 
 static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, const mixerRule_t *defaults, const char *headingStr)
 {
-    const char *format = "mixer rule %u %s %s %s %d %d %d %d %d";
+    const char *format = "mixer rule %u %s %s %s %d %d %d %d %d %d";
     bool equalsDefault = false;
 
     if (defaults) {
@@ -2452,7 +2452,8 @@ static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, cons
                                  def->offset,
                                  def->weightNeg,
                                  def->reverse,
-                                 def->speed
+                                 def->speed,
+                                 def->curve
             );
         }
         if (rule->oper) {
@@ -2464,15 +2465,47 @@ static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, cons
                               rule->offset,
                               rule->weightNeg,
                               rule->reverse,
-                              rule->speed
+                              rule->speed,
+                              rule->curve
             );
+        }
+    }
+}
+
+static void printMixerCurves(dumpFlags_t dumpMask, const mixerCurve_t *curves, const mixerCurve_t *defaults, const char *headingStr)
+{
+    const char *countFormat = "mixer curve %u count %u";
+    const char *pointFormat = "mixer curve %u point %u %d %d";
+    bool equalsDefault = false;
+
+    if (defaults) {
+        equalsDefault = !memcmp(curves, defaults, sizeof(mixerCurve_t)*MIXER_CURVE_COUNT);
+        if ((dumpMask & DO_DIFF) && !(dumpMask & SHOW_DEFAULTS) && equalsDefault)
+            return;
+    }
+    if (headingStr) {
+        cliPrintHashLine(headingStr);
+    }
+    for (unsigned i = 0; i < MIXER_CURVE_COUNT; i++) {
+        const mixerCurve_t *curve = &curves[i];
+        if (defaults) {
+            const mixerCurve_t *def = &defaults[i];
+            equalsDefault = !memcmp(curve, def, sizeof(mixerCurve_t));
+            cliDefaultPrintLinef(dumpMask, equalsDefault, countFormat, i, def->count);
+            for (unsigned p = 0; p < def->count; p++) {
+                cliDefaultPrintLinef(dumpMask, equalsDefault, pointFormat, i, p, def->points[p].x, def->points[p].y);
+            }
+        }
+        cliDumpPrintLinef(dumpMask, equalsDefault, countFormat, i, curve->count);
+        for (unsigned p = 0; p < curve->count; p++) {
+            cliDumpPrintLinef(dumpMask, equalsDefault, pointFormat, i, p, curve->points[p].x, curve->points[p].y);
         }
     }
 }
 
 static void cliMixer(const char *cmdName, char *cmdline)
 {
-    enum { FUNC=0, ARG1, ARGS_MAX=10 };
+    enum { FUNC=0, ARG1, ARGS_MAX=22 };
     char *args[ARGS_MAX];
     char *saveptr, *ptr;
     int count = 0;
@@ -2486,11 +2519,13 @@ static void cliMixer(const char *cmdName, char *cmdline)
     if (count == 0) {
         printMixerInputs(DUMP_MASTER, mixerInputs(0), NULL, "mixer input");
         printMixerRules(DUMP_MASTER, mixerRules(0), NULL, "mixer rule");
+        printMixerCurves(DUMP_MASTER, mixerCurves(0), NULL, "mixer curve");
     }
     // count > 0
     else if (strcasecmp(args[FUNC], "reset") == 0) {
         PG_RESET(mixerInputs);
         PG_RESET(mixerRules);
+        PG_RESET(mixerCurves);
     }
     else if (strcasecmp(args[FUNC], "status") == 0) {
         for (unsigned i=1; i<MIXER_OUTPUT_COUNT; i++) {
@@ -2605,8 +2640,8 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 }
             }
         }
-        else if (count == 7 || count == 8 || count == 9 || count == 10) {
-            enum { FUNC=0, RULE, OPER, INPUT, OUTPUT, WEIGHT, OFFSET, WEIGHTNEG, REVERSE, SPEED, ARGS_COUNT };
+        else if (count == 7 || count == 8 || count == 9 || count == 10 || count == 11) {
+            enum { FUNC=0, RULE, OPER, INPUT, OUTPUT, WEIGHT, OFFSET, WEIGHTNEG, REVERSE, SPEED, CURVE, ARGS_COUNT };
             int vals[ARGS_COUNT];
             for (int i=1; i<count; i++)
                 vals[i] = atoi(args[i]);
@@ -2622,7 +2657,7 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 if (strcasecmp(args[OUTPUT], mixerOutputNames[i]) == 0)
                     vals[OUTPUT] = i;
             }
-            // weightNeg defaults to weight (symmetric) when omitted; reverse/speed default to off
+            // weightNeg defaults to weight (symmetric) when omitted; reverse/speed/curve default to off
             if (count == 7) {
                 vals[WEIGHTNEG] = vals[WEIGHT];
             }
@@ -2632,6 +2667,9 @@ static void cliMixer(const char *cmdName, char *cmdline)
             if (count < 10) {
                 vals[SPEED] = 0;
             }
+            if (count < 11) {
+                vals[CURVE] = 0;
+            }
             if (vals[RULE] >= 0 && vals[RULE] < MIXER_RULE_COUNT &&
                 vals[OPER] >= MIXER_OP_NUL && vals[OPER] < MIXER_OP_COUNT &&
                 vals[INPUT] >= 0 && vals[INPUT] < MIXER_INPUT_COUNT &&
@@ -2640,7 +2678,8 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 vals[WEIGHT] >= MIXER_WEIGHT_MIN && vals[WEIGHT] <= MIXER_WEIGHT_MAX &&
                 vals[WEIGHTNEG] >= MIXER_WEIGHT_MIN && vals[WEIGHTNEG] <= MIXER_WEIGHT_MAX &&
                 (vals[REVERSE] == 0 || vals[REVERSE] == 1) &&
-                vals[SPEED] >= SERVO_SPEED_MIN && vals[SPEED] <= SERVO_SPEED_MAX)
+                vals[SPEED] >= SERVO_SPEED_MIN && vals[SPEED] <= SERVO_SPEED_MAX &&
+                vals[CURVE] >= 0 && vals[CURVE] <= MIXER_CURVE_COUNT)
             {
                 mixerRule_t *mix = mixerRulesMutable(vals[RULE]);
                 mix->oper      = vals[OPER];
@@ -2651,10 +2690,75 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 mix->weightNeg = vals[WEIGHTNEG];
                 mix->reverse   = vals[REVERSE];
                 mix->speed     = vals[SPEED];
+                mix->curve     = vals[CURVE];
             } else {
                 cliShowArgumentRangeError(cmdName, NULL, 0, 0);
             }
         } else {
+            cliShowInvalidArgumentCountError(cmdName);
+        }
+    }
+    else if (strcasecmp(args[FUNC], "curve") == 0) {
+        if (count == 1) {
+            printMixerCurves(DUMP_MASTER, mixerCurves(0), NULL, NULL);
+        }
+        else if (count == 2) {
+            enum { FUNC=0, INDEX, ARGS_COUNT };
+            int index = atoi(args[INDEX]);
+            if (index >= 0 && index < MIXER_CURVE_COUNT) {
+                const mixerCurve_t *curve = mixerCurves(index);
+                cliPrintLinef("mixer curve %u count %u", index, curve->count);
+                for (unsigned p = 0; p < curve->count; p++) {
+                    cliPrintLinef("mixer curve %u point %u %d %d", index, p, curve->points[p].x, curve->points[p].y);
+                }
+            } else {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+            }
+        }
+        else if (count == 3 && strcasecmp(args[2], "reset") == 0) {
+            enum { FUNC=0, INDEX, KEYWORD, ARGS_COUNT };
+            int index = atoi(args[INDEX]);
+            if (index >= 0 && index < MIXER_CURVE_COUNT) {
+                mixerCurve_t *curve = mixerCurvesMutable(index);
+                curve->count = 2;
+                curve->points[0].x = MIXER_CURVE_MIN;
+                curve->points[0].y = MIXER_CURVE_MIN;
+                curve->points[1].x = MIXER_CURVE_MAX;
+                curve->points[1].y = MIXER_CURVE_MAX;
+            } else {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+            }
+        }
+        else if (count == 4 && strcasecmp(args[2], "count") == 0) {
+            enum { FUNC=0, INDEX, KEYWORD, VALUE, ARGS_COUNT };
+            int index = atoi(args[INDEX]);
+            int pointCount = atoi(args[VALUE]);
+            if (index >= 0 && index < MIXER_CURVE_COUNT &&
+                pointCount >= 2 && pointCount <= MIXER_CURVE_POINTS)
+            {
+                mixerCurvesMutable(index)->count = pointCount;
+            } else {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+            }
+        }
+        else if (count == 6 && strcasecmp(args[2], "point") == 0) {
+            enum { FUNC=0, INDEX, KEYWORD, POINT, X, Y, ARGS_COUNT };
+            int index = atoi(args[INDEX]);
+            int point = atoi(args[POINT]);
+            int x = atoi(args[X]);
+            int y = atoi(args[Y]);
+            if (index >= 0 && index < MIXER_CURVE_COUNT &&
+                point >= 0 && point < MIXER_CURVE_POINTS &&
+                x >= MIXER_CURVE_MIN && x <= MIXER_CURVE_MAX &&
+                y >= MIXER_CURVE_MIN && y <= MIXER_CURVE_MAX)
+            {
+                mixerCurvesMutable(index)->points[point].x = x;
+                mixerCurvesMutable(index)->points[point].y = y;
+            } else {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+            }
+        }
+        else {
             cliShowInvalidArgumentCountError(cmdName);
         }
     }

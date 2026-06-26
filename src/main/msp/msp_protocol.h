@@ -222,6 +222,8 @@
 #define MSP_GET_MIXER_INPUT                  174
 #define MSP_BATTERY_PROFILE                  175
 #define MSP_SET_BATTERY_PROFILE              176
+#define MSP_MIXER_CURVES                     177
+#define MSP_SET_MIXER_CURVE                  178
 
 #define MSP_OSD_VIDEO_CONFIG                 180
 #define MSP_SET_OSD_VIDEO_CONFIG             181

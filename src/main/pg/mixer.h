@@ -86,6 +86,8 @@ enum {
 
 #define MIXER_RULE_COUNT      32
 #define MIXER_INPUT_COUNT     MIXER_IN_COUNT
+#define MIXER_CURVE_COUNT     8
+#define MIXER_CURVE_POINTS    9
 
 typedef struct
 {
@@ -124,6 +126,20 @@ PG_DECLARE_ARRAY(mixerInput_t, MIXER_INPUT_COUNT, mixerInputs);
 
 typedef struct
 {
+    int16_t   x;                // -1000..1000, normalized like weight/offset
+    int16_t   y;                // -1000..1000
+} mixerCurvePoint_t;
+
+typedef struct
+{
+    uint8_t            count;                          // active points, 2..MIXER_CURVE_POINTS
+    mixerCurvePoint_t   points[MIXER_CURVE_POINTS];     // ascending by x
+} mixerCurve_t;
+
+PG_DECLARE_ARRAY(mixerCurve_t, MIXER_CURVE_COUNT, mixerCurves);
+
+typedef struct
+{
     uint8_t   oper;             // rule operation
     uint8_t   input;            // input channel
     uint8_t   output;           // output channel
@@ -132,6 +148,7 @@ typedef struct
     int16_t   weightNeg;        // multiplier applied when the input is < 0 (for differential)
     uint8_t   reverse;          // invert the rule's polarity (negates whichever weight applies)
     uint16_t  speed;            // slew rate limit on this rule's contribution (0=unlimited, same units/scale as servo speed)
+    uint8_t   curve;            // 0=none, 1..MIXER_CURVE_COUNT = mixerCurves(curve-1), applied before weight selection
 } mixerRule_t;
 
 PG_DECLARE_ARRAY(mixerRule_t, MIXER_RULE_COUNT, mixerRules);

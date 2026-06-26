@@ -47,6 +47,9 @@
 #define MIXER_INPUT_MIN      -2500
 #define MIXER_INPUT_MAX       2500
 
+#define MIXER_CURVE_MIN      -1000
+#define MIXER_CURVE_MAX       1000
+
 #define MIXER_OVERRIDE_MIN   -2500
 #define MIXER_OVERRIDE_MAX    2500
 #define MIXER_OVERRIDE_OFF    (MIXER_OVERRIDE_MAX + 1)

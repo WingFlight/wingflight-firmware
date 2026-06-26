@@ -45,10 +45,11 @@ PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
 
 // v1: added weightNeg (second weight applied when a rule's input is negative,
 // for differential mixing). v2: added reverse (inverts the rule's polarity).
-// v3: added speed (slew rate limit on the rule's own contribution). Existing
+// v3: added speed (slew rate limit on the rule's own contribution). v4: added
+// curve (index into mixerCurves, applied before weight selection). Existing
 // saved rules reset to these defaults rather than being reinterpreted at the
 // new, wider per-rule layout.
-PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 3);
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 4);
 
 void pgResetFn_mixerRules(mixerRule_t *rule)
 {
@@ -96,6 +97,21 @@ void pgResetFn_mixerRules(mixerRule_t *rule)
     // Clear remaining rules
     for (int i = 5; i < MIXER_RULE_COUNT; i++) {
         rule[i].oper = MIXER_OP_NUL;
+    }
+}
+
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerCurve_t, MIXER_CURVE_COUNT, mixerCurves, PG_GENERIC_MIXER_CURVES, 0);
+
+void pgResetFn_mixerCurves(mixerCurve_t *curve)
+{
+    // Default every curve to a neutral 2-point passthrough line, so an
+    // unconfigured curve slot has no effect if a rule is assigned to it.
+    for (int i = 0; i < MIXER_CURVE_COUNT; i++) {
+        curve[i].count = 2;
+        curve[i].points[0].x = -1000;
+        curve[i].points[0].y = -1000;
+        curve[i].points[1].x =  1000;
+        curve[i].points[1].y =  1000;
     }
 }
 
