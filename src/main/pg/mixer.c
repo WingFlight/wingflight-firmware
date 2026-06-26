@@ -44,9 +44,10 @@ PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
 );
 
 // v1: added weightNeg (second weight applied when a rule's input is negative,
-// for differential mixing) - existing saved rules reset to these defaults
-// rather than being reinterpreted at the new, wider per-rule layout.
-PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 1);
+// for differential mixing). v2: added reverse (inverts the rule's polarity).
+// Existing saved rules reset to these defaults rather than being
+// reinterpreted at the new, wider per-rule layout.
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 2);
 
 void pgResetFn_mixerRules(mixerRule_t *rule)
 {

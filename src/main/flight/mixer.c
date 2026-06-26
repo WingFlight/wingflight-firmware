@@ -494,6 +494,9 @@ static void mixerUpdateRules(void)
             uint8_t dst = mixerRules(i)->output;
             float   val = mixer.input[src] * mixerInputs(src)->rate / 1000.0f;
             int16_t weight = (val >= 0) ? mixerRules(i)->weight : mixerRules(i)->weightNeg;
+            if (mixerRules(i)->reverse) {
+                weight = -weight;
+            }
             float   out = (mixerRules(i)->offset + weight * val) / 1000.0f;
 
             switch (mixerRules(i)->oper)
