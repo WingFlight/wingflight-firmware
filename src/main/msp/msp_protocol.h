@@ -241,6 +241,9 @@
 #define MSP_MOTOR_OVERRIDE                   194
 #define MSP_SET_MOTOR_OVERRIDE               195
 #define MSP_SET_SERVO_OVERRIDE_ALL           196
+#define MSP_LOGIC_CONDITIONS                 197
+#define MSP_SET_LOGIC_CONDITION              198
+#define MSP_LOGIC_CONDITIONS_STATUS          199
 
 #define MSP_SET_RAW_RC                       200
 #define MSP_SET_RAW_GPS                      201

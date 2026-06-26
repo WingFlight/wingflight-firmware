@@ -86,6 +86,7 @@
 #include "flight/gps_rescue.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
+#include "flight/logic_condition.h"
 #include "flight/pid.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
@@ -130,6 +131,7 @@
 #include "pg/sbus_output.h"
 #include "pg/fbus_master.h"
 #include "pg/bus_servo.h"
+#include "pg/logic_condition.h"
 
 #include "rx/rx.h"
 #include "rx/rx_bind.h"
@@ -1657,6 +1659,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
           sbufWriteU8(dst, mixerRules(i)->reverse);
           sbufWriteU16(dst, mixerRules(i)->speed);
           sbufWriteU8(dst, mixerRules(i)->curve);
+          sbufWriteU8(dst, mixerRules(i)->condition);
         }
         break;
 
@@ -1667,6 +1670,23 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
                 sbufWriteU16(dst, mixerCurves(i)->points[p].x);
                 sbufWriteU16(dst, mixerCurves(i)->points[p].y);
             }
+        }
+        break;
+
+    case MSP_LOGIC_CONDITIONS:
+        for (int i = 0; i < LOGIC_CONDITION_COUNT; i++) {
+            sbufWriteU8(dst, logicConditions(i)->enabled);
+            sbufWriteU8(dst, logicConditions(i)->operation);
+            sbufWriteU8(dst, logicConditions(i)->operandAType);
+            sbufWriteU16(dst, logicConditions(i)->operandAValue);
+            sbufWriteU8(dst, logicConditions(i)->operandBType);
+            sbufWriteU16(dst, logicConditions(i)->operandBValue);
+        }
+        break;
+
+    case MSP_LOGIC_CONDITIONS_STATUS:
+        for (int i = 0; i < LOGIC_CONDITION_COUNT; i++) {
+            sbufWriteU8(dst, logicConditionGetValue(i) ? 1 : 0);
         }
         break;
 
@@ -3492,6 +3512,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         mixerRulesMutable(i)->reverse = sbufReadU8(src);
         mixerRulesMutable(i)->speed = sbufReadU16(src);
         mixerRulesMutable(i)->curve = sbufReadU8(src);
+        mixerRulesMutable(i)->condition = sbufReadU8(src);
         break;
 
     case MSP_SET_MIXER_CURVE:
@@ -3504,6 +3525,19 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             mixerCurvesMutable(i)->points[p].x = sbufReadU16(src);
             mixerCurvesMutable(i)->points[p].y = sbufReadU16(src);
         }
+        break;
+
+    case MSP_SET_LOGIC_CONDITION:
+        i = sbufReadU8(src);
+        if (i >= LOGIC_CONDITION_COUNT) {
+            return MSP_RESULT_ERROR;
+        }
+        logicConditionsMutable(i)->enabled = sbufReadU8(src);
+        logicConditionsMutable(i)->operation = sbufReadU8(src);
+        logicConditionsMutable(i)->operandAType = sbufReadU8(src);
+        logicConditionsMutable(i)->operandAValue = sbufReadU16(src);
+        logicConditionsMutable(i)->operandBType = sbufReadU8(src);
+        logicConditionsMutable(i)->operandBValue = sbufReadU16(src);
         break;
 
     case MSP_SET_MIXER_OVERRIDE:

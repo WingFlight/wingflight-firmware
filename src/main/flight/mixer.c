@@ -43,6 +43,7 @@
 #include "flight/mixer.h"
 #include "flight/governor.h"
 #include "flight/wiggle.h"
+#include "flight/logic_condition.h"
 
 #include "rx/rx.h"
 
@@ -522,6 +523,11 @@ static void mixerUpdateRules(void)
 {
     for (int i = 0; i < MIXER_RULE_COUNT; i++) {
         if (mixerRules(i)->oper) {
+            if (mixerRules(i)->condition > 0 &&
+                !logicConditionGetValue(mixerRules(i)->condition - 1)) {
+                continue;   // gated off - this rule contributes nothing this cycle
+            }
+
             uint8_t src = mixerRules(i)->input;
             uint8_t dst = mixerRules(i)->output;
             float   val = mixer.input[src] * mixerInputs(src)->rate / 1000.0f;
@@ -627,6 +633,9 @@ void mixerUpdate(timeUs_t currentTimeUs)
 
     // Evaluate hard-coded mixer
     mixerUpdateSwash();
+
+    // Evaluate logic conditions used to gate mixer rules
+    logicConditionUpdate();
 
     // Evaluate rule-based mixer
     mixerUpdateRules();

@@ -49,7 +49,7 @@ PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
 // curve (index into mixerCurves, applied before weight selection). Existing
 // saved rules reset to these defaults rather than being reinterpreted at the
 // new, wider per-rule layout.
-PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 4);
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 5);
 
 void pgResetFn_mixerRules(mixerRule_t *rule)
 {

@@ -149,6 +149,7 @@ typedef struct
     uint8_t   reverse;          // invert the rule's polarity (negates whichever weight applies)
     uint16_t  speed;            // slew rate limit on this rule's contribution (0=unlimited, same units/scale as servo speed)
     uint8_t   curve;            // 0=none, 1..MIXER_CURVE_COUNT = mixerCurves(curve-1), applied before weight selection
+    uint8_t   condition;        // 0=always active, 1..LOGIC_CONDITION_COUNT = logicConditions(condition-1) gates this rule
 } mixerRule_t;
 
 PG_DECLARE_ARRAY(mixerRule_t, MIXER_RULE_COUNT, mixerRules);
