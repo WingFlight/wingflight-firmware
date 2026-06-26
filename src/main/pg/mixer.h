@@ -128,7 +128,8 @@ typedef struct
     uint8_t   input;            // input channel
     uint8_t   output;           // output channel
     int16_t   offset;           // addition
-    int16_t   weight;           // multiplier (weight and direction)
+    int16_t   weight;           // multiplier applied when the input is >= 0
+    int16_t   weightNeg;        // multiplier applied when the input is < 0 (for differential)
 } mixerRule_t;
 
 PG_DECLARE_ARRAY(mixerRule_t, MIXER_RULE_COUNT, mixerRules);

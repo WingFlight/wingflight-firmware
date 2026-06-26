@@ -1653,6 +1653,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
           sbufWriteU8(dst, mixerRules(i)->output);
           sbufWriteU16(dst, mixerRules(i)->offset);
           sbufWriteU16(dst, mixerRules(i)->weight);
+          sbufWriteU16(dst, mixerRules(i)->weightNeg);
         }
         break;
 
@@ -3474,6 +3475,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         mixerRulesMutable(i)->output = sbufReadU8(src);
         mixerRulesMutable(i)->offset = sbufReadU16(src);
         mixerRulesMutable(i)->weight = sbufReadU16(src);
+        mixerRulesMutable(i)->weightNeg = sbufReadU16(src);
         break;
 
     case MSP_SET_MIXER_OVERRIDE:
