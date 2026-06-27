@@ -2453,7 +2453,7 @@ static void printMixerInputs(dumpFlags_t dumpMask, const mixerInput_t *inputs, c
 
 static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, const mixerRule_t *defaults, const char *headingStr)
 {
-    const char *format = "mixer rule %u %s %s %s %d %d %d %d %d %d %d";
+    const char *format = "mixer rule %u %s %s %s %d %d %d %d %d %d";
     bool equalsDefault = false;
 
     if (defaults) {
@@ -2476,7 +2476,6 @@ static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, cons
                                  def->weight,
                                  def->offset,
                                  def->weightNeg,
-                                 def->reverse,
                                  def->speed,
                                  def->curve,
                                  def->condition
@@ -2490,7 +2489,6 @@ static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, cons
                               rule->weight,
                               rule->offset,
                               rule->weightNeg,
-                              rule->reverse,
                               rule->speed,
                               rule->curve,
                               rule->condition
@@ -2667,8 +2665,8 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 }
             }
         }
-        else if (count == 7 || count == 8 || count == 9 || count == 10 || count == 11 || count == 12) {
-            enum { FUNC=0, RULE, OPER, INPUT, OUTPUT, WEIGHT, OFFSET, WEIGHTNEG, REVERSE, SPEED, CURVE, CONDITION, ARGS_COUNT };
+        else if (count == 7 || count == 8 || count == 9 || count == 10 || count == 11) {
+            enum { FUNC=0, RULE, OPER, INPUT, OUTPUT, WEIGHT, OFFSET, WEIGHTNEG, SPEED, CURVE, CONDITION, ARGS_COUNT };
             int vals[ARGS_COUNT];
             for (int i=1; i<count; i++)
                 vals[i] = atoi(args[i]);
@@ -2684,20 +2682,17 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 if (strcasecmp(args[OUTPUT], mixerOutputNames[i]) == 0)
                     vals[OUTPUT] = i;
             }
-            // weightNeg defaults to weight (symmetric) when omitted; reverse/speed/curve/condition default to off
+            // weightNeg defaults to weight (symmetric) when omitted; speed/curve/condition default to off
             if (count == 7) {
                 vals[WEIGHTNEG] = vals[WEIGHT];
             }
             if (count < 9) {
-                vals[REVERSE] = 0;
-            }
-            if (count < 10) {
                 vals[SPEED] = 0;
             }
-            if (count < 11) {
+            if (count < 10) {
                 vals[CURVE] = 0;
             }
-            if (count < 12) {
+            if (count < 11) {
                 vals[CONDITION] = 0;
             }
             if (vals[RULE] >= 0 && vals[RULE] < MIXER_RULE_COUNT &&
@@ -2707,7 +2702,6 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 vals[OFFSET] >= MIXER_INPUT_MIN && vals[OFFSET] <= MIXER_INPUT_MAX &&
                 vals[WEIGHT] >= MIXER_WEIGHT_MIN && vals[WEIGHT] <= MIXER_WEIGHT_MAX &&
                 vals[WEIGHTNEG] >= MIXER_WEIGHT_MIN && vals[WEIGHTNEG] <= MIXER_WEIGHT_MAX &&
-                (vals[REVERSE] == 0 || vals[REVERSE] == 1) &&
                 vals[SPEED] >= SERVO_SPEED_MIN && vals[SPEED] <= SERVO_SPEED_MAX &&
                 vals[CURVE] >= 0 && vals[CURVE] <= MIXER_CURVE_COUNT &&
                 vals[CONDITION] >= 0 && vals[CONDITION] <= LOGIC_CONDITION_COUNT)
@@ -2719,7 +2713,6 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 mix->weight    = vals[WEIGHT];
                 mix->offset    = vals[OFFSET];
                 mix->weightNeg = vals[WEIGHTNEG];
-                mix->reverse   = vals[REVERSE];
                 mix->speed     = vals[SPEED];
                 mix->curve     = vals[CURVE];
                 mix->condition = vals[CONDITION];

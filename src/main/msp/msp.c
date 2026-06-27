@@ -1650,7 +1650,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
           sbufWriteU16(dst, mixerRules(i)->offset);
           sbufWriteU16(dst, mixerRules(i)->weight);
           sbufWriteU16(dst, mixerRules(i)->weightNeg);
-          sbufWriteU8(dst, mixerRules(i)->reverse);
           sbufWriteU16(dst, mixerRules(i)->speed);
           sbufWriteU8(dst, mixerRules(i)->curve);
           sbufWriteU8(dst, mixerRules(i)->condition);
@@ -3384,7 +3383,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         mixerRulesMutable(i)->offset = sbufReadU16(src);
         mixerRulesMutable(i)->weight = sbufReadU16(src);
         mixerRulesMutable(i)->weightNeg = sbufReadU16(src);
-        mixerRulesMutable(i)->reverse = sbufReadU8(src);
         mixerRulesMutable(i)->speed = sbufReadU16(src);
         mixerRulesMutable(i)->curve = sbufReadU8(src);
         mixerRulesMutable(i)->condition = sbufReadU8(src);

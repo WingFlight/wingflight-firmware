@@ -273,9 +273,6 @@ static void mixerUpdateRules(void)
             }
 
             int16_t weight = (val >= 0) ? mixerRules(i)->weight : mixerRules(i)->weightNeg;
-            if (mixerRules(i)->reverse) {
-                weight = -weight;
-            }
             float   out = (mixerRules(i)->offset + weight * val) / 1000.0f;
 
             if (mixerRules(i)->speed > 0) {
@@ -370,15 +367,17 @@ void INIT_CODE validateAndFixMixerConfig(void)
             rule->oper    = constrain(rule->oper, 0, MIXER_OP_COUNT - 1);
             rule->input   = constrain(rule->input, 0, MIXER_INPUT_COUNT - 1);
             rule->output  = constrain(rule->output, 0, MIXER_OUTPUT_COUNT - 1);
-            rule->offset  = constrain(rule->offset, MIXER_INPUT_MIN, MIXER_INPUT_MAX);
-            rule->weight  = constrain(rule->weight, MIXER_WEIGHT_MIN, MIXER_WEIGHT_MAX);
+            rule->offset    = constrain(rule->offset, MIXER_INPUT_MIN, MIXER_INPUT_MAX);
+            rule->weight    = constrain(rule->weight, MIXER_WEIGHT_MIN, MIXER_WEIGHT_MAX);
+            rule->weightNeg = constrain(rule->weightNeg, MIXER_WEIGHT_MIN, MIXER_WEIGHT_MAX);
         }
         else {
-            rule->oper    = 0;
-            rule->input   = 0;
-            rule->output  = 0;
-            rule->offset  = 0;
-            rule->weight  = 0;
+            rule->oper      = 0;
+            rule->input     = 0;
+            rule->output    = 0;
+            rule->offset    = 0;
+            rule->weight    = 0;
+            rule->weightNeg = 0;
         }
     }
 

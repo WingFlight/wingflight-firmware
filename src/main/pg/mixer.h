@@ -110,9 +110,8 @@ typedef struct
     uint8_t   input;            // input channel
     uint8_t   output;           // output channel
     int16_t   offset;           // addition
-    int16_t   weight;           // multiplier applied when the input is >= 0
-    int16_t   weightNeg;        // multiplier applied when the input is < 0 (for differential)
-    uint8_t   reverse;          // invert the rule's polarity (negates whichever weight applies)
+    int16_t   weight;           // signed multiplier applied when the input is >= 0
+    int16_t   weightNeg;        // signed multiplier applied when the input is < 0 (for differential and/or polarity)
     uint16_t  speed;            // slew rate limit on this rule's contribution (0=unlimited, same units/scale as servo speed)
     uint8_t   curve;            // 0=none, 1..MIXER_CURVE_COUNT = mixerCurves(curve-1), applied before weight selection
     uint8_t   condition;        // 0=always active, 1..LOGIC_CONDITION_COUNT = logicConditions(condition-1) gates this rule
