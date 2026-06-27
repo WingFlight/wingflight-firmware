@@ -41,7 +41,6 @@
 #include "fc/runtime_config.h"
 
 #include "flight/rpm_filter.h"
-#include "flight/governor.h"
 
 #include "io/beeper.h"
 #include "io/statusindicator.h"
@@ -468,7 +467,7 @@ void dynLpfUpdate(timeUs_t currentTimeUs)
     static timeUs_t lastDynLpfUpdateUs = 0;
 
     if (gyro.dynLpfFilter) {
-        const float ratio = getFullHeadSpeedRatio();
+        const float ratio = 1.0f; // no governor/headspeed -- fixed ratio
         if (cmpTimeUs(currentTimeUs, lastDynLpfUpdateUs) >= DYN_LPF_UPDATE_DELAY_US) {
             const float cutoffFreq = constrainf(ratio * gyro.dynLpfHz, gyro.dynLpfMin, gyro.dynLpfMax);
             DEBUG_SET(DEBUG_DYN_LPF, 2, lrintf(cutoffFreq));

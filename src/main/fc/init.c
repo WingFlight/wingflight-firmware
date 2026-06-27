@@ -101,7 +101,6 @@
 #include "flight/mixer.h"
 #include "flight/pid.h"
 #include "flight/servos.h"
-#include "flight/governor.h"
 #include "flight/rpm_filter.h"
 
 #include "io/asyncfatfs/asyncfatfs.h"
@@ -794,10 +793,6 @@ void init(void)
         dynNotchInit(dynNotchConfig());
     }
 #endif
-
-    if (featureIsEnabled(FEATURE_GOVERNOR)) {
-        governorInit(currentPidProfile);
-    }
 
 #ifdef USE_USB_DETECT
     usbCableDetectInit();

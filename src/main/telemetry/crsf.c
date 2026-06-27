@@ -49,7 +49,6 @@
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/position.h"
-#include "flight/governor.h"
 
 #include "io/displayport_crsf.h"
 #include "io/gps.h"
@@ -481,8 +480,6 @@ static void crsfFlightModeInfo(char *buf)
         flightMode = "FAILSAFE";
     } else if (FLIGHT_MODE(GPS_RESCUE_MODE)) {
         flightMode = "GPS-RESCUE";
-    } else if (FLIGHT_MODE(RESCUE_MODE)) {
-        flightMode = "RESCUE";
     } else if (FLIGHT_MODE(HORIZON_MODE)) {
         flightMode = "HORIZON";
     } else if (FLIGHT_MODE(ANGLE_MODE)) {
@@ -496,38 +493,11 @@ static void crsfFlightModeInfo(char *buf)
     tfp_sprintf(buf, "%s%c", flightMode, armChar);
 }
 
-static const char * govStateNames[] = {
-    "OFF",
-    "IDLE",
-    "SPOOLUP",
-    "RECOVERY",
-    "ACTIVE",
-    "THR-OFF",
-    "LOST-HS",
-    "AUTOROT",
-    "BAILOUT",
-};
-
-void crsfGovernorInfo(char *buf)
-{
-    // Modes that are only relevant when disarmed
-    if (!ARMING_FLAG(ARMED)) {
-        if (isArmingDisabled())
-            strcpy(buf, "DISABLED");
-        else
-            strcpy(buf, "DISARMED");
-    }
-    else {
-        strcpy(buf, govStateNames[getGovernorState()]);
-    }
-}
-
 void crsfFrameFlightMode(sbuf_t *dst)
 {
     char buff[32] = INIT_ZERO;
 
     crsfFlightModeInfo(buff);
-    //crsfGovernorInfo(buff);
 
     sbufWriteU8(dst, CRSF_FRAMETYPE_FLIGHT_MODE);
     sbufWriteStringWithZeroTerminator(dst, buff);
@@ -815,8 +785,6 @@ static telemetrySensor_t crsfCustomTelemetrySensors[] =
     TLM_SENSOR(FLIGHT_MODE,             0x1201,   200,  3000,    0,     U16),
     TLM_SENSOR(ARMING_FLAGS,            0x1202,   200,  3000,    0,     U8),
     TLM_SENSOR(ARMING_DISABLE_FLAGS,    0x1203,   200,  3000,    0,     U32),
-    TLM_SENSOR(RESCUE_STATE,            0x1204,   200,  3000,    0,     U8),
-    TLM_SENSOR(GOVERNOR_STATE,          0x1205,   200,  3000,    0,     U8),
 
     TLM_SENSOR(PID_PROFILE,             0x1211,   200,  3000,    0,     U8),
     TLM_SENSOR(RATES_PROFILE,           0x1212,   200,  3000,    0,     U8),

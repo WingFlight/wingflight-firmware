@@ -67,7 +67,7 @@ void pgResetFn_rxConfig(rxConfig_t *rxConfig)
 #endif
 }
 
-PG_REGISTER_WITH_RESET_TEMPLATE(rcControlsConfig_t, rcControlsConfig, PG_RC_CONTROLS_CONFIG, 0);
+PG_REGISTER_WITH_RESET_TEMPLATE(rcControlsConfig_t, rcControlsConfig, PG_RC_CONTROLS_CONFIG, 1);
 
 PG_RESET_TEMPLATE(rcControlsConfig_t, rcControlsConfig,
     .rc_center = 1500,
@@ -77,7 +77,7 @@ PG_RESET_TEMPLATE(rcControlsConfig_t, rcControlsConfig,
     .rc_deadband = 5,
     .rc_yaw_deadband = 5,
     .rc_smoothness = 50,
-    .rc_threshold = { 25, 25, 25, 100 },
+    .rc_threshold = { 25, 25, 25 },
 );
 
 extern void pgResetFn_rxFailsafeChannelConfigs(rxFailsafeChannelConfig_t *rxFailsafeChannelConfigs);

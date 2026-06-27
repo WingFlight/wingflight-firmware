@@ -25,22 +25,10 @@
 #include "flight/mixer.h"
 
 
-PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_GENERIC_MIXER_CONFIG, 0);
+PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_GENERIC_MIXER_CONFIG, 1);
 
 PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
-    .main_rotor_dir = DIR_CW,
     .tail_rotor_mode = TAIL_MODE_VARIABLE,
-    .tail_motor_idle = 0,
-    .tail_center_trim = 0,
-    .swash_type = SWASH_TYPE_NONE,
-    .swash_ring = 100,
-    .swash_phase = 0,
-    .swash_pitch_limit = 0,
-    .swash_trim = { 0, 0, 0 },
-    .swash_tta_precomp = 0,
-    .swash_geo_correction = 0,
-    .collective_tilt_correction_pos = 0,
-    .collective_tilt_correction_neg = 10,
 );
 
 // v1: added weightNeg (second weight applied when a rule's input is negative,

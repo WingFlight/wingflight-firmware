@@ -41,9 +41,7 @@
 
 #include "flight/pid.h"
 #include "flight/mixer.h"
-#include "flight/rescue.h"
 #include "flight/trainer.h"
-#include "flight/governor.h"
 #include "flight/leveling.h"
 
 #include "io/beeper.h"
@@ -157,7 +155,6 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
     ADJ_ENTRY(PITCH_SP_BOOST_GAIN,          0, 255),
     ADJ_ENTRY(ROLL_SP_BOOST_GAIN,           0, 255),
     ADJ_ENTRY(YAW_SP_BOOST_GAIN,            0, 255),
-    ADJ_ENTRY(COLL_SP_BOOST_GAIN,           0, 255),
 
     ADJ_ENTRY(YAW_DYN_CEILING_GAIN,         0, 250),
     ADJ_ENTRY(YAW_DYN_DEADBAND_GAIN,        0, 250),
@@ -193,28 +190,6 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 #ifdef USE_ACRO_TRAINER
     ADJ_ENTRY(ACRO_TRAINER_GAIN,            25, 255),
 #endif
-
-    ADJ_ENTRY(RESCUE_CLIMB_COLLECTIVE,      0, 1000),
-    ADJ_ENTRY(RESCUE_HOVER_COLLECTIVE,      0, 1000),
-    ADJ_ENTRY(RESCUE_HOVER_ALTITUDE,        0, 2500),
-    ADJ_ENTRY(RESCUE_ALT_P_GAIN,            0, 1000),
-    ADJ_ENTRY(RESCUE_ALT_I_GAIN,            0, 1000),
-    ADJ_ENTRY(RESCUE_ALT_D_GAIN,            0, 1000),
-
-    ADJ_ENTRY(GOV_GAIN,                     0, 250),
-    ADJ_ENTRY(GOV_P_GAIN,                   0, 250),
-    ADJ_ENTRY(GOV_I_GAIN,                   0, 250),
-    ADJ_ENTRY(GOV_D_GAIN,                   0, 250),
-    ADJ_ENTRY(GOV_F_GAIN,                   0, 250),
-    ADJ_ENTRY(GOV_TTA_GAIN,                 0, 250),
-    ADJ_ENTRY(GOV_YAW_FF,                   0, 250),
-    ADJ_ENTRY(GOV_CYCLIC_FF,                0, 250),
-    ADJ_ENTRY(GOV_COLLECTIVE_FF,            0, 250),
-    ADJ_ENTRY(GOV_IDLE_THROTTLE,            0, 250),
-    ADJ_ENTRY(GOV_AUTO_THROTTLE,            0, 250),
-    ADJ_ENTRY(GOV_MAX_THROTTLE,             0, 100),
-    ADJ_ENTRY(GOV_MIN_THROTTLE,             0, 100),
-    ADJ_ENTRY(GOV_HEADSPEED,                0, 50000),
 
     ADJ_ENTRY(ACC_TRIM_PITCH,               -300, 300),
     ADJ_ENTRY(ACC_TRIM_ROLL,                -300, 300),

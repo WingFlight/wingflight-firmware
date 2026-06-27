@@ -32,7 +32,6 @@
 #include "flight/pid.h"
 #include "flight/imu.h"
 #include "flight/position.h"
-#include "flight/governor.h"
 #include "flight/airborne.h"
 
 #include "fc/runtime_config.h"
@@ -56,22 +55,22 @@
 
 typedef struct
 {
-    float setpoint[4];
-    float deflection[4];
+    float setpoint[3];
+    float deflection[3];
 
     bool  polarCoord;
     float ringLimit[2];
 
-    float limited[4];
-    float responseAccel[4];
-    float responseFactor[4];
+    float limited[3];
+    float responseAccel[3];
+    float responseFactor[3];
 
     float smoothingFactor;
     uint16_t smoothingCutoff;
-    filter_t smoothingFilter[4];
+    filter_t smoothingFilter[3];
 
-    float boostGain[4];
-    difFilter_t boostFilter[4];
+    float boostGain[3];
+    difFilter_t boostFilter[3];
 
     float yawDynamicCeiling;
     float yawDynamicCeilingGain;
@@ -116,16 +115,6 @@ int get_ADJUSTMENT_YAW_SP_BOOST_GAIN(void)
 void set_ADJUSTMENT_YAW_SP_BOOST_GAIN(int value)
 {
     currentControlRateProfile->setpoint_boost_gain[FD_YAW] = value;
-}
-
-int get_ADJUSTMENT_COLL_SP_BOOST_GAIN(void)
-{
-    return currentControlRateProfile->setpoint_boost_gain[FD_COLL];
-}
-
-void set_ADJUSTMENT_COLL_SP_BOOST_GAIN(int value)
-{
-    currentControlRateProfile->setpoint_boost_gain[FD_COLL] = value;
 }
 
 int get_ADJUSTMENT_YAW_DYN_CEILING_GAIN(void)
@@ -197,7 +186,7 @@ void setpointUpdateTiming(float frameTimeUs)
     const uint16_t cutoff = setpointAutoSmoothingCutoff(frameTimeUs);
 
     if (sp.smoothingCutoff != cutoff) {
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 3; i++) {
             filterUpdate(&sp.smoothingFilter[i], cutoff, pidGetPidFrequency());
         }
         sp.smoothingCutoff = cutoff;
@@ -206,7 +195,7 @@ void setpointUpdateTiming(float frameTimeUs)
 
 INIT_CODE void setpointInitProfile(void)
 {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         if (currentControlRateProfile->response_time[i]) {
             const float cutoff = 500.0f / currentControlRateProfile->response_time[i];
             sp.responseFactor[i] = pt1FilterGain(cutoff, pidGetPidFrequency());
@@ -250,7 +239,7 @@ INIT_CODE void setpointInit(void)
     sp.smoothingFactor = 25e6f / constrain(rcControlsConfig()->rc_smoothness, 1, 250);
     sp.smoothingCutoff = SP_SMOOTHING_FILTER_MAX_HZ;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         lowpassFilterInit(&sp.smoothingFilter[i], LPF_PT3, SP_SMOOTHING_FILTER_MAX_HZ, pidGetPidFrequency(), LPF_UPDATE);
         difFilterInit(&sp.boostFilter[i], currentControlRateProfile->setpoint_boost_cutoff[i], pidGetPidFrequency());
     }
@@ -279,9 +268,9 @@ static float applyYawDynamicRange(float setpoint)
 
 void setpointUpdate(void)
 {
-    float SP[4];
+    float SP[3];
 
-    for (int axis = 0; axis < 4; axis++) {
+    for (int axis = 0; axis < 3; axis++) {
         SP[axis] = getRcDeflection(axis);
         DEBUG_AXIS(SETPOINT, axis, 0, SP[axis] * 1000);
     }
@@ -291,7 +280,7 @@ void setpointUpdate(void)
     // rcCommand[YAW] CW direction is positive, while gyro[YAW] is negative
     SP[FD_YAW] = -SP[FD_YAW];
 
-    for (int axis = 0; axis < 4; axis++) {
+    for (int axis = 0; axis < 3; axis++) {
         SP[axis] = filterApply(&sp.smoothingFilter[axis], SP[axis]);
         DEBUG_AXIS(SETPOINT, axis, 1, SP[axis] * 1000);
     }
@@ -299,7 +288,7 @@ void setpointUpdate(void)
     SP[FD_YAW] = applyYawDynamicRange(SP[FD_YAW]);
     DEBUG_AXIS(SETPOINT, FD_YAW, 2, SP[FD_YAW] * 1000);
 
-    for (int axis = 0; axis < 4; axis++) {
+    for (int axis = 0; axis < 3; axis++) {
         SP[axis] = sp.deflection[axis] = setpointResponseAccel(axis, SP[axis]);
         DEBUG_AXIS(SETPOINT, axis, 3, SP[axis] * 1000);
 
@@ -343,10 +332,7 @@ void setpointUpdate(void)
     SP[FD_YAW] = applyRatesCurve(FD_YAW, SP[FD_YAW]);
     DEBUG_AXIS(SETPOINT, FD_YAW, 5, SP[FD_YAW]);
 
-    SP[FD_COLL] = applyRatesCurve(FD_COLL, SP[FD_COLL]);
-    DEBUG_AXIS(SETPOINT, FD_COLL, 5, SP[FD_COLL]);
-
-    for (int axis = 0; axis < 4; axis++) {
+    for (int axis = 0; axis < 3; axis++) {
         sp.setpoint[axis] = SP[axis];
         DEBUG_AXIS(SETPOINT, axis, 7, SP[axis] * 1000);
     }

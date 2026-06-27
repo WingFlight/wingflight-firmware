@@ -245,9 +245,6 @@ static uint16_t getMode(void)
     if (FLIGHT_MODE(HORIZON_MODE)) {
         flightMode = 7; //Circle! (there in no horizon so use Circle)
     }
-    if (FLIGHT_MODE(RESCUE_MODE)) {
-         flightMode = 4; //Guided!
-    }
     if (FLIGHT_MODE(FAILSAFE_MODE)) {
         flightMode = 9; //Land
     }

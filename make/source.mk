@@ -101,10 +101,8 @@ COMMON_SRC = \
             flight/rpm_filter.c \
             flight/motors.c \
             flight/servos.c \
-            flight/governor.c \
             flight/trainer.c \
             flight/leveling.c \
-            flight/rescue.c \
             flight/setpoint.c \
             flight/wiggle.c \
             flight/airborne.c \

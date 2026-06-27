@@ -414,10 +414,6 @@ float applyRatesCurve(const int axis, const float rcCommandf)
     rate = fminf(rate, SETPOINT_RATE_LIMIT);
     rate = copysignf(rate, rcCommandf);
 
-    // Collective is an angle - scale it here so that 480°/s => 12°
-    if (axis == COLLECTIVE)
-        rate *= 2.083333333f;
-
     return rate;
 }
 

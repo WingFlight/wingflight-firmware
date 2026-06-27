@@ -52,10 +52,8 @@
 
 #include "flight/imu.h"
 #include "flight/mixer.h"
-#include "flight/rescue.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
-#include "flight/governor.h"
 #include "flight/rpm_filter.h"
 
 #include "pid.h"
@@ -83,11 +81,6 @@ float pidGetSetpoint(int axis)
 float pidGetOutput(int axis)
 {
     return pid.data[axis].pidSum;
-}
-
-float pidGetCollective(void)
-{
-    return pid.collective;
 }
 
 const pidAxisData_t * pidGetAxisData(void)
@@ -423,7 +416,6 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
         pid.errorLimit[i] = pidProfile->error_limit[i];
 
     // Exponential error decay rates
-    pid.errorDecayRateGround = (pidProfile->error_decay_time_ground) ? (10.0f / pidProfile->error_decay_time_ground) : 0;
     pid.errorDecayRateCyclic = (pidProfile->error_decay_time_cyclic) ? (10.0f / pidProfile->error_decay_time_cyclic) : 0;
 
     // Max decay speeds in degs/s (linear decay)
@@ -448,14 +440,12 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
 
 
     // Initialise sub-profiles
-    governorInitProfile(pidProfile);
 #ifdef USE_ACC
     levelingInit(pidProfile);
 #endif
 #ifdef USE_ACRO_TRAINER
     acroTrainerInit(pidProfile);
 #endif
-    rescueInitProfile(pidProfile);
 }
 
 void INIT_CODE pidChangeProfile(const pidProfile_t *pidProfile)
@@ -564,8 +554,6 @@ static float pidApplySetpoint(uint8_t axis)
         setpoint = acroTrainerApply(axis, setpoint);
     }
 #endif
-    // Apply rescue
-    setpoint = rescueApply(axis, setpoint);
 #endif
 
     // Save setpoint
@@ -683,11 +671,11 @@ static void pidApplyMode1(uint8_t axis)
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
     pid.data[axis].I = pid.coef[axis].Ki * pid.data[axis].axisError;
 
-    // Apply error decay (fixed rate -- no collective/cyclic dependency)
-    const float decayRate  = isAirborne() ? pid.errorDecayRateCyclic : pid.errorDecayRateGround;
-    const float decayLimit = isAirborne() ? pid.errorDecayLimitCyclic : 3600;
-
-    const float errorDecay = limitf(pid.data[axis].axisError * decayRate, decayLimit);
+    // Apply error decay (fixed rate -- no ground/airborne distinction; a plane
+    // sitting on its wheels isn't at risk of tipping over from I-term windup
+    // the way a loaded heli rotor disk is, so there's no need to decay faster
+    // while landed)
+    const float errorDecay = limitf(pid.data[axis].axisError * pid.errorDecayRateCyclic, pid.errorDecayLimitCyclic);
 
     pid.data[axis].axisError -= errorDecay * pid.dT;
 

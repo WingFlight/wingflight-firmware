@@ -25,7 +25,7 @@
 #include "config/config_reset.h"
 
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(controlRateConfig_t, CONTROL_RATE_PROFILE_COUNT, controlRateProfiles, PG_CONTROL_RATE_PROFILES, 4);
+PG_REGISTER_ARRAY_WITH_RESET_FN(controlRateConfig_t, CONTROL_RATE_PROFILE_COUNT, controlRateProfiles, PG_CONTROL_RATE_PROFILES, 5);
 
 void pgResetFn_controlRateProfiles(controlRateConfig_t *controlRateConfig)
 {
@@ -36,35 +36,28 @@ void pgResetFn_controlRateProfiles(controlRateConfig_t *controlRateConfig)
             .rcRates[FD_ROLL] = 50,
             .rcRates[FD_PITCH] = 50,
             .rcRates[FD_YAW] = 80,
-            .rcRates[FD_COLL] = 100,
             .rcExpo[FD_ROLL] = 40,
             .rcExpo[FD_PITCH] = 40,
             .rcExpo[FD_YAW] = 50,
-            .rcExpo[FD_COLL] = 0,
             .sRates[FD_ROLL] = 12,
             .sRates[FD_PITCH] = 12,
             .sRates[FD_YAW] = 12,
-            .sRates[FD_COLL] = 12,
             .levelExpo[FD_ROLL] = 0,
             .levelExpo[FD_PITCH] = 0,
             .response_time[FD_ROLL] = 0,
             .response_time[FD_PITCH] = 0,
             .response_time[FD_YAW] = 0,
-            .response_time[FD_COLL] = 0,
             .accel_limit[FD_ROLL] = 0,
             .accel_limit[FD_PITCH] = 0,
             .accel_limit[FD_YAW] = 0,
-            .accel_limit[FD_COLL] = 0,
             .cyclic_ring = 0,
             .cyclic_polar = 0,
             .setpoint_boost_gain[FD_ROLL] = 0,
             .setpoint_boost_gain[FD_PITCH] = 0,
             .setpoint_boost_gain[FD_YAW] = 0,
-            .setpoint_boost_gain[FD_COLL] = 0,
             .setpoint_boost_cutoff[FD_ROLL] = 15,
             .setpoint_boost_cutoff[FD_PITCH] = 15,
             .setpoint_boost_cutoff[FD_YAW] = 90,
-            .setpoint_boost_cutoff[FD_COLL] = 15,
             .yaw_dynamic_ceiling_gain = 0,
             .yaw_dynamic_deadband_gain = 10,
             .yaw_dynamic_deadband_cutoff = 50,

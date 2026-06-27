@@ -45,7 +45,7 @@ typedef enum {
     ARMING_DISABLED_RX_FAILSAFE     = (1 << 2),
     ARMING_DISABLED_BAD_RX_RECOVERY = (1 << 3),
     ARMING_DISABLED_BOXFAILSAFE     = (1 << 4),
-    ARMING_DISABLED_GOVERNOR        = (1 << 5),
+    ARMING_DISABLED_GOVERNOR        = (1 << 5), // reserved (heli governor removed) -- never set
     ARMING_DISABLED_RPM_SIGNAL      = (1 << 6),
     ARMING_DISABLED_THROTTLE        = (1 << 7),
     ARMING_DISABLED_ANGLE           = (1 << 8),
@@ -84,7 +84,6 @@ typedef enum {
     HORIZON_MODE_BIT     = 2,
     TRAINER_MODE_BIT     = 3,
     ALTHOLD_MODE_BIT     = 4,
-    RESCUE_MODE_BIT      = 5,
     GPS_RESCUE_MODE_BIT  = 6,
     PASSTHROUGH_MODE_BIT = 7,
 } flightModeBits_e;
@@ -95,7 +94,6 @@ typedef enum {
     HORIZON_MODE         = BIT(HORIZON_MODE_BIT),
     TRAINER_MODE         = BIT(TRAINER_MODE_BIT),
     ALTHOLD_MODE         = BIT(ALTHOLD_MODE_BIT),
-    RESCUE_MODE          = BIT(RESCUE_MODE_BIT),
     GPS_RESCUE_MODE      = BIT(GPS_RESCUE_MODE_BIT),
     PASSTHROUGH_MODE     = BIT(PASSTHROUGH_MODE_BIT),
 } flightModeFlags_e;
@@ -107,13 +105,12 @@ extern uint16_t flightModeFlags;
 #define FLIGHT_MODE(mask) (flightModeFlags & (mask))
 
 // macro to initialize map from boxId_e flightModeBits. Keep it in sync with flightModeFlags_e enum.
-// [BOXARM] is left unpopulated
+// [BOXARM] and [BOXRESCUE] (heli rescue removed) are left unpopulated
 #define BOXID_TO_FLIGHT_MODE_MAP_INITIALIZER {           \
    [BOXANGLE]       = ANGLE_MODE_BIT,                    \
    [BOXHORIZON]     = HORIZON_MODE_BIT,                  \
    [BOXTRAINER]     = TRAINER_MODE_BIT,                  \
    [BOXALTHOLD]     = ALTHOLD_MODE_BIT,                  \
-   [BOXRESCUE]      = RESCUE_MODE_BIT,                   \
    [BOXGPSRESCUE]   = GPS_RESCUE_MODE_BIT,               \
    [BOXFAILSAFE]    = FAILSAFE_MODE_BIT,                 \
    [BOXPASSTHROUGH] = PASSTHROUGH_MODE_BIT,              \

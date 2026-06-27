@@ -65,8 +65,6 @@
 #include "flight/imu.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
-#include "flight/governor.h"
-#include "flight/rescue.h"
 #include "flight/position.h"
 
 #include "io/beeper.h"
@@ -180,7 +178,8 @@ static const blackboxDeltaFieldDefinition_t blackboxMainFields[] =
     {"rcCommand",   3, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_4S16),  CONDITION(COMMAND)},
     {"rcCommand",   4, UNSIGNED, .Ipredict = PREDICT(0),       .Iencode = ENCODING(UNSIGNED_VB),  .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB),  CONDITION(COMMAND)},
 
-    /* setpoint - define 4 fields like RC command */
+    /* setpoint - define 4 fields like RC command (index 3, collective, is
+       always 0 -- no collective setpoint on fixed-wing) */
     {"setpoint",    0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_4S16),  CONDITION(SETPOINT)},
     {"setpoint",    1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_4S16),  CONDITION(SETPOINT)},
     {"setpoint",    2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_4S16),  CONDITION(SETPOINT)},
@@ -269,14 +268,6 @@ static const blackboxDeltaFieldDefinition_t blackboxMainFields[] =
     {"Tesc",       -1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_8SVB),  CONDITION(TESC)},
     {"Tbec",       -1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_8SVB),  CONDITION(TBEC)},
     {"Tesc2",      -1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_8SVB),  CONDITION(TESC2)},
-
-    {"govP",       -1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_4S16),  CONDITION(GOVERNOR)},
-    {"govI",       -1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_4S16),  CONDITION(GOVERNOR)},
-    {"govD",       -1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_4S16),  CONDITION(GOVERNOR)},
-    {"govF",       -1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_4S16),  CONDITION(GOVERNOR)},
-    {"govSum",     -1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB),  CONDITION(GOVERNOR)},
-    {"govTarget",  -1, UNSIGNED, .Ipredict = PREDICT(0),       .Iencode = ENCODING(UNSIGNED_VB),  .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB),  CONDITION(GOVERNOR)},
-    {"govRequest", -1, UNSIGNED, .Ipredict = PREDICT(0),       .Iencode = ENCODING(UNSIGNED_VB),  .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB),  CONDITION(GOVERNOR)},
 
     {"headspeed",  -1, UNSIGNED, .Ipredict = PREDICT(0),       .Iencode = ENCODING(UNSIGNED_VB),  .Ppredict = PREDICT(AVERAGE_2),     .Pencode = ENCODING(SIGNED_VB),  CONDITION(HEADSPEED)},
     {"tailspeed",  -1, UNSIGNED, .Ipredict = PREDICT(0),       .Iencode = ENCODING(UNSIGNED_VB),  .Ppredict = PREDICT(AVERAGE_2),     .Pencode = ENCODING(SIGNED_VB),  CONDITION(TAILSPEED)},
@@ -417,8 +408,6 @@ typedef struct blackboxMainState_s {
     uint16_t headspeed;
     uint16_t tailspeed;
 
-    govLogData_t governor;
-
     int16_t motor[MAX_SUPPORTED_MOTORS];
     int16_t servo[MAX_SUPPORTED_SERVOS];
 
@@ -450,8 +439,6 @@ static bool blackboxStarted = false;
 
 static uint32_t blackboxLastArmingBeep = 0;
 static uint32_t blackboxLastFlightModeFlags = 0; // New event tracking of flight modes
-static uint8_t  blackboxLastGovState = 0;
-static uint8_t  blackboxLastRescueState = 0;
 static uint8_t  blackboxLastAirborneState = 0;
 
 static struct {
@@ -580,8 +567,6 @@ static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
         return (getMotorCount() >= 1) && isFieldEnabled(FIELD_SELECT(RPM));
     case CONDITION(TAILSPEED):
         return (getMotorCount() >= 2) && isFieldEnabled(FIELD_SELECT(RPM));
-    case CONDITION(GOVERNOR):
-        return (getMotorCount() >= 1) && isFieldEnabled(FIELD_SELECT(GOV));
 
     case CONDITION(TMCU):
         return isFieldEnabled(FIELD_SELECT(TEMP));
@@ -816,13 +801,6 @@ static void writeIntraframe(void)
         blackboxWriteSignedVB(blackboxCurrent->esc2_temp);
     }
 
-    if (testBlackboxCondition(CONDITION(GOVERNOR))) {
-        blackboxWriteSignedVBArray(blackboxCurrent->governor.pidTerms, 4);
-        blackboxWriteSignedVB(blackboxCurrent->governor.pidSum);
-        blackboxWriteUnsignedVB(blackboxCurrent->governor.targetHS);
-        blackboxWriteUnsignedVB(blackboxCurrent->governor.requestHS);
-    }
-
     if (testBlackboxCondition(CONDITION(HEADSPEED))) {
         blackboxWriteUnsignedVB(blackboxCurrent->headspeed);
     }
@@ -1024,14 +1002,6 @@ static void writeInterframe(void)
     }
     blackboxWriteTag8_8SVB(deltas, packedFieldCount);
 
-    if (testBlackboxCondition(CONDITION(GOVERNOR))) {
-        CALC_DELTAS(deltas, blackboxCurrent->governor.pidTerms, blackboxPrev->governor.pidTerms, 4);
-        blackboxWriteTag8_4S16(deltas);
-        blackboxWriteSignedVB((int32_t) blackboxCurrent->governor.pidSum - blackboxPrev->governor.pidSum);
-        blackboxWriteSignedVB((int32_t) blackboxCurrent->governor.targetHS- blackboxPrev->governor.targetHS);
-        blackboxWriteSignedVB((int32_t) blackboxCurrent->governor.requestHS - blackboxPrev->governor.requestHS);
-    }
-
     if (testBlackboxCondition(CONDITION(HEADSPEED))) {
         int32_t predictor = (blackboxHistory[1]->headspeed + blackboxHistory[2]->headspeed) / 2;
         blackboxWriteSignedVB(blackboxCurrent->headspeed - predictor);
@@ -1183,8 +1153,6 @@ static void blackboxStart(void)
     blackboxLastArmingBeep = getArmingBeepTimeMicros();
     memcpy(&blackboxLastFlightModeFlags, &rcModeActivationMask, sizeof(blackboxLastFlightModeFlags)); // record startup status
 
-    blackboxLastGovState = getGovernorState();
-    blackboxLastRescueState = getRescueState();
     blackboxLastAirborneState = isAirborne();
 
     blackboxSetState(BLACKBOX_STATE_WAIT_FOR_READY);
@@ -1284,8 +1252,13 @@ static void loadMainState(timeUs_t currentTimeUs)
     // ROLL/PITCH/YAW/COLLECTIVE
     for (int i = 0; i < 4; i++) {
         blackboxCurrent->command[i] = lrintf(rcCommand[i]);
+    }
+
+    // ROLL/PITCH/YAW (no collective setpoint for fixed-wing)
+    for (int i = 0; i < 3; i++) {
         blackboxCurrent->setpoint[i] = lrintf(getSetpoint(i));
     }
+    blackboxCurrent->setpoint[3] = 0;
 
     blackboxCurrent->command[THROTTLE] = lrintf(getThrottleCommand());
 
@@ -1382,8 +1355,6 @@ static void loadMainState(timeUs_t currentTimeUs)
 
     blackboxCurrent->headspeed = getHeadSpeed();
     blackboxCurrent->tailspeed = getTailSpeed();
-
-    getGovernorLogData(&blackboxCurrent->governor);
 
     for (int i = 0; i < getMotorCount(); i++) {
         blackboxCurrent->motor[i] = getMotorOutput(i);
@@ -1645,11 +1616,6 @@ static bool blackboxWriteSysinfo(void)
                                                                             currentPidProfile->angle.level_limit,
                                                                             currentPidProfile->horizon.level_strength,
                                                                             currentPidProfile->horizon.transition);
-        BLACKBOX_PRINT_HEADER_LINE("govPID", "%d,%d,%d,%d,%d",              currentPidProfile->governor.p_gain,
-                                                                            currentPidProfile->governor.i_gain,
-                                                                            currentPidProfile->governor.d_gain,
-                                                                            currentPidProfile->governor.f_gain,
-                                                                            currentPidProfile->governor.gain);
         BLACKBOX_PRINT_HEADER_LINE("rollBW", "%d,%d,%d",                    currentPidProfile->gyro_cutoff[PID_ROLL],
                                                                             currentPidProfile->dterm_cutoff[PID_ROLL],
                                                                             currentPidProfile->bterm_cutoff[PID_ROLL]);
@@ -1664,9 +1630,6 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_ARRAY("error_limit", "%d", 3,                 currentPidProfile->error_limit);
         BLACKBOX_PRINT_HEADER_LINE("error_decay", "%d,%d",                  currentPidProfile->error_decay_time_cyclic,
                                                                             currentPidProfile->error_decay_limit_cyclic);
-        BLACKBOX_PRINT_HEADER_LINE("error_decay_ground", "%d",              currentPidProfile->error_decay_time_ground);
-        BLACKBOX_PRINT_HEADER_LINE("yaw_tta", "%d,%d",                      currentPidProfile->governor.tta_gain,
-                                                                            currentPidProfile->governor.tta_limit);
         BLACKBOX_PRINT_HEADER_LINE("fw_tpa", "%d,%d",                       currentPidProfile->fw_tpa_breakpoint,
                                                                             currentPidProfile->fw_tpa_rate);
 
@@ -1781,12 +1744,6 @@ void blackboxLogEvent(FlightLogEvent event, flightLogEventData_t *data)
         blackboxWriteUnsignedVB(data->flightMode.flags);
         blackboxWriteUnsignedVB(data->flightMode.lastFlags);
         break;
-    case FLIGHT_LOG_EVENT_GOVSTATE:
-        blackboxWriteUnsignedVB(data->govState.govState);
-        break;
-    case FLIGHT_LOG_EVENT_RESCUE_STATE:
-        blackboxWriteUnsignedVB(data->rescueState.rescueState);
-        break;
     case FLIGHT_LOG_EVENT_AIRBORNE_STATE:
         blackboxWriteUnsignedVB(data->airborneState.airborneState);
         break;
@@ -1866,20 +1823,6 @@ static void blackboxCheckAndLogFlightMode(void)
         memcpy(&blackboxLastFlightModeFlags, &rcModeActivationMask, sizeof(blackboxLastFlightModeFlags));
         memcpy(&eventData.flags, &rcModeActivationMask, sizeof(eventData.flags));
         blackboxLogEvent(FLIGHT_LOG_EVENT_FLIGHTMODE, (flightLogEventData_t *)&eventData);
-    }
-
-    if (getGovernorState() != blackboxLastGovState) {
-        blackboxLastGovState = getGovernorState();
-        flightLogEvent_govState_t eventData;
-        eventData.govState = blackboxLastGovState;
-        blackboxLogEvent(FLIGHT_LOG_EVENT_GOVSTATE, (flightLogEventData_t *)&eventData);
-    }
-
-    if (getRescueState() != blackboxLastRescueState) {
-        blackboxLastRescueState = getRescueState();
-        flightLogEvent_rescueState_t eventData;
-        eventData.rescueState = blackboxLastRescueState;
-        blackboxLogEvent(FLIGHT_LOG_EVENT_RESCUE_STATE, (flightLogEventData_t *)&eventData);
     }
 
     if (isAirborne() != blackboxLastAirborneState) {

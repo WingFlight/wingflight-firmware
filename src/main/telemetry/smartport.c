@@ -233,8 +233,6 @@ static telemetrySensor_t smartportTelemetrySensors[] =
     TLM_SENSOR(FLIGHT_MODE,             0x5121,   100,  3000,   1,   1,   0,    INT),
     TLM_SENSOR(ARMING_FLAGS,            0x5122,   100,  3000,   1,   1,   0,    INT),
     TLM_SENSOR(ARMING_DISABLE_FLAGS,    0x5123,   100,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(RESCUE_STATE,            0x5124,   100,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(GOVERNOR_STATE,          0x5125,   100,  3000,   1,   1,   0,    INT),
 
     TLM_SENSOR(PID_PROFILE,             0x5130,   200,  3000,   1,   1,   0,    INT),
     TLM_SENSOR(RATES_PROFILE,           0x5131,   200,  3000,   1,   1,   0,    INT),

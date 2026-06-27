@@ -84,13 +84,10 @@ typedef struct pid_s {
     uint8_t itermRelaxType;
     uint8_t itermRelaxLevel[PID_AXIS_COUNT];
 
-    float errorDecayRateGround;
     float errorDecayRateCyclic;
     float errorDecayLimitCyclic;
 
     float errorLimit[PID_AXIS_COUNT];
-
-    float collective;
 
     pidAxisCoef_t coef[PID_ITEM_COUNT];
     pidAxisData_t data[PID_AXIS_COUNT];
@@ -123,8 +120,6 @@ float pidGetPidFrequency(void);
 
 float pidGetSetpoint(int axis);
 float pidGetOutput(int axis);
-
-float pidGetCollective(void);
 
 const pidAxisData_t * pidGetAxisData(void);
 

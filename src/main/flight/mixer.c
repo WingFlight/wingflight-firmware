@@ -41,7 +41,6 @@
 #include "flight/pid.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
-#include "flight/governor.h"
 #include "flight/wiggle.h"
 #include "flight/logic_condition.h"
 
@@ -64,57 +63,13 @@ typedef struct {
     int16_t         override[MIXER_INPUT_COUNT];
     uint16_t        saturation[MIXER_INPUT_COUNT];
 
-    float           tailCenterTrim;
-    float           tailMotorIdle;
-    int8_t          tailMotorDirection;
-
-    float           swashTrim[3];
-
-    float           collTTAGain;
-    float           collGeoCorrection;
-
-    float           cyclicLimit;
     float           cyclicTotal;
-
-    float           totalPitchLimit;
-    float           cyclicRingLimit;
-    float           cyclicSpeedLimit;
-
-    sincosf_t       cyclicPhase;
 
     bitmap_t        cyclicMapping;
 
 } mixerData_t;
 
 static FAST_DATA_ZERO_INIT mixerData_t mixer;
-
-
-#ifdef USE_MIXER_HISTORY
-
-// History lengh is 1024 samples (must be power of 2)
-#define MIXER_HISTORY_TIME   (1<<10)
-#define MIXER_HISTORY_MASK   (MIXER_HISTORY_TIME-1)
-
-static float mixerInputHistory[4][MIXER_HISTORY_TIME];
-
-static FAST_DATA_ZERO_INIT uint16_t historyIndex;
-
-float mixerGetInputHistory(uint8_t index, uint16_t delay)
-{
-    return mixerInputHistory[index][(historyIndex - delay) & MIXER_HISTORY_MASK];
-}
-
-static inline void mixerUpdateHistory(void)
-{
-    historyIndex = (historyIndex + 1) & MIXER_HISTORY_MASK;
-
-    mixerInputHistory[FD_ROLL][historyIndex]   = mixer.input[MIXER_IN_STABILIZED_ROLL];
-    mixerInputHistory[FD_PITCH][historyIndex]  = mixer.input[MIXER_IN_STABILIZED_PITCH];
-    mixerInputHistory[FD_YAW][historyIndex]    = mixer.input[MIXER_IN_STABILIZED_YAW];
-    mixerInputHistory[FD_COLL][historyIndex]   = mixer.input[MIXER_IN_STABILIZED_COLLECTIVE];
-}
-
-#endif /* USE_MIXER_HISTORY */
 
 
 /** Interface functions **/
@@ -261,231 +216,12 @@ static void mixerSetInput(int index, float value)
 
 static void mixerUpdateCyclic(void)
 {
-    float SR = mixer.input[MIXER_IN_STABILIZED_ROLL];
-    float SP = mixer.input[MIXER_IN_STABILIZED_PITCH];
+    const float SR = mixer.input[MIXER_IN_STABILIZED_ROLL];
+    const float SP = mixer.input[MIXER_IN_STABILIZED_PITCH];
 
-    // Limit action active
-    if (mixer.cyclicRingLimit > 0 || mixer.totalPitchLimit > 0)
-    {
-        float factor = 1.0f;
-
-        // Apply cyclic ring limit
-        if (mixer.cyclicRingLimit > 0 ) {
-            // Inidividual limits on SP and SR
-            const mixerInput_t *mixR = mixerInputs(MIXER_IN_STABILIZED_ROLL);
-            const mixerInput_t *mixP = mixerInputs(MIXER_IN_STABILIZED_PITCH);
-
-            // Assume min<0 and max>0
-            const float maxR = MAX(abs((SR < 0) ? mixR->min : mixR->max), 10) / 1000.0f;
-            const float maxP = MAX(abs((SP < 0) ? mixP->min : mixP->max), 10) / 1000.0f;
-
-            // Stretch the values to a unit circle limit
-            const float SSR = SR / (maxR * mixer.cyclicRingLimit);
-            const float SSP = SP / (maxP * mixer.cyclicRingLimit);
-
-            // Stretched cyclic deflection
-            const float cyclic = sqrtf(sq(SSR) + sq(SSP));
-
-            // Cyclic limits reached - scale back
-            if (cyclic > 1.0f) {
-                factor = 1.0f / cyclic;
-            }
-        }
-
-        // Apply dynamic cyclic limit
-        if (mixer.totalPitchLimit > 0) {
-            // Total cyclic after ring limit
-            const float cyclic = sqrtf(sq(SR) + sq(SP)) * factor;
-
-            // Cyclic limits reached - scale back
-            if (cyclic > mixer.cyclicLimit) {
-                factor *= mixer.cyclicLimit / cyclic;
-            }
-        }
-
-        // Apply limit factor
-        if (factor < 1.0f) {
-            SP *= factor;
-            SR *= factor;
-            mixerSaturateInput(MIXER_IN_STABILIZED_ROLL);
-            mixerSaturateInput(MIXER_IN_STABILIZED_PITCH);
-        }
-    }
-
-    // Swash phasing
-    if (mixer.cyclicPhase.sin != 0)
-    {
-        const float P = SP;
-        const float R = SR;
-        SP = P * mixer.cyclicPhase.cos - R * mixer.cyclicPhase.sin;
-        SR = P * mixer.cyclicPhase.sin + R * mixer.cyclicPhase.cos;
-    }
-
-    // Apply new values
-    mixer.input[MIXER_IN_STABILIZED_ROLL]  = SR;
-    mixer.input[MIXER_IN_STABILIZED_PITCH] = SP;
-
-    // Total cyclic deflection
+    // Total cyclic deflection (combined roll+pitch magnitude, used e.g. by
+    // smartfuel's stick-load sag compensation)
     mixer.cyclicTotal = sqrtf(sq(SP) + sq(SR));
-}
-
-static void mixerUpdateCollective(void)
-{
-    if (mixer.collTTAGain > 0) {
-        // TTA ratio
-        const float ratio = 1.0f + getTTAIncrease() * mixer.collTTAGain;
-
-        // Counteract lift increase
-        mixer.input[MIXER_IN_STABILIZED_COLLECTIVE] /= ratio * ratio;
-    }
-
-    // Limit cyclic if needed
-    if (mixer.totalPitchLimit > 0) {
-        mixer.cyclicLimit = fmaxf(mixer.totalPitchLimit - fabsf(mixer.input[MIXER_IN_STABILIZED_COLLECTIVE]), 0);
-    }
-}
-
-static float mixerCollectiveCorrection(float SC)
-{
-    if (mixer.collGeoCorrection != 0) {
-        if (SC > 0)
-            SC += SC * mixer.collGeoCorrection;
-        else
-            SC -= SC * mixer.collGeoCorrection;
-    }
-
-    return SC;
-}
-
-static float mixerCollectiveScale(float SC, float SR, float SP)
-{
-    float beta;
-    if (SC > 0) {
-        beta = mixerConfig()->collective_tilt_correction_pos / 100.0f;
-    } else {
-        beta = -mixerConfig()->collective_tilt_correction_neg / 100.0f;
-    }
-    float scale = 1 + beta * (SR * SR + SP * SP);
-    scale = constrainf(scale, 0.0f, 2.0f);
-    return SC * scale;
-}
-
-static void mixerUpdateMotorizedTail(void)
-{
-    // Motorized tail control
-    if (mixerIsTailMode(TAIL_MODE_MOTORIZED)) {
-        // Yaw input value - positive is against torque
-        const float yaw = mixer.input[MIXER_IN_STABILIZED_YAW] * mixerRotationSign();
-
-        // Add center trim
-        float throttle = yaw + mixer.tailCenterTrim;
-
-        // Apply minimum throttle
-        throttle = fmaxf(throttle, mixer.tailMotorIdle);
-
-        // Start tail motor asap
-        if (!isSpooledUp()) {
-            if (mixer.input[MIXER_IN_STABILIZED_THROTTLE] < 0.001f)
-                throttle = 0;
-        }
-
-        // Yaw is now tail motor throttle
-        mixer.input[MIXER_IN_STABILIZED_YAW] = throttle;
-    }
-    // Bidirectional tail motor
-    else if (mixerIsTailMode(TAIL_MODE_BIDIRECTIONAL)) {
-        // Yaw input value - positive is against torque
-        const float yaw = mixer.input[MIXER_IN_STABILIZED_YAW] * mixerRotationSign();
-
-        // Add center trim
-        float throttle = yaw + mixer.tailCenterTrim;
-
-        // Apply minimum throttle
-        if (throttle > -mixer.tailMotorIdle && throttle < mixer.tailMotorIdle)
-            throttle = mixer.tailMotorDirection * mixer.tailMotorIdle;
-
-        // Slow spoolup
-        if (!isSpooledUp()) {
-            if (mixer.input[MIXER_IN_STABILIZED_THROTTLE] < 0.05f)
-                throttle = 0;
-            else if (mixer.input[MIXER_IN_STABILIZED_THROTTLE] < 0.10f)
-                throttle *= mixer.input[MIXER_IN_STABILIZED_THROTTLE] / 0.10f;
-        }
-
-        // Direction sign
-        mixer.tailMotorDirection = (throttle < 0) ? -1 : 1;
-
-        // Yaw is now tail motor throttle
-        mixer.input[MIXER_IN_STABILIZED_YAW] = throttle;
-    }
-}
-
-#define inputValue(NAME)                (mixer.input[MIXER_IN_STABILIZED_##NAME] * mixerInputs(MIXER_IN_STABILIZED_##NAME)->rate / 1000.0f)
-#define setServoOutput(SERVO,VAL)       (mixer.output[MIXER_SERVO_OFFSET + (SERVO)] = (VAL))
-#define setMotorOutput(MOTOR,VAL)       (mixer.output[MIXER_MOTOR_OFFSET + (MOTOR)] = (VAL))
-
-static void mixerUpdateSwash(void)
-{
-    if (mixerConfig()->swash_type)
-    {
-        float SR = inputValue(ROLL);
-        float SP = inputValue(PITCH);
-        float SY = inputValue(YAW);
-        float SC = inputValue(COLLECTIVE);
-        float ST = inputValue(THROTTLE);
-
-        float TC = mixer.tailCenterTrim;
-
-        SC = mixerCollectiveCorrection(SC);
-        SC = mixerCollectiveScale(SC, SR, SP);
-
-        SR += mixer.swashTrim[0];
-        SP += mixer.swashTrim[1];
-        SC += mixer.swashTrim[2];
-
-        switch (mixerConfig()->swash_type) {
-            case SWASH_TYPE_120:
-                setServoOutput(0, 0.5f * SC - SP);
-                setServoOutput(1, 0.5f * SC + 0.86602540f * SR + 0.5f * SP);
-                setServoOutput(2, 0.5f * SC - 0.86602540f * SR + 0.5f * SP);
-                break;
-
-            case SWASH_TYPE_135:
-                setServoOutput(0, 0.5f * SC - SP);
-                setServoOutput(1, 0.5f * SC + SR + SP);
-                setServoOutput(2, 0.5f * SC - SR + SP);
-                break;
-
-            case SWASH_TYPE_140:
-                setServoOutput(0, 0.5f * SC - SP);
-                setServoOutput(1, 0.5f * SC + 0.866025f * SR + SP);
-                setServoOutput(2, 0.5f * SC - 0.866025f * SR + SP);
-                break;
-
-            case SWASH_TYPE_90L:
-                setServoOutput(0, SP);
-                setServoOutput(1, SR);
-                break;
-
-            case SWASH_TYPE_90V:
-                setServoOutput(0,  0.70710678f * SR + 0.70710678f * SP);
-                setServoOutput(1, -0.70710678f * SR + 0.70710678f * SP);
-                break;
-
-            case SWASH_TYPE_THRU:
-                setServoOutput(0, SP);
-                setServoOutput(1, SR);
-                setServoOutput(2, SC);
-                break;
-        }
-
-        setMotorOutput(0, ST);
-
-        if (mixerMotorizedTail())
-            setMotorOutput(1, SY);
-        else
-            setServoOutput(3, SY + TC);
-    }
 }
 
 // Linear interpolation through a curve's (ascending-x) points. Points beyond
@@ -582,7 +318,7 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_STABILIZED_ROLL, pidGetOutput(PID_ROLL));
     mixerSetInput(MIXER_IN_STABILIZED_PITCH, pidGetOutput(PID_PITCH));
     mixerSetInput(MIXER_IN_STABILIZED_YAW, pidGetOutput(PID_YAW));
-    mixerSetInput(MIXER_IN_STABILIZED_COLLECTIVE, pidGetCollective());
+    mixerSetInput(MIXER_IN_STABILIZED_COLLECTIVE, 0);
 
     // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels
     if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
@@ -591,25 +327,11 @@ static void mixerUpdateInputs(void)
         mixer.input[MIXER_IN_STABILIZED_YAW]   = mixer.input[MIXER_IN_RC_CHANNEL_YAW];
     }
 
-    // Calculate collective
-    mixerUpdateCollective();
-
     // Calculate cyclic
     mixerUpdateCyclic();
 
-    // Update governor sub-mixer
-    governorUpdate();
-
-    // Update throttle from governor
-    mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, getGovernorOutput());
-
-    // Update motorized tail (must be done after governor)
-    mixerUpdateMotorizedTail();
-
-#ifdef USE_MIXER_HISTORY
-    // Update historical values
-    mixerUpdateHistory();
-#endif
+    // Update throttle (no governor -- direct passthrough)
+    mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, getThrottle());
 }
 
 void mixerUpdate(timeUs_t currentTimeUs)
@@ -630,9 +352,6 @@ void mixerUpdate(timeUs_t currentTimeUs)
 
     // Fetch input values
     mixerUpdateInputs();
-
-    // Evaluate hard-coded mixer
-    mixerUpdateSwash();
 
     // Evaluate logic conditions used to gate mixer rules
     logicConditionUpdate();
@@ -663,44 +382,6 @@ void INIT_CODE validateAndFixMixerConfig(void)
         }
     }
 
-    if (mixerConfig()->swash_pitch_limit > 0) {
-        const uint16_t min_cyclic = 500;  // = 6°
-        uint16_t limit = mixerConfig()->swash_pitch_limit;
-        limit = MAX(limit, ABS(mixerInputs(MIXER_IN_STABILIZED_COLLECTIVE)->max) + min_cyclic);
-        limit = MAX(limit, ABS(mixerInputs(MIXER_IN_STABILIZED_COLLECTIVE)->min) + min_cyclic);
-        mixerConfigMutable()->swash_pitch_limit = limit;
-    }
-}
-
-void INIT_CODE mixerInitConfig(void)
-{
-    if (mixerConfig()->swash_pitch_limit)
-        mixer.totalPitchLimit = mixerConfig()->swash_pitch_limit / 1000.0f;
-    else
-        mixer.totalPitchLimit = 0;
-
-    if (mixerConfig()->swash_ring)
-        mixer.cyclicRingLimit = 1.4142135623f - mixerConfig()->swash_ring * 0.004142135623f;
-    else
-        mixer.cyclicRingLimit = 0;
-
-    if (mixerConfig()->swash_phase) {
-        const float angle = DECIDEGREES_TO_RADIANS(mixerConfig()->swash_phase);
-        mixer.cyclicPhase = sinfcosf(angle);
-    }
-    else {
-        mixer.cyclicPhase.sin = 0.0f;
-        mixer.cyclicPhase.cos = 1.0f;
-    }
-
-    for (int i = 0; i < 3; i++)
-        mixer.swashTrim[i] = mixerConfig()->swash_trim[i] / 1000.0f;
-
-    mixer.collTTAGain = mixerConfig()->swash_tta_precomp / 100.0f;
-    mixer.collGeoCorrection = mixerConfig()->swash_geo_correction / 1000.0f;
-
-    mixer.tailMotorIdle = mixerConfig()->tail_motor_idle / 1000.0f;
-    mixer.tailCenterTrim = mixerConfig()->tail_center_trim / 1000.0f;
 }
 
 static void INIT_CODE setMapping(uint8_t in, uint8_t out)
@@ -737,49 +418,6 @@ void INIT_CODE mixerInit(void)
         mixer.override[i] = MIXER_OVERRIDE_OFF;
     }
 
-    if (mixerConfig()->swash_type)
-    {
-        switch (mixerConfig()->swash_type) {
-            case SWASH_TYPE_120:
-            case SWASH_TYPE_135:
-            case SWASH_TYPE_140:
-                addServoMapping(MIXER_IN_STABILIZED_COLLECTIVE, 0);
-                addServoMapping(MIXER_IN_STABILIZED_COLLECTIVE, 1);
-                addServoMapping(MIXER_IN_STABILIZED_COLLECTIVE, 2);
-                addServoMapping(MIXER_IN_STABILIZED_PITCH, 0);
-                addServoMapping(MIXER_IN_STABILIZED_PITCH, 1);
-                addServoMapping(MIXER_IN_STABILIZED_PITCH, 2);
-                addServoMapping(MIXER_IN_STABILIZED_ROLL, 1);
-                addServoMapping(MIXER_IN_STABILIZED_ROLL, 2);
-                break;
-
-            case SWASH_TYPE_90L:
-                addServoMapping(MIXER_IN_STABILIZED_PITCH, 0);
-                addServoMapping(MIXER_IN_STABILIZED_ROLL, 1);
-                break;
-
-            case SWASH_TYPE_90V:
-                addServoMapping(MIXER_IN_STABILIZED_PITCH, 0);
-                addServoMapping(MIXER_IN_STABILIZED_PITCH, 1);
-                addServoMapping(MIXER_IN_STABILIZED_ROLL, 0);
-                addServoMapping(MIXER_IN_STABILIZED_ROLL, 1);
-                break;
-
-            case SWASH_TYPE_THRU:
-                addServoMapping(MIXER_IN_STABILIZED_PITCH, 0);
-                addServoMapping(MIXER_IN_STABILIZED_ROLL, 1);
-                addServoMapping(MIXER_IN_STABILIZED_COLLECTIVE, 2);
-                break;
-        }
-
-        addMotorMapping(MIXER_IN_STABILIZED_THROTTLE, 0);
-
-        if (mixerMotorizedTail())
-            addMotorMapping(MIXER_IN_STABILIZED_YAW, 1);
-        else
-            addServoMapping(MIXER_IN_STABILIZED_YAW, 3);
-    }
-
     for (int i = 0; i < MIXER_RULE_COUNT; i++)
     {
         const mixerRule_t *rule = mixerRules(i);
@@ -795,8 +433,6 @@ void INIT_CODE mixerInit(void)
                 break;
         }
     }
-
-    mixerInitConfig();
 
     wiggleInit();
 }

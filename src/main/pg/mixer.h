@@ -23,16 +23,6 @@
 #include "pg/pg.h"
 
 enum {
-    SWASH_TYPE_NONE = 0,
-    SWASH_TYPE_THRU,
-    SWASH_TYPE_120,
-    SWASH_TYPE_135,
-    SWASH_TYPE_140,
-    SWASH_TYPE_90L,
-    SWASH_TYPE_90V,
-};
-
-enum {
     TAIL_MODE_VARIABLE,
     TAIL_MODE_MOTORIZED,
     TAIL_MODE_BIDIRECTIONAL,
@@ -79,11 +69,6 @@ enum {
     MIXER_OP_COUNT
 };
 
-enum {
-    DIR_CW,
-    DIR_CCW,
-};
-
 #define MIXER_RULE_COUNT      32
 #define MIXER_INPUT_COUNT     MIXER_IN_COUNT
 #define MIXER_CURVE_COUNT     8
@@ -91,26 +76,7 @@ enum {
 
 typedef struct
 {
-    uint8_t   main_rotor_dir;       // Main rotor direction: CW/CCW
-
     uint8_t   tail_rotor_mode;      // Tail motor vs. variable pitch tail
-    uint8_t   tail_motor_idle;      // Idle throttle for tail motor
-    int16_t   tail_center_trim;     // Tail center position offset
-
-    uint8_t   swash_type;           // Swashplate type
-    uint8_t   swash_ring;           // Swash ring size
-
-    int16_t   swash_phase;          // Swashplate phasing angle
-    uint16_t  swash_pitch_limit;    // Maximum main rotor blade pitch
-
-    int16_t   swash_trim[3];        // Swash center position trims
-
-    uint8_t   swash_tta_precomp;    // TTA correction %
-
-    int8_t    swash_geo_correction; // Head geometry correction (collective assymetry)
-
-    int8_t    collective_tilt_correction_pos;
-    int8_t    collective_tilt_correction_neg;
 } mixerConfig_t;
 
 PG_DECLARE(mixerConfig_t, mixerConfig);

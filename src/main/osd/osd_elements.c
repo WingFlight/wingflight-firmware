@@ -916,7 +916,6 @@ static void osdElementFlymode(osdElementParms_t *element)
     // Note that flight mode display has precedence in what to display.
     //  1. FAILSAFE
     //  2. GPS RESCUE
-    //  3. RESCUE
     //  4. ANGLE
     //  5. HORIZON
     //  6. ACRO
@@ -925,8 +924,6 @@ static void osdElementFlymode(osdElementParms_t *element)
         strcpy(element->buff, "FAIL");
     } else if (FLIGHT_MODE(GPS_RESCUE_MODE)) {
         strcpy(element->buff, "HOLD");
-    } else if (FLIGHT_MODE(RESCUE_MODE)) {
-        strcpy(element->buff, "SAVE");
     } else if (FLIGHT_MODE(ANGLE_MODE)) {
         strcpy(element->buff, "ANGL");
     } else if (FLIGHT_MODE(HORIZON_MODE)) {

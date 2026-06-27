@@ -188,14 +188,11 @@
 #define MSP_VTXTABLE_POWERLEVEL              138
 #define MSP_MOTOR_TELEMETRY                  139
 
-#define MSP_GOVERNOR_CONFIG                  142
-#define MSP_SET_GOVERNOR_CONFIG              143
+// 142, 143 reserved (heli governor removed, do not reuse)
 #define MSP_RPM_FILTER                       144
 #define MSP_SET_RPM_FILTER                   145
-#define MSP_RESCUE_PROFILE                   146
-#define MSP_SET_RESCUE_PROFILE               147
-#define MSP_GOVERNOR_PROFILE                 148
-#define MSP_SET_GOVERNOR_PROFILE             149
+// 146, 147 reserved (heli rescue removed, do not reuse)
+// 148, 149 reserved (heli governor removed, do not reuse)
 #define MSP_LED_STRIP_SETTINGS               150
 #define MSP_SET_LED_STRIP_SETTINGS           151
 #define MSP_BUS_SERVO_CONFIG                 152

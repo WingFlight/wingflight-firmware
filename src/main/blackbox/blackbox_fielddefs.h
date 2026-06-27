@@ -43,7 +43,6 @@ typedef enum FlightLogFieldCondition {
 
     FLIGHT_LOG_FIELD_CONDITION_HEADSPEED,
     FLIGHT_LOG_FIELD_CONDITION_TAILSPEED,
-    FLIGHT_LOG_FIELD_CONDITION_GOVERNOR,
 
     FLIGHT_LOG_FIELD_CONDITION_TMCU,
     FLIGHT_LOG_FIELD_CONDITION_TESC,
@@ -101,7 +100,6 @@ typedef enum FlightLogFieldSelect_e {
     FLIGHT_LOG_FIELD_SELECT_ESC,
     FLIGHT_LOG_FIELD_SELECT_BEC,
     FLIGHT_LOG_FIELD_SELECT_ESC2,
-    FLIGHT_LOG_FIELD_SELECT_GOV,
     FLIGHT_LOG_FIELD_SELECT_COUNT
 } FlightLogFieldSelect_e;
 
@@ -111,8 +109,6 @@ typedef enum {
     FLIGHT_LOG_EVENT_LOGGING_RESUME = 14,
     FLIGHT_LOG_EVENT_DISARM = 15,
     FLIGHT_LOG_EVENT_FLIGHTMODE = 30, // Add new event type for flight mode status.
-    FLIGHT_LOG_EVENT_GOVSTATE = 50,   // Add new event type for main motor governor state.
-    FLIGHT_LOG_EVENT_RESCUE_STATE = 51,
     FLIGHT_LOG_EVENT_AIRBORNE_STATE = 52,
     FLIGHT_LOG_EVENT_CUSTOM_DATA = 100,
     FLIGHT_LOG_EVENT_CUSTOM_STRING = 101,
@@ -187,14 +183,6 @@ typedef struct flightLogEvent_flightMode_s {
     uint32_t lastFlags;
 } flightLogEvent_flightMode_t;
 
-typedef struct flightLogEvent_govState_s {
-    uint8_t govState;
-} flightLogEvent_govState_t;
-
-typedef struct flightLogEvent_rescueState_s {
-    uint8_t rescueState;
-} flightLogEvent_rescueState_t;
-
 typedef struct flightLogEvent_airborneState_s {
     uint8_t airborneState;
 } flightLogEvent_airborneState_t;
@@ -225,8 +213,6 @@ typedef struct flightLogEvent_loggingResume_s {
 typedef union flightLogEventData_u {
     flightLogEvent_syncBeep_t syncBeep;
     flightLogEvent_flightMode_t flightMode;
-    flightLogEvent_govState_t govState;
-    flightLogEvent_rescueState_t rescueState;
     flightLogEvent_airborneState_t airborneState;
     flightLogEvent_disarm_t disarm;
     flightLogEvent_inflightAdjustment_t inflightAdjustment;

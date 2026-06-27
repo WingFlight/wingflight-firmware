@@ -485,7 +485,6 @@ static const struct {
 } flightModeToLed[] = {
     {HORIZON_MODE,  LED_MODE_HORIZON},
     {ANGLE_MODE,    LED_MODE_ANGLE},
-    {RESCUE_MODE,   LED_MODE_RESCUE},
     {0,             LED_MODE_ORIENTATION},
 };
 

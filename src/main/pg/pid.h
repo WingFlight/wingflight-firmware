@@ -22,7 +22,6 @@
 #include "common/time.h"
 #include "common/axis.h"
 
-#include "pg/governor.h"
 #include "pg/pg.h"
 
 
@@ -76,28 +75,6 @@ typedef struct {
     uint16_t lookahead_ms;         // The lookahead window in milliseconds used to reduce overshoot
 } pidTrainerMode_t;
 
-typedef struct {
-    uint8_t     mode;
-    uint8_t     flip_mode;
-    uint8_t     flip_gain;
-    uint8_t     level_gain;
-    uint8_t     pull_up_time;
-    uint8_t     climb_time;
-    uint8_t     flip_time;
-    uint8_t     exit_time;
-    uint16_t    pull_up_collective;
-    uint16_t    climb_collective;
-    uint16_t    hover_collective;
-    uint16_t    hover_altitude;
-    uint16_t    alt_p_gain;
-    uint16_t    alt_i_gain;
-    uint16_t    alt_d_gain;
-    uint16_t    max_collective;
-    uint16_t    max_setpoint_rate;
-    uint16_t    max_setpoint_accel;
-} pidRescueConfig_t;
-
-
 #define MAX_PROFILE_NAME_LENGTH 8u
 
 typedef struct pidProfile_s {
@@ -111,7 +88,6 @@ typedef struct pidProfile_s {
     uint8_t             fw_tpa_breakpoint;
     uint8_t             fw_tpa_rate;
 
-    uint8_t             error_decay_time_ground;
     uint8_t             error_decay_time_cyclic;
     uint8_t             error_decay_limit_cyclic;
 
@@ -128,8 +104,6 @@ typedef struct pidProfile_s {
     pidAngleMode_t      angle;
     pidHorizonMode_t    horizon;
     pidTrainerMode_t    trainer;
-    pidRescueConfig_t   rescue;
-    governorProfile_t   governor;
 
 } pidProfile_t;
 
