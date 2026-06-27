@@ -32,7 +32,6 @@
 #include "flight/pid.h"
 #include "flight/imu.h"
 #include "flight/position.h"
-#include "flight/governor.h"
 
 #include "fc/runtime_config.h"
 #include "fc/rc.h"
@@ -57,11 +56,11 @@ typedef struct
 {
     airborneState_e state;
 
-    float liftoffThreshold[4];
-    float landingThreshold[4];
+    float liftoffThreshold[XYZ_AXIS_COUNT];
+    float landingThreshold[XYZ_AXIS_COUNT];
 
-    pt1Filter_t filter[4];
-    peakFilter_t peakDeflection[4];
+    pt1Filter_t filter[XYZ_AXIS_COUNT];
+    peakFilter_t peakDeflection[XYZ_AXIS_COUNT];
 
 } airborneData_t;
 
@@ -72,7 +71,7 @@ INIT_CODE void airborneInit(void)
 {
     airborne.state = AIRBORNE_STATE_LANDED;
 
-    for (int axis = 0; axis < 4; axis++) {
+    for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
         pt1FilterInit(&airborne.filter[axis], FILTER_CUTOFF, pidGetPidFrequency());
         peakFilterInit(&airborne.peakDeflection[axis], PEAK_UP_CUTOFF, PEAK_DN_CUTOFF, pidGetPidFrequency());
         airborne.liftoffThreshold[axis] = rcControlsConfig()->rc_threshold[axis] / 1000.0f;
@@ -85,8 +84,7 @@ static bool isOverThreshold(const float *threshold)
     return (
         peakFilterOutput(&airborne.peakDeflection[FD_ROLL]) > threshold[FD_ROLL] ||
         peakFilterOutput(&airborne.peakDeflection[FD_PITCH]) > threshold[FD_PITCH] ||
-        peakFilterOutput(&airborne.peakDeflection[FD_YAW]) > threshold[FD_YAW] ||
-        peakFilterOutput(&airborne.peakDeflection[FD_COLL]) > threshold[FD_COLL]
+        peakFilterOutput(&airborne.peakDeflection[FD_YAW]) > threshold[FD_YAW]
     );
 }
 
@@ -94,11 +92,10 @@ static bool liftoff(void)
 {
     return (
         ARMING_FLAG(ARMED) &&
-        isSpooledUp() &&
         (
             isOverThreshold(airborne.liftoffThreshold) ||
             getCosTiltAngle() < LIFTOFF_COS_ANGLE_THRESHOLD ||
-            FLIGHT_MODE(RESCUE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE)
+            FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE)
         )
     );
 }
@@ -107,26 +104,23 @@ static bool touchdown(void)
 {
     return !(
         ARMING_FLAG(ARMED) &&
-        isSpooledUp() &&
         (
             isOverThreshold(airborne.landingThreshold) ||
             getCosTiltAngle() < LANDING_COS_ANGLE_THRESHOLD ||
-            FLIGHT_MODE(RESCUE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE)
+            FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE)
         )
     );
 }
 
-static void updateStickDeflection(const float rc[4])
+static void updateStickDeflection(const float rc[XYZ_AXIS_COUNT])
 {
-    for (int axis = 0; axis < 4; axis++) {
+    for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
         float stick = pt1FilterApply(&airborne.filter[axis], rc[axis]);
-        if (axis == FD_COLL)
-            stick = fmaxf(stick, 0);
         peakFilterApply(&airborne.peakDeflection[axis], fabsf(stick));
     }
 }
 
-void airborneUpdate(const float rc[4])
+void airborneUpdate(const float rc[XYZ_AXIS_COUNT])
 {
     updateStickDeflection(rc);
 
@@ -148,9 +142,7 @@ void airborneUpdate(const float rc[4])
     DEBUG(AIRBORNE, 0, peakFilterOutput(&airborne.peakDeflection[FD_ROLL]) * 1000);
     DEBUG(AIRBORNE, 1, peakFilterOutput(&airborne.peakDeflection[FD_PITCH]) * 1000);
     DEBUG(AIRBORNE, 2, peakFilterOutput(&airborne.peakDeflection[FD_YAW]) * 1000);
-    DEBUG(AIRBORNE, 3, peakFilterOutput(&airborne.peakDeflection[FD_COLL]) * 1000);
     DEBUG(AIRBORNE, 4, getCosTiltAngle() * 1000);
-    DEBUG(AIRBORNE, 5, isSpooledUp());
     DEBUG(AIRBORNE, 6, (liftoff() ? 1 : 0) | (touchdown() ? 2 : 0));
     DEBUG(AIRBORNE, 7, airborne.state);
 }

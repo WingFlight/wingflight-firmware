@@ -180,16 +180,6 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
     ADJ_ENTRY(ROLL_B_GAIN,                  0, PID_GAIN_MAX),
     ADJ_ENTRY(YAW_B_GAIN,                   0, PID_GAIN_MAX),
 
-    ADJ_ENTRY(PITCH_O_GAIN,                 0, PID_GAIN_MAX),
-    ADJ_ENTRY(ROLL_O_GAIN,                  0, PID_GAIN_MAX),
-
-    ADJ_ENTRY(YAW_CW_GAIN,                  25, 250),
-    ADJ_ENTRY(YAW_CCW_GAIN,                 25, 250),
-    ADJ_ENTRY(YAW_CYCLIC_FF,                0, 250),
-    ADJ_ENTRY(YAW_COLLECTIVE_FF,            0, 250),
-
-    ADJ_ENTRY(PITCH_COLLECTIVE_FF,          0, 250),
-
     ADJ_ENTRY(PITCH_GYRO_CUTOFF,            0, 250),
     ADJ_ENTRY(ROLL_GYRO_CUTOFF,             0, 250),
     ADJ_ENTRY(YAW_GYRO_CUTOFF,              0, 250),
@@ -197,15 +187,6 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
     ADJ_ENTRY(PITCH_DTERM_CUTOFF,           0, 250),
     ADJ_ENTRY(ROLL_DTERM_CUTOFF,            0, 250),
     ADJ_ENTRY(YAW_DTERM_CUTOFF,             0, 250),
-
-    ADJ_ENTRY(YAW_PRECOMP_CUTOFF,           0, 250),
-
-    ADJ_ENTRY(INERTIA_PRECOMP_GAIN,         0, 250),
-    ADJ_ENTRY(INERTIA_PRECOMP_CUTOFF,       0, 250),
-
-    ADJ_ENTRY(CROSS_COUPLING_GAIN,          0, 250),
-    ADJ_ENTRY(CROSS_COUPLING_RATIO,         0, 200),
-    ADJ_ENTRY(CROSS_COUPLING_CUTOFF,        1, 250),
 
     ADJ_ENTRY(ANGLE_LEVEL_GAIN,             0, 200),
     ADJ_ENTRY(HORIZON_LEVEL_GAIN,           0, 200),

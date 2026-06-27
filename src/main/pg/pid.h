@@ -56,7 +56,6 @@ typedef struct {
     uint16_t D;
     uint16_t F;
     uint16_t B;
-    uint16_t O;
 } pidf_t;
 
 typedef struct {
@@ -109,41 +108,22 @@ typedef struct pidProfile_s {
 
     uint8_t             pid_mode;
 
+    uint8_t             fw_tpa_breakpoint;
+    uint8_t             fw_tpa_rate;
+
     uint8_t             error_decay_time_ground;
     uint8_t             error_decay_time_cyclic;
-    uint8_t             error_decay_time_yaw;
     uint8_t             error_decay_limit_cyclic;
-    uint8_t             error_decay_limit_yaw;
-
-    uint8_t             offset_flood_relax_level;
-    uint8_t             offset_flood_relax_cutoff;
 
     uint8_t             iterm_relax_type;
     uint8_t             iterm_relax_level[PID_AXIS_COUNT];
     uint8_t             iterm_relax_cutoff[PID_AXIS_COUNT];
 
-    uint8_t             offset_limit[CYCLIC_AXIS_COUNT];
     uint8_t             error_limit[PID_AXIS_COUNT];
 
     uint8_t             dterm_cutoff[PID_AXIS_COUNT];
     uint8_t             bterm_cutoff[PID_AXIS_COUNT];
     uint8_t             gyro_cutoff[PID_AXIS_COUNT];
-
-    uint8_t             yaw_cw_stop_gain;
-    uint8_t             yaw_ccw_stop_gain;
-
-    uint8_t             yaw_precomp_cutoff;
-
-    uint8_t             yaw_cyclic_ff_gain;
-    uint8_t             yaw_collective_ff_gain;
-    uint8_t             yaw_inertia_precomp_gain;
-    uint8_t             yaw_inertia_precomp_cutoff;
-
-    uint8_t             pitch_collective_ff_gain;
-
-    uint8_t             cyclic_cross_coupling_gain;
-    uint8_t             cyclic_cross_coupling_ratio;
-    uint8_t             cyclic_cross_coupling_cutoff;
 
     pidAngleMode_t      angle;
     pidHorizonMode_t    horizon;

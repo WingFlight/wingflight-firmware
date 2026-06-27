@@ -211,11 +211,6 @@ static const blackboxDeltaFieldDefinition_t blackboxMainFields[] =
     {"axisB",       1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(BOOST)},
     {"axisB",       2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(BOOST)},
 
-    /* HSI Offset terms */
-    {"axisO",       0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(HSI)},
-    {"axisO",       1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(HSI)},
-    {"axisO",       2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(HSI)},
-
     /* Attitude Euler angles in 0.1deg steps */
     {"attitude",    0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(ATTITUDE)},
     {"attitude",    1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(ATTITUDE)},
@@ -376,7 +371,6 @@ typedef struct blackboxMainState_s {
     int32_t axisPID_D[XYZ_AXIS_COUNT];
     int32_t axisPID_F[XYZ_AXIS_COUNT];
     int32_t axisPID_B[XYZ_AXIS_COUNT];
-    int32_t axisPID_O[XYZ_AXIS_COUNT];
 
     int16_t attitude[XYZ_AXIS_COUNT];
     int16_t gyroRAW[XYZ_AXIS_COUNT];
@@ -555,11 +549,6 @@ static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
             (currentPidProfile->pid[PID_PITCH].B > 0 ||
              currentPidProfile->pid[PID_ROLL].B > 0 ||
              currentPidProfile->pid[PID_YAW].B > 0);
-
-    case CONDITION(HSI):
-        return isFieldEnabled(FIELD_SELECT(PID)) &&
-            (currentPidProfile->pid[PID_PITCH].O > 0 ||
-             currentPidProfile->pid[PID_ROLL].O > 0);
 
     case CONDITION(ATTITUDE):
         return isFieldEnabled(FIELD_SELECT(ATTITUDE));
@@ -753,9 +742,6 @@ static void writeIntraframe(void)
     if (testBlackboxCondition(CONDITION(BOOST))) {
         blackboxWriteSignedVBArray(blackboxCurrent->axisPID_B, XYZ_AXIS_COUNT);
     }
-    if (testBlackboxCondition(CONDITION(HSI))) {
-        blackboxWriteSignedVBArray(blackboxCurrent->axisPID_O, XYZ_AXIS_COUNT);
-    }
 
     if (testBlackboxCondition(CONDITION(ATTITUDE))) {
         blackboxWriteSigned16VBArray(blackboxCurrent->attitude, XYZ_AXIS_COUNT);
@@ -948,11 +934,6 @@ static void writeInterframe(void)
 
     if (testBlackboxCondition(CONDITION(BOOST))) {
         CALC_DELTAS(deltas, blackboxCurrent->axisPID_B, blackboxPrev->axisPID_B, XYZ_AXIS_COUNT);
-        blackboxWriteTag2_3S32(deltas);
-    }
-
-    if (testBlackboxCondition(CONDITION(HSI))) {
-        CALC_DELTAS(deltas, blackboxCurrent->axisPID_O, blackboxPrev->axisPID_O, XYZ_AXIS_COUNT);
         blackboxWriteTag2_3S32(deltas);
     }
 
@@ -1321,7 +1302,6 @@ static void loadMainState(timeUs_t currentTimeUs)
         blackboxCurrent->axisPID_D[i] = lrintf(pidData[i].D * 1000);
         blackboxCurrent->axisPID_F[i] = lrintf(pidData[i].F * 1000);
         blackboxCurrent->axisPID_B[i] = lrintf(pidData[i].B * 1000);
-        blackboxCurrent->axisPID_O[i] = lrintf(pidData[i].O * 1000);
     }
 
     for (int i = 0; i < XYZ_AXIS_COUNT; i++) {
@@ -1685,23 +1665,10 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE("error_decay", "%d,%d",                  currentPidProfile->error_decay_time_cyclic,
                                                                             currentPidProfile->error_decay_limit_cyclic);
         BLACKBOX_PRINT_HEADER_LINE("error_decay_ground", "%d",              currentPidProfile->error_decay_time_ground);
-        BLACKBOX_PRINT_HEADER_LINE("cyclic_coupling", "%d,%d,%d",           currentPidProfile->cyclic_cross_coupling_gain,
-                                                                            currentPidProfile->cyclic_cross_coupling_ratio,
-                                                                            currentPidProfile->cyclic_cross_coupling_cutoff);
-        BLACKBOX_PRINT_HEADER_LINE("yaw_stop_gain", "%d,%d",                currentPidProfile->yaw_cw_stop_gain,
-                                                                            currentPidProfile->yaw_ccw_stop_gain);
-        BLACKBOX_PRINT_HEADER_LINE("yaw_precomp", "%d,%d,%d",               currentPidProfile->yaw_precomp_cutoff,
-                                                                            currentPidProfile->yaw_cyclic_ff_gain,
-                                                                            currentPidProfile->yaw_collective_ff_gain);
-        BLACKBOX_PRINT_HEADER_LINE("yaw_inertia_precomp", "%d,%d",          currentPidProfile->yaw_inertia_precomp_gain,
-                                                                            currentPidProfile->yaw_inertia_precomp_cutoff);
         BLACKBOX_PRINT_HEADER_LINE("yaw_tta", "%d,%d",                      currentPidProfile->governor.tta_gain,
                                                                             currentPidProfile->governor.tta_limit);
-        BLACKBOX_PRINT_HEADER_LINE("hsi_gain", "%d,%d",                     currentPidProfile->pid[PID_ROLL].O,
-                                                                            currentPidProfile->pid[PID_PITCH].O);
-        BLACKBOX_PRINT_HEADER_LINE("hsi_limit", "%d,%d",                    currentPidProfile->offset_limit[0],
-                                                                            currentPidProfile->offset_limit[1]);
-        BLACKBOX_PRINT_HEADER_LINE("pitch_compensation", "%d",              currentPidProfile->pitch_collective_ff_gain);
+        BLACKBOX_PRINT_HEADER_LINE("fw_tpa", "%d,%d",                       currentPidProfile->fw_tpa_breakpoint,
+                                                                            currentPidProfile->fw_tpa_rate);
 
 
         BLACKBOX_PRINT_HEADER_LINE("deadband", "%d",                        rcControlsConfig()->rc_deadband);

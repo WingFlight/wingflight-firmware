@@ -1463,7 +1463,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             sbufWriteU16(dst, currentPidProfile->pid[i].B);
         }
         for (int i = 0; i < CYCLIC_AXIS_COUNT; i++) {
-            sbufWriteU16(dst, currentPidProfile->pid[i].O);
+            sbufWriteU16(dst, 0); // was currentPidProfile->pid[i].O
         }
         break;
 
@@ -1953,9 +1953,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->pid_mode);
         sbufWriteU8(dst, currentPidProfile->error_decay_time_ground);
         sbufWriteU8(dst, currentPidProfile->error_decay_time_cyclic);
-        sbufWriteU8(dst, currentPidProfile->error_decay_time_yaw);
+        sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_time_yaw
         sbufWriteU8(dst, currentPidProfile->error_decay_limit_cyclic);
-        sbufWriteU8(dst, currentPidProfile->error_decay_limit_yaw);
+        sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_limit_yaw
         sbufWriteU8(dst, 1); // was currentPidProfile->error_rotation
         sbufWriteU8(dst, currentPidProfile->error_limit[0]);
         sbufWriteU8(dst, currentPidProfile->error_limit[1]);
@@ -1970,14 +1970,14 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[0]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[1]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[2]);
-        sbufWriteU8(dst, currentPidProfile->yaw_cw_stop_gain);
-        sbufWriteU8(dst, currentPidProfile->yaw_ccw_stop_gain);
-        sbufWriteU8(dst, currentPidProfile->yaw_precomp_cutoff);
-        sbufWriteU8(dst, currentPidProfile->yaw_cyclic_ff_gain);
-        sbufWriteU8(dst, currentPidProfile->yaw_collective_ff_gain);
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_cw_stop_gain
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_ccw_stop_gain
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_precomp_cutoff
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_cyclic_ff_gain
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_collective_ff_gain
         sbufWriteU8(dst, 0); // was currentPidProfile->yaw_collective_dynamic_gain
         sbufWriteU8(dst, 0); // was currentPidProfile->yaw_collective_dynamic_decay
-        sbufWriteU8(dst, currentPidProfile->pitch_collective_ff_gain);
+        sbufWriteU8(dst, 0); // was currentPidProfile->pitch_collective_ff_gain
         /* Angle mode */
         sbufWriteU8(dst, currentPidProfile->angle.level_strength);
         sbufWriteU8(dst, currentPidProfile->angle.level_limit);
@@ -1987,19 +1987,22 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->trainer.gain);
         sbufWriteU8(dst, currentPidProfile->trainer.angle_limit);
         /* Cyclic cross coupling */
-        sbufWriteU8(dst, currentPidProfile->cyclic_cross_coupling_gain);
-        sbufWriteU8(dst, currentPidProfile->cyclic_cross_coupling_ratio);
-        sbufWriteU8(dst, currentPidProfile->cyclic_cross_coupling_cutoff);
+        sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_gain
+        sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_ratio
+        sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_cutoff
         /* Offset limits */
-        sbufWriteU8(dst, currentPidProfile->offset_limit[0]);
-        sbufWriteU8(dst, currentPidProfile->offset_limit[1]);
+        sbufWriteU8(dst, 0); // was currentPidProfile->offset_limit[0]
+        sbufWriteU8(dst, 0); // was currentPidProfile->offset_limit[1]
         /* B-term cutoffs */
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[0]);
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[1]);
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[2]);
         /* Inertia precomps */
-        sbufWriteU8(dst, currentPidProfile->yaw_inertia_precomp_gain);
-        sbufWriteU8(dst, currentPidProfile->yaw_inertia_precomp_cutoff);
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_inertia_precomp_gain
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_inertia_precomp_cutoff
+        /* Fixed-wing throttle-based gain attenuation */
+        sbufWriteU8(dst, currentPidProfile->fw_tpa_breakpoint);
+        sbufWriteU8(dst, currentPidProfile->fw_tpa_rate);
         break;
 
     case MSP_RESCUE_PROFILE:
@@ -2605,7 +2608,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         }
         if (sbufBytesRemaining(src) >= 4) {
             for (int i = 0; i < CYCLIC_AXIS_COUNT; i++) {
-                currentPidProfile->pid[i].O = sbufReadU16(src);
+                sbufReadU16(src); // was currentPidProfile->pid[i].O
             }
         }
         pidLoadProfile(currentPidProfile);
@@ -2968,9 +2971,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         currentPidProfile->pid_mode = sbufReadU8(src);
         currentPidProfile->error_decay_time_ground = sbufReadU8(src);
         currentPidProfile->error_decay_time_cyclic = sbufReadU8(src);
-        currentPidProfile->error_decay_time_yaw = sbufReadU8(src);
+        sbufReadU8(src); // was currentPidProfile->error_decay_time_yaw
         currentPidProfile->error_decay_limit_cyclic = sbufReadU8(src);
-        currentPidProfile->error_decay_limit_yaw = sbufReadU8(src);
+        sbufReadU8(src); // was currentPidProfile->error_decay_limit_yaw
         sbufReadU8(src); // was currentPidProfile->error_rotation
         currentPidProfile->error_limit[0] = sbufReadU8(src);
         currentPidProfile->error_limit[1] = sbufReadU8(src);
@@ -2985,14 +2988,14 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         currentPidProfile->iterm_relax_cutoff[0] = sbufReadU8(src);
         currentPidProfile->iterm_relax_cutoff[1] = sbufReadU8(src);
         currentPidProfile->iterm_relax_cutoff[2] = sbufReadU8(src);
-        currentPidProfile->yaw_cw_stop_gain = sbufReadU8(src);
-        currentPidProfile->yaw_ccw_stop_gain = sbufReadU8(src);
-        currentPidProfile->yaw_precomp_cutoff = sbufReadU8(src);
-        currentPidProfile->yaw_cyclic_ff_gain = sbufReadU8(src);
-        currentPidProfile->yaw_collective_ff_gain = sbufReadU8(src);
+        sbufReadU8(src); // was currentPidProfile->yaw_cw_stop_gain
+        sbufReadU8(src); // was currentPidProfile->yaw_ccw_stop_gain
+        sbufReadU8(src); // was currentPidProfile->yaw_precomp_cutoff
+        sbufReadU8(src); // was currentPidProfile->yaw_cyclic_ff_gain
+        sbufReadU8(src); // was currentPidProfile->yaw_collective_ff_gain
         sbufReadU8(src); // was currentPidProfile->yaw_collective_dynamic_gain
         sbufReadU8(src); // was currentPidProfile->yaw_collective_dynamic_decay
-        currentPidProfile->pitch_collective_ff_gain = sbufReadU8(src);
+        sbufReadU8(src); // was currentPidProfile->pitch_collective_ff_gain
         /* Angle mode */
         currentPidProfile->angle.level_strength = sbufReadU8(src);
         currentPidProfile->angle.level_limit = sbufReadU8(src);
@@ -3001,16 +3004,16 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         /* Acro trainer */
         currentPidProfile->trainer.gain = sbufReadU8(src);
         currentPidProfile->trainer.angle_limit = sbufReadU8(src);
-        /* Cyclic cross coupling */
+        /* Cyclic cross coupling -- removed */
         if (sbufBytesRemaining(src) >= 3) {
-            currentPidProfile->cyclic_cross_coupling_gain = sbufReadU8(src);
-            currentPidProfile->cyclic_cross_coupling_ratio = sbufReadU8(src);
-            currentPidProfile->cyclic_cross_coupling_cutoff = sbufReadU8(src);
+            sbufReadU8(src);
+            sbufReadU8(src);
+            sbufReadU8(src);
         }
-        /* Offset limits */
+        /* Offset limits -- removed */
         if (sbufBytesRemaining(src) >= 2) {
-            currentPidProfile->offset_limit[0] = sbufReadU8(src);
-            currentPidProfile->offset_limit[1] = sbufReadU8(src);
+            sbufReadU8(src);
+            sbufReadU8(src);
         }
         /* B-term cutoffs */
         if (sbufBytesRemaining(src) >= 3) {
@@ -3018,10 +3021,15 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->bterm_cutoff[1] = sbufReadU8(src);
             currentPidProfile->bterm_cutoff[2] = sbufReadU8(src);
         }
-        /* Inertia precomps */
+        /* Inertia precomps -- removed */
         if (sbufBytesRemaining(src) >= 2) {
-            currentPidProfile->yaw_inertia_precomp_gain = sbufReadU8(src);
-            currentPidProfile->yaw_inertia_precomp_cutoff = sbufReadU8(src);
+            sbufReadU8(src);
+            sbufReadU8(src);
+        }
+        /* Fixed-wing throttle-based gain attenuation */
+        if (sbufBytesRemaining(src) >= 2) {
+            currentPidProfile->fw_tpa_breakpoint = sbufReadU8(src);
+            currentPidProfile->fw_tpa_rate = sbufReadU8(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);
