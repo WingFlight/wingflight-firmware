@@ -25,14 +25,13 @@
 #include "config/config_reset.h"
 
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(controlRateConfig_t, CONTROL_RATE_PROFILE_COUNT, controlRateProfiles, PG_CONTROL_RATE_PROFILES, 5);
+PG_REGISTER_ARRAY_WITH_RESET_FN(controlRateConfig_t, CONTROL_RATE_PROFILE_COUNT, controlRateProfiles, PG_CONTROL_RATE_PROFILES, 6);
 
 void pgResetFn_controlRateProfiles(controlRateConfig_t *controlRateConfig)
 {
     for (int i = 0; i < CONTROL_RATE_PROFILE_COUNT; i++) {
         RESET_CONFIG(controlRateConfig_t, &controlRateConfig[i],
             .profileName = INIT_ZERO,
-            .rates_type = RATES_TYPE_ROTORFLIGHT,
             .rcRates[FD_ROLL] = 50,
             .rcRates[FD_PITCH] = 50,
             .rcRates[FD_YAW] = 80,

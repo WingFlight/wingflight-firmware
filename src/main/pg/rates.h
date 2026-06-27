@@ -24,23 +24,10 @@
 #include "pg/pg_ids.h"
 
 
-typedef enum {
-    RATES_TYPE_NONE = 0,
-    RATES_TYPE_BETAFLIGHT,
-    RATES_TYPE_RACEFLIGHT,
-    RATES_TYPE_KISS,
-    RATES_TYPE_ACTUAL,
-    RATES_TYPE_QUICK,
-    RATES_TYPE_ROTORFLIGHT,
-    RATES_TYPE_COUNT
-} ratesType_e;
-
 #define MAX_RATE_PROFILE_NAME_LENGTH 8
 
 typedef struct controlRateConfig_s {
     char profileName[MAX_RATE_PROFILE_NAME_LENGTH + 1];
-
-    uint8_t rates_type;
 
     uint8_t rcRates[3];
     uint8_t rcExpo[3];

@@ -1432,7 +1432,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 
     case MSP_RC_TUNING:
-        sbufWriteU8(dst, currentControlRateProfile->rates_type);
+        sbufWriteU8(dst, 0); // was rates_type (now fixed to a single curve, removed)
         for (int i = 0; i < 3; i++) {
             sbufWriteU8(dst, currentControlRateProfile->rcRates[i]);
             sbufWriteU8(dst, currentControlRateProfile->rcExpo[i]);
@@ -2590,7 +2590,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP_SET_RC_TUNING:
-        currentControlRateProfile->rates_type = sbufReadU8(src);
+        sbufReadU8(src); // was rates_type (now fixed to a single curve, removed)
         for (int i = 0; i < 3; i++) {
             currentControlRateProfile->rcRates[i] = sbufReadU8(src);
             currentControlRateProfile->rcExpo[i] = sbufReadU8(src);

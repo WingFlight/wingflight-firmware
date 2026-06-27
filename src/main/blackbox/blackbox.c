@@ -1590,7 +1590,6 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_PID_PROCESS_DENOM, "%d",      activePidLoopDenom);
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_FILTER_PROCESS_DENOM, "%d",   activeFilterLoopDenom);
 
-        BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_RATES_TYPE, "%d",             currentControlRateProfile->rates_type);
         BLACKBOX_PRINT_HEADER_ARRAY("rc_rates", "%d", 3,                    currentControlRateProfile->rcRates);
         BLACKBOX_PRINT_HEADER_ARRAY("rc_expo", "%d", 3,                     currentControlRateProfile->rcExpo);
         BLACKBOX_PRINT_HEADER_ARRAY("rates", "%d", 3,                       currentControlRateProfile->sRates);
