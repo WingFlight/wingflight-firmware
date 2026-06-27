@@ -25,7 +25,7 @@
 #include "config/config_reset.h"
 
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(controlRateConfig_t, CONTROL_RATE_PROFILE_COUNT, controlRateProfiles, PG_CONTROL_RATE_PROFILES, 6);
+PG_REGISTER_ARRAY_WITH_RESET_FN(controlRateConfig_t, CONTROL_RATE_PROFILE_COUNT, controlRateProfiles, PG_CONTROL_RATE_PROFILES, 7);
 
 void pgResetFn_controlRateProfiles(controlRateConfig_t *controlRateConfig)
 {
@@ -49,8 +49,6 @@ void pgResetFn_controlRateProfiles(controlRateConfig_t *controlRateConfig)
             .accel_limit[FD_ROLL] = 0,
             .accel_limit[FD_PITCH] = 0,
             .accel_limit[FD_YAW] = 0,
-            .cyclic_ring = 0,
-            .cyclic_polar = 0,
             .setpoint_boost_gain[FD_ROLL] = 0,
             .setpoint_boost_gain[FD_PITCH] = 0,
             .setpoint_boost_gain[FD_YAW] = 0,
