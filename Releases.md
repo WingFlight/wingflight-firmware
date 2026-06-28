@@ -1,3 +1,7 @@
+# 0.0.2
+
+Adjust pid defaults
+
 # 0.0.1
 
 This is the first _development snapshot_ of the Wingflight firmware.
