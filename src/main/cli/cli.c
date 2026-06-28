@@ -228,7 +228,7 @@ extern char __custom_defaults_end;
 static bool processingCustomDefaults = false;
 static char cliBufferTemp[CLI_IN_BUFFER_SIZE];
 
-#define CUSTOM_DEFAULTS_START_PREFIX "## Rotorflight Custom Defaults"
+#define CUSTOM_DEFAULTS_START_PREFIX "## Wingflight Custom Defaults"
 
 static bool customDefaultsHeaderParsed = false;
 static bool customDefaultsFound = false;
