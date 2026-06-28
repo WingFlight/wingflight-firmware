@@ -38,7 +38,7 @@ typedef enum {
     BOXHORIZON,
     BOXTRAINER,
     BOXALTHOLD,
-    BOXRESCUE,
+    BOXRESCUE,          // reserved (heli rescue removed) -- kept to avoid renumbering later ids
     BOXGPSRESCUE,
     BOXFAILSAFE,
     BOXPASSTHROUGH,
@@ -63,9 +63,9 @@ typedef enum {
     BOXVTXPITMODE,
     BOXVTXCONTROLDISABLE,
     BOXSTICKCOMMANDDISABLE,
-    BOXGOVFALLBACK,
-    BOXGOVSUSPEND,
-    BOXGOVBYPASS,
+    BOXGOVFALLBACK,     // reserved (heli governor removed) -- kept to avoid renumbering later ids
+    BOXGOVSUSPEND,      // reserved (heli governor removed) -- kept to avoid renumbering later ids
+    BOXGOVBYPASS,       // reserved (heli governor removed) -- kept to avoid renumbering later ids
     BOXUSER1,
     BOXUSER2,
     BOXUSER3,

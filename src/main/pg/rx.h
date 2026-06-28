@@ -61,7 +61,7 @@ typedef struct rcControlsConfig_s {
     uint8_t  rc_deadband;               // A deadband around the stick center for pitch and roll axis
     uint8_t  rc_yaw_deadband;           // A deadband around the stick center for yaw axis
     uint8_t  rc_smoothness;             // Minimum RPYC smoothing level
-    uint8_t  rc_threshold[4];           // Threshold for stick activity
+    uint8_t  rc_threshold[3];           // Threshold for stick activity
 } rcControlsConfig_t;
 
 PG_DECLARE(rcControlsConfig_t, rcControlsConfig);

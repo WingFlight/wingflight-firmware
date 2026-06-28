@@ -81,6 +81,7 @@ bool cliMode = false;
 #include "drivers/io_impl.h"
 
 #include "pg/bus_servo.h"
+#include "pg/logic_condition.h"
 #include "drivers/light_led.h"
 #include "drivers/motor.h"
 #include "drivers/rangefinder/rangefinder_hcsr04.h"
@@ -111,6 +112,7 @@ bool cliMode = false;
 #include "flight/failsafe.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
+#include "flight/logic_condition.h"
 #include "flight/pid.h"
 #include "flight/position.h"
 #include "flight/servos.h"
@@ -265,7 +267,7 @@ static const char * const featureNames[] = {
     [23] = "",
     [24] = "",
     [25] = "RX_SPI",
-    [26] = "GOVERNOR",
+    [26] = "",
     [27] = "ESC_SENSOR",
     [28] = "FREQ_SENSOR",
     [29] = "DYN_NOTCH",
@@ -280,6 +282,29 @@ static const char * const mixerOpNames[] = {
     [MIXER_OP_SET]     = "set",
     [MIXER_OP_ADD]     = "add",
     [MIXER_OP_MUL]     = "mul",
+};
+
+// Logic condition operation names
+static const char * const logicOperationNames[] = {
+    [LOGIC_CONDITION_TRUE]          = "true",
+    [LOGIC_CONDITION_EQUAL]         = "equal",
+    [LOGIC_CONDITION_GREATER_THAN]  = "gt",
+    [LOGIC_CONDITION_LOWER_THAN]    = "lt",
+    [LOGIC_CONDITION_AND]           = "and",
+    [LOGIC_CONDITION_OR]            = "or",
+    [LOGIC_CONDITION_XOR]           = "xor",
+    [LOGIC_CONDITION_NOT]           = "not",
+    [LOGIC_CONDITION_STICKY]        = "sticky",
+    [LOGIC_CONDITION_DELAY]         = "delay",
+    [LOGIC_CONDITION_EDGE]          = "edge",
+};
+
+// Logic condition operand type names
+static const char * const logicOperandTypeNames[] = {
+    [LOGIC_CONDITION_OPERAND_TYPE_VALUE]       = "value",
+    [LOGIC_CONDITION_OPERAND_TYPE_RC_CHANNEL]  = "channel",
+    [LOGIC_CONDITION_OPERAND_TYPE_FLIGHT_MODE] = "mode",
+    [LOGIC_CONDITION_OPERAND_TYPE_CONDITION]   = "condition",
 };
 
 // Mixer input names
@@ -2428,7 +2453,7 @@ static void printMixerInputs(dumpFlags_t dumpMask, const mixerInput_t *inputs, c
 
 static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, const mixerRule_t *defaults, const char *headingStr)
 {
-    const char *format = "mixer rule %u %s %s %s %d %d";
+    const char *format = "mixer rule %u %s %s %s %d %d %d %d %d %d";
     bool equalsDefault = false;
 
     if (defaults) {
@@ -2449,7 +2474,11 @@ static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, cons
                                  mixerInputNames[def->input],
                                  mixerOutputNames[def->output],
                                  def->weight,
-                                 def->offset
+                                 def->offset,
+                                 def->weightNeg,
+                                 def->speed,
+                                 def->curve,
+                                 def->condition
             );
         }
         if (rule->oper) {
@@ -2458,15 +2487,50 @@ static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, cons
                               mixerInputNames[rule->input],
                               mixerOutputNames[rule->output],
                               rule->weight,
-                              rule->offset
+                              rule->offset,
+                              rule->weightNeg,
+                              rule->speed,
+                              rule->curve,
+                              rule->condition
             );
+        }
+    }
+}
+
+static void printMixerCurves(dumpFlags_t dumpMask, const mixerCurve_t *curves, const mixerCurve_t *defaults, const char *headingStr)
+{
+    const char *countFormat = "mixer curve %u count %u";
+    const char *pointFormat = "mixer curve %u point %u %d %d";
+    bool equalsDefault = false;
+
+    if (defaults) {
+        equalsDefault = !memcmp(curves, defaults, sizeof(mixerCurve_t)*MIXER_CURVE_COUNT);
+        if ((dumpMask & DO_DIFF) && !(dumpMask & SHOW_DEFAULTS) && equalsDefault)
+            return;
+    }
+    if (headingStr) {
+        cliPrintHashLine(headingStr);
+    }
+    for (unsigned i = 0; i < MIXER_CURVE_COUNT; i++) {
+        const mixerCurve_t *curve = &curves[i];
+        if (defaults) {
+            const mixerCurve_t *def = &defaults[i];
+            equalsDefault = !memcmp(curve, def, sizeof(mixerCurve_t));
+            cliDefaultPrintLinef(dumpMask, equalsDefault, countFormat, i, def->count);
+            for (unsigned p = 0; p < def->count; p++) {
+                cliDefaultPrintLinef(dumpMask, equalsDefault, pointFormat, i, p, def->points[p].x, def->points[p].y);
+            }
+        }
+        cliDumpPrintLinef(dumpMask, equalsDefault, countFormat, i, curve->count);
+        for (unsigned p = 0; p < curve->count; p++) {
+            cliDumpPrintLinef(dumpMask, equalsDefault, pointFormat, i, p, curve->points[p].x, curve->points[p].y);
         }
     }
 }
 
 static void cliMixer(const char *cmdName, char *cmdline)
 {
-    enum { FUNC=0, ARG1, ARGS_MAX=10 };
+    enum { FUNC=0, ARG1, ARGS_MAX=22 };
     char *args[ARGS_MAX];
     char *saveptr, *ptr;
     int count = 0;
@@ -2480,11 +2544,13 @@ static void cliMixer(const char *cmdName, char *cmdline)
     if (count == 0) {
         printMixerInputs(DUMP_MASTER, mixerInputs(0), NULL, "mixer input");
         printMixerRules(DUMP_MASTER, mixerRules(0), NULL, "mixer rule");
+        printMixerCurves(DUMP_MASTER, mixerCurves(0), NULL, "mixer curve");
     }
     // count > 0
     else if (strcasecmp(args[FUNC], "reset") == 0) {
         PG_RESET(mixerInputs);
         PG_RESET(mixerRules);
+        PG_RESET(mixerCurves);
     }
     else if (strcasecmp(args[FUNC], "status") == 0) {
         for (unsigned i=1; i<MIXER_OUTPUT_COUNT; i++) {
@@ -2599,8 +2665,8 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 }
             }
         }
-        else if (count == 7 || count == 8) {
-            enum { FUNC=0, RULE, OPER, INPUT, OUTPUT, WEIGHT, OFFSET, MODE, ARGS_COUNT };
+        else if (count == 7 || count == 8 || count == 9 || count == 10 || count == 11) {
+            enum { FUNC=0, RULE, OPER, INPUT, OUTPUT, WEIGHT, OFFSET, WEIGHTNEG, SPEED, CURVE, CONDITION, ARGS_COUNT };
             int vals[ARGS_COUNT];
             for (int i=1; i<count; i++)
                 vals[i] = atoi(args[i]);
@@ -2616,23 +2682,108 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 if (strcasecmp(args[OUTPUT], mixerOutputNames[i]) == 0)
                     vals[OUTPUT] = i;
             }
+            // weightNeg defaults to weight (symmetric) when omitted; speed/curve/condition default to off
+            if (count == 7) {
+                vals[WEIGHTNEG] = vals[WEIGHT];
+            }
+            if (count < 9) {
+                vals[SPEED] = 0;
+            }
+            if (count < 10) {
+                vals[CURVE] = 0;
+            }
+            if (count < 11) {
+                vals[CONDITION] = 0;
+            }
             if (vals[RULE] >= 0 && vals[RULE] < MIXER_RULE_COUNT &&
                 vals[OPER] >= MIXER_OP_NUL && vals[OPER] < MIXER_OP_COUNT &&
                 vals[INPUT] >= 0 && vals[INPUT] < MIXER_INPUT_COUNT &&
                 vals[OUTPUT] >= 0 && vals[OUTPUT] < MIXER_OUTPUT_COUNT &&
                 vals[OFFSET] >= MIXER_INPUT_MIN && vals[OFFSET] <= MIXER_INPUT_MAX &&
-                vals[WEIGHT] >= MIXER_WEIGHT_MIN && vals[WEIGHT] <= MIXER_WEIGHT_MAX)
+                vals[WEIGHT] >= MIXER_WEIGHT_MIN && vals[WEIGHT] <= MIXER_WEIGHT_MAX &&
+                vals[WEIGHTNEG] >= MIXER_WEIGHT_MIN && vals[WEIGHTNEG] <= MIXER_WEIGHT_MAX &&
+                vals[SPEED] >= SERVO_SPEED_MIN && vals[SPEED] <= SERVO_SPEED_MAX &&
+                vals[CURVE] >= 0 && vals[CURVE] <= MIXER_CURVE_COUNT &&
+                vals[CONDITION] >= 0 && vals[CONDITION] <= LOGIC_CONDITION_COUNT)
             {
                 mixerRule_t *mix = mixerRulesMutable(vals[RULE]);
-                mix->oper   = vals[OPER];
-                mix->input  = vals[INPUT];
-                mix->output = vals[OUTPUT];
-                mix->weight = vals[WEIGHT];
-                mix->offset = vals[OFFSET];
+                mix->oper      = vals[OPER];
+                mix->input     = vals[INPUT];
+                mix->output    = vals[OUTPUT];
+                mix->weight    = vals[WEIGHT];
+                mix->offset    = vals[OFFSET];
+                mix->weightNeg = vals[WEIGHTNEG];
+                mix->speed     = vals[SPEED];
+                mix->curve     = vals[CURVE];
+                mix->condition = vals[CONDITION];
             } else {
                 cliShowArgumentRangeError(cmdName, NULL, 0, 0);
             }
         } else {
+            cliShowInvalidArgumentCountError(cmdName);
+        }
+    }
+    else if (strcasecmp(args[FUNC], "curve") == 0) {
+        if (count == 1) {
+            printMixerCurves(DUMP_MASTER, mixerCurves(0), NULL, NULL);
+        }
+        else if (count == 2) {
+            enum { FUNC=0, INDEX, ARGS_COUNT };
+            int index = atoi(args[INDEX]);
+            if (index >= 0 && index < MIXER_CURVE_COUNT) {
+                const mixerCurve_t *curve = mixerCurves(index);
+                cliPrintLinef("mixer curve %u count %u", index, curve->count);
+                for (unsigned p = 0; p < curve->count; p++) {
+                    cliPrintLinef("mixer curve %u point %u %d %d", index, p, curve->points[p].x, curve->points[p].y);
+                }
+            } else {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+            }
+        }
+        else if (count == 3 && strcasecmp(args[2], "reset") == 0) {
+            enum { FUNC=0, INDEX, KEYWORD, ARGS_COUNT };
+            int index = atoi(args[INDEX]);
+            if (index >= 0 && index < MIXER_CURVE_COUNT) {
+                mixerCurve_t *curve = mixerCurvesMutable(index);
+                curve->count = 2;
+                curve->points[0].x = MIXER_CURVE_MIN;
+                curve->points[0].y = MIXER_CURVE_MIN;
+                curve->points[1].x = MIXER_CURVE_MAX;
+                curve->points[1].y = MIXER_CURVE_MAX;
+            } else {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+            }
+        }
+        else if (count == 4 && strcasecmp(args[2], "count") == 0) {
+            enum { FUNC=0, INDEX, KEYWORD, VALUE, ARGS_COUNT };
+            int index = atoi(args[INDEX]);
+            int pointCount = atoi(args[VALUE]);
+            if (index >= 0 && index < MIXER_CURVE_COUNT &&
+                pointCount >= 2 && pointCount <= MIXER_CURVE_POINTS)
+            {
+                mixerCurvesMutable(index)->count = pointCount;
+            } else {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+            }
+        }
+        else if (count == 6 && strcasecmp(args[2], "point") == 0) {
+            enum { FUNC=0, INDEX, KEYWORD, POINT, X, Y, ARGS_COUNT };
+            int index = atoi(args[INDEX]);
+            int point = atoi(args[POINT]);
+            int x = atoi(args[X]);
+            int y = atoi(args[Y]);
+            if (index >= 0 && index < MIXER_CURVE_COUNT &&
+                point >= 0 && point < MIXER_CURVE_POINTS &&
+                x >= MIXER_CURVE_MIN && x <= MIXER_CURVE_MAX &&
+                y >= MIXER_CURVE_MIN && y <= MIXER_CURVE_MAX)
+            {
+                mixerCurvesMutable(index)->points[point].x = x;
+                mixerCurvesMutable(index)->points[point].y = y;
+            } else {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+            }
+        }
+        else {
             cliShowInvalidArgumentCountError(cmdName);
         }
     }
@@ -2694,6 +2845,133 @@ static void cliMixer(const char *cmdName, char *cmdline)
     }
     else {
         cliShowParseError(cmdName);
+    }
+}
+
+static void printLogicConditions(dumpFlags_t dumpMask, const logicCondition_t *conditions, const logicCondition_t *defaults, const char *headingStr)
+{
+    const char *format = "logic %u %u %s %s %d %s %d";
+    bool equalsDefault = false;
+
+    if (defaults) {
+        equalsDefault = !memcmp(conditions, defaults, sizeof(logicCondition_t)*LOGIC_CONDITION_COUNT);
+        if ((dumpMask & DO_DIFF) && !(dumpMask & SHOW_DEFAULTS) && equalsDefault)
+            return;
+    }
+    if (headingStr) {
+        cliPrintHashLine(headingStr);
+    }
+    for (unsigned i = 0; i < LOGIC_CONDITION_COUNT; i++) {
+        const logicCondition_t *condition = &conditions[i];
+        if (defaults) {
+            const logicCondition_t *def = &defaults[i];
+            equalsDefault = !memcmp(condition, def, sizeof(logicCondition_t));
+            cliDefaultPrintLinef(dumpMask, equalsDefault, format, i,
+                                 def->enabled,
+                                 logicOperationNames[def->operation],
+                                 logicOperandTypeNames[def->operandAType],
+                                 def->operandAValue,
+                                 logicOperandTypeNames[def->operandBType],
+                                 def->operandBValue
+            );
+        }
+        if (condition->enabled) {
+            cliDumpPrintLinef(dumpMask, equalsDefault, format, i,
+                              condition->enabled,
+                              logicOperationNames[condition->operation],
+                              logicOperandTypeNames[condition->operandAType],
+                              condition->operandAValue,
+                              logicOperandTypeNames[condition->operandBType],
+                              condition->operandBValue
+            );
+        }
+    }
+}
+
+static void cliLogic(const char *cmdName, char *cmdline)
+{
+    enum { ARGS_MAX = 7 };
+    char *args[ARGS_MAX];
+    char *saveptr, *ptr;
+    int count = 0;
+
+    ptr = strtok_r(cmdline, " ", &saveptr);
+    while (ptr && count < ARGS_MAX) {
+        args[count++] = ptr;
+        ptr = strtok_r(NULL, " ", &saveptr);
+    }
+
+    if (count == 0) {
+        printLogicConditions(DUMP_MASTER, logicConditions(0), NULL, NULL);
+    }
+    else if (count == 1) {
+        if (strcasecmp(args[0], "reset") == 0) {
+            PG_RESET(logicConditions);
+        }
+        else if (strcasecmp(args[0], "status") == 0) {
+            for (int i = 0; i < LOGIC_CONDITION_COUNT; i++) {
+                cliPrintLinef("logic %u status %u", i, logicConditionGetValue(i) ? 1 : 0);
+            }
+        }
+        else {
+            int index = atoi(args[0]);
+            if (index >= 0 && index < LOGIC_CONDITION_COUNT) {
+                const logicCondition_t *condition = logicConditions(index);
+                cliPrintLinef("logic %u %u %s %s %d %s %d", index,
+                              condition->enabled,
+                              logicOperationNames[condition->operation],
+                              logicOperandTypeNames[condition->operandAType],
+                              condition->operandAValue,
+                              logicOperandTypeNames[condition->operandBType],
+                              condition->operandBValue
+                );
+            } else {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+            }
+        }
+    }
+    else if (count == 2 && strcasecmp(args[1], "reset") == 0) {
+        int index = atoi(args[0]);
+        if (index >= 0 && index < LOGIC_CONDITION_COUNT) {
+            memset(logicConditionsMutable(index), 0, sizeof(logicCondition_t));
+        } else {
+            cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+        }
+    }
+    else if (count == 7) {
+        enum { INDEX=0, ENABLED, OPER, TYPEA, VALA, TYPEB, VALB, ARGS_COUNT };
+        int vals[ARGS_COUNT];
+        for (int i=0; i<count; i++)
+            vals[i] = atoi(args[i]);
+        for (unsigned i=0; i<ARRAYLEN(logicOperationNames); i++) {
+            if (strcasecmp(args[OPER], logicOperationNames[i]) == 0)
+                vals[OPER] = i;
+        }
+        for (unsigned i=0; i<ARRAYLEN(logicOperandTypeNames); i++) {
+            if (strcasecmp(args[TYPEA], logicOperandTypeNames[i]) == 0)
+                vals[TYPEA] = i;
+            if (strcasecmp(args[TYPEB], logicOperandTypeNames[i]) == 0)
+                vals[TYPEB] = i;
+        }
+        if (vals[INDEX] >= 0 && vals[INDEX] < LOGIC_CONDITION_COUNT &&
+            (vals[ENABLED] == 0 || vals[ENABLED] == 1) &&
+            vals[OPER] >= 0 && vals[OPER] < LOGIC_CONDITION_OPERATION_COUNT &&
+            vals[TYPEA] >= 0 && vals[TYPEA] < LOGIC_CONDITION_OPERAND_TYPE_COUNT &&
+            vals[TYPEB] >= 0 && vals[TYPEB] < LOGIC_CONDITION_OPERAND_TYPE_COUNT)
+        {
+            logicCondition_t *condition = logicConditionsMutable(vals[INDEX]);
+            condition->enabled = vals[ENABLED];
+            condition->operation = vals[OPER];
+            condition->operandAType = vals[TYPEA];
+            condition->operandAValue = vals[VALA];
+            condition->operandBType = vals[TYPEB];
+            condition->operandBValue = vals[VALB];
+        } else {
+            cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+        }
+    }
+    else {
+        cliShowInvalidArgumentCountError(cmdName);
     }
 }
 
@@ -6786,6 +7064,13 @@ const clicmd_t cmdTable[] = {
 #ifdef USE_LED_STRIP_STATUS_MODE
         CLI_COMMAND_DEF("led", "configure leds", NULL, cliLed),
 #endif
+    CLI_COMMAND_DEF("logic", "configure logic conditions used to gate mixer rules",
+                    "reset\r\n\t"
+                    "status\r\n\t"
+                    "<index>\r\n\t"
+                    "<index> reset\r\n\t"
+                    "<index> <enabled> <operation> <typeA> <valueA> <typeB> <valueB>",
+                    cliLogic),
 #if defined(USE_BOARD_INFO)
     CLI_COMMAND_DEF("manufacturer_id", "get / set the id of the board manufacturer", "[manufacturer id]", cliManufacturerId),
 #endif

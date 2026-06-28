@@ -297,9 +297,6 @@ static uint16_t ibus2GetMode(void)
     if (FLIGHT_MODE(FAILSAFE_MODE)) {
         flightMode = 9;
     }
-    else if (FLIGHT_MODE(RESCUE_MODE)) {
-        flightMode = 4;
-    }
     else if (FLIGHT_MODE(HORIZON_MODE)) {
         flightMode = 7;
     }

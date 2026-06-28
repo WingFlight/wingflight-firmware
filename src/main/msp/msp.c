@@ -82,15 +82,14 @@
 #include "fc/runtime_config.h"
 
 #include "flight/failsafe.h"
-#include "flight/rescue.h"
 #include "flight/gps_rescue.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
+#include "flight/logic_condition.h"
 #include "flight/pid.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
-#include "flight/governor.h"
 
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/beeper.h"
@@ -130,6 +129,7 @@
 #include "pg/sbus_output.h"
 #include "pg/fbus_master.h"
 #include "pg/bus_servo.h"
+#include "pg/logic_condition.h"
 
 #include "rx/rx.h"
 #include "rx/rx_bind.h"
@@ -1385,9 +1385,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 
     case MSP_SETPOINT:
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 3; i++) {
             sbufWriteS16(dst, lrintf(getSetpoint(i) * 10));
         }
+        sbufWriteS16(dst, 0); // was collective setpoint (heli-only, removed)
         break;
 
     case MSP_ATTITUDE:
@@ -1431,23 +1432,32 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 
     case MSP_RC_TUNING:
-        sbufWriteU8(dst, currentControlRateProfile->rates_type);
-        for (int i = 0; i < 4; i++) {
+        sbufWriteU8(dst, 0); // was rates_type (now fixed to a single curve, removed)
+        for (int i = 0; i < 3; i++) {
             sbufWriteU8(dst, currentControlRateProfile->rcRates[i]);
             sbufWriteU8(dst, currentControlRateProfile->rcExpo[i]);
             sbufWriteU8(dst, currentControlRateProfile->sRates[i]);
             sbufWriteU8(dst, currentControlRateProfile->response_time[i]);
             sbufWriteU16(dst, currentControlRateProfile->accel_limit[i]);
         }
-        for (int i = 0; i < 4; i++) {
+        // was collective rcRates/rcExpo/sRates/response_time/accel_limit (heli-only, removed)
+        sbufWriteU8(dst, 0);
+        sbufWriteU8(dst, 0);
+        sbufWriteU8(dst, 0);
+        sbufWriteU8(dst, 0);
+        sbufWriteU16(dst, 0);
+        for (int i = 0; i < 3; i++) {
             sbufWriteU8(dst, currentControlRateProfile->setpoint_boost_gain[i]);
             sbufWriteU8(dst, currentControlRateProfile->setpoint_boost_cutoff[i]);
         }
+        // was collective setpoint_boost_gain/cutoff (heli-only, removed)
+        sbufWriteU8(dst, 0);
+        sbufWriteU8(dst, 0);
         sbufWriteU8(dst, currentControlRateProfile->yaw_dynamic_ceiling_gain);
         sbufWriteU8(dst, currentControlRateProfile->yaw_dynamic_deadband_gain);
         sbufWriteU8(dst, currentControlRateProfile->yaw_dynamic_deadband_filter);
-        sbufWriteU8(dst, currentControlRateProfile->cyclic_ring);
-        sbufWriteU8(dst, currentControlRateProfile->cyclic_polar);
+        sbufWriteU8(dst, 0); // was cyclic_ring (heli-only, removed)
+        sbufWriteU8(dst, 0); // was cyclic_polar (heli-only, removed)
         break;
 
     case MSP_PID_TUNING:
@@ -1461,7 +1471,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             sbufWriteU16(dst, currentPidProfile->pid[i].B);
         }
         for (int i = 0; i < CYCLIC_AXIS_COUNT; i++) {
-            sbufWriteU16(dst, currentPidProfile->pid[i].O);
+            sbufWriteU16(dst, 0); // was currentPidProfile->pid[i].O
         }
         break;
 
@@ -1621,21 +1631,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 #endif
     case MSP_MIXER_CONFIG:
-        sbufWriteU8(dst, mixerConfig()->main_rotor_dir);
         sbufWriteU8(dst, mixerConfig()->tail_rotor_mode);
-        sbufWriteU8(dst, mixerConfig()->tail_motor_idle);
-        sbufWriteU16(dst, mixerConfig()->tail_center_trim);
-        sbufWriteU8(dst, mixerConfig()->swash_type);
-        sbufWriteU8(dst, mixerConfig()->swash_ring);
-        sbufWriteU16(dst, mixerConfig()->swash_phase);
-        sbufWriteU16(dst, mixerConfig()->swash_pitch_limit);
-        sbufWriteU16(dst, mixerConfig()->swash_trim[0]);
-        sbufWriteU16(dst, mixerConfig()->swash_trim[1]);
-        sbufWriteU16(dst, mixerConfig()->swash_trim[2]);
-        sbufWriteU8(dst, mixerConfig()->swash_tta_precomp);
-        sbufWriteU8(dst, mixerConfig()->swash_geo_correction);
-        sbufWriteS8(dst, mixerConfig()->collective_tilt_correction_pos);
-        sbufWriteS8(dst, mixerConfig()->collective_tilt_correction_neg);
         break;
 
     case MSP_MIXER_INPUTS:
@@ -1653,6 +1649,37 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
           sbufWriteU8(dst, mixerRules(i)->output);
           sbufWriteU16(dst, mixerRules(i)->offset);
           sbufWriteU16(dst, mixerRules(i)->weight);
+          sbufWriteU16(dst, mixerRules(i)->weightNeg);
+          sbufWriteU16(dst, mixerRules(i)->speed);
+          sbufWriteU8(dst, mixerRules(i)->curve);
+          sbufWriteU8(dst, mixerRules(i)->condition);
+        }
+        break;
+
+    case MSP_MIXER_CURVES:
+        for (int i = 0; i < MIXER_CURVE_COUNT; i++) {
+            sbufWriteU8(dst, mixerCurves(i)->count);
+            for (int p = 0; p < MIXER_CURVE_POINTS; p++) {
+                sbufWriteU16(dst, mixerCurves(i)->points[p].x);
+                sbufWriteU16(dst, mixerCurves(i)->points[p].y);
+            }
+        }
+        break;
+
+    case MSP_LOGIC_CONDITIONS:
+        for (int i = 0; i < LOGIC_CONDITION_COUNT; i++) {
+            sbufWriteU8(dst, logicConditions(i)->enabled);
+            sbufWriteU8(dst, logicConditions(i)->operation);
+            sbufWriteU8(dst, logicConditions(i)->operandAType);
+            sbufWriteU16(dst, logicConditions(i)->operandAValue);
+            sbufWriteU8(dst, logicConditions(i)->operandBType);
+            sbufWriteU16(dst, logicConditions(i)->operandBValue);
+        }
+        break;
+
+    case MSP_LOGIC_CONDITIONS_STATUS:
+        for (int i = 0; i < LOGIC_CONDITION_COUNT; i++) {
+            sbufWriteU8(dst, logicConditionGetValue(i) ? 1 : 0);
         }
         break;
 
@@ -1917,11 +1944,11 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 
     case MSP_PID_PROFILE:
         sbufWriteU8(dst, currentPidProfile->pid_mode);
-        sbufWriteU8(dst, currentPidProfile->error_decay_time_ground);
+        sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_time_ground (heli-only, removed)
         sbufWriteU8(dst, currentPidProfile->error_decay_time_cyclic);
-        sbufWriteU8(dst, currentPidProfile->error_decay_time_yaw);
+        sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_time_yaw
         sbufWriteU8(dst, currentPidProfile->error_decay_limit_cyclic);
-        sbufWriteU8(dst, currentPidProfile->error_decay_limit_yaw);
+        sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_limit_yaw
         sbufWriteU8(dst, 1); // was currentPidProfile->error_rotation
         sbufWriteU8(dst, currentPidProfile->error_limit[0]);
         sbufWriteU8(dst, currentPidProfile->error_limit[1]);
@@ -1936,14 +1963,14 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[0]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[1]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[2]);
-        sbufWriteU8(dst, currentPidProfile->yaw_cw_stop_gain);
-        sbufWriteU8(dst, currentPidProfile->yaw_ccw_stop_gain);
-        sbufWriteU8(dst, currentPidProfile->yaw_precomp_cutoff);
-        sbufWriteU8(dst, currentPidProfile->yaw_cyclic_ff_gain);
-        sbufWriteU8(dst, currentPidProfile->yaw_collective_ff_gain);
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_cw_stop_gain
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_ccw_stop_gain
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_precomp_cutoff
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_cyclic_ff_gain
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_collective_ff_gain
         sbufWriteU8(dst, 0); // was currentPidProfile->yaw_collective_dynamic_gain
         sbufWriteU8(dst, 0); // was currentPidProfile->yaw_collective_dynamic_decay
-        sbufWriteU8(dst, currentPidProfile->pitch_collective_ff_gain);
+        sbufWriteU8(dst, 0); // was currentPidProfile->pitch_collective_ff_gain
         /* Angle mode */
         sbufWriteU8(dst, currentPidProfile->angle.level_strength);
         sbufWriteU8(dst, currentPidProfile->angle.level_limit);
@@ -1953,58 +1980,22 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->trainer.gain);
         sbufWriteU8(dst, currentPidProfile->trainer.angle_limit);
         /* Cyclic cross coupling */
-        sbufWriteU8(dst, currentPidProfile->cyclic_cross_coupling_gain);
-        sbufWriteU8(dst, currentPidProfile->cyclic_cross_coupling_ratio);
-        sbufWriteU8(dst, currentPidProfile->cyclic_cross_coupling_cutoff);
+        sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_gain
+        sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_ratio
+        sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_cutoff
         /* Offset limits */
-        sbufWriteU8(dst, currentPidProfile->offset_limit[0]);
-        sbufWriteU8(dst, currentPidProfile->offset_limit[1]);
+        sbufWriteU8(dst, 0); // was currentPidProfile->offset_limit[0]
+        sbufWriteU8(dst, 0); // was currentPidProfile->offset_limit[1]
         /* B-term cutoffs */
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[0]);
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[1]);
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[2]);
         /* Inertia precomps */
-        sbufWriteU8(dst, currentPidProfile->yaw_inertia_precomp_gain);
-        sbufWriteU8(dst, currentPidProfile->yaw_inertia_precomp_cutoff);
-        break;
-
-    case MSP_RESCUE_PROFILE:
-        sbufWriteU8(dst, currentPidProfile->rescue.mode);
-        sbufWriteU8(dst, currentPidProfile->rescue.flip_mode);
-        sbufWriteU8(dst, currentPidProfile->rescue.flip_gain);
-        sbufWriteU8(dst, currentPidProfile->rescue.level_gain);
-        sbufWriteU8(dst, currentPidProfile->rescue.pull_up_time);
-        sbufWriteU8(dst, currentPidProfile->rescue.climb_time);
-        sbufWriteU8(dst, currentPidProfile->rescue.flip_time);
-        sbufWriteU8(dst, currentPidProfile->rescue.exit_time);
-        sbufWriteU16(dst, currentPidProfile->rescue.pull_up_collective);
-        sbufWriteU16(dst, currentPidProfile->rescue.climb_collective);
-        sbufWriteU16(dst, currentPidProfile->rescue.hover_collective);
-        sbufWriteU16(dst, currentPidProfile->rescue.hover_altitude);
-        sbufWriteU16(dst, currentPidProfile->rescue.alt_p_gain);
-        sbufWriteU16(dst, currentPidProfile->rescue.alt_i_gain);
-        sbufWriteU16(dst, currentPidProfile->rescue.alt_d_gain);
-        sbufWriteU16(dst, currentPidProfile->rescue.max_collective);
-        sbufWriteU16(dst, currentPidProfile->rescue.max_setpoint_rate);
-        sbufWriteU16(dst, currentPidProfile->rescue.max_setpoint_accel);
-        break;
-
-    case MSP_GOVERNOR_PROFILE:
-        sbufWriteU16(dst, currentPidProfile->governor.headspeed);
-        sbufWriteU8(dst, currentPidProfile->governor.gain);
-        sbufWriteU8(dst, currentPidProfile->governor.p_gain);
-        sbufWriteU8(dst, currentPidProfile->governor.i_gain);
-        sbufWriteU8(dst, currentPidProfile->governor.d_gain);
-        sbufWriteU8(dst, currentPidProfile->governor.f_gain);
-        sbufWriteU8(dst, currentPidProfile->governor.tta_gain);
-        sbufWriteU8(dst, currentPidProfile->governor.tta_limit);
-        sbufWriteU8(dst, currentPidProfile->governor.yaw_weight);
-        sbufWriteU8(dst, currentPidProfile->governor.cyclic_weight);
-        sbufWriteU8(dst, currentPidProfile->governor.collective_weight);
-        sbufWriteU8(dst, currentPidProfile->governor.max_throttle);
-        sbufWriteU8(dst, currentPidProfile->governor.min_throttle);
-        sbufWriteU8(dst, currentPidProfile->governor.fallback_drop);
-        sbufWriteU16(dst, currentPidProfile->governor.flags);
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_inertia_precomp_gain
+        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_inertia_precomp_cutoff
+        /* Fixed-wing throttle-based gain attenuation */
+        sbufWriteU8(dst, currentPidProfile->fw_tpa_breakpoint);
+        sbufWriteU8(dst, currentPidProfile->fw_tpa_rate);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -2101,34 +2092,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 
         break;
 #endif
-
-    case MSP_GOVERNOR_CONFIG:
-        sbufWriteU8(dst, governorConfig()->gov_mode);
-        sbufWriteU16(dst, governorConfig()->gov_startup_time);
-        sbufWriteU16(dst, governorConfig()->gov_spoolup_time);
-        sbufWriteU16(dst, governorConfig()->gov_tracking_time);
-        sbufWriteU16(dst, governorConfig()->gov_recovery_time);
-        sbufWriteU16(dst, governorConfig()->gov_throttle_hold_timeout);
-        sbufWriteU16(dst, 0); // governorConfig()->gov_lost_headspeed_timeout
-        sbufWriteU16(dst, governorConfig()->gov_autorotation_timeout);
-        sbufWriteU16(dst, 0); // governorConfig()->gov_autorotation_bailout_time
-        sbufWriteU16(dst, 0); // governorConfig()->gov_autorotation_min_entry_time
-        sbufWriteU8(dst, governorConfig()->gov_handover_throttle);
-        sbufWriteU8(dst, governorConfig()->gov_pwr_filter);
-        sbufWriteU8(dst, governorConfig()->gov_rpm_filter);
-        sbufWriteU8(dst, governorConfig()->gov_tta_filter);
-        sbufWriteU8(dst, governorConfig()->gov_ff_filter);
-        sbufWriteU8(dst, 0); // governorConfig()->gov_spoolup_min_throttle
-        sbufWriteU8(dst, governorConfig()->gov_d_filter);
-        sbufWriteU16(dst, governorConfig()->gov_spooldown_time);
-        sbufWriteU8(dst, governorConfig()->gov_throttle_type);
-        sbufWriteS8(dst, 0);
-        sbufWriteS8(dst, 0);
-        sbufWriteU8(dst, governorConfig()->gov_idle_throttle);
-        sbufWriteU8(dst, governorConfig()->gov_auto_throttle);
-        for (int i=0; i<GOV_THROTTLE_CURVE_POINTS; i++)
-            sbufWriteU8(dst, governorConfig()->gov_bypass_throttle[i]);
-        break;
 
     default:
         unsupportedCommand = true;
@@ -2571,7 +2534,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         }
         if (sbufBytesRemaining(src) >= 4) {
             for (int i = 0; i < CYCLIC_AXIS_COUNT; i++) {
-                currentPidProfile->pid[i].O = sbufReadU16(src);
+                sbufReadU16(src); // was currentPidProfile->pid[i].O
             }
         }
         pidLoadProfile(currentPidProfile);
@@ -2626,33 +2589,37 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP_SET_RC_TUNING:
-        currentControlRateProfile->rates_type = sbufReadU8(src);
-        for (int i = 0; i < 4; i++) {
+        sbufReadU8(src); // was rates_type (now fixed to a single curve, removed)
+        for (int i = 0; i < 3; i++) {
             currentControlRateProfile->rcRates[i] = sbufReadU8(src);
             currentControlRateProfile->rcExpo[i] = sbufReadU8(src);
             currentControlRateProfile->sRates[i] = sbufReadU8(src);
             currentControlRateProfile->response_time[i] = sbufReadU8(src);
             currentControlRateProfile->accel_limit[i] = sbufReadU16(src);
         }
+        // was collective rcRates/rcExpo/sRates/response_time/accel_limit (heli-only, removed)
+        sbufReadU8(src);
+        sbufReadU8(src);
+        sbufReadU8(src);
+        sbufReadU8(src);
+        sbufReadU16(src);
         if (sbufBytesRemaining(src) >= 8) {
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 3; i++) {
                 currentControlRateProfile->setpoint_boost_gain[i] =
                     sbufReadU8(src);
                 currentControlRateProfile->setpoint_boost_cutoff[i] =
                     sbufReadU8(src);
             }
+            // was collective setpoint_boost_gain/cutoff (heli-only, removed)
+            sbufReadU8(src);
+            sbufReadU8(src);
         }
         if (sbufBytesRemaining(src) >= 3) {
             currentControlRateProfile->yaw_dynamic_ceiling_gain = sbufReadU8(src);
             currentControlRateProfile->yaw_dynamic_deadband_gain = sbufReadU8(src);
             currentControlRateProfile->yaw_dynamic_deadband_filter= sbufReadU8(src);
         }
-        if (sbufBytesRemaining(src) >= 1) {
-            currentControlRateProfile->cyclic_ring = sbufReadU8(src);
-        }
-        if (sbufBytesRemaining(src) >= 1) {
-            currentControlRateProfile->cyclic_polar = sbufReadU8(src);
-        }
+        // was cyclic_ring/cyclic_polar (heli-only, removed); any trailing bytes are ignored
         loadControlRateProfile();
         break;
 
@@ -2932,11 +2899,11 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
     case MSP_SET_PID_PROFILE:
         currentPidProfile->pid_mode = sbufReadU8(src);
-        currentPidProfile->error_decay_time_ground = sbufReadU8(src);
+        sbufReadU8(src); // was currentPidProfile->error_decay_time_ground (heli-only, removed)
         currentPidProfile->error_decay_time_cyclic = sbufReadU8(src);
-        currentPidProfile->error_decay_time_yaw = sbufReadU8(src);
+        sbufReadU8(src); // was currentPidProfile->error_decay_time_yaw
         currentPidProfile->error_decay_limit_cyclic = sbufReadU8(src);
-        currentPidProfile->error_decay_limit_yaw = sbufReadU8(src);
+        sbufReadU8(src); // was currentPidProfile->error_decay_limit_yaw
         sbufReadU8(src); // was currentPidProfile->error_rotation
         currentPidProfile->error_limit[0] = sbufReadU8(src);
         currentPidProfile->error_limit[1] = sbufReadU8(src);
@@ -2951,14 +2918,14 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         currentPidProfile->iterm_relax_cutoff[0] = sbufReadU8(src);
         currentPidProfile->iterm_relax_cutoff[1] = sbufReadU8(src);
         currentPidProfile->iterm_relax_cutoff[2] = sbufReadU8(src);
-        currentPidProfile->yaw_cw_stop_gain = sbufReadU8(src);
-        currentPidProfile->yaw_ccw_stop_gain = sbufReadU8(src);
-        currentPidProfile->yaw_precomp_cutoff = sbufReadU8(src);
-        currentPidProfile->yaw_cyclic_ff_gain = sbufReadU8(src);
-        currentPidProfile->yaw_collective_ff_gain = sbufReadU8(src);
+        sbufReadU8(src); // was currentPidProfile->yaw_cw_stop_gain
+        sbufReadU8(src); // was currentPidProfile->yaw_ccw_stop_gain
+        sbufReadU8(src); // was currentPidProfile->yaw_precomp_cutoff
+        sbufReadU8(src); // was currentPidProfile->yaw_cyclic_ff_gain
+        sbufReadU8(src); // was currentPidProfile->yaw_collective_ff_gain
         sbufReadU8(src); // was currentPidProfile->yaw_collective_dynamic_gain
         sbufReadU8(src); // was currentPidProfile->yaw_collective_dynamic_decay
-        currentPidProfile->pitch_collective_ff_gain = sbufReadU8(src);
+        sbufReadU8(src); // was currentPidProfile->pitch_collective_ff_gain
         /* Angle mode */
         currentPidProfile->angle.level_strength = sbufReadU8(src);
         currentPidProfile->angle.level_limit = sbufReadU8(src);
@@ -2967,16 +2934,16 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         /* Acro trainer */
         currentPidProfile->trainer.gain = sbufReadU8(src);
         currentPidProfile->trainer.angle_limit = sbufReadU8(src);
-        /* Cyclic cross coupling */
+        /* Cyclic cross coupling -- removed */
         if (sbufBytesRemaining(src) >= 3) {
-            currentPidProfile->cyclic_cross_coupling_gain = sbufReadU8(src);
-            currentPidProfile->cyclic_cross_coupling_ratio = sbufReadU8(src);
-            currentPidProfile->cyclic_cross_coupling_cutoff = sbufReadU8(src);
+            sbufReadU8(src);
+            sbufReadU8(src);
+            sbufReadU8(src);
         }
-        /* Offset limits */
+        /* Offset limits -- removed */
         if (sbufBytesRemaining(src) >= 2) {
-            currentPidProfile->offset_limit[0] = sbufReadU8(src);
-            currentPidProfile->offset_limit[1] = sbufReadU8(src);
+            sbufReadU8(src);
+            sbufReadU8(src);
         }
         /* B-term cutoffs */
         if (sbufBytesRemaining(src) >= 3) {
@@ -2984,60 +2951,18 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->bterm_cutoff[1] = sbufReadU8(src);
             currentPidProfile->bterm_cutoff[2] = sbufReadU8(src);
         }
-        /* Inertia precomps */
+        /* Inertia precomps -- removed */
         if (sbufBytesRemaining(src) >= 2) {
-            currentPidProfile->yaw_inertia_precomp_gain = sbufReadU8(src);
-            currentPidProfile->yaw_inertia_precomp_cutoff = sbufReadU8(src);
+            sbufReadU8(src);
+            sbufReadU8(src);
+        }
+        /* Fixed-wing throttle-based gain attenuation */
+        if (sbufBytesRemaining(src) >= 2) {
+            currentPidProfile->fw_tpa_breakpoint = sbufReadU8(src);
+            currentPidProfile->fw_tpa_rate = sbufReadU8(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);
-        break;
-
-    case MSP_SET_RESCUE_PROFILE:
-        currentPidProfile->rescue.mode = sbufReadU8(src);
-        currentPidProfile->rescue.flip_mode = sbufReadU8(src);
-        currentPidProfile->rescue.flip_gain = sbufReadU8(src);
-        currentPidProfile->rescue.level_gain = sbufReadU8(src);
-        currentPidProfile->rescue.pull_up_time = sbufReadU8(src);
-        currentPidProfile->rescue.climb_time = sbufReadU8(src);
-        currentPidProfile->rescue.flip_time = sbufReadU8(src);
-        currentPidProfile->rescue.exit_time = sbufReadU8(src);
-        currentPidProfile->rescue.pull_up_collective = sbufReadU16(src);
-        currentPidProfile->rescue.climb_collective = sbufReadU16(src);
-        currentPidProfile->rescue.hover_collective = sbufReadU16(src);
-        currentPidProfile->rescue.hover_altitude = sbufReadU16(src);
-        currentPidProfile->rescue.alt_p_gain = sbufReadU16(src);
-        currentPidProfile->rescue.alt_i_gain = sbufReadU16(src);
-        currentPidProfile->rescue.alt_d_gain = sbufReadU16(src);
-        currentPidProfile->rescue.max_collective = sbufReadU16(src);
-        currentPidProfile->rescue.max_setpoint_rate = sbufReadU16(src);
-        currentPidProfile->rescue.max_setpoint_accel = sbufReadU16(src);
-        /* Load new values */
-        rescueInitProfile(currentPidProfile);
-        break;
-
-    case MSP_SET_GOVERNOR_PROFILE:
-        currentPidProfile->governor.headspeed = sbufReadU16(src);
-        currentPidProfile->governor.gain = sbufReadU8(src);
-        currentPidProfile->governor.p_gain = sbufReadU8(src);
-        currentPidProfile->governor.i_gain = sbufReadU8(src);
-        currentPidProfile->governor.d_gain = sbufReadU8(src);
-        currentPidProfile->governor.f_gain = sbufReadU8(src);
-        currentPidProfile->governor.tta_gain = sbufReadU8(src);
-        currentPidProfile->governor.tta_limit = sbufReadU8(src);
-        currentPidProfile->governor.yaw_weight = sbufReadU8(src);
-        currentPidProfile->governor.cyclic_weight = sbufReadU8(src);
-        currentPidProfile->governor.collective_weight = sbufReadU8(src);
-        currentPidProfile->governor.max_throttle = sbufReadU8(src);
-        if (sbufBytesRemaining(src) >= 1) {
-            currentPidProfile->governor.min_throttle = sbufReadU8(src);
-        }
-        if (sbufBytesRemaining(src) >= 3) {
-            currentPidProfile->governor.fallback_drop = sbufReadU8(src);
-            currentPidProfile->governor.flags = sbufReadU16(src);
-        }
-        /* Load new values */
-        governorInitProfile(currentPidProfile);
         break;
 
     case MSP_SET_SENSOR_CONFIG:
@@ -3434,24 +3359,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP_SET_MIXER_CONFIG:
-        mixerConfigMutable()->main_rotor_dir = sbufReadU8(src);
         mixerConfigMutable()->tail_rotor_mode = sbufReadU8(src);
-        mixerConfigMutable()->tail_motor_idle = sbufReadU8(src);
-        mixerConfigMutable()->tail_center_trim = sbufReadU16(src);
-        mixerConfigMutable()->swash_type = sbufReadU8(src);
-        mixerConfigMutable()->swash_ring = sbufReadU8(src);
-        mixerConfigMutable()->swash_phase = sbufReadU16(src);
-        mixerConfigMutable()->swash_pitch_limit = sbufReadU16(src);
-        mixerConfigMutable()->swash_trim[0] = sbufReadU16(src);
-        mixerConfigMutable()->swash_trim[1] = sbufReadU16(src);
-        mixerConfigMutable()->swash_trim[2] = sbufReadU16(src);
-        mixerConfigMutable()->swash_tta_precomp = sbufReadU8(src);
-        mixerConfigMutable()->swash_geo_correction = sbufReadU8(src);
-        if (sbufBytesRemaining(src) >= 2) {
-            mixerConfigMutable()->collective_tilt_correction_pos = sbufReadS8(src);
-            mixerConfigMutable()->collective_tilt_correction_neg = sbufReadS8(src);
-        }
-        mixerInitConfig();
         break;
 
     case MSP_SET_MIXER_INPUT:
@@ -3474,6 +3382,35 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         mixerRulesMutable(i)->output = sbufReadU8(src);
         mixerRulesMutable(i)->offset = sbufReadU16(src);
         mixerRulesMutable(i)->weight = sbufReadU16(src);
+        mixerRulesMutable(i)->weightNeg = sbufReadU16(src);
+        mixerRulesMutable(i)->speed = sbufReadU16(src);
+        mixerRulesMutable(i)->curve = sbufReadU8(src);
+        mixerRulesMutable(i)->condition = sbufReadU8(src);
+        break;
+
+    case MSP_SET_MIXER_CURVE:
+        i = sbufReadU8(src);
+        if (i >= MIXER_CURVE_COUNT) {
+            return MSP_RESULT_ERROR;
+        }
+        mixerCurvesMutable(i)->count = sbufReadU8(src);
+        for (int p = 0; p < MIXER_CURVE_POINTS; p++) {
+            mixerCurvesMutable(i)->points[p].x = sbufReadU16(src);
+            mixerCurvesMutable(i)->points[p].y = sbufReadU16(src);
+        }
+        break;
+
+    case MSP_SET_LOGIC_CONDITION:
+        i = sbufReadU8(src);
+        if (i >= LOGIC_CONDITION_COUNT) {
+            return MSP_RESULT_ERROR;
+        }
+        logicConditionsMutable(i)->enabled = sbufReadU8(src);
+        logicConditionsMutable(i)->operation = sbufReadU8(src);
+        logicConditionsMutable(i)->operandAType = sbufReadU8(src);
+        logicConditionsMutable(i)->operandAValue = sbufReadU16(src);
+        logicConditionsMutable(i)->operandBType = sbufReadU8(src);
+        logicConditionsMutable(i)->operandBValue = sbufReadU16(src);
         break;
 
     case MSP_SET_MIXER_OVERRIDE:
@@ -3794,40 +3731,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
         break;
 #endif
-
-    case MSP_SET_GOVERNOR_CONFIG:
-        governorConfigMutable()->gov_mode = sbufReadU8(src);
-        governorConfigMutable()->gov_startup_time = sbufReadU16(src);
-        governorConfigMutable()->gov_spoolup_time = sbufReadU16(src);
-        governorConfigMutable()->gov_tracking_time = sbufReadU16(src);
-        governorConfigMutable()->gov_recovery_time = sbufReadU16(src);
-        governorConfigMutable()->gov_throttle_hold_timeout = sbufReadU16(src);
-        sbufReadU16(src); // governorConfigMutable()->gov_lost_headspeed_timeout
-        governorConfigMutable()->gov_autorotation_timeout = sbufReadU16(src);
-        sbufReadU16(src); // governorConfigMutable()->gov_autorotation_bailout_time
-        sbufReadU16(src); // governorConfigMutable()->gov_autorotation_min_entry_time
-        governorConfigMutable()->gov_handover_throttle = sbufReadU8(src);
-        governorConfigMutable()->gov_pwr_filter = sbufReadU8(src);
-        governorConfigMutable()->gov_rpm_filter = sbufReadU8(src);
-        governorConfigMutable()->gov_tta_filter = sbufReadU8(src);
-        governorConfigMutable()->gov_ff_filter = sbufReadU8(src);
-        if (sbufBytesRemaining(src) >= 1) {
-            sbufReadU8(src); // governorConfigMutable()->gov_spoolup_min_throttle
-        }
-        if (sbufBytesRemaining(src) >= 8) {
-            governorConfigMutable()->gov_d_filter = sbufReadU8(src);
-            governorConfigMutable()->gov_spooldown_time = sbufReadU16(src);
-            governorConfigMutable()->gov_throttle_type = sbufReadU8(src);
-            sbufReadS8(src);
-            sbufReadS8(src);
-            governorConfigMutable()->gov_idle_throttle = sbufReadU8(src);
-            governorConfigMutable()->gov_auto_throttle = sbufReadU8(src);
-        }
-        if (sbufBytesRemaining(src) >= GOV_THROTTLE_CURVE_POINTS) {
-            for (int i=0; i<GOV_THROTTLE_CURVE_POINTS; i++)
-                governorConfigMutable()->gov_bypass_throttle[i] = sbufReadU8(src);
-        }
-        break;
 
     default:
         // we do not know how to handle the (valid) message, indicate error MSP $M!

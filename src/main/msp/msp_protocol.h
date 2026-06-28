@@ -188,14 +188,11 @@
 #define MSP_VTXTABLE_POWERLEVEL              138
 #define MSP_MOTOR_TELEMETRY                  139
 
-#define MSP_GOVERNOR_CONFIG                  142
-#define MSP_SET_GOVERNOR_CONFIG              143
+// 142, 143 reserved (heli governor removed, do not reuse)
 #define MSP_RPM_FILTER                       144
 #define MSP_SET_RPM_FILTER                   145
-#define MSP_RESCUE_PROFILE                   146
-#define MSP_SET_RESCUE_PROFILE               147
-#define MSP_GOVERNOR_PROFILE                 148
-#define MSP_SET_GOVERNOR_PROFILE             149
+// 146, 147 reserved (heli rescue removed, do not reuse)
+// 148, 149 reserved (heli governor removed, do not reuse)
 #define MSP_LED_STRIP_SETTINGS               150
 #define MSP_SET_LED_STRIP_SETTINGS           151
 #define MSP_BUS_SERVO_CONFIG                 152
@@ -222,6 +219,8 @@
 #define MSP_GET_MIXER_INPUT                  174
 #define MSP_BATTERY_PROFILE                  175
 #define MSP_SET_BATTERY_PROFILE              176
+#define MSP_MIXER_CURVES                     177
+#define MSP_SET_MIXER_CURVE                  178
 
 #define MSP_OSD_VIDEO_CONFIG                 180
 #define MSP_SET_OSD_VIDEO_CONFIG             181
@@ -239,6 +238,9 @@
 #define MSP_MOTOR_OVERRIDE                   194
 #define MSP_SET_MOTOR_OVERRIDE               195
 #define MSP_SET_SERVO_OVERRIDE_ALL           196
+#define MSP_LOGIC_CONDITIONS                 197
+#define MSP_SET_LOGIC_CONDITION              198
+#define MSP_LOGIC_CONDITIONS_STATUS          199
 
 #define MSP_SET_RAW_RC                       200
 #define MSP_SET_RAW_GPS                      201

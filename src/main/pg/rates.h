@@ -24,38 +24,22 @@
 #include "pg/pg_ids.h"
 
 
-typedef enum {
-    RATES_TYPE_NONE = 0,
-    RATES_TYPE_BETAFLIGHT,
-    RATES_TYPE_RACEFLIGHT,
-    RATES_TYPE_KISS,
-    RATES_TYPE_ACTUAL,
-    RATES_TYPE_QUICK,
-    RATES_TYPE_ROTORFLIGHT,
-    RATES_TYPE_COUNT
-} ratesType_e;
-
 #define MAX_RATE_PROFILE_NAME_LENGTH 8
 
 typedef struct controlRateConfig_s {
     char profileName[MAX_RATE_PROFILE_NAME_LENGTH + 1];
 
-    uint8_t rates_type;
-
-    uint8_t rcRates[4];
-    uint8_t rcExpo[4];
-    uint8_t sRates[4];
+    uint8_t rcRates[3];
+    uint8_t rcExpo[3];
+    uint8_t sRates[3];
 
     uint8_t levelExpo[2];                   // roll/pitch level mode expo
 
-    uint8_t response_time[4];
-    uint16_t accel_limit[4];
+    uint8_t response_time[3];
+    uint16_t accel_limit[3];
 
-    uint8_t cyclic_ring;
-    uint8_t cyclic_polar;
-
-    uint8_t setpoint_boost_gain[4];
-    uint8_t setpoint_boost_cutoff[4];
+    uint8_t setpoint_boost_gain[3];
+    uint8_t setpoint_boost_cutoff[3];
 
     uint8_t yaw_dynamic_ceiling_gain;
     uint8_t yaw_dynamic_deadband_gain;

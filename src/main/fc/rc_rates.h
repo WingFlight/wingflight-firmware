@@ -23,20 +23,11 @@
 #include "pg/adjustments.h"
 
 #define CONTROL_RATE_CONFIG_RC_EXPO_MAX         100
-#define CONTROL_RATE_CONFIG_RC_RATES_MAX        255
-#define CONTROL_RATE_CONFIG_SUPER_RATE_MAX      255
+#define CONTROL_RATE_CONFIG_RC_RATES_MAX        200
+#define CONTROL_RATE_CONFIG_SUPER_RATE_MAX      100
 
 #define SETPOINT_RATE_LIMIT                     2000
 
-typedef struct ratesSettingsLimits_s {
-    uint8_t rc_rate_limit;
-    uint8_t srate_limit;
-    uint8_t expo_limit;
-} ratesSettingsLimits_t;
-
-extern const ratesSettingsLimits_t ratesSettingLimits[RATES_TYPE_COUNT];
-
-extern const ratesSettingsLimits_t * currentControlRateLimits;
 extern controlRateConfig_t * currentControlRateProfile;
 
 float applyRatesCurve(const int axis, float rcCommandf);

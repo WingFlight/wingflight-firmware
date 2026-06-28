@@ -15,39 +15,21 @@
  * along with this software. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#pragma once
-
+#include "types.h"
 #include "platform.h"
 
-#include "pg/pg.h"
+#include "pg/pg_ids.h"
+#include "pg/logic_condition.h"
 
-#include "flight/pid.h"
-
-typedef enum {
-    RESCUE_MODE_OFF = 0,
-    RESCUE_MODE_CLIMB,
-    RESCUE_MODE_ALT_HOLD,
-} rescueMode_e;
-
-typedef enum {
-    RESCUE_STATE_OFF = 0,
-    RESCUE_STATE_PULLUP,
-    RESCUE_STATE_FLIP,
-    RESCUE_STATE_CLIMB,
-    RESCUE_STATE_HOVER,
-    RESCUE_STATE_EXIT,
-} rescueState_e;
+#include "config/config_reset.h"
 
 
-int getRescueState(void);
+PG_REGISTER_ARRAY_WITH_RESET_FN(logicCondition_t, LOGIC_CONDITION_COUNT, logicConditions, PG_GENERIC_LOGIC_CONDITIONS, 0);
 
-void rescueUpdate(void);
-float rescueApply(uint8_t axis, float setpoint);
-void rescueInitProfile(const pidProfile_t *pidProfile);
-
-ADJFUN_DECLARE(RESCUE_CLIMB_COLLECTIVE)
-ADJFUN_DECLARE(RESCUE_HOVER_COLLECTIVE)
-ADJFUN_DECLARE(RESCUE_HOVER_ALTITUDE)
-ADJFUN_DECLARE(RESCUE_ALT_P_GAIN)
-ADJFUN_DECLARE(RESCUE_ALT_I_GAIN)
-ADJFUN_DECLARE(RESCUE_ALT_D_GAIN)
+void pgResetFn_logicConditions(logicCondition_t *condition)
+{
+    for (int i = 0; i < LOGIC_CONDITION_COUNT; i++) {
+        condition[i].enabled = 0;
+        condition[i].operation = LOGIC_CONDITION_TRUE;
+    }
+}

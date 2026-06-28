@@ -137,8 +137,7 @@ static float smartFuelApplySagCompensation(float cellVoltage)
 {
     if (isAirborne()) {
         const float cyclic = getCyclicDeflection();
-        const float collective = getCollectiveDeflectionAbs();
-        const float stickLoad = constrainf(collective * collective + cyclic * 0.2f, 0.0f, 1.0f);
+        const float stickLoad = constrainf(cyclic * 0.2f, 0.0f, 1.0f);
 
         cellVoltage += smartFuel.config.sagCompensation * stickLoad;
     }

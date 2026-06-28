@@ -157,7 +157,7 @@
 
 // Rotorflight configuration
 #define PG_FREQ_SENSOR_CONFIG        1000
-#define PG_GOVERNOR_CONFIG           1001
+// 1001 reserved (heli governor removed, do not reuse)
 #define PG_GENERIC_MIXER_CONFIG      1002
 #define PG_GENERIC_MIXER_RULES       1003
 #define PG_GENERIC_MIXER_INPUTS      1004
@@ -165,6 +165,8 @@
 #define PG_DRIVER_FBUS_MASTER_CONFIG 1006
 #define PG_BUS_SERVO_CONFIG          1007
 #define PG_DRIVER_SPORT_MASTER_CONFIG 1008
+#define PG_GENERIC_MIXER_CURVES      1009
+#define PG_GENERIC_LOGIC_CONDITIONS  1010
 
 // OSD configuration (subject to change)
 #define PG_OSD_FONT_CONFIG 2047

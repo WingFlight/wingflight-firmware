@@ -142,9 +142,8 @@ typedef enum
     TELEM_FLIGHT_MODE                   = 89,
     TELEM_ARMING_FLAGS                  = 90,
     TELEM_ARMING_DISABLE_FLAGS          = 91,
-    TELEM_RESCUE_STATE                  = 92,
-    TELEM_GOVERNOR_STATE                = 93,
-    TELEM_GOVERNOR_FLAGS                = 94,
+    // 92 reserved (heli rescue removed, do not reuse)
+    // 93, 94 reserved (heli governor removed, do not reuse)
 
     TELEM_PID_PROFILE                   = 95,
     TELEM_RATES_PROFILE                 = 96,

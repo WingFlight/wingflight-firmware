@@ -39,7 +39,6 @@
 #include "drivers/serial_uart.h"
 #include "drivers/time.h"
 
-#include "flight/governor.h"
 #include "flight/position.h"
 #include "flight/imu.h"
 
@@ -150,7 +149,6 @@ const exBusSensor_t jetiExSensors[] = {
     {"Arming Flags",    "",         EX_TYPE_22b,   DECIMAL_MASK(0)},
     {"PID Profile",     "",         EX_TYPE_22b,   DECIMAL_MASK(0)},
     {"RATES Profile",   "",         EX_TYPE_22b,   DECIMAL_MASK(0)},
-    {"Governor",        "",         EX_TYPE_22b,   DECIMAL_MASK(0)},
     {"Thr. Control",    "",         EX_TYPE_22b,   DECIMAL_MASK(0)},
     {"Adj. Function",    "",        EX_TYPE_22b,   DECIMAL_MASK(0)},
     {"Adj. Value",       "",        EX_TYPE_22b,   DECIMAL_MASK(0)},
@@ -185,7 +183,6 @@ enum exSensors_e {
     EX_ARMING_FLAGS,
     EX_PID_PROFILE,
     EX_RATES_PROFILE,
-    EX_GOVERNOR_MODE,
     EX_THROTTLE_CONTROL,
     EX_ADJFUNC,
     EX_ADJVALUE,
@@ -301,7 +298,6 @@ void initJetiExBusTelemetry(void)
     bitArraySet(&exSensorEnabled, EX_ARMING_FLAGS);
     bitArraySet(&exSensorEnabled, EX_PID_PROFILE);
     bitArraySet(&exSensorEnabled, EX_RATES_PROFILE);
-    bitArraySet(&exSensorEnabled, EX_GOVERNOR_MODE);
     bitArraySet(&exSensorEnabled, EX_THROTTLE_CONTROL);
     bitArraySet(&exSensorEnabled, EX_ADJFUNC);
     bitArraySet(&exSensorEnabled, EX_ADJVALUE);
@@ -454,28 +450,6 @@ int32_t getSensorValue(uint8_t sensor)
     case EX_RATES_PROFILE:
         return telemetrySensorValue(TELEM_RATES_PROFILE);
     break;
-
-    case EX_GOVERNOR_MODE:
-        if (!ARMING_FLAG(ARMED)) {
-            if (isArmingDisabled())
-                return 100;  //DISABLED
-            else
-               return 101; //DISAMED
-        } else {
-            /*
-                0, //"OFF",
-                1, //"IDLE",
-                2, // "SPOOLUP",
-                3, //"RECOVERY",
-                4, //"ACTIVE",
-                5, //"THR-OFF",
-                6, //"LOST-HS",
-                7, //"AUTOROT",
-                8, //"BAILOUT",
-            */
-            return getGovernorState();
-        }   
-    break;                
 
     case EX_THROTTLE_CONTROL:
         return telemetrySensorValue(TELEM_THROTTLE_CONTROL);

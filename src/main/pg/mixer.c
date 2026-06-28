@@ -25,25 +25,20 @@
 #include "flight/mixer.h"
 
 
-PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_GENERIC_MIXER_CONFIG, 0);
+PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_GENERIC_MIXER_CONFIG, 1);
 
 PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
-    .main_rotor_dir = DIR_CW,
     .tail_rotor_mode = TAIL_MODE_VARIABLE,
-    .tail_motor_idle = 0,
-    .tail_center_trim = 0,
-    .swash_type = SWASH_TYPE_NONE,
-    .swash_ring = 100,
-    .swash_phase = 0,
-    .swash_pitch_limit = 0,
-    .swash_trim = { 0, 0, 0 },
-    .swash_tta_precomp = 0,
-    .swash_geo_correction = 0,
-    .collective_tilt_correction_pos = 0,
-    .collective_tilt_correction_neg = 10,
 );
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 0);
+// v1: added weightNeg (second weight applied when a rule's input is negative,
+// for differential mixing). v2: added reverse (inverts the rule's polarity).
+// v3: added speed (slew rate limit on the rule's own contribution). v4: added
+// curve (index into mixerCurves, applied before weight selection). v5: removed
+// reverse -- it only ever negated weight/weightNeg, so polarity is expressed
+// by their sign directly now. Existing saved rules reset to these defaults
+// rather than being reinterpreted at the new per-rule layout.
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 6);
 
 void pgResetFn_mixerRules(mixerRule_t *rule)
 {
@@ -54,6 +49,7 @@ void pgResetFn_mixerRules(mixerRule_t *rule)
     rule[0].output = MIXER_SERVO_OFFSET + 0;
     rule[0].offset = 0;
     rule[0].weight = 1000;
+    rule[0].weightNeg = 1000;
 
     // S2: Right aileron (STABILIZED_ROLL, weight -1000 for differential)
     rule[1].oper   = MIXER_OP_SET;
@@ -61,6 +57,7 @@ void pgResetFn_mixerRules(mixerRule_t *rule)
     rule[1].output = MIXER_SERVO_OFFSET + 1;
     rule[1].offset = 0;
     rule[1].weight = -1000;
+    rule[1].weightNeg = -1000;
 
     // S3: Elevator (STABILIZED_PITCH, weight +1000)
     rule[2].oper   = MIXER_OP_SET;
@@ -68,6 +65,7 @@ void pgResetFn_mixerRules(mixerRule_t *rule)
     rule[2].output = MIXER_SERVO_OFFSET + 2;
     rule[2].offset = 0;
     rule[2].weight = 1000;
+    rule[2].weightNeg = 1000;
 
     // S4: Rudder (STABILIZED_YAW, weight +1000)
     rule[3].oper   = MIXER_OP_SET;
@@ -75,6 +73,7 @@ void pgResetFn_mixerRules(mixerRule_t *rule)
     rule[3].output = MIXER_SERVO_OFFSET + 3;
     rule[3].offset = 0;
     rule[3].weight = 1000;
+    rule[3].weightNeg = 1000;
 
     // M1: Motor/Throttle (RC_CHANNEL_THROTTLE, weight +1000)
     rule[4].oper   = MIXER_OP_SET;
@@ -82,10 +81,26 @@ void pgResetFn_mixerRules(mixerRule_t *rule)
     rule[4].output = MIXER_MOTOR_OFFSET + 0;
     rule[4].offset = 0;
     rule[4].weight = 1000;
+    rule[4].weightNeg = 1000;
 
     // Clear remaining rules
     for (int i = 5; i < MIXER_RULE_COUNT; i++) {
         rule[i].oper = MIXER_OP_NUL;
+    }
+}
+
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerCurve_t, MIXER_CURVE_COUNT, mixerCurves, PG_GENERIC_MIXER_CURVES, 0);
+
+void pgResetFn_mixerCurves(mixerCurve_t *curve)
+{
+    // Default every curve to a neutral 2-point passthrough line, so an
+    // unconfigured curve slot has no effect if a rule is assigned to it.
+    for (int i = 0; i < MIXER_CURVE_COUNT; i++) {
+        curve[i].count = 2;
+        curve[i].points[0].x = -1000;
+        curve[i].points[0].y = -1000;
+        curve[i].points[1].x =  1000;
+        curve[i].points[1].y =  1000;
     }
 }
 

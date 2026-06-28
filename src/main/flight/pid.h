@@ -52,24 +52,16 @@
 #define YAW_F_TERM_SCALE            0.000025f
 #define YAW_B_TERM_SCALE            1.0e-6f
 
-#define CROSS_COUPLING_SCALE        10.0e-6f
-
-#define PID_LOOKUP_CURVE_POINTS     16
-
-#define PID_YAW_RATE_MODE_DECAY     0.2f
-
 typedef struct {
     float P;
     float I;
     float D;
     float F;
     float B;
-    float O;
     float pidSum;
     float setPoint;
     float gyroRate;
     float axisError;
-    float axisOffset;
 } pidAxisData_t;
 
 typedef struct {
@@ -78,23 +70,7 @@ typedef struct {
     float Kd;
     float Kf;
     float Kb;
-    float Ko;
-    float Kc;
 } pidAxisCoef_t;
-
-typedef struct {
-
-    filter_t yawPrecompFilter;
-    filter_t headspeedFilter;
-    difFilter_t yawInertiaFilter;
-
-    float yawCollectiveFFGain;
-    float yawCyclicFFGain;
-    float yawInertiaGain;
-
-    float pitchCollectiveFFGain;
-
-} pidPrecomp_t;
 
 typedef struct pid_s {
     float dT;
@@ -102,28 +78,16 @@ typedef struct pid_s {
 
     uint8_t pidMode;
 
+    float fwTpaBreakpoint;
+    float fwTpaRate;
+
     uint8_t itermRelaxType;
     uint8_t itermRelaxLevel[PID_AXIS_COUNT];
 
-    float errorDecayRateGround;
     float errorDecayRateCyclic;
     float errorDecayLimitCyclic;
-    float errorDecayRateYaw;
-    float errorDecayLimitYaw;
 
-    float offsetFloodRelaxLevel;
-
-    float offsetLimit[XY_AXIS_COUNT];
     float errorLimit[PID_AXIS_COUNT];
-
-    float yawCWStopGain;
-    float yawCCWStopGain;
-
-    float cyclicCrossCouplingGain[XY_AXIS_COUNT];
-
-    float collective;
-
-    pidPrecomp_t precomp;
 
     pidAxisCoef_t coef[PID_ITEM_COUNT];
     pidAxisData_t data[PID_AXIS_COUNT];
@@ -134,10 +98,6 @@ typedef struct pid_s {
 
     difFilter_t dtermFilter[PID_AXIS_COUNT];
     difFilter_t btermFilter[PID_AXIS_COUNT];
-
-    order1Filter_t crossCouplingFilter[XY_AXIS_COUNT];
-
-    pt1Filter_t offsetFloodRelaxFilter;
 
 } pidData_t;
 
@@ -161,8 +121,6 @@ float pidGetPidFrequency(void);
 float pidGetSetpoint(int axis);
 float pidGetOutput(int axis);
 
-float pidGetCollective(void);
-
 const pidAxisData_t * pidGetAxisData(void);
 
 ADJFUN_DECLARE(PID_PROFILE)
@@ -178,11 +136,6 @@ ADJFUN_DECLARE(YAW_D_GAIN)
 ADJFUN_DECLARE(PITCH_F_GAIN)
 ADJFUN_DECLARE(ROLL_F_GAIN)
 ADJFUN_DECLARE(YAW_F_GAIN)
-ADJFUN_DECLARE(YAW_CW_GAIN)
-ADJFUN_DECLARE(YAW_CCW_GAIN)
-ADJFUN_DECLARE(YAW_CYCLIC_FF)
-ADJFUN_DECLARE(YAW_COLLECTIVE_FF)
-ADJFUN_DECLARE(PITCH_COLLECTIVE_FF)
 ADJFUN_DECLARE(PITCH_GYRO_CUTOFF)
 ADJFUN_DECLARE(ROLL_GYRO_CUTOFF)
 ADJFUN_DECLARE(YAW_GYRO_CUTOFF)
@@ -192,12 +145,4 @@ ADJFUN_DECLARE(YAW_DTERM_CUTOFF)
 ADJFUN_DECLARE(PITCH_B_GAIN)
 ADJFUN_DECLARE(ROLL_B_GAIN)
 ADJFUN_DECLARE(YAW_B_GAIN)
-ADJFUN_DECLARE(PITCH_O_GAIN)
-ADJFUN_DECLARE(ROLL_O_GAIN)
-ADJFUN_DECLARE(CROSS_COUPLING_GAIN)
-ADJFUN_DECLARE(CROSS_COUPLING_RATIO)
-ADJFUN_DECLARE(CROSS_COUPLING_CUTOFF)
-ADJFUN_DECLARE(INERTIA_PRECOMP_GAIN)
-ADJFUN_DECLARE(INERTIA_PRECOMP_CUTOFF)
-ADJFUN_DECLARE(YAW_PRECOMP_CUTOFF)
 

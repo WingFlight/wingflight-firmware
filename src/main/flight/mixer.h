@@ -47,6 +47,9 @@
 #define MIXER_INPUT_MIN      -2500
 #define MIXER_INPUT_MAX       2500
 
+#define MIXER_CURVE_MIN      -1000
+#define MIXER_CURVE_MAX       1000
+
 #define MIXER_OVERRIDE_MIN   -2500
 #define MIXER_OVERRIDE_MAX    2500
 #define MIXER_OVERRIDE_OFF    (MIXER_OVERRIDE_MAX + 1)
@@ -58,14 +61,12 @@
 /** Interface function **/
 
 void mixerInit(void);
-void mixerInitConfig(void);
 
 void validateAndFixMixerConfig(void);
 
 void mixerUpdate(timeUs_t currentTimeUs);
 
 float mixerGetInput(uint8_t index);
-float mixerGetInputHistory(uint8_t index, uint16_t delay);
 
 float mixerGetOutput(uint8_t index);
 
@@ -104,16 +105,6 @@ static inline float getYawDeflectionAbs(void)
     return fabsf(mixerGetInput(MIXER_IN_STABILIZED_YAW));
 }
 
-static inline float getCollectiveDeflection(void)
-{
-    return mixerGetInput(MIXER_IN_STABILIZED_COLLECTIVE);
-}
-
-static inline float getCollectiveDeflectionAbs(void)
-{
-    return fabsf(mixerGetInput(MIXER_IN_STABILIZED_COLLECTIVE));
-}
-
 static inline float mixerGetThrottle(void)
 {
     return mixerGetInput(MIXER_IN_RC_COMMAND_THROTTLE);
@@ -134,17 +125,7 @@ static inline void mixerSaturateMotorOutput(uint8_t index)
     mixerSaturateOutput(index + MIXER_MOTOR_OFFSET);
 }
 
-static inline int mixerRotationSign(void)
-{
-    return (mixerConfig()->main_rotor_dir == DIR_CW) ? -1 : 1;
-}
-
 static inline bool mixerMotorizedTail(void)
 {
     return (mixerConfig()->tail_rotor_mode != TAIL_MODE_VARIABLE);
-}
-
-static inline bool mixerIsTailMode(int mode)
-{
-    return (mixerConfig()->tail_rotor_mode == mode);
 }

@@ -18,11 +18,6 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stdint.h>
 
-bool isHandsOn(void);
-bool isAirborne(void);
-
-void airborneInit(void);
-void airborneUpdate(const float rc[3]);
-
+void logicConditionUpdate(void);
+bool logicConditionGetValue(int index);

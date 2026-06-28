@@ -42,8 +42,6 @@
 #include "sensors/acceleration.h"
 
 #include "flight/position.h"
-#include "flight/governor.h"
-#include "flight/rescue.h"
 #include "flight/mixer.h"
 #include "flight/imu.h"
 
@@ -335,12 +333,6 @@ int telemetrySensorValue(sensor_id_e id)
             return armingFlags;
         case TELEM_ARMING_DISABLE_FLAGS:
             return getArmingDisableFlags();
-        case TELEM_RESCUE_STATE:
-            return getRescueState();
-        case TELEM_GOVERNOR_STATE:
-            return getGovernorState();
-        case TELEM_GOVERNOR_FLAGS:
-            return 0;
 
         case TELEM_PID_PROFILE:
             return getCurrentPidProfileIndex() + 1;
@@ -537,9 +529,6 @@ bool telemetrySensorActive(sensor_id_e id)
         case TELEM_FLIGHT_MODE:
         case TELEM_ARMING_FLAGS:
         case TELEM_ARMING_DISABLE_FLAGS:
-        case TELEM_RESCUE_STATE:
-        case TELEM_GOVERNOR_STATE:
-        case TELEM_GOVERNOR_FLAGS:
             return true;
 
         case TELEM_PID_PROFILE:

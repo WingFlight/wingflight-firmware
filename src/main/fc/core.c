@@ -76,8 +76,6 @@
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
-#include "flight/governor.h"
-#include "flight/rescue.h"
 
 #include "io/beeper.h"
 #include "io/gps.h"
@@ -202,7 +200,6 @@ static bool accNeedsCalibration(void)
         if (isModeActivationConditionPresent(BOXANGLE) ||
             isModeActivationConditionPresent(BOXHORIZON) ||
             isModeActivationConditionPresent(BOXTRAINER) ||
-            isModeActivationConditionPresent(BOXRESCUE) ||
             isModeActivationConditionPresent(BOXGPSRESCUE) ||
             isModeActivationConditionPresent(BOXCALIB)) {
             return true;
@@ -322,12 +319,6 @@ void updateArmingStatus(void)
         }
 #endif
 
-        if (IS_RC_MODE_ACTIVE(BOXRESCUE)) {
-            setArmingDisabled(ARMING_DISABLED_RESC);
-        } else {
-            unsetArmingDisabled(ARMING_DISABLED_RESC);
-        }
-
 #ifdef USE_DSHOT_BITBANG
         if (isDshotBitbangActive(&motorConfig()->dev) && dshotBitbangGetStatus() != DSHOT_BITBANG_STATUS_OK) {
             setArmingDisabled(ARMING_DISABLED_DSHOT_BITBANG);
@@ -400,7 +391,6 @@ void updateArmingStatus(void)
                     if (flags & (
                             ARMING_DISABLED_NO_GYRO |
                             ARMING_DISABLED_LOAD |
-                            ARMING_DISABLED_GOVERNOR |
                             ARMING_DISABLED_RPMFILTER |
                             ARMING_DISABLED_REBOOT_REQUIRED |
                             ARMING_DISABLED_ACC_CALIBRATION |
@@ -670,12 +660,6 @@ void processRxModes(timeUs_t currentTimeUs)
         }
 #endif
 
-        if (IS_RC_MODE_ACTIVE(BOXRESCUE)) {
-            ENABLE_FLIGHT_MODE(RESCUE_MODE);
-        } else {
-            DISABLE_FLIGHT_MODE(RESCUE_MODE);
-        }
-
         if (IS_RC_MODE_ACTIVE(BOXANGLE)) {
             ENABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
@@ -765,7 +749,6 @@ static void subTaskSetpoint(timeUs_t currentTimeUs)
     UNUSED(currentTimeUs);
 
     setpointUpdate();
-    rescueUpdate();
 }
 
 static void subTaskPidController(timeUs_t currentTimeUs)
