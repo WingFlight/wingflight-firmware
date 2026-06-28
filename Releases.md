@@ -1,3 +1,7 @@
+# 0.0.3
+
+Fix M1 motor rule
+
 # 0.0.2
 
 Adjust pid defaults
