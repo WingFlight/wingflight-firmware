@@ -45,9 +45,9 @@ void resetPidProfile(pidProfile_t *pidProfile)
     RESET_CONFIG(pidProfile_t, pidProfile,
         .profileName = "",
         .pid = {
-            [PID_ROLL]  = { .P = 50, .I = 20, .D = 0, .F = 100, .B = 0, },
-            [PID_PITCH] = { .P = 50, .I = 20, .D = 0, .F = 100, .B = 0, },
-            [PID_YAW]   = { .P = 80, .I = 25, .D = 0, .F = 100, .B = 0, },
+            [PID_ROLL]  = { .P = 50, .I = 10, .D = 0, .F = 100, .B = 0, },
+            [PID_PITCH] = { .P = 50, .I = 10, .D = 0, .F = 100, .B = 0, },
+            [PID_YAW]   = { .P = 80, .I = 15, .D = 0, .F = 100, .B = 0, },
         },
         .pid_mode = 1,
         .fw_tpa_breakpoint = 100,
