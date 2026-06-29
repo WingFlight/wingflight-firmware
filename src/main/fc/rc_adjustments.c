@@ -43,6 +43,7 @@
 #include "flight/mixer.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
+#include "flight/atthold.h"
 
 #include "io/beeper.h"
 #include "io/ledstrip.h"
@@ -190,6 +191,7 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 #ifdef USE_ACRO_TRAINER
     ADJ_ENTRY(ACRO_TRAINER_GAIN,            25, 255),
 #endif
+    ADJ_ENTRY(ATTHOLD_GAIN,                 0, 200),
 
     ADJ_ENTRY(ACC_TRIM_PITCH,               -300, 300),
     ADJ_ENTRY(ACC_TRIM_ROLL,                -300, 300),

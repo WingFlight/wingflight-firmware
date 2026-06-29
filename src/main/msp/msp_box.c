@@ -53,6 +53,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     BOXITEM(BOXANGLE, "ANGLE", 1),
     BOXITEM(BOXHORIZON, "HORIZON", 2),
     BOXITEM(BOXALTHOLD, "ALTHOLD", 3),
+    BOXITEM(BOXATTHOLD, "ATTHOLD", 6),
 //    BOXITEM(BOXANTIGRAVITY, "ANTI GRAVITY", 4),
 //    BOXITEM(BOXMAG, "MAG", 5),
 //    BOXITEM(BOXCAMSTAB, "CAMSTAB", 8),
@@ -201,6 +202,7 @@ void initActiveBoxIds(void)
 #ifdef USE_ACRO_TRAINER
         BME(BOXTRAINER);
 #endif
+        BME(BOXATTHOLD);
     }
 
 #ifdef USE_GPS

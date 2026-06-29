@@ -1615,6 +1615,8 @@ static bool blackboxWriteSysinfo(void)
                                                                             currentPidProfile->angle.level_limit,
                                                                             currentPidProfile->horizon.level_strength,
                                                                             currentPidProfile->horizon.transition);
+        BLACKBOX_PRINT_HEADER_LINE("attholdPID", "%d,%d",                   currentPidProfile->atthold.gain,
+                                                                            currentPidProfile->atthold.deadband);
         BLACKBOX_PRINT_HEADER_LINE("rollBW", "%d,%d,%d",                    currentPidProfile->gyro_cutoff[PID_ROLL],
                                                                             currentPidProfile->dterm_cutoff[PID_ROLL],
                                                                             currentPidProfile->bterm_cutoff[PID_ROLL]);

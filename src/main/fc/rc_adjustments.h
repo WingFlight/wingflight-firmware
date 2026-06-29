@@ -153,6 +153,9 @@ typedef enum {
     ADJUSTMENT_GOV_YAW_FF               = 81,
     ADJUSTMENT_BATTERY_PROFILE          = 82,
 
+    // Attitude hold mode
+    ADJUSTMENT_ATTHOLD_GAIN              = 83,
+
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;
 

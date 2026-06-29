@@ -70,6 +70,8 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .trainer.gain = 75,
         .trainer.angle_limit = 20,
         .trainer.lookahead_ms = 50,
+        .atthold.gain = 40,
+        .atthold.deadband = 5,
     );
 }
 

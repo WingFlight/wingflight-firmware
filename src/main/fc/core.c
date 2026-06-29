@@ -73,6 +73,7 @@
 #include "flight/mixer.h"
 #include "flight/pid.h"
 #include "flight/trainer.h"
+#include "flight/atthold.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
@@ -200,6 +201,7 @@ static bool accNeedsCalibration(void)
         if (isModeActivationConditionPresent(BOXANGLE) ||
             isModeActivationConditionPresent(BOXHORIZON) ||
             isModeActivationConditionPresent(BOXTRAINER) ||
+            isModeActivationConditionPresent(BOXATTHOLD) ||
             isModeActivationConditionPresent(BOXGPSRESCUE) ||
             isModeActivationConditionPresent(BOXCALIB)) {
             return true;
@@ -664,29 +666,40 @@ void processRxModes(timeUs_t currentTimeUs)
             ENABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
+            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
         else if (IS_RC_MODE_ACTIVE(BOXHORIZON)) {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             ENABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
+            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
 #ifdef USE_ACRO_TRAINER
         else if (IS_RC_MODE_ACTIVE(BOXTRAINER)) {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             ENABLE_FLIGHT_MODE(TRAINER_MODE);
+            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
 #endif
+        else if (IS_RC_MODE_ACTIVE(BOXATTHOLD)) {
+            DISABLE_FLIGHT_MODE(ANGLE_MODE);
+            DISABLE_FLIGHT_MODE(HORIZON_MODE);
+            DISABLE_FLIGHT_MODE(TRAINER_MODE);
+            ENABLE_FLIGHT_MODE(ATTHOLD_MODE);
+        }
         else {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
+            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
     }
 
 #ifdef USE_ACRO_TRAINER
     acroTrainerSetState(FLIGHT_MODE(TRAINER_MODE));
 #endif // USE_ACRO_TRAINER
+    attHoldModeSetState(FLIGHT_MODE(ATTHOLD_MODE));
 
     if (!IS_RC_MODE_ACTIVE(BOXPREARM) && ARMING_FLAG(WAS_ARMED_WITH_PREARM)) {
         DISABLE_ARMING_FLAG(WAS_ARMED_WITH_PREARM);

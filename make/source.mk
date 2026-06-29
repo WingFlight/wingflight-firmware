@@ -103,6 +103,7 @@ COMMON_SRC = \
             flight/servos.c \
             flight/trainer.c \
             flight/leveling.c \
+            flight/atthold.c \
             flight/setpoint.c \
             flight/wiggle.c \
             flight/airborne.c \

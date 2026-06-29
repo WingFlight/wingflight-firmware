@@ -1983,9 +1983,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_gain
         sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_ratio
         sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_cutoff
-        /* Offset limits */
-        sbufWriteU8(dst, 0); // was currentPidProfile->offset_limit[0]
-        sbufWriteU8(dst, 0); // was currentPidProfile->offset_limit[1]
+        /* Attitude hold */
+        sbufWriteU8(dst, currentPidProfile->atthold.gain);
+        sbufWriteU8(dst, currentPidProfile->atthold.deadband);
         /* B-term cutoffs */
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[0]);
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[1]);
@@ -2940,10 +2940,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             sbufReadU8(src);
             sbufReadU8(src);
         }
-        /* Offset limits -- removed */
+        /* Attitude hold */
         if (sbufBytesRemaining(src) >= 2) {
-            sbufReadU8(src);
-            sbufReadU8(src);
+            currentPidProfile->atthold.gain = sbufReadU8(src);
+            currentPidProfile->atthold.deadband = sbufReadU8(src);
         }
         /* B-term cutoffs */
         if (sbufBytesRemaining(src) >= 3) {
