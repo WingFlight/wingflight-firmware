@@ -88,8 +88,8 @@ typedef struct pidProfile_s {
     uint8_t             fw_tpa_breakpoint;
     uint8_t             fw_tpa_rate;
 
-    uint8_t             error_decay_time_cyclic;
-    uint8_t             error_decay_limit_cyclic;
+    uint8_t             iterm_decay_time;
+    uint8_t             iterm_decay_limit;
 
     uint8_t             iterm_relax_type;
     uint8_t             iterm_relax_level[PID_AXIS_COUNT];

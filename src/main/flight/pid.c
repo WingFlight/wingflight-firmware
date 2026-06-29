@@ -415,11 +415,11 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     for (int i = 0; i < XYZ_AXIS_COUNT; i++)
         pid.errorLimit[i] = pidProfile->error_limit[i];
 
-    // Exponential error decay rates
-    pid.errorDecayRateCyclic = (pidProfile->error_decay_time_cyclic) ? (10.0f / pidProfile->error_decay_time_cyclic) : 0;
+    // Exponential I-term decay rate
+    pid.itermDecayRate = (pidProfile->iterm_decay_time) ? (10.0f / pidProfile->iterm_decay_time) : 0;
 
-    // Max decay speeds in degs/s (linear decay)
-    pid.errorDecayLimitCyclic = (pidProfile->error_decay_limit_cyclic) ? pidProfile->error_decay_limit_cyclic : 3600;
+    // Max I-term decay speed in degs/s (linear decay)
+    pid.itermDecayLimit = (pidProfile->iterm_decay_limit) ? pidProfile->iterm_decay_limit : 3600;
 
     // Filters
     for (int i = 0; i < XYZ_AXIS_COUNT; i++) {
@@ -675,7 +675,7 @@ static void pidApplyMode1(uint8_t axis)
     // sitting on its wheels isn't at risk of tipping over from I-term windup
     // the way a loaded heli rotor disk is, so there's no need to decay faster
     // while landed)
-    const float errorDecay = limitf(pid.data[axis].axisError * pid.errorDecayRateCyclic, pid.errorDecayLimitCyclic);
+    const float errorDecay = limitf(pid.data[axis].axisError * pid.itermDecayRate, pid.itermDecayLimit);
 
     pid.data[axis].axisError -= errorDecay * pid.dT;
 

@@ -1945,9 +1945,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     case MSP_PID_PROFILE:
         sbufWriteU8(dst, currentPidProfile->pid_mode);
         sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_time_ground (heli-only, removed)
-        sbufWriteU8(dst, currentPidProfile->error_decay_time_cyclic);
+        sbufWriteU8(dst, currentPidProfile->iterm_decay_time);
         sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_time_yaw
-        sbufWriteU8(dst, currentPidProfile->error_decay_limit_cyclic);
+        sbufWriteU8(dst, currentPidProfile->iterm_decay_limit);
         sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_limit_yaw
         sbufWriteU8(dst, 1); // was currentPidProfile->error_rotation
         sbufWriteU8(dst, currentPidProfile->error_limit[0]);
@@ -2900,9 +2900,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
     case MSP_SET_PID_PROFILE:
         currentPidProfile->pid_mode = sbufReadU8(src);
         sbufReadU8(src); // was currentPidProfile->error_decay_time_ground (heli-only, removed)
-        currentPidProfile->error_decay_time_cyclic = sbufReadU8(src);
+        currentPidProfile->iterm_decay_time = sbufReadU8(src);
         sbufReadU8(src); // was currentPidProfile->error_decay_time_yaw
-        currentPidProfile->error_decay_limit_cyclic = sbufReadU8(src);
+        currentPidProfile->iterm_decay_limit = sbufReadU8(src);
         sbufReadU8(src); // was currentPidProfile->error_decay_limit_yaw
         sbufReadU8(src); // was currentPidProfile->error_rotation
         currentPidProfile->error_limit[0] = sbufReadU8(src);

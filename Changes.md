@@ -12,6 +12,13 @@ consistent D-term reaction on transients.
 PID Mode 4 is introduced for testing new features (#293). The current default
 PID Mode 3 is maintained for backward compatibility.
 
+## Configuration Changes
+
+The fixed-wing I-term decay settings are renamed from
+`error_decay_time_cyclic` / `error_decay_limit_cyclic` to
+`iterm_decay_time` / `iterm_decay_limit`. The old CLI names remain accepted
+as aliases for compatibility with existing dumps. MSP byte layout is unchanged.
+
 
 ## MSP Changes
 

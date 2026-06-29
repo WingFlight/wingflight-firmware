@@ -4975,6 +4975,31 @@ uint16_t cliGetSettingIndex(char *name, uint8_t length)
             return i;
         }
     }
+
+    static const struct {
+        const char *oldName;
+        const char *newName;
+    } settingAliases[] = {
+        { "error_decay_time_cyclic", "iterm_decay_time" },
+        { "error_decay_limit_cyclic", "iterm_decay_limit" },
+    };
+
+    for (unsigned aliasIndex = 0; aliasIndex < ARRAYLEN(settingAliases); aliasIndex++) {
+        const char *oldName = settingAliases[aliasIndex].oldName;
+
+        if (strncasecmp(name, oldName, strlen(oldName)) == 0 && length == strlen(oldName)) {
+            const char *newName = settingAliases[aliasIndex].newName;
+
+            for (uint32_t i = 0; i < valueTableEntryCount; i++) {
+                const char *settingName = valueTable[i].name;
+
+                if (strcasecmp(newName, settingName) == 0) {
+                    return i;
+                }
+            }
+        }
+    }
+
     return valueTableEntryCount;
 }
 
