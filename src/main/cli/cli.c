@@ -5144,8 +5144,11 @@ STATIC_UNIT_TESTED void cliSet(const char *cmdName, char *cmdline)
                         break;
                     }
 
-                    // find next comma (or end of string)
-                    valPtr = strchr(valPtr, ',') + 1;
+                    // find next comma (or end of string -- stop if the input
+                    // supplied fewer values than the array length, leaving
+                    // the remaining elements untouched)
+                    char *comma = strchr(valPtr, ',');
+                    valPtr = comma ? comma + 1 : NULL;
 
                     i++;
                 }

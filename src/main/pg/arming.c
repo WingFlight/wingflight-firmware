@@ -32,5 +32,5 @@ PG_RESET_TEMPLATE(armingConfig_t, armingConfig,
     .enable_stick_commands = false,
     .wiggle_frequency = 10,
     .wiggle_strength = 50,
-    .wiggle_flags = BIT(WIGGLE_READY) | BIT(WIGGLE_ERROR) | BIT(WIGGLE_FATAL),
+    .wiggle_flags = 0,
 );
