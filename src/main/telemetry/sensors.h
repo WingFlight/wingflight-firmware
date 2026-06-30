@@ -52,7 +52,7 @@ typedef enum
     TELEM_PITCH_CONTROL                 = 11,
     TELEM_ROLL_CONTROL                  = 12,
     TELEM_YAW_CONTROL                   = 13,
-    TELEM_COLLECTIVE_CONTROL            = 14,
+    // 14 reserved (collective control removed for fixed-wing, do not reuse)
     TELEM_THROTTLE_CONTROL              = 15,
 
     TELEM_ESC1_DATA                     = 16,

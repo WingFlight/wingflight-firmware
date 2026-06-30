@@ -76,7 +76,10 @@
 #include "rx/targetcustomserial.h"
 
 
-const char rcChannelLetters[] = "AERCT12345678";
+// Kept at the same total length as before (13 chars) even though only the
+// first RX_MAPPABLE_CHANNEL_COUNT are used by parseRcChannels() -- dashboard.c
+// indexes this table positionally for channels beyond the mappable range too.
+const char rcChannelLetters[] = "AERT123456789";
 
 static uint16_t rssi = 0;                  // range: [0;1023]
 static int16_t rssiDbm = CRSF_RSSI_MIN;    // range: [-130,20]
@@ -573,7 +576,6 @@ static uint16_t getRxfailValue(uint8_t channel)
         case ROLL:
         case PITCH:
         case YAW:
-        case COLLECTIVE:
             return getFailsafeCenter();
         case THROTTLE:
             return getFailsafeThrottle();

@@ -1373,7 +1373,7 @@ static uint16_t cmsScanKeys(timeMs_t currentTimeMs, timeMs_t lastCalledMs, int16
         rcDelayMs = cmsHandleKey(pCurrentDisplay, externKey);
         externKey = CMS_KEY_NONE;
     } else {
-        if (IS_MID(COLLECTIVE) && IS_LO(YAW) && IS_HI(PITCH) && !ARMING_FLAG(ARMED)) {
+        if (IS_LO(YAW) && IS_HI(PITCH) && !ARMING_FLAG(ARMED)) {
             key = CMS_KEY_MENU;
         } else if (IS_HI(PITCH)) {
             key = CMS_KEY_UP;
@@ -1465,7 +1465,7 @@ static void cmsUpdate(uint32_t currentTimeUs)
 
     if (!cmsInMenu) {
         // Detect menu invocation
-        if (IS_MID(COLLECTIVE) && IS_LO(YAW) && IS_HI(PITCH) && !ARMING_FLAG(ARMED) && !IS_RC_MODE_ACTIVE(BOXSTICKCOMMANDDISABLE)) {
+        if (IS_LO(YAW) && IS_HI(PITCH) && !ARMING_FLAG(ARMED) && !IS_RC_MODE_ACTIVE(BOXSTICKCOMMANDDISABLE)) {
             cmsMenuOpen();
             rcDelayMs = BUTTON_PAUSE;    // Tends to overshoot if BUTTON_TIME
         }

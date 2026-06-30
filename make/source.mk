@@ -105,7 +105,6 @@ COMMON_SRC = \
             flight/leveling.c \
             flight/atthold.c \
             flight/setpoint.c \
-            flight/wiggle.c \
             flight/airborne.c \
             io/serial_4way.c \
             io/serial_4way_avrootloader.c \

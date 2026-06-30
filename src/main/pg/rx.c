@@ -33,7 +33,12 @@
 #include "rx/rx.h"
 #include "rx/rx_spi.h"
 
-PG_REGISTER_WITH_RESET_FN(rxConfig_t, rxConfig, PG_RX_CONFIG, 3);
+// v3->v4: dropped the unused COLLECTIVE channel letter ('C') from the default
+// map -- the freed wire slot becomes a 4th mappable AUX channel instead of
+// being lost, so RX_MAPPABLE_CHANNEL_COUNT stays at 8. Existing saved rcmap[]
+// bytes are positional against the old 5-flight-channel layout, so they
+// reset to the new default rather than being silently reinterpreted.
+PG_REGISTER_WITH_RESET_FN(rxConfig_t, rxConfig, PG_RX_CONFIG, 4);
 void pgResetFn_rxConfig(rxConfig_t *rxConfig)
 {
     RESET_CONFIG_2(rxConfig_t, rxConfig,
@@ -61,9 +66,9 @@ void pgResetFn_rxConfig(rxConfig_t *rxConfig)
     );
 
 #ifdef RX_CHANNELS_TAER
-    parseRcChannels("TAER1C23", rxConfig);
+    parseRcChannels("TAER1234", rxConfig);
 #else
-    parseRcChannels("AETRC123", rxConfig);
+    parseRcChannels("AETR1234", rxConfig);
 #endif
 }
 

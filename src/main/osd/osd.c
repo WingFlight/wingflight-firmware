@@ -1071,7 +1071,7 @@ void osdProcessStats2(timeUs_t currentTimeUs)
     if (resumeRefreshAt) {
         if (cmp32(currentTimeUs, resumeRefreshAt) < 0) {
             // in timeout period, check sticks for activity
-            if (!ARMING_FLAG(ARMED) && (IS_HI(COLLECTIVE) || IS_HI(PITCH))) {
+            if (!ARMING_FLAG(ARMED) && IS_HI(PITCH)) {
                 resumeRefreshAt = currentTimeUs;
             }
             return;

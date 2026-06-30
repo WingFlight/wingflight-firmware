@@ -170,7 +170,7 @@ static telemetrySensor_t smartportTelemetrySensors[] =
     TLM_SENSOR(PITCH_CONTROL,           0x51A0,   100,  3000,   1,  10,   0,    INT),
     TLM_SENSOR(ROLL_CONTROL,            0x51A1,   100,  3000,   1,  10,   0,    INT),
     TLM_SENSOR(YAW_CONTROL,             0x51A2,   100,  3000,   1,  10,   0,    INT),
-    TLM_SENSOR(COLLECTIVE_CONTROL,      0x51A3,   100,  3000,   1,  10,   0,    INT),
+    // 0x51A3 reserved (collective control removed for fixed-wing, do not reuse)
     TLM_SENSOR(THROTTLE_CONTROL,        0x51A4,   100,  3000,   1,  10,   0,    INT),
 
     TLM_SENSOR(ESC1_VOLTAGE,            0x0218,   100,  3000,   1,  10,   10,   INT),

@@ -105,7 +105,6 @@ static const OSD_Entry cmsx_menuRcEntries[] =
     { "ROLL",  OME_INT16 | DYNAMIC, NULL, &(OSD_INT16_t){ &rcDataInt[ROLL],       1, 2500, 0 } },
     { "PITCH", OME_INT16 | DYNAMIC, NULL, &(OSD_INT16_t){ &rcDataInt[PITCH],      1, 2500, 0 } },
     { "YAW",   OME_INT16 | DYNAMIC, NULL, &(OSD_INT16_t){ &rcDataInt[YAW],        1, 2500, 0 } },
-    { "COLL",  OME_INT16 | DYNAMIC, NULL, &(OSD_INT16_t){ &rcDataInt[COLLECTIVE], 1, 2500, 0 } },
 
     { "THR",   OME_INT16 | DYNAMIC, NULL, &(OSD_INT16_t){ &rcDataInt[THROTTLE],   1, 2500, 0 } },
     { "AUX1",  OME_INT16 | DYNAMIC, NULL, &(OSD_INT16_t){ &rcDataInt[AUX1],       1, 2500, 0 } },

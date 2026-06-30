@@ -23,14 +23,6 @@
 #include "pg/pg.h"
 
 
-enum {
-    WIGGLE_OFF = 0,
-    WIGGLE_READY,
-    WIGGLE_ARMED,
-    WIGGLE_ERROR,
-    WIGGLE_FATAL,
-};
-
 typedef struct
 {
     uint8_t   gyro_cal_on_first_arm;        // allow disarm/arm on throttle down + roll left/right
@@ -40,10 +32,6 @@ typedef struct
 
     uint8_t   enable_stick_arming;          // boolean that determines whether stick arming can be used
     uint8_t   enable_stick_commands;        // boolean that determines whether stick commands can be used
-
-    uint8_t   wiggle_frequency;             // Swashplate indication frequency
-    uint8_t   wiggle_strength;              // Swashplate indication amplitude
-    uint32_t  wiggle_flags;                 // Wiggle enable flags
 
 } armingConfig_t;
 

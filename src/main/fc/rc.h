@@ -28,13 +28,12 @@
 
 #include "flight/setpoint.h"
 
-#define PRIMARY_CHANNEL_COUNT 5
+#define PRIMARY_CHANNEL_COUNT 4
 
 enum {
     ROLL = 0,
     PITCH,
     YAW,
-    COLLECTIVE,
     THROTTLE,
     AUX1,
     AUX2,

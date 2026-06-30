@@ -22,7 +22,11 @@
 #include "pg/arming.h"
 
 
-PG_REGISTER_WITH_RESET_TEMPLATE(armingConfig_t, armingConfig, PG_ARMING_CONFIG, 1);
+// v1->v2: removed the wiggle indicator fields -- the feature was heli-derived
+// (collective stick bumps to signal ready/armed/error) and never applicable
+// to a fixed-wing airframe; existing saved configs reset to these defaults
+// rather than reinterpreting trailing bytes that no longer exist.
+PG_REGISTER_WITH_RESET_TEMPLATE(armingConfig_t, armingConfig, PG_ARMING_CONFIG, 2);
 
 PG_RESET_TEMPLATE(armingConfig_t, armingConfig,
     .gyro_cal_on_first_arm = 0,
@@ -30,7 +34,4 @@ PG_RESET_TEMPLATE(armingConfig_t, armingConfig,
     .power_on_arming_grace_time = 3,
     .enable_stick_arming = false,
     .enable_stick_commands = false,
-    .wiggle_frequency = 10,
-    .wiggle_strength = 50,
-    .wiggle_flags = 0,
 );

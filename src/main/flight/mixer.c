@@ -41,7 +41,6 @@
 #include "flight/pid.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
-#include "flight/wiggle.h"
 #include "flight/logic_condition.h"
 
 #include "rx/rx.h"
@@ -179,9 +178,6 @@ static float mixerGetPassthroughInput(const int index,
         // As we passthrough RC commands we want to keep the same reversal.
         rc = -getRcDeflection(YAW);
         break;
-    case MIXER_IN_STABILIZED_COLLECTIVE:
-        rc = getRcDeflection(COLLECTIVE);
-        break;
     default:
         return original_value;
     }
@@ -197,17 +193,13 @@ static float mixerGetPassthroughInput(const int index,
 
 static void mixerSetInput(int index, float value)
 {
-    // Use override or wiggle only if not armed
+    // Use override only if not armed
     if (!ARMING_FLAG(ARMED)) {
         if (mixer.override[index] >= MIXER_OVERRIDE_MIN && mixer.override[index] <= MIXER_OVERRIDE_MAX) {
             value = mixer.override[index] / 1000.0f;
         }
         else if (mixer.override[index] == MIXER_OVERRIDE_PASSTHROUGH) {
             value = mixerGetPassthroughInput(index, value);
-        }
-        else if (wiggleActive()) {
-            if (index >= MIXER_IN_STABILIZED_ROLL && index <= MIXER_IN_STABILIZED_COLLECTIVE)
-                value = wiggleGetAxis(index - MIXER_IN_STABILIZED_ROLL);
         }
     }
 
@@ -302,7 +294,6 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_RC_COMMAND_ROLL, getRcDeflection(ROLL));
     mixerSetInput(MIXER_IN_RC_COMMAND_PITCH, getRcDeflection(PITCH));
     mixerSetInput(MIXER_IN_RC_COMMAND_YAW, getRcDeflection(YAW));
-    mixerSetInput(MIXER_IN_RC_COMMAND_COLLECTIVE, getRcDeflection(COLLECTIVE));
 
     // Throttle input
     mixerSetInput(MIXER_IN_RC_COMMAND_THROTTLE, getThrottle());
@@ -315,7 +306,6 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_STABILIZED_ROLL, pidGetOutput(PID_ROLL));
     mixerSetInput(MIXER_IN_STABILIZED_PITCH, pidGetOutput(PID_PITCH));
     mixerSetInput(MIXER_IN_STABILIZED_YAW, pidGetOutput(PID_YAW));
-    mixerSetInput(MIXER_IN_STABILIZED_COLLECTIVE, 0);
 
     // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels
     if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
@@ -335,6 +325,8 @@ static void mixerUpdateInputs(void)
 
 void mixerUpdate(timeUs_t currentTimeUs)
 {
+    UNUSED(currentTimeUs);
+
     // Reset saturation
     for (int i = 0; i < MIXER_INPUT_COUNT; i++) {
         if (mixer.saturation[i])
@@ -345,9 +337,6 @@ void mixerUpdate(timeUs_t currentTimeUs)
     for (int i = 0; i < MIXER_OUTPUT_COUNT; i++) {
         mixer.output[i] = 0;
     }
-
-    // Update wiggles
-    wiggleUpdate(currentTimeUs);
 
     // Fetch input values
     mixerUpdateInputs();
@@ -434,6 +423,4 @@ void INIT_CODE mixerInit(void)
                 break;
         }
     }
-
-    wiggleInit();
 }

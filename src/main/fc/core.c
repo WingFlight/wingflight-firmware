@@ -62,7 +62,6 @@
 
 #include "flight/failsafe.h"
 #include "flight/gps_rescue.h"
-#include "flight/wiggle.h"
 
 #if defined(USE_DYN_NOTCH_FILTER)
 #include "flight/dyn_notch_filter.h"
@@ -125,12 +124,6 @@ enum {
     ARMING_DELAYED = 1,
 };
 
-enum {
-    WIGGLE_NOT_DONE = 0,
-    WIGGLE_TRIGGERED,
-    WIGGLE_DONE,
-};
-
 #define MOTORS_GRACE_TIME_US 2000000
 
 #if defined(USE_GPS) || defined(USE_MAG)
@@ -144,11 +137,7 @@ static timeUs_t disarmAt;     // Time of automatic disarm when "Don't spin the m
 static int lastArmingDisabledReason = 0;
 static timeUs_t lastDisarmTimeUs;
 
-static int armingWiggle = WIGGLE_NOT_DONE;
 static int armingDelayed = ARMING_NOT_DELAYED;
-static int armingEnabledWiggle = WIGGLE_NOT_DONE;
-
-static timeMs_t armingErrorWiggleTime = 0;
 
 static bool isCalibrating(void)
 {
@@ -234,7 +223,6 @@ void updateArmingStatus(void)
     if (ARMING_FLAG(ARMED))
     {
         LED0_ON;
-        armingErrorWiggleTime = 0;
     }
     else
     {
@@ -368,53 +356,9 @@ void updateArmingStatus(void)
 
         if (!isArmingDisabled()) {
             warningLedDisable();
-            if (!ARMING_FLAG(WAS_EVER_ARMED) && wiggleEnabled(WIGGLE_READY)) {
-                if (armingEnabledWiggle == WIGGLE_NOT_DONE) {
-                    armingEnabledWiggle = WIGGLE_DONE;
-                    wiggleTrigger(WIGGLE_READY, 0);
-                }
-            }
         }
         else {
             warningLedFlash();
-            if (!ARMING_FLAG(WAS_EVER_ARMED) &&
-                (wiggleEnabled(WIGGLE_ERROR) || wiggleEnabled(WIGGLE_FATAL)))
-            {
-                const bitmap_t flags = getArmingDisableFlags();
-                if ((flags & ARMING_DISABLED_ARM_SWITCH) &&
-                    !(flags & (
-                        ARMING_DISABLED_BOOT_GRACE_TIME |
-                        ARMING_DISABLED_MSP |
-                        ARMING_DISABLED_CLI |
-                        ARMING_DISABLED_CMS_MENU
-                    )))
-                {
-                    const timeMs_t now = millis();
-                    if (flags & (
-                            ARMING_DISABLED_NO_GYRO |
-                            ARMING_DISABLED_LOAD |
-                            ARMING_DISABLED_RPMFILTER |
-                            ARMING_DISABLED_REBOOT_REQUIRED |
-                            ARMING_DISABLED_ACC_CALIBRATION |
-                            ARMING_DISABLED_MOTOR_PROTOCOL |
-                            ARMING_DISABLED_DSHOT_BITBANG
-                        ))
-                    {
-                        if (now >= armingErrorWiggleTime + 5000) {
-                            armingErrorWiggleTime = now;
-                            wiggleTrigger(WIGGLE_FATAL, 2500);
-                        }
-                    }
-                    else
-                    {
-                        const timeMs_t now = millis();
-                        if (now >= armingErrorWiggleTime + 3000) {
-                            armingErrorWiggleTime = now;
-                            wiggleTrigger(WIGGLE_ERROR, 750);
-                        }
-                    }
-                }
-            }
         }
 
         warningLedUpdate();
@@ -429,8 +373,6 @@ void disarm(flightLogDisarmReason_e reason)
         lastDisarmTimeUs = micros();
 
         armingDelayed = ARMING_NOT_DELAYED;
-        armingWiggle = WIGGLE_NOT_DONE;
-        armingEnabledWiggle = WIGGLE_DONE;
 
 #ifdef USE_BLACKBOX
         flightLogEvent_disarm_t eventData;
@@ -470,21 +412,6 @@ void tryArm(void)
             return;
         }
 
-        if (!ARMING_FLAG(WAS_EVER_ARMED) && wiggleEnabled(WIGGLE_ARMED)) {
-            if (armingWiggle == WIGGLE_NOT_DONE) {
-                armingDelayed = ARMING_DELAYED;
-                armingWiggle = WIGGLE_TRIGGERED;
-                wiggleTrigger(WIGGLE_ARMED, 0);
-                return;
-            }
-            else if (armingWiggle == WIGGLE_TRIGGERED) {
-                if (wiggleActive())
-                    return;
-                armingWiggle = WIGGLE_DONE;
-                armingDelayed = ARMING_NOT_DELAYED;
-            }
-        }
-
         const timeUs_t currentTimeUs = micros();
 
 #ifdef USE_DSHOT
@@ -501,8 +428,6 @@ void tryArm(void)
         ENABLE_ARMING_FLAG(ARMED);
 
         armingDelayed = ARMING_NOT_DELAYED;
-        armingWiggle = WIGGLE_NOT_DONE;
-        armingEnabledWiggle = WIGGLE_DONE;
 
         resetMotorOverride();
 
@@ -540,7 +465,6 @@ void tryArm(void)
 #endif
     } else {
         armingDelayed = ARMING_NOT_DELAYED;
-        armingWiggle = WIGGLE_NOT_DONE;
 
         if (!isFirstArmingGyroCalibrationRunning()) {
             int armingDisabledReason = ffs(getArmingDisableFlags());

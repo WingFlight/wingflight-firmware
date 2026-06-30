@@ -1249,10 +1249,11 @@ static void loadMainState(timeUs_t currentTimeUs)
 
     blackboxCurrent->time = currentTimeUs;
 
-    // ROLL/PITCH/YAW/COLLECTIVE
-    for (int i = 0; i < 4; i++) {
+    // ROLL/PITCH/YAW (no collective channel on fixed-wing)
+    for (int i = 0; i < 3; i++) {
         blackboxCurrent->command[i] = lrintf(rcCommand[i]);
     }
+    blackboxCurrent->command[4] = 0; // spare slot, unused since collective was removed
 
     // ROLL/PITCH/YAW (no collective setpoint for fixed-wing)
     for (int i = 0; i < 3; i++) {
@@ -1265,7 +1266,7 @@ static void loadMainState(timeUs_t currentTimeUs)
     blackboxCurrent->mixer[0] = lrintf(mixerGetInput(MIXER_IN_STABILIZED_ROLL) * 1000);
     blackboxCurrent->mixer[1] = lrintf(mixerGetInput(MIXER_IN_STABILIZED_PITCH) * 1000);
     blackboxCurrent->mixer[2] = lrintf(mixerGetInput(MIXER_IN_STABILIZED_YAW) * 1000);
-    blackboxCurrent->mixer[3] = lrintf(mixerGetInput(MIXER_IN_STABILIZED_COLLECTIVE) * 1000);
+    blackboxCurrent->mixer[3] = 0; // no collective mixer input for fixed-wing
 
     const pidAxisData_t *pidData = pidGetAxisData();
 
@@ -1703,8 +1704,6 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_MOTOR_PWM_RATE, "%d",         motorConfig()->dev.motorPwmRate);
         BLACKBOX_PRINT_HEADER_LINE("minthrottle", "%d",                     motorConfig()->minthrottle);
         BLACKBOX_PRINT_HEADER_LINE("maxthrottle", "%d",                     motorConfig()->maxthrottle);
-        BLACKBOX_PRINT_HEADER_LINE("collectiveRange", "%d,%d",              mixerInputs(MIXER_IN_STABILIZED_COLLECTIVE)->min,
-                                                                            mixerInputs(MIXER_IN_STABILIZED_COLLECTIVE)->max);
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_DEBUG_MODE, "%d",             debugMode);
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_DEBUG_AXIS, "%d",             debugAxis);
         BLACKBOX_PRINT_HEADER_LINE("fields_mask", "%d",                     blackboxConfig()->fields);

@@ -36,9 +36,12 @@ PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
 // v3: added speed (slew rate limit on the rule's own contribution). v4: added
 // curve (index into mixerCurves, applied before weight selection). v5: removed
 // reverse -- it only ever negated weight/weightNeg, so polarity is expressed
-// by their sign directly now. Existing saved rules reset to these defaults
-// rather than being reinterpreted at the new per-rule layout.
-PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 6);
+// by their sign directly now. v6->v7: removed the unused COLLECTIVE channel
+// from the MIXER_IN_* enum, renumbering every input identity after YAW --
+// existing saved rules reset to these defaults rather than having their
+// stored `input`/`output` byte silently reinterpreted against a different
+// identity under the new layout.
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 7);
 
 void pgResetFn_mixerRules(mixerRule_t *rule)
 {
@@ -104,7 +107,11 @@ void pgResetFn_mixerCurves(mixerCurve_t *curve)
     }
 }
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(mixerInput_t, MIXER_INPUT_COUNT, mixerInputs, PG_GENERIC_MIXER_INPUTS, 0);
+// v0->v1: removed the unused COLLECTIVE channel from the MIXER_IN_* enum,
+// renumbering every input identity after YAW -- this array is indexed
+// positionally by that enum, so existing saved entries reset to these
+// defaults rather than landing on a different input identity.
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerInput_t, MIXER_INPUT_COUNT, mixerInputs, PG_GENERIC_MIXER_INPUTS, 1);
 
 void pgResetFn_mixerInputs(mixerInput_t *input)
 {
@@ -114,11 +121,6 @@ void pgResetFn_mixerInputs(mixerInput_t *input)
         input[i].min  = -1000;
         input[i].max  =  1000;
     }
-
-    // Collective is unused for fixed-wing; keep at zero-rate so it has no effect
-    input[MIXER_IN_STABILIZED_COLLECTIVE].rate = 0;
-    input[MIXER_IN_STABILIZED_COLLECTIVE].min  = -1000;
-    input[MIXER_IN_STABILIZED_COLLECTIVE].max  =  1000;
 
     input[MIXER_IN_STABILIZED_THROTTLE].rate =  1000;
     input[MIXER_IN_STABILIZED_THROTTLE].min  =  0;
