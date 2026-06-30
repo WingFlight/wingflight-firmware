@@ -55,7 +55,7 @@
 #define MSP_PROTOCOL_VERSION                 0
 
 #define API_VERSION_MAJOR                    22
-#define API_VERSION_MINOR                    0
+#define API_VERSION_MINOR                    1
 #define API_VERSION_LENGTH                   2
 
 #define FLIGHT_CONTROLLER_IDENTIFIER_LENGTH  4
@@ -290,4 +290,6 @@
 #define MSP_RESERVE_2                        252
 #define MSP_DEBUGMSG                         253
 #define MSP_DEBUG                            254
+
+#define MSP2_WING_BOARD_AUTO_ALIGN           0x5F00
 #define MSP_V2_FRAME                         255

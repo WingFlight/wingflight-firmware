@@ -137,6 +137,7 @@ COMMON_SRC = \
             sensors/acceleration.c \
             sensors/acceleration_init.c \
             sensors/boardalignment.c \
+            sensors/boardalignment_auto.c \
             sensors/compass.c \
             sensors/gyro.c \
             sensors/gyro_init.c \
@@ -292,6 +293,7 @@ SPEED_OPTIMISED_SRC := $(SPEED_OPTIMISED_SRC) \
             scheduler/scheduler.c \
             sensors/acceleration.c \
             sensors/boardalignment.c \
+            sensors/boardalignment_auto.c \
             sensors/gyro.c \
             $(CMSIS_SRC) \
             $(DEVICE_STDPERIPH_SRC) \

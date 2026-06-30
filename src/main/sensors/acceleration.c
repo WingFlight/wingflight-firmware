@@ -29,16 +29,74 @@
 
 #include "common/axis.h"
 #include "common/filter.h"
+#include "common/maths.h"
 #include "common/utils.h"
 
 #include "config/feature.h"
 
 #include "sensors/acceleration_init.h"
 #include "sensors/boardalignment.h"
+#include "sensors/boardalignment_auto.h"
 
 #include "acceleration.h"
 
 FAST_DATA_ZERO_INIT acc_t acc;                       // acc access functions
+
+static void alignSensorOnly(float *dest, accDev_t *dev)
+{
+    if (dev->accAlign == ALIGN_CUSTOM) {
+        applyMatrixRotation(dest, &dev->rotationMatrix);
+        return;
+    }
+
+    const float x = dest[X];
+    const float y = dest[Y];
+    const float z = dest[Z];
+
+    switch (dev->accAlign) {
+    default:
+    case CW0_DEG:
+        dest[X] = x;
+        dest[Y] = y;
+        dest[Z] = z;
+        break;
+    case CW90_DEG:
+        dest[X] = y;
+        dest[Y] = -x;
+        dest[Z] = z;
+        break;
+    case CW180_DEG:
+        dest[X] = -x;
+        dest[Y] = -y;
+        dest[Z] = z;
+        break;
+    case CW270_DEG:
+        dest[X] = -y;
+        dest[Y] = x;
+        dest[Z] = z;
+        break;
+    case CW0_DEG_FLIP:
+        dest[X] = -x;
+        dest[Y] = y;
+        dest[Z] = -z;
+        break;
+    case CW90_DEG_FLIP:
+        dest[X] = y;
+        dest[Y] = x;
+        dest[Z] = -z;
+        break;
+    case CW180_DEG_FLIP:
+        dest[X] = x;
+        dest[Y] = -y;
+        dest[Z] = -z;
+        break;
+    case CW270_DEG_FLIP:
+        dest[X] = -y;
+        dest[Y] = -x;
+        dest[Z] = -z;
+        break;
+    }
+}
 
 static void applyAccelerationTrims(const flightDynamicsTrims_t *accelerationTrims)
 {
@@ -66,6 +124,10 @@ void accUpdate(timeUs_t currentTimeUs, rollAndPitchTrims_t *rollAndPitchTrims)
             acc.accADC[axis] = filterApply(&accelerationRuntime.accFilter[axis], acc.accADC[axis]);
         }
     }
+
+    float boardSensorVector[XYZ_AXIS_COUNT] = { acc.accADC[X], acc.accADC[Y], acc.accADC[Z] };
+    alignSensorOnly(boardSensorVector, &acc.dev);
+    boardAutoAlignProcessSample(boardSensorVector);
 
     if (acc.dev.accAlign == ALIGN_CUSTOM) {
         alignSensorViaMatrix(acc.accADC, &acc.dev.rotationMatrix);

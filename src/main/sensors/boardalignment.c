@@ -44,6 +44,8 @@ static inline bool isBoardAlignmentStandard(const boardAlignment_t *boardAlignme
 
 void initBoardAlignment(const boardAlignment_t *boardAlignment)
 {
+    standardBoardAlignment = true;
+
     if (isBoardAlignmentStandard(boardAlignment)) {
         return;
     }

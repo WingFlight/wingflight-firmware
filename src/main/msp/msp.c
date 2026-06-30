@@ -142,6 +142,7 @@
 #include "sensors/battery.h"
 #include "sensors/smartfuel.h"
 #include "sensors/boardalignment.h"
+#include "sensors/boardalignment_auto.h"
 #include "sensors/compass.h"
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
@@ -2123,6 +2124,24 @@ void mspGetOptionalIndexRange(sbuf_t *src, const range_t *range, range_t *value)
 static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_t cmdMSP, sbuf_t *src, sbuf_t *dst, mspPostProcessFnPtr *mspPostProcessFn)
 {
     switch (cmdMSP) {
+    case MSP2_WING_BOARD_AUTO_ALIGN:
+        if (sbufBytesRemaining(src) >= 1) {
+            const uint8_t action = sbufReadU8(src);
+            if (action == 1) {
+                boardAutoAlignStart();
+            }
+        }
+
+        {
+            const boardAutoAlignStatus_t status = boardAutoAlignGetStatus();
+            sbufWriteU8(dst, status.state);
+            sbufWriteS16(dst, status.rollDegrees);
+            sbufWriteS16(dst, status.pitchDegrees);
+            sbufWriteS16(dst, status.yawDegrees);
+            sbufWriteU8(dst, status.matchedSamples);
+        }
+        break;
+
 #ifdef USE_RPM_FILTER
     case MSP_RPM_FILTER_V2:
         if (sbufBytesRemaining(src) == 1) {
