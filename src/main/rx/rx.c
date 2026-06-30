@@ -76,7 +76,7 @@
 #include "rx/targetcustomserial.h"
 
 
-const char rcChannelLetters[] = "AERCT12345678";
+const char rcChannelLetters[] = "AERT123456789";
 
 static uint16_t rssi = 0;                  // range: [0;1023]
 static int16_t rssiDbm = CRSF_RSSI_MIN;    // range: [-130,20]
