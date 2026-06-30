@@ -480,10 +480,18 @@ static void crsfFlightModeInfo(char *buf)
         flightMode = "FAILSAFE";
     } else if (FLIGHT_MODE(GPS_RESCUE_MODE)) {
         flightMode = "GPS-RESCUE";
+    } else if (FLIGHT_MODE(PASSTHROUGH_MODE)) {
+        flightMode = "PASSTHROUGH";
     } else if (FLIGHT_MODE(HORIZON_MODE)) {
         flightMode = "HORIZON";
     } else if (FLIGHT_MODE(ANGLE_MODE)) {
         flightMode = "ANGLE";
+    } else if (FLIGHT_MODE(TRAINER_MODE)) {
+        flightMode = "TRAINER";
+    } else if (FLIGHT_MODE(ATTHOLD_MODE)) {
+        flightMode = "ATTITUDE";
+    } else if (FLIGHT_MODE(ALTHOLD_MODE)) {
+        flightMode = "ALTHOLD";
     } else {
         flightMode = "NORMAL";
     }
