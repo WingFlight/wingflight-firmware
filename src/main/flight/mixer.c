@@ -321,7 +321,9 @@ static void mixerUpdateInputs(void)
     if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
         mixer.input[MIXER_IN_STABILIZED_ROLL]  = mixer.input[MIXER_IN_RC_CHANNEL_ROLL];
         mixer.input[MIXER_IN_STABILIZED_PITCH] = mixer.input[MIXER_IN_RC_CHANNEL_PITCH];
-        mixer.input[MIXER_IN_STABILIZED_YAW]   = mixer.input[MIXER_IN_RC_CHANNEL_YAW];
+        // Yaw command is reversed in setpoint.c relative to raw RC (unlike other axes);
+        // keep the same reversal here so passthrough yaw direction matches stabilized.
+        mixer.input[MIXER_IN_STABILIZED_YAW]   = -mixer.input[MIXER_IN_RC_CHANNEL_YAW];
     }
 
     // Calculate cyclic
