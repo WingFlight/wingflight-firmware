@@ -1996,8 +1996,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         /* Fixed-wing throttle-based gain attenuation */
         sbufWriteU8(dst, currentPidProfile->fw_tpa_breakpoint);
         sbufWriteU8(dst, currentPidProfile->fw_tpa_rate);
-        /* Master gain */
-        sbufWriteU8(dst, currentPidProfile->master_gain);
+        /* Master gain (per axis) */
+        sbufWriteU8(dst, currentPidProfile->master_gain[PID_ROLL]);
+        sbufWriteU8(dst, currentPidProfile->master_gain[PID_PITCH]);
+        sbufWriteU8(dst, currentPidProfile->master_gain[PID_YAW]);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -2963,9 +2965,11 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->fw_tpa_breakpoint = sbufReadU8(src);
             currentPidProfile->fw_tpa_rate = sbufReadU8(src);
         }
-        /* Master gain */
-        if (sbufBytesRemaining(src) >= 1) {
-            currentPidProfile->master_gain = sbufReadU8(src);
+        /* Master gain (per axis) */
+        if (sbufBytesRemaining(src) >= 3) {
+            currentPidProfile->master_gain[PID_ROLL] = sbufReadU8(src);
+            currentPidProfile->master_gain[PID_PITCH] = sbufReadU8(src);
+            currentPidProfile->master_gain[PID_YAW] = sbufReadU8(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

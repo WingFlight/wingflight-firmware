@@ -121,15 +121,37 @@ void set_ADJUSTMENT_PID_PROFILE(int value)
     changePidProfile(value - 1);
 }
 
-int get_ADJUSTMENT_MASTER_GAIN(void)
+int get_ADJUSTMENT_MASTER_GAIN_PITCH(void)
 {
-    return currentPidProfile->master_gain;
+    return currentPidProfile->master_gain[PID_PITCH];
 }
 
-void set_ADJUSTMENT_MASTER_GAIN(int value)
+void set_ADJUSTMENT_MASTER_GAIN_PITCH(int value)
 {
-    currentPidProfile->master_gain = value;
-    pid.masterGain = value * 0.01f;
+    currentPidProfile->master_gain[PID_PITCH] = value;
+    pid.masterGain[PID_PITCH] = value * 0.01f;
+}
+
+int get_ADJUSTMENT_MASTER_GAIN_ROLL(void)
+{
+    return currentPidProfile->master_gain[PID_ROLL];
+}
+
+void set_ADJUSTMENT_MASTER_GAIN_ROLL(int value)
+{
+    currentPidProfile->master_gain[PID_ROLL] = value;
+    pid.masterGain[PID_ROLL] = value * 0.01f;
+}
+
+int get_ADJUSTMENT_MASTER_GAIN_YAW(void)
+{
+    return currentPidProfile->master_gain[PID_YAW];
+}
+
+void set_ADJUSTMENT_MASTER_GAIN_YAW(int value)
+{
+    currentPidProfile->master_gain[PID_YAW] = value;
+    pid.masterGain[PID_YAW] = value * 0.01f;
 }
 
 int get_ADJUSTMENT_PITCH_P_GAIN(void)
@@ -398,10 +420,12 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     // PID algorithm
     pid.pidMode = pidProfile->pid_mode;
 
-    // Live P/I/D/F scale - applied at the point of use (pidApplyMode0/1), not
-    // baked into pid.coef[], so it stays correct regardless of which gain
-    // adjustment (including this one) last touched the coefficients.
-    pid.masterGain = pidProfile->master_gain * 0.01f;
+    // Live per-axis P/I/D/F scale - applied at the point of use
+    // (pidApplyMode0/1), not baked into pid.coef[], so it stays correct
+    // regardless of which gain adjustment (including this one) last touched
+    // the coefficients.
+    for (int i = 0; i < PID_AXIS_COUNT; i++)
+        pid.masterGain[i] = pidProfile->master_gain[i] * 0.01f;
 
     // Fixed-wing throttle-based gain attenuation
     pid.fwTpaBreakpoint = pidProfile->fw_tpa_breakpoint * 0.01f;
@@ -616,7 +640,7 @@ static void pidApplyMode0(uint8_t axis)
   //// F-term
 
     // Calculate feedforward component
-    pid.data[axis].F = pid.coef[axis].Kf * pid.masterGain * setpoint;
+    pid.data[axis].F = pid.coef[axis].Kf * pid.masterGain[axis] * setpoint;
 
   //// PID Sum
 
@@ -665,7 +689,7 @@ static void pidApplyMode1(uint8_t axis)
   //// P-term
 
     // Calculate P-component
-    pid.data[axis].P = pid.coef[axis].Kp * pid.masterGain * atten * errorRate;
+    pid.data[axis].P = pid.coef[axis].Kp * pid.masterGain[axis] * atten * errorRate;
 
 
   //// D-term (gyro only)
@@ -674,7 +698,7 @@ static void pidApplyMode1(uint8_t axis)
     const float dTerm = difFilterApply(&pid.dtermFilter[axis], -gyroRate);
 
     // Calculate D-component
-    pid.data[axis].D = pid.coef[axis].Kd * pid.masterGain * atten * dTerm;
+    pid.data[axis].D = pid.coef[axis].Kd * pid.masterGain[axis] * atten * dTerm;
 
 
   //// I-term
@@ -690,7 +714,7 @@ static void pidApplyMode1(uint8_t axis)
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
-    pid.data[axis].I = pid.coef[axis].Ki * pid.masterGain * pid.data[axis].axisError;
+    pid.data[axis].I = pid.coef[axis].Ki * pid.masterGain[axis] * pid.data[axis].axisError;
 
     // Apply error decay (fixed rate -- no ground/airborne distinction; a plane
     // sitting on its wheels isn't at risk of tipping over from I-term windup
@@ -704,7 +728,7 @@ static void pidApplyMode1(uint8_t axis)
   //// Feedforward
 
     // Calculate F component
-    pid.data[axis].F = pid.coef[axis].Kf * pid.masterGain * setpoint;
+    pid.data[axis].F = pid.coef[axis].Kf * pid.masterGain[axis] * setpoint;
 
 
   //// Feedforward Boost (FF Derivative)

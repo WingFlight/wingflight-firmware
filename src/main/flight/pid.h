@@ -78,7 +78,7 @@ typedef struct pid_s {
 
     uint8_t pidMode;
 
-    float masterGain;       // Live P/I/D/F scale (1.0 = unscaled) - see pidProfile_t.master_gain
+    float masterGain[PID_AXIS_COUNT];  // Live per-axis P/I/D/F scale (1.0 = unscaled) - see pidProfile_t.master_gain
 
     float fwTpaBreakpoint;
     float fwTpaRate;
@@ -126,7 +126,9 @@ float pidGetOutput(int axis);
 const pidAxisData_t * pidGetAxisData(void);
 
 ADJFUN_DECLARE(PID_PROFILE)
-ADJFUN_DECLARE(MASTER_GAIN)
+ADJFUN_DECLARE(MASTER_GAIN_PITCH)
+ADJFUN_DECLARE(MASTER_GAIN_ROLL)
+ADJFUN_DECLARE(MASTER_GAIN_YAW)
 ADJFUN_DECLARE(PITCH_P_GAIN)
 ADJFUN_DECLARE(ROLL_P_GAIN)
 ADJFUN_DECLARE(YAW_P_GAIN)

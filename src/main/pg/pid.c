@@ -38,9 +38,10 @@ PG_RESET_TEMPLATE(pidConfig_t, pidConfig,
     .filter_process_denom = FILTER_PROCESS_DENOM_DEFAULT,
 );
 
-// v0->v1: added master_gain - old saved profiles reset to defaults rather
-// than reinterpreting their stored bytes at the new, wider struct layout.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 1);
+// v0->v1: added master_gain. v1->v2: master_gain widened from one shared
+// value to one per axis - old saved profiles reset to defaults rather than
+// reinterpreting their stored bytes at the new, wider struct layout.
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 2);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -52,7 +53,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
             [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 100, .B = 0, },
         },
         .pid_mode = 1,
-        .master_gain = 100,
+        .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
         .fw_tpa_breakpoint = 100,
         .fw_tpa_rate = 0,
         .iterm_decay_time = 6,

@@ -198,7 +198,9 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 
     ADJ_ENTRY(BATTERY_PROFILE,              1, BATTERY_PROFILE_COUNT),
 
-    ADJ_ENTRY(MASTER_GAIN,                  25, 200),
+    ADJ_ENTRY(MASTER_GAIN_PITCH,            25, 200),
+    ADJ_ENTRY(MASTER_GAIN_ROLL,             25, 200),
+    ADJ_ENTRY(MASTER_GAIN_YAW,              25, 200),
 
 };
 
