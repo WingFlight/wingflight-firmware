@@ -642,6 +642,12 @@ void processRxModes(timeUs_t currentTimeUs)
 
     updateActivatedModes();
 
+    if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
+        ENABLE_FLIGHT_MODE(PASSTHROUGH_MODE);
+    } else {
+        DISABLE_FLIGHT_MODE(PASSTHROUGH_MODE);
+    }
+
     if (!cliMode &&
 #ifdef USE_CMS
         !cmsInMenu &&
