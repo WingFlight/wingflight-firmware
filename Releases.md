@@ -1,10 +1,7 @@
-# 0.0.3
-
-Fix M1 motor rule
-
 # 0.0.2
 
-Adjust pid defaults
+Added in ability to set master gains for RPY via msp and adjustment functions
+New flight mode sensor
 
 # 0.0.1
 
