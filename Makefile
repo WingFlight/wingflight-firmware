@@ -579,7 +579,12 @@ binary:
 	$(V0) $(MAKE) $(JFLAG) $(TARGET_BIN)
 
 hex:
+
+ifeq ($(TARGET),XPLANE)
+	$(V0) $(MAKE) $(JFLAG) $(TARGET_ELF)
+else
 	$(V0) $(MAKE) $(JFLAG) $(TARGET_HEX)
+endif
 
 unbrick_$(TARGET): $(TARGET_HEX)
 	$(V0) stty -F $(SERIAL_DEVICE) raw speed 115200 -crtscts cs8 -parenb -cstopb -ixon

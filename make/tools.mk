@@ -72,6 +72,67 @@ arm_sdk_clean:
 	$(V1) [ ! -d "$(ARM_SDK_DIR)" ] || $(RM) -r $(ARM_SDK_DIR)
 	$(V1) [ ! -d "$(DL_DIR)" ] || $(RM) -r $(DL_DIR)
 
+
+##############################
+#
+# X-Plane Plugin SDK
+#
+##############################
+
+# SDK package version (e.g. 430 -> XPSDK430.zip)
+XPLANE_SDK_VERSION ?= 430
+XPLANE_SDK_BASENAME := XPSDK$(XPLANE_SDK_VERSION)
+XPLANE_SDK_DIR ?= $(abspath $(ROOT)/../$(XPLANE_SDK_BASENAME))
+XPLANE_SDK_URL ?= https://developer.x-plane.com/wp-content/plugins/code-sample-generation/sdk_zip_files/$(XPLANE_SDK_BASENAME).zip
+XPLANE_SDK_FILE := $(notdir $(XPLANE_SDK_URL))
+XPLANE_SDK_INSTALL_MARKER := $(XPLANE_SDK_DIR)/SDK/CHeaders/XPLM/XPLMPlugin.h
+
+ifeq ($(OSFAMILY), windows)
+XPLANE_SDK_DIR_WIN := $(shell cygpath -w "$(XPLANE_SDK_DIR)")
+XPLANE_SDK_ARCHIVE_WIN := $(shell cygpath -w "$(DL_DIR)/$(XPLANE_SDK_FILE)")
+endif
+
+## xplane_sdk_install : Install X-Plane SDK locally in repository root (../XPSDK<version>)
+.PHONY: xplane_sdk_install
+xplane_sdk_install: | $(DL_DIR)
+xplane_sdk_install: xplane_sdk_download $(XPLANE_SDK_INSTALL_MARKER)
+
+$(XPLANE_SDK_INSTALL_MARKER):
+	$(V1) [ ! -d "$(XPLANE_SDK_DIR)" ] || $(RM) -rf "$(XPLANE_SDK_DIR)"
+	$(V1) mkdir -p "$(XPLANE_SDK_DIR)"
+
+ifeq ($(OSFAMILY), windows)
+	$(V1) powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '$(XPLANE_SDK_ARCHIVE_WIN)' -DestinationPath '$(XPLANE_SDK_DIR_WIN)' -Force"
+else
+	$(V1) unzip -q "$(DL_DIR)/$(XPLANE_SDK_FILE)" -d "$(XPLANE_SDK_DIR)"
+endif
+
+## xplane_sdk_download : Download X-Plane SDK archive to downloads/
+.PHONY: xplane_sdk_download
+xplane_sdk_download: | $(DL_DIR)
+xplane_sdk_download: $(DL_DIR)/$(XPLANE_SDK_FILE)
+
+$(DL_DIR)/$(XPLANE_SDK_FILE):
+	$(V1) if [ -f "$(DL_DIR)/$(XPLANE_SDK_FILE)" ]; then \
+		curl -L -k -o "$(DL_DIR)/$(XPLANE_SDK_FILE)" -z "$(DL_DIR)/$(XPLANE_SDK_FILE)" "$(XPLANE_SDK_URL)" ; \
+	else \
+		curl -L -k -o "$(DL_DIR)/$(XPLANE_SDK_FILE)" "$(XPLANE_SDK_URL)" ; \
+	fi
+
+## xplane_sdk_clean   : Uninstall locally installed X-Plane SDK and archive
+.PHONY: xplane_sdk_clean
+xplane_sdk_clean:
+	$(V1) [ ! -d "$(XPLANE_SDK_DIR)" ] || $(RM) -rf "$(XPLANE_SDK_DIR)"
+	$(V1) [ ! -f "$(DL_DIR)/$(XPLANE_SDK_FILE)" ] || $(RM) -f "$(DL_DIR)/$(XPLANE_SDK_FILE)"
+
+## xplane_sdk_info    : Print X-Plane SDK installer configuration
+.PHONY: xplane_sdk_info
+xplane_sdk_info:
+	@echo "XPLANE_SDK_VERSION=$(XPLANE_SDK_VERSION)"
+	@echo "XPLANE_SDK_URL=$(XPLANE_SDK_URL)"
+	@echo "XPLANE_SDK_DIR=$(XPLANE_SDK_DIR)"
+	@echo "XPLANE_SDK_INSTALL_MARKER=$(XPLANE_SDK_INSTALL_MARKER)"
+
 .PHONY: openocd_win_install
 
 openocd_win_install: | $(DL_DIR) $(TOOLS_DIR)

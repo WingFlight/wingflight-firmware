@@ -22,6 +22,15 @@
 
 #define NOINLINE __attribute__((noinline))
 
+#ifndef ffs
+#define ffs __builtin_ffs
+#endif
+
+#ifndef __unused
+#define __unused __attribute__((unused))
+#endif
+
+// For SITL targets (like XPLANE), skip hardware-specific includes
 #if defined(STM32G474xx)
 #include "stm32g4xx.h"
 #include "stm32g4xx_hal.h"

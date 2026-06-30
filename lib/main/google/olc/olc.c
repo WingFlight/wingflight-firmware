@@ -3,6 +3,7 @@
 #include <float.h>
 #include <math.h>
 #include <memory.h>
+#include <string.h>
 #include <stdio.h>
 #include "olc_private.h"
 

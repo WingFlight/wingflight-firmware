@@ -44,8 +44,6 @@ TARGET_MAP  = $(OBJECT_DIR)/$(FORKNAME)_$(TARGET).map
 LD_FLAGS    := \
               -lm \
               -lpthread \
-              -lc \
-              -lrt \
               $(ARCH_FLAGS) \
               $(LTO_FLAGS) \
               $(DEBUG_FLAGS) \
@@ -53,6 +51,12 @@ LD_FLAGS    := \
               -Wl,-L$(LINKER_DIR) \
               -Wl,--cref \
               -T$(LD_SCRIPT)
+
+ifneq ($(OSFAMILY),windows)
+LD_FLAGS    += -lc -lrt
+else
+LD_FLAGS    += -lws2_32 -lwsock32 -liphlpapi
+endif
 
 ifneq ($(filter SITL_STATIC,$(OPTIONS)),)
 LD_FLAGS     += \

@@ -67,7 +67,9 @@ typedef struct sbusChannels8ch_s {
     uint8_t flags;
 } __attribute__((__packed__)) sbusChannels8ch_t;
 
+#ifndef TARGET_XPLANE
 STATIC_ASSERT(sizeof(sbusChannels8ch_t) == 12, sizeof(subsChannels8ch_t) incorrect);
+#endif
 
 uint8_t sbusChannelsDecode8ch(rxRuntimeState_t *rxRuntimeState, const sbusChannels8ch_t *channels);
 
@@ -99,6 +101,8 @@ typedef struct sbusChannels24ch_s {
     uint8_t flags;
 } __attribute__((__packed__)) sbusChannels24ch_t;
 
+#ifndef TARGET_XPLANE
 STATIC_ASSERT(sizeof(sbusChannels24ch_t) == 34, sizeof(subsChannels24ch_t) incorrect);
+#endif
 
 uint8_t sbusChannelsDecode24ch(rxRuntimeState_t *rxRuntimeState, const sbusChannels24ch_t *channels);

@@ -160,7 +160,11 @@ void servoInit(void)
             break;
 
         IOInit(io, OWNER_SERVO, RESOURCE_INDEX(index));
+#ifdef TARGET_XPLANE
+        IOConfigGPIO(io, IOCFG_OUT_PP);
+#else
         IOConfigGPIOAF(io, IOCFG_AF_PP, timer[index]->alternateFunction);
+#endif
     }
 
     servoCount = index;
