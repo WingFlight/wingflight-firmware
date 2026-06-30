@@ -90,6 +90,8 @@ typedef struct pidProfile_s {
 
     uint8_t             pid_mode;
 
+    uint8_t             master_gain;        // Live P/I/D/F scale, percent (100 = unscaled) - in-flight tuning aid, doesn't alter the underlying gains
+
     uint8_t             fw_tpa_breakpoint;
     uint8_t             fw_tpa_rate;
 

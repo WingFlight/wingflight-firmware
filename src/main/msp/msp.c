@@ -1996,6 +1996,8 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         /* Fixed-wing throttle-based gain attenuation */
         sbufWriteU8(dst, currentPidProfile->fw_tpa_breakpoint);
         sbufWriteU8(dst, currentPidProfile->fw_tpa_rate);
+        /* Master gain */
+        sbufWriteU8(dst, currentPidProfile->master_gain);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -2960,6 +2962,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (sbufBytesRemaining(src) >= 2) {
             currentPidProfile->fw_tpa_breakpoint = sbufReadU8(src);
             currentPidProfile->fw_tpa_rate = sbufReadU8(src);
+        }
+        /* Master gain */
+        if (sbufBytesRemaining(src) >= 1) {
+            currentPidProfile->master_gain = sbufReadU8(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);
