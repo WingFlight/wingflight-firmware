@@ -573,7 +573,6 @@ static uint16_t getRxfailValue(uint8_t channel)
         case ROLL:
         case PITCH:
         case YAW:
-        case COLLECTIVE:
             return getFailsafeCenter();
         case THROTTLE:
             return getFailsafeThrottle();

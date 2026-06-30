@@ -58,7 +58,7 @@ const uint8_t hidChannelMapping[] = {
     PITCH,    // Y
     AUX2,     // Z
     YAW,      // X Rotation
-    COLLECTIVE,// Z Rotation
+    AUX12,    // Z Rotation
     THROTTLE, // Y Rotation
     AUX3,     // Slider
     AUX1,     // Dial

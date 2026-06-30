@@ -115,11 +115,6 @@ void pgResetFn_mixerInputs(mixerInput_t *input)
         input[i].max  =  1000;
     }
 
-    // Collective is unused for fixed-wing; keep at zero-rate so it has no effect
-    input[MIXER_IN_STABILIZED_COLLECTIVE].rate = 0;
-    input[MIXER_IN_STABILIZED_COLLECTIVE].min  = -1000;
-    input[MIXER_IN_STABILIZED_COLLECTIVE].max  =  1000;
-
     input[MIXER_IN_STABILIZED_THROTTLE].rate =  1000;
     input[MIXER_IN_STABILIZED_THROTTLE].min  =  0;
     input[MIXER_IN_STABILIZED_THROTTLE].max  =  1000;
