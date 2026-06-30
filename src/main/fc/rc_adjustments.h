@@ -156,6 +156,9 @@ typedef enum {
     // Attitude hold mode
     ADJUSTMENT_ATTHOLD_GAIN              = 83,
 
+    // Live P/I/D/F scale (percent) - in-flight tuning aid, doesn't alter the underlying gains
+    ADJUSTMENT_MASTER_GAIN               = 84,
+
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;
 

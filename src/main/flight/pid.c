@@ -121,6 +121,17 @@ void set_ADJUSTMENT_PID_PROFILE(int value)
     changePidProfile(value - 1);
 }
 
+int get_ADJUSTMENT_MASTER_GAIN(void)
+{
+    return currentPidProfile->master_gain;
+}
+
+void set_ADJUSTMENT_MASTER_GAIN(int value)
+{
+    currentPidProfile->master_gain = value;
+    pid.masterGain = value * 0.01f;
+}
+
 int get_ADJUSTMENT_PITCH_P_GAIN(void)
 {
     return currentPidProfile->pid[PID_PITCH].P;
@@ -387,6 +398,11 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     // PID algorithm
     pid.pidMode = pidProfile->pid_mode;
 
+    // Live P/I/D/F scale - applied at the point of use (pidApplyMode0/1), not
+    // baked into pid.coef[], so it stays correct regardless of which gain
+    // adjustment (including this one) last touched the coefficients.
+    pid.masterGain = pidProfile->master_gain * 0.01f;
+
     // Fixed-wing throttle-based gain attenuation
     pid.fwTpaBreakpoint = pidProfile->fw_tpa_breakpoint * 0.01f;
     pid.fwTpaRate = pidProfile->fw_tpa_rate * 0.01f;
@@ -600,7 +616,7 @@ static void pidApplyMode0(uint8_t axis)
   //// F-term
 
     // Calculate feedforward component
-    pid.data[axis].F = pid.coef[axis].Kf * setpoint;
+    pid.data[axis].F = pid.coef[axis].Kf * pid.masterGain * setpoint;
 
   //// PID Sum
 
@@ -649,7 +665,7 @@ static void pidApplyMode1(uint8_t axis)
   //// P-term
 
     // Calculate P-component
-    pid.data[axis].P = pid.coef[axis].Kp * atten * errorRate;
+    pid.data[axis].P = pid.coef[axis].Kp * pid.masterGain * atten * errorRate;
 
 
   //// D-term (gyro only)
@@ -658,7 +674,7 @@ static void pidApplyMode1(uint8_t axis)
     const float dTerm = difFilterApply(&pid.dtermFilter[axis], -gyroRate);
 
     // Calculate D-component
-    pid.data[axis].D = pid.coef[axis].Kd * atten * dTerm;
+    pid.data[axis].D = pid.coef[axis].Kd * pid.masterGain * atten * dTerm;
 
 
   //// I-term
@@ -674,7 +690,7 @@ static void pidApplyMode1(uint8_t axis)
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
-    pid.data[axis].I = pid.coef[axis].Ki * pid.data[axis].axisError;
+    pid.data[axis].I = pid.coef[axis].Ki * pid.masterGain * pid.data[axis].axisError;
 
     // Apply error decay (fixed rate -- no ground/airborne distinction; a plane
     // sitting on its wheels isn't at risk of tipping over from I-term windup
@@ -688,7 +704,7 @@ static void pidApplyMode1(uint8_t axis)
   //// Feedforward
 
     // Calculate F component
-    pid.data[axis].F = pid.coef[axis].Kf * setpoint;
+    pid.data[axis].F = pid.coef[axis].Kf * pid.masterGain * setpoint;
 
 
   //// Feedforward Boost (FF Derivative)

@@ -1027,6 +1027,8 @@ const clivalue_t valueTable[] = {
 
     { "pid_mode",                   VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 9 }, PG_PID_PROFILE, offsetof(pidProfile_t, pid_mode) },
 
+    { "master_gain",                VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 25, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, master_gain) },
+
     { "fw_tpa_breakpoint",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_breakpoint) },
     { "fw_tpa_rate",                VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_rate) },
 
