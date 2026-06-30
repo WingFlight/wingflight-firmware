@@ -2,6 +2,7 @@
 
 Added in ability to set master gains for RPY via msp and adjustment functions
 New flight mode sensor
+Remove collective from firmware
 
 # 0.0.1
 
