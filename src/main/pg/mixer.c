@@ -36,9 +36,9 @@ PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
 // v3: added speed (slew rate limit on the rule's own contribution). v4: added
 // curve (index into mixerCurves, applied before weight selection). v5: removed
 // reverse -- it only ever negated weight/weightNeg, so polarity is expressed
-// by their sign directly now. Existing saved rules reset to these defaults
-// rather than being reinterpreted at the new per-rule layout.
-PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 6);
+// by their sign directly now. v6: added condition. v7: reset stale saved
+// rules that could still point throttle at S9 after the motor output moved to M1.
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 7);
 
 void pgResetFn_mixerRules(mixerRule_t *rule)
 {
@@ -125,4 +125,3 @@ void pgResetFn_mixerInputs(mixerInput_t *input)
         input[i].max  =  1000;
     }
 }
-
