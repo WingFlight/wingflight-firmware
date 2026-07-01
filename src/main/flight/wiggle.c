@@ -37,9 +37,9 @@
 #include "flight/wiggle.h"
 
 
-// axis[] mirrors the 4 consecutive MIXER_IN_STABILIZED_{ROLL,PITCH,YAW,COLLECTIVE}
-// slots mixerSetInput() reads from while disarmed (see mixer.c); index 3 (the
-// collective slot) feeds a permanently zero-rate mixer input on fixed-wing.
+// axis[0..2] mirror the MIXER_IN_STABILIZED_{ROLL,PITCH,YAW} slots mixerSetInput()
+// reads from while disarmed (see mixer.c); axis[3] (legacy collective slot) is
+// unused on fixed-wing and not read by the mixer.
 typedef struct {
     bitmap_t    flags;
     float       strength;

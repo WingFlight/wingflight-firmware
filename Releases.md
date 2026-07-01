@@ -2,6 +2,7 @@
 
 Added in ability to set master gains for RPY via msp and adjustment functions
 New flight mode sensor
+Reset mixer rules so stale saved throttle mixes are rebuilt with M1 as the default motor output.
 
 # 0.0.1
 
