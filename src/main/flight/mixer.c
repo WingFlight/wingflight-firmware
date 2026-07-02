@@ -43,6 +43,7 @@
 #include "flight/mixer.h"
 #include "flight/wiggle.h"
 #include "flight/logic_condition.h"
+#include "flight/idle_governor.h"
 
 #include "rx/rx.h"
 
@@ -324,8 +325,8 @@ static void mixerUpdateInputs(void)
     // Calculate cyclic
     mixerUpdateCyclic();
 
-    // Update throttle (no governor -- direct passthrough)
-    mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, getThrottle());
+    // Update throttle (idle governor holds RPM at idle when BOXIDLEUP is engaged)
+    mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, idleGovernorApply(getThrottle()));
 }
 
 void mixerUpdate(timeUs_t currentTimeUs)

@@ -82,6 +82,7 @@
 #include "pg/dyn_notch.h"
 #include "pg/flash.h"
 #include "pg/gyrodev.h"
+#include "pg/idle_governor.h"
 #include "pg/max7456.h"
 #include "pg/mco.h"
 #include "pg/motor.h"
@@ -796,6 +797,12 @@ const clivalue_t valueTable[] = {
     { "min_throttle",               VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX }, PG_MOTOR_CONFIG, offsetof(motorConfig_t, minthrottle) },
     { "max_throttle",               VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX }, PG_MOTOR_CONFIG, offsetof(motorConfig_t, maxthrottle) },
     { "min_command",                VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX }, PG_MOTOR_CONFIG, offsetof(motorConfig_t, mincommand) },
+
+// PG_IDLE_GOVERNOR_CONFIG
+    { "idle_governor_rpm",          VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 50000 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_rpm) },
+    { "idle_governor_gain",         VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 1000 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_gain) },
+    { "idle_governor_handover",     VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_handover) },
+    { "idle_governor_ceiling",      VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_ceiling) },
 #ifdef USE_DSHOT
 #ifdef USE_DSHOT_DMAR
     { "dshot_burst",                VAR_UINT8  | HARDWARE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON_AUTO }, PG_MOTOR_CONFIG, offsetof(motorConfig_t, dev.useBurstDshot) },
