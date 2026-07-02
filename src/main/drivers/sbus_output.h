@@ -47,10 +47,8 @@ typedef struct {
     uint8_t endByte;
 } __attribute__((__packed__)) sbusOutFrame_t;
 
-#ifndef TARGET_XPLANE
 STATIC_ASSERT(sizeof(sbusOutFrame_t) == 25,
               sbus_output_sbus_frame_size_mismatch);
-#endif
 
 // Routine function called by the scheduler or timer
 void sbusOutUpdate(timeUs_t currentTimeUs);

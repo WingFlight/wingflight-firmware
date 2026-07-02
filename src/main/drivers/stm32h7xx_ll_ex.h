@@ -20,10 +20,7 @@
 
 #pragma once
 
-#ifndef TARGET_XPLANE  // Skip for SITL/XPLANE targets
 #include "stm32h7xx.h"
-#endif
-
 #include "common/utils.h"
 
 // XXX Followings are straight copy of stm32f7xx_ll_ex.h.
@@ -31,7 +28,6 @@
 
 #define DMA_STREAM_MASK 0xFFU
 
-#ifndef TARGET_XPLANE  // Skip static assertions for SITL targets
 __STATIC_INLINE DMA_TypeDef *LL_EX_DMA_Stream_to_DMA(DMA_Stream_TypeDef *DMAx_Streamy)
 {
     // clear stream address

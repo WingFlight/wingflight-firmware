@@ -43,7 +43,6 @@
 static const struct serialPortVTable tcpVTable; // Forward
 static tcpPort_t tcpSerialPorts[SERIAL_PORT_COUNT];
 static bool tcpPortInitialized[SERIAL_PORT_COUNT];
-static bool dyadInitialized = false;
 static bool tcpStart = false;
 bool tcpIsStart(void) {
     return tcpStart;
@@ -78,19 +77,8 @@ static void onAccept(dyad_Event *e) {
     dyad_addListener(e->remote, DYAD_EVENT_DATA, onData, e->udata);
     dyad_addListener(e->remote, DYAD_EVENT_CLOSE, onClose, e->udata);
 }
-
-static void onError(dyad_Event *e) {
-    tcpPort_t* s = (tcpPort_t*)(e->udata);
-    fprintf(stderr, "[ERR]UART%u: %s\n", s ? (unsigned)s->id + 1 : 0U, e->msg ? e->msg : "unknown");
-}
-
 static tcpPort_t* tcpReconfigure(tcpPort_t *s, int id)
 {
-    if (!dyadInitialized) {
-        dyad_init();
-        dyadInitialized = true;
-    }
-
     if (tcpPortInitialized[id]) {
         fprintf(stderr, "port is already initialized!\n");
         return s;
@@ -117,9 +105,8 @@ static tcpPort_t* tcpReconfigure(tcpPort_t *s, int id)
     s->serv = dyad_newStream();
     dyad_setNoDelay(s->serv, 1);
     dyad_addListener(s->serv, DYAD_EVENT_ACCEPT, onAccept, s);
-    dyad_addListener(s->serv, DYAD_EVENT_ERROR, onError, s);
 
-    if (dyad_listenEx(s->serv, "0.0.0.0", BASE_PORT + id + 1, 10) == 0) {
+    if (dyad_listenEx(s->serv, NULL, BASE_PORT + id + 1, 10) == 0) {
         fprintf(stderr, "bind port %u for UART%u\n", (unsigned)BASE_PORT + id + 1, (unsigned)id + 1);
     } else {
         fprintf(stderr, "bind port %u for UART%u failed!!\n", (unsigned)BASE_PORT + id + 1, (unsigned)id + 1);

@@ -114,8 +114,6 @@ bool accDetect(accDev_t *dev, accelerationSensor_e accHardwareToUse)
 {
     accelerationSensor_e accHardware = ACC_NONE;
 
-    UNUSED(dev);
-
 #ifdef USE_ACC_ADXL345
     drv_adxl345_config_t acc_params;
 #endif

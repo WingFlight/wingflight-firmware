@@ -20,29 +20,7 @@
 
 #pragma once
 
-#ifdef _WIN32
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-
-    // Windows headers define BAUD_* macros that collide with io/serial.h enum names.
-    #ifdef BAUD_9600
-    #undef BAUD_9600
-    #endif
-    #ifdef BAUD_19200
-    #undef BAUD_19200
-    #endif
-    #ifdef BAUD_38400
-    #undef BAUD_38400
-    #endif
-    #ifdef BAUD_57600
-    #undef BAUD_57600
-    #endif
-    #ifdef BAUD_115200
-    #undef BAUD_115200
-    #endif
-#else
-    #include <netinet/in.h>
-#endif
+#include <netinet/in.h>
 #include <pthread.h>
 #include "dyad.h"
 

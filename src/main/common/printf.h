@@ -55,10 +55,6 @@
 
 #include "io/serial.h"
 
-#ifndef __unused
-#define __unused __attribute__((unused))
-#endif
-
 typedef void (*putc_f) (void *, char);
 
 void printfITMInit(void);

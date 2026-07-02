@@ -19,8 +19,6 @@
 
 #include "platform.h"
 
-#if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
-
 #include "build/atomic.h"
 
 #include "pg/gps.h"
@@ -37,6 +35,8 @@
 
 #include "drivers/fbus_sensor.h"
 #include "sensors/sensors.h"
+
+#if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
 
 static const char* const fbusSensorNames[] = {
     [FBUS_SENSOR_VARIO2]        = "VARIO2",

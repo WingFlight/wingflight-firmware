@@ -100,10 +100,6 @@ static void alignSensorOnly(float *dest, accDev_t *dev)
 
 static void applyAccelerationTrims(const flightDynamicsTrims_t *accelerationTrims)
 {
-    if (!accelerationTrims) {
-        return;
-    }
-
     acc.accADC[X] -= accelerationTrims->raw[X];
     acc.accADC[Y] -= accelerationTrims->raw[Y];
     acc.accADC[Z] -= accelerationTrims->raw[Z];

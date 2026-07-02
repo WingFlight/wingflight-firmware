@@ -95,10 +95,8 @@ typedef struct {
     fbusMasterDownlink_t downlink;
 } __attribute__((__packed__)) fbusMasterFrame_t;
 
-#ifndef TARGET_XPLANE
 STATIC_ASSERT(sizeof(fbusMasterControl16_t) == FBUS_MASTER_CONTROL_FRAME_SIZE,
               fbus_master_frame_size_mismatch);
-#endif
 
 // Routine function called by the scheduler or timer
 void fbusMasterUpdate(timeUs_t currentTimeUs);
