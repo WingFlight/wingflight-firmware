@@ -24,20 +24,7 @@
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER) || defined(USE_BUS_SERVO)
 
 #include "io/serial.h"
-#include "pg/pg.h"
-#include "pg/pg_ids.h"
 #include "pg/bus_servo.h"
-
-PG_REGISTER_WITH_RESET_FN(busServoConfig_t, busServoConfig,
-                          PG_BUS_SERVO_CONFIG, 0);
-
-void pgResetFn_busServoConfig(busServoConfig_t *config)
-{
-    // Default first 8 channels to MIXER, rest to RX
-    for (int i = 0; i < BUS_SERVO_CHANNELS; i++) {
-        config->sourceType[i] = (i < 8) ? BUS_SERVO_SOURCE_MIXER : BUS_SERVO_SOURCE_RX;
-    }
-}
 
 bool hasBusServosConfigured(void)
 {

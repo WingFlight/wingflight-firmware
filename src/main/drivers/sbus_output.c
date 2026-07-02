@@ -178,7 +178,7 @@ float sbusOutGetValueMixer(uint8_t channel)
     if (!ARMING_FLAG(ARMED) && hasServoOverride(servoIndex))
         input = getServoOverride(servoIndex) / 1000.0f;
     else
-        input = mixerGetServoOutput(servoIndex - BUS_SERVO_OFFSET);
+        input = mixerGetServoOutput(servoIndex);
 
 #ifdef USE_SERVO_GEOMETRY_CORRECTION
     // Apply geometry correction if enabled for this servo
@@ -236,19 +236,6 @@ void sbusOutProcessMixerChannels(float output[SBUS_OUT_CHANNELS])
     sbusCyclicRatioValid = false;
 }
 
-// Get channel value based on source type (RX passthrough or processed mixer output)
-static float sbusOutGetChannelValue(uint8_t channel, const float *mixerOutputs)
-{
-    const busServoSourceType_e source_type = busServoConfig()->sourceType[channel];
-    switch (source_type) {
-    case BUS_SERVO_SOURCE_RX:
-        return sbusOutGetRX(channel);
-    case BUS_SERVO_SOURCE_MIXER:
-        return mixerOutputs[channel];
-    }
-    return 0;
-}
-
 static uint16_t sbusOutConvertToSbus(uint8_t channel, float pwm)
 {
     // For digital channels (16-17), convert to 0 or 1
@@ -281,7 +268,7 @@ void sbusOutUpdate(timeUs_t currentTimeUs)
     sbusOutFrame_t frame;
     uint16_t channels[SBUS_OUT_CHANNELS];
     for (int ch = 0; ch < SBUS_OUT_CHANNELS; ch++) {
-        float value = sbusOutGetChannelValue(ch, mixerOutputs);
+        float value = mixerOutputs[ch];
         channels[ch] = sbusOutConvertToSbus(ch, value);
         
         // Store the output value for getServoOutput() to retrieve

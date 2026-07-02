@@ -2109,14 +2109,14 @@ static void printServoStatus(uint8_t index)
     const bool isBusServo = hasBusServos && index >= BUS_SERVO_OFFSET;
     
     if (isBusServo) {
-        // Bus servos: S9-S26 (indices 8-25) displayed as S1-S18
+        // Bus servos occupy mixer slots S9-S26 and are numbered Bus Servo #1-#18.
         const int busServoNum = index - BUS_SERVO_OFFSET + 1;
         if (hasServoOverride(index))
-            cliPrintLinef("servo %d (S%d): %4dus %3d OVERRIDE", index+1, busServoNum,
+            cliPrintLinef("servo %d (Bus Servo %d, S%d): %4dus %3d OVERRIDE", index+1, busServoNum, index + 1,
                 getServoOutput(index),
                 getServoOverride(index));
         else
-            cliPrintLinef("servo %d (S%d): %4dus %3d", index+1, busServoNum,
+            cliPrintLinef("servo %d (Bus Servo %d, S%d): %4dus %3d", index+1, busServoNum, index + 1,
                 getServoOutput(index),
                 lrintf(mixerGetServoOutput(index) * 1000));
     } else {
@@ -2138,12 +2138,12 @@ static void printServoOverride(uint8_t index)
     const bool isBusServo = hasBusServos && index >= BUS_SERVO_OFFSET;
     
     if (isBusServo) {
-        // Bus servos: S9-S26 (indices 8-25) displayed as S1-S18
+        // Bus servos occupy mixer slots S9-S26 and are numbered Bus Servo #1-#18.
         const int busServoNum = index - BUS_SERVO_OFFSET + 1;
         if (hasServoOverride(index))
-            cliPrintLinef("servo override %d (S%d) %d", index+1, busServoNum, getServoOverride(index));
+            cliPrintLinef("servo override %d (Bus Servo %d, S%d) %d", index+1, busServoNum, index + 1, getServoOverride(index));
         else
-            cliPrintLinef("servo override %d (S%d) off", index+1, busServoNum);
+            cliPrintLinef("servo override %d (Bus Servo %d, S%d) off", index+1, busServoNum, index + 1);
     } else {
         // PWM servos
         if (hasServoOverride(index))

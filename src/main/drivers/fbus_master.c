@@ -291,15 +291,7 @@ static FAST_CODE void dataReceive(uint16_t c, void *data)
 
 static float fbusMasterGetChannelValue(uint8_t channel)
 {
-    const busServoSourceType_e source_type = busServoConfig()->sourceType[channel];
-    switch (source_type) {
-        case BUS_SERVO_SOURCE_RX:
-            return sbusOutGetRX(channel);
-        case BUS_SERVO_SOURCE_MIXER:
-            // Use the same servo-parameter-aware function
-            return sbusOutGetValueMixer(channel);
-    }
-    return 0;
+    return sbusOutGetValueMixer(channel);
 }
 
 static uint16_t fbusMasterConvertToSbus(float value)

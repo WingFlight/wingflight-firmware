@@ -33,17 +33,6 @@
 // S9-S26 (indices 8-25) are BUS servos for SBUS/FBUS
 #define BUS_SERVO_OFFSET 8
 
-typedef enum {
-    BUS_SERVO_SOURCE_MIXER = 0,
-    BUS_SERVO_SOURCE_RX = 1
-} busServoSourceType_e;
-
-typedef struct busServoConfig_s {
-    uint8_t sourceType[BUS_SERVO_CHANNELS];
-} busServoConfig_t;
-
-PG_DECLARE(busServoConfig_t, busServoConfig);
-
 // Bus servo output functions
 void setBusServoOutput(uint8_t channel, float value);
 uint16_t getBusServoOutput(uint8_t channel);

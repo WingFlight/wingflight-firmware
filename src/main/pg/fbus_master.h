@@ -26,9 +26,6 @@
 #define FBUS_MIN 192
 #define FBUS_MAX 1792
 
-// Backward compatibility aliases
-typedef busServoSourceType_e fbusMasterSourceType_e;
-
 #define FBUS_MASTER_MAX_FORWARDED_SENSORS 8
 
 #define FBUS_MASTER_TELEMETRY_RATE_MIN_HZ 25

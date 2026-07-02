@@ -195,12 +195,11 @@
 // 148, 149 reserved (heli governor removed, do not reuse)
 #define MSP_LED_STRIP_SETTINGS               150
 #define MSP_SET_LED_STRIP_SETTINGS           151
-#define MSP_BUS_SERVO_CONFIG                 152
-#define MSP_SET_BUS_SERVO_CONFIG             153
+// 152, 153 reserved (bus-servo source config removed, do not reuse)
 #define MSP_RPM_FILTER_V2                    154
 #define MSP_SET_RPM_FILTER_V2                155
 #define MSP_GET_ADJUSTMENT_RANGE             156
-#define MSP_GET_BUS_SERVO_CONFIG             157
+// 157 reserved (bus-servo source config removed, do not reuse)
 
 
 #define MSP_EXPERIMENTAL                     158

@@ -1845,14 +1845,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 #endif
 
-#if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
-    case MSP_BUS_SERVO_CONFIG:
-        for (int i = 0; i < BUS_SERVO_CHANNELS; i++) {
-            sbufWriteU8(dst, busServoConfigMutable()->sourceType[i]);
-        }
-        break;
-#endif
-
     case MSP_DATAFLASH_SUMMARY:
         serializeDataflashSummaryReply(dst);
         break;
@@ -2172,23 +2164,6 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             serializeBoxReply(dst, page, &serializeBoxPermanentIdFn);
         }
         break;
-#if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
-    case MSP_GET_BUS_SERVO_CONFIG:
-        {
-            const int rem = sbufBytesRemaining(src);
-            if (rem != 1) {
-                return MSP_RESULT_ERROR;
-            }
-
-            const uint8_t index = sbufReadU8(src);
-            if (index >= BUS_SERVO_CHANNELS) {
-                return MSP_RESULT_ERROR;
-            }
-
-            sbufWriteU8(dst, busServoConfigMutable()->sourceType[index]);
-        }
-        break;
-#endif
     case MSP_GET_MIXER_INPUT:
         {
             const int rem = sbufBytesRemaining(src);
@@ -3624,28 +3599,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         ledStripConfigMutable()->ledstrip_visual_beeper = sbufReadU8(src);
         ledStripConfigMutable()->ledstrip_visual_beeper_color = sbufReadU8(src);
         break;
-#endif
-
-#if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
-    case MSP_SET_BUS_SERVO_CONFIG: {
-        // Validate payload length: need at least 2 bytes (index + sourceType)
-        if (sbufBytesRemaining(src) < 2) {
-            return MSP_RESULT_ERROR;
-        }
-        
-        // Read and validate index
-        uint8_t index = sbufReadU8(src);
-        if (index >= BUS_SERVO_CHANNELS) {
-            return MSP_RESULT_ERROR;
-        }
-        
-        // Read sourceType
-        uint8_t sourceType = sbufReadU8(src);
-        
-        // Apply configuration
-        busServoConfigMutable()->sourceType[index] = sourceType;
-        break;
-    }
 #endif
 
     case MSP_SET_NAME:
