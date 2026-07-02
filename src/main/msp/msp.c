@@ -118,6 +118,7 @@
 #include "pg/board.h"
 #include "pg/dyn_notch.h"
 #include "pg/gyrodev.h"
+#include "pg/idle_governor.h"
 #include "pg/motor.h"
 #include "pg/rx.h"
 #include "pg/rx_spi.h"
@@ -1365,6 +1366,13 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, batteryConfig()->smartfuel_sag_gain);
         break;
 #endif
+
+    case MSP2_WING_IDLE_GOVERNOR_CONFIG:
+        sbufWriteU16(dst, idleGovernorConfig()->idle_governor_rpm);
+        sbufWriteU16(dst, idleGovernorConfig()->idle_governor_gain);
+        sbufWriteU8(dst, idleGovernorConfig()->idle_governor_handover);
+        sbufWriteU8(dst, idleGovernorConfig()->idle_governor_ceiling);
+        break;
 
     case MSP_RC:
         for (int i = 0; i < activeRcChannelCount; i++) {
@@ -3790,6 +3798,13 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         smartFuelInit();
         break;
 #endif
+
+    case MSP2_WING_SET_IDLE_GOVERNOR_CONFIG:
+        idleGovernorConfigMutable()->idle_governor_rpm = sbufReadU16(src);
+        idleGovernorConfigMutable()->idle_governor_gain = sbufReadU16(src);
+        idleGovernorConfigMutable()->idle_governor_handover = sbufReadU8(src);
+        idleGovernorConfigMutable()->idle_governor_ceiling = sbufReadU8(src);
+        break;
 
     case MSP_SET_BATTERY_PROFILE:
         {

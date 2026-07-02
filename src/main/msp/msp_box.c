@@ -104,7 +104,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     BOXITEM(BOXBEEPERMUTE, "BEEPER MUTE", 52),
 //    BOXITEM(BOXRESCUE, "RESCUE", 53), // heli rescue removed
 //    BOXITEM(BOXAUTOROTATION, "AUTOROTATION", 54),
-//    BOXITEM(BOXGOVFALLBACK, "GOVERNOR FALLBACK", 55), // heli governor removed
+    BOXITEM(BOXIDLEUP, "IDLE UP", 55),
 //    BOXITEM(BOXGOVSUSPEND, "GOVERNOR SUSPEND", 56), // heli governor removed
 //    BOXITEM(BOXGOVBYPASS, "GOVERNOR BYPASS", 57), // heli governor removed
 };
@@ -232,6 +232,7 @@ void initActiveBoxIds(void)
 
     BME(BOXOSD);
     BME(BOXPASSTHROUGH);
+    BME(BOXIDLEUP);
 
 #ifdef USE_TELEMETRY
     if (featureIsEnabled(FEATURE_TELEMETRY)) {

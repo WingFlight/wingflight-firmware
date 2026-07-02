@@ -64,7 +64,7 @@ typedef enum {
     BOXVTXPITMODE,
     BOXVTXCONTROLDISABLE,
     BOXSTICKCOMMANDDISABLE,
-    BOXGOVFALLBACK,     // reserved (heli governor removed) -- kept to avoid renumbering later ids
+    BOXIDLEUP,          // idle governor engage switch (repurposed from removed heli governor fallback box)
     BOXGOVSUSPEND,      // reserved (heli governor removed) -- kept to avoid renumbering later ids
     BOXGOVBYPASS,       // reserved (heli governor removed) -- kept to avoid renumbering later ids
     BOXUSER1,
