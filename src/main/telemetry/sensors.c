@@ -183,8 +183,6 @@ int telemetrySensorValue(sensor_id_e id)
             return lrintf(mixerGetInput(MIXER_IN_STABILIZED_ROLL) * 1200);
         case TELEM_YAW_CONTROL:
             return lrintf(mixerGetInput(MIXER_IN_STABILIZED_YAW) * 2400);
-        case TELEM_COLLECTIVE_CONTROL:
-            return lrintf(mixerGetInput(MIXER_IN_STABILIZED_COLLECTIVE) * 1200);
         case TELEM_THROTTLE_CONTROL:
             return lrintf(mixerGetInput(MIXER_IN_STABILIZED_THROTTLE) * 1000);
 
@@ -416,7 +414,6 @@ bool telemetrySensorActive(sensor_id_e id)
         case TELEM_ROLL_CONTROL:
         case TELEM_PITCH_CONTROL:
         case TELEM_YAW_CONTROL:
-        case TELEM_COLLECTIVE_CONTROL:
         case TELEM_THROTTLE_CONTROL:
             return true;
 

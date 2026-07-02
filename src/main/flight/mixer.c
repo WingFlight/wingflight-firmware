@@ -179,9 +179,6 @@ static float mixerGetPassthroughInput(const int index,
         // As we passthrough RC commands we want to keep the same reversal.
         rc = -getRcDeflection(YAW);
         break;
-    case MIXER_IN_STABILIZED_COLLECTIVE:
-        rc = getRcDeflection(COLLECTIVE);
-        break;
     default:
         return original_value;
     }
@@ -206,7 +203,7 @@ static void mixerSetInput(int index, float value)
             value = mixerGetPassthroughInput(index, value);
         }
         else if (wiggleActive()) {
-            if (index >= MIXER_IN_STABILIZED_ROLL && index <= MIXER_IN_STABILIZED_COLLECTIVE)
+            if (index >= MIXER_IN_STABILIZED_ROLL && index <= MIXER_IN_STABILIZED_YAW)
                 value = wiggleGetAxis(index - MIXER_IN_STABILIZED_ROLL);
         }
     }
@@ -302,7 +299,6 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_RC_COMMAND_ROLL, getRcDeflection(ROLL));
     mixerSetInput(MIXER_IN_RC_COMMAND_PITCH, getRcDeflection(PITCH));
     mixerSetInput(MIXER_IN_RC_COMMAND_YAW, getRcDeflection(YAW));
-    mixerSetInput(MIXER_IN_RC_COMMAND_COLLECTIVE, getRcDeflection(COLLECTIVE));
 
     // Throttle input
     mixerSetInput(MIXER_IN_RC_COMMAND_THROTTLE, getThrottle());
@@ -315,7 +311,6 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_STABILIZED_ROLL, pidGetOutput(PID_ROLL));
     mixerSetInput(MIXER_IN_STABILIZED_PITCH, pidGetOutput(PID_PITCH));
     mixerSetInput(MIXER_IN_STABILIZED_YAW, pidGetOutput(PID_YAW));
-    mixerSetInput(MIXER_IN_STABILIZED_COLLECTIVE, 0);
 
     // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels
     if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
