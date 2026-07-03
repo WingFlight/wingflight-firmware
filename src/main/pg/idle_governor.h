@@ -31,7 +31,8 @@ typedef enum {
 typedef struct idleGovernorConfig_s {
     uint8_t  idle_governor_mode;      // idleGovernorMode_e
     uint16_t idle_governor_rpm;       // target idle RPM (RPM mode)
-    uint16_t idle_governor_gain;      // P gain, scaled (x0.0001 -> throttle fraction per RPM error) (RPM mode)
+    uint16_t idle_governor_gain;      // P gain, scaled (x0.000005 -> throttle fraction per RPM error) (RPM mode)
+    uint16_t idle_governor_i_gain;    // I gain, scaled (x0.000005 -> throttle fraction per RPM error per second); closes P droop to zero (RPM mode)
     uint8_t  idle_governor_throttle;  // fixed idle throttle output, % (0-100) (THROTTLE mode)
     uint8_t  idle_governor_handover;  // throttle handover threshold, % (0-100)
     uint8_t  idle_governor_ceiling;   // max throttle % the governor may output (safety clamp)
