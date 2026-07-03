@@ -305,6 +305,7 @@ static const char * const logicOperandTypeNames[] = {
     [LOGIC_CONDITION_OPERAND_TYPE_RC_CHANNEL]  = "channel",
     [LOGIC_CONDITION_OPERAND_TYPE_FLIGHT_MODE] = "mode",
     [LOGIC_CONDITION_OPERAND_TYPE_CONDITION]   = "condition",
+    [LOGIC_CONDITION_OPERAND_TYPE_SENSOR]      = "sensor",
 };
 
 // Mixer input names

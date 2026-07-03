@@ -23,13 +23,22 @@
 #include "drivers/time.h"
 
 #include "fc/rc_modes.h"
+#include "fc/runtime_config.h"
+
+#include "io/gps.h"
 
 #include "pg/rx.h"
 #include "pg/logic_condition.h"
 
 #include "rx/rx.h"
 
+#include "config/config.h"
+
 #include "flight/logic_condition.h"
+#include "flight/motors.h"
+#include "flight/position.h"
+
+#include "sensors/battery.h"
 
 // Runtime-only state for the stateful operators (STICKY/DELAY/EDGE) - not
 // persisted, mirrors how mixer.ruleOutput[] holds the per-rule slew state
@@ -63,6 +72,40 @@ static float logicConditionGetOperandValue(uint8_t type, int16_t value)
                 return conditionValue[value] ? 1 : 0;
             }
             return 0;
+
+        case LOGIC_CONDITION_OPERAND_TYPE_SENSOR:
+            switch (value) {
+                case LOGIC_SENSOR_ALTITUDE:
+                    return getAltitude() * 10.0f;
+                case LOGIC_SENSOR_VOLTAGE:
+                    return getBatteryVoltage();
+                case LOGIC_SENSOR_CURRENT:
+                    return getBatteryCurrent();
+                case LOGIC_SENSOR_RPM:
+                    return getMotorRPMf(0);
+                case LOGIC_SENSOR_RSSI:
+                    return getRssiPercent();
+                case LOGIC_SENSOR_BATTERY_PERCENT:
+                    return calculateBatteryPercentageRemaining();
+                case LOGIC_SENSOR_MAH_DRAWN:
+                    return getBatteryCapacityUsed();
+                case LOGIC_SENSOR_GPS_SPEED:
+                    return STATE(GPS_FIX) ? gpsSol.groundSpeed : 0;
+                default:
+                    return 0;
+            }
+
+        case LOGIC_CONDITION_OPERAND_TYPE_PROFILE:
+            switch (value) {
+                case LOGIC_PROFILE_PID:
+                    return getCurrentPidProfileIndex();
+                case LOGIC_PROFILE_RATE:
+                    return getCurrentControlRateProfileIndex();
+                case LOGIC_PROFILE_BATTERY:
+                    return getCurrentBatteryProfileIndex();
+                default:
+                    return 0;
+            }
 
         case LOGIC_CONDITION_OPERAND_TYPE_VALUE:
         default:
