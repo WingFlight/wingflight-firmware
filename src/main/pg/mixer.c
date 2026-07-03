@@ -75,9 +75,9 @@ void pgResetFn_mixerRules(mixerRule_t *rule)
     rule[3].weight = 1000;
     rule[3].weightNeg = 1000;
 
-    // M1: Motor/Throttle (RC_COMMAND_THROTTLE, weight +1000)
+    // M1: Motor/Throttle (STABILIZED_THROTTLE, weight +1000)
     rule[4].oper   = MIXER_OP_SET;
-    rule[4].input  = MIXER_IN_RC_COMMAND_THROTTLE;
+    rule[4].input  = MIXER_IN_STABILIZED_THROTTLE;
     rule[4].output = MIXER_MOTOR_OFFSET + 0;
     rule[4].offset = 0;
     rule[4].weight = 1000;
