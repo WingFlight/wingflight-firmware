@@ -90,6 +90,7 @@
 
 #include "osd/osd.h"
 
+#include "pg/idle_governor.h"
 #include "pg/motor.h"
 #include "pg/pg.h"
 #include "pg/pg_ids.h"
@@ -699,6 +700,59 @@ void processRxModes(timeUs_t currentTimeUs)
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
             DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
+        }
+    }
+
+    {
+        // Telemetry-facing "are we actually flying" latch -- see INFLIGHT_MODE comment.
+        static bool inFlightLatched = false;
+        static bool idleUpUsedThisFlight = false;
+        static bool haveGroundAltitude = false;
+        static float groundAltitude = 0.0f;
+
+        const bool idleUpActive = IS_RC_MODE_ACTIVE(BOXIDLEUP);
+        const bool altitudeAvailable = sensors(SENSOR_BARO) || (sensors(SENSOR_GPS) && STATE(GPS_FIX));
+
+        if (!ARMING_FLAG(ARMED)) {
+            inFlightLatched = false;
+            idleUpUsedThisFlight = false;
+            haveGroundAltitude = false;
+        } else {
+            if (idleUpActive) {
+                idleUpUsedThisFlight = true;
+            }
+
+            if (!inFlightLatched) {
+                // Capture the launch-site altitude baseline once, as soon as a source is available
+                // after arming -- not necessarily on the very first tick (GPS fix can take a moment).
+                if (altitudeAvailable && !haveGroundAltitude) {
+                    groundAltitude = getAltitude();
+                    haveGroundAltitude = true;
+                }
+
+                // Covers takeoffs gentle enough to never cross the throttle threshold (e.g. a
+                // glider-style launch) on setups with a baro or GPS fix but no idle up configured.
+                const bool altitudeGain = haveGroundAltitude && (getAltitude() - groundAltitude) > 3.0f;
+
+                if (idleUpActive || getThrottle() > 0.35f || altitudeGain) {
+                    inFlightLatched = true;
+                }
+            } else if (idleUpUsedThisFlight && !idleUpActive &&
+                       getThrottle() < (idleGovernorConfig()->idle_governor_handover / 100.0f)) {
+                // Idle up was relied on this flight and has just been switched off with throttle
+                // back at idle -- read as the pilot signalling "landed and done", not a mid-flight
+                // dip. Ends the flight without waiting for disarm (which some pilots delay while
+                // taxiing back).
+                inFlightLatched = false;
+                idleUpUsedThisFlight = false;
+                haveGroundAltitude = false;
+            }
+        }
+
+        if (inFlightLatched) {
+            ENABLE_FLIGHT_MODE(INFLIGHT_MODE);
+        } else {
+            DISABLE_FLIGHT_MODE(INFLIGHT_MODE);
         }
     }
 
