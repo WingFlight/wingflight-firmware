@@ -74,7 +74,7 @@ static float logicConditionGetOperandValue(uint8_t type, int16_t value)
         case LOGIC_CONDITION_OPERAND_TYPE_SENSOR:
             switch (value) {
                 case LOGIC_SENSOR_ALTITUDE:
-                    return getAltitude();
+                    return getAltitude() * 10.0f;
                 case LOGIC_SENSOR_VOLTAGE:
                     return getBatteryVoltage();
                 case LOGIC_SENSOR_CURRENT:

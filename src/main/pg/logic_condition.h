@@ -51,7 +51,7 @@ enum {
 // Common sensor readings usable as a logic condition operand, selected the same way
 // OPERAND_TYPE_FLIGHT_MODE selects a boxId_e - value is the index below, not the reading itself.
 enum {
-    LOGIC_SENSOR_ALTITUDE = 0,  // meters, getAltitude()
+    LOGIC_SENSOR_ALTITUDE = 0,  // 0.1m units (decimeters), getAltitude() * 10
     LOGIC_SENSOR_VOLTAGE,       // 0.1V units, getBatteryVoltage()
     LOGIC_SENSOR_CURRENT,       // 0.1A units, getBatteryCurrent()
     LOGIC_SENSOR_RPM,           // motor 1 RPM, getMotorRPMf(0)
