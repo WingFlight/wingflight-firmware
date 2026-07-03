@@ -32,6 +32,8 @@
 
 #include "rx/rx.h"
 
+#include "config/config.h"
+
 #include "flight/logic_condition.h"
 #include "flight/motors.h"
 #include "flight/position.h"
@@ -89,6 +91,18 @@ static float logicConditionGetOperandValue(uint8_t type, int16_t value)
                     return getBatteryCapacityUsed();
                 case LOGIC_SENSOR_GPS_SPEED:
                     return STATE(GPS_FIX) ? gpsSol.groundSpeed : 0;
+                default:
+                    return 0;
+            }
+
+        case LOGIC_CONDITION_OPERAND_TYPE_PROFILE:
+            switch (value) {
+                case LOGIC_PROFILE_PID:
+                    return getCurrentPidProfileIndex();
+                case LOGIC_PROFILE_RATE:
+                    return getCurrentControlRateProfileIndex();
+                case LOGIC_PROFILE_BATTERY:
+                    return getCurrentBatteryProfileIndex();
                 default:
                     return 0;
             }

@@ -45,6 +45,7 @@ enum {
     LOGIC_CONDITION_OPERAND_TYPE_FLIGHT_MODE,  // a boxId_e - evaluates to 1/0 via IS_RC_MODE_ACTIVE
     LOGIC_CONDITION_OPERAND_TYPE_CONDITION,    // another condition's own last result (0-based index)
     LOGIC_CONDITION_OPERAND_TYPE_SENSOR,       // a logicSensor_e - live reading from a common sensor
+    LOGIC_CONDITION_OPERAND_TYPE_PROFILE,      // a logicProfile_e - which profile of that kind is active
     LOGIC_CONDITION_OPERAND_TYPE_COUNT
 };
 
@@ -60,6 +61,15 @@ enum {
     LOGIC_SENSOR_MAH_DRAWN,     // mAh, getBatteryCapacityUsed()
     LOGIC_SENSOR_GPS_SPEED,     // 0.1m/s units, gpsSol.groundSpeed (0 without a GPS fix)
     LOGIC_SENSOR_COUNT
+};
+
+// Which profile of each kind is currently active, selected the same way
+// OPERAND_TYPE_SENSOR selects a logicSensor_e. All three kinds support 6 slots.
+enum {
+    LOGIC_PROFILE_PID = 0,      // 0-based index, getCurrentPidProfileIndex()
+    LOGIC_PROFILE_RATE,         // 0-based index, getCurrentControlRateProfileIndex()
+    LOGIC_PROFILE_BATTERY,      // 0-based index, getCurrentBatteryProfileIndex()
+    LOGIC_PROFILE_COUNT
 };
 
 typedef struct
