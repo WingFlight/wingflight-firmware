@@ -495,6 +495,10 @@ static const char * const lookupTableSmartFuelMode[] = {
 };
 #endif
 
+static const char * const lookupTableIdleGovernorMode[] = {
+    "OFF", "RPM", "THROTTLE",
+};
+
 #define LOOKUP_TABLE_ENTRY(name) { name, ARRAYLEN(name) }
 
 const lookupTableEntry_t lookupTables[] = {
@@ -606,6 +610,7 @@ const lookupTableEntry_t lookupTables[] = {
 #ifdef USE_SMARTFUEL
     LOOKUP_TABLE_ENTRY(lookupTableSmartFuelMode),
 #endif
+    LOOKUP_TABLE_ENTRY(lookupTableIdleGovernorMode),
 };
 
 #undef LOOKUP_TABLE_ENTRY
@@ -799,8 +804,10 @@ const clivalue_t valueTable[] = {
     { "min_command",                VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX }, PG_MOTOR_CONFIG, offsetof(motorConfig_t, mincommand) },
 
 // PG_IDLE_GOVERNOR_CONFIG
+    { "idle_governor_mode",         VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_IDLE_GOVERNOR_MODE }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_mode) },
     { "idle_governor_rpm",          VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 50000 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_rpm) },
     { "idle_governor_gain",         VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 1000 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_gain) },
+    { "idle_governor_throttle",     VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_throttle) },
     { "idle_governor_handover",     VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_handover) },
     { "idle_governor_ceiling",      VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_ceiling) },
 #ifdef USE_DSHOT

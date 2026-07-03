@@ -1368,8 +1368,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 #endif
 
     case MSP2_WING_IDLE_GOVERNOR_CONFIG:
+        sbufWriteU8(dst, idleGovernorConfig()->idle_governor_mode);
         sbufWriteU16(dst, idleGovernorConfig()->idle_governor_rpm);
         sbufWriteU16(dst, idleGovernorConfig()->idle_governor_gain);
+        sbufWriteU8(dst, idleGovernorConfig()->idle_governor_throttle);
         sbufWriteU8(dst, idleGovernorConfig()->idle_governor_handover);
         sbufWriteU8(dst, idleGovernorConfig()->idle_governor_ceiling);
         break;
@@ -3800,8 +3802,10 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
 #endif
 
     case MSP2_WING_SET_IDLE_GOVERNOR_CONFIG:
+        idleGovernorConfigMutable()->idle_governor_mode = sbufReadU8(src);
         idleGovernorConfigMutable()->idle_governor_rpm = sbufReadU16(src);
         idleGovernorConfigMutable()->idle_governor_gain = sbufReadU16(src);
+        idleGovernorConfigMutable()->idle_governor_throttle = sbufReadU8(src);
         idleGovernorConfigMutable()->idle_governor_handover = sbufReadU8(src);
         idleGovernorConfigMutable()->idle_governor_ceiling = sbufReadU8(src);
         break;

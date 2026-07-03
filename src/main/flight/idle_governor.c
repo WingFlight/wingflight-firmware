@@ -44,19 +44,38 @@ float idleGovernorApply(float throttle)
 
     const idleGovernorConfig_t *cfg = idleGovernorConfig();
 
-    const bool active = cfg->idle_governor_rpm > 0 &&
-        ARMING_FLAG(ARMED) &&
+    const bool belowHandover = ARMING_FLAG(ARMED) &&
         IS_RC_MODE_ACTIVE(BOXIDLEUP) &&
-        throttle < (cfg->idle_governor_handover / 100.0f) &&
-        isMotorRpmSourceActive(0);
+        throttle < (cfg->idle_governor_handover / 100.0f);
+
+    bool active = false;
+    float target = throttle;
+
+    switch (cfg->idle_governor_mode) {
+    case IDLE_GOVERNOR_MODE_RPM:
+        active = belowHandover && cfg->idle_governor_rpm > 0 && isMotorRpmSourceActive(0);
+        if (active) {
+            const float rpmError = cfg->idle_governor_rpm - getMotorRPMf(0);
+            target = constrainf(rpmError * (cfg->idle_governor_gain * 0.0001f), 0.0f, cfg->idle_governor_ceiling / 100.0f);
+        }
+        break;
+
+    case IDLE_GOVERNOR_MODE_THROTTLE:
+        // No RPM source required -- just holds a fixed throttle output for ESCs/motors without RPM telemetry.
+        active = belowHandover;
+        if (active) {
+            target = constrainf(cfg->idle_governor_throttle / 100.0f, 0.0f, cfg->idle_governor_ceiling / 100.0f);
+        }
+        break;
+
+    default:
+        break;
+    }
 
     if (!active) {
         governorOutput = throttle;
         return throttle;
     }
-
-    const float rpmError = cfg->idle_governor_rpm - getMotorRPMf(0);
-    const float target = constrainf(rpmError * (cfg->idle_governor_gain * 0.0001f), 0.0f, cfg->idle_governor_ceiling / 100.0f);
 
     governorOutput = slewLimit(governorOutput, target, IDLE_GOVERNOR_SLEW_RATE * pidGetDT());
 

@@ -28,8 +28,10 @@
 PG_REGISTER_WITH_RESET_TEMPLATE(idleGovernorConfig_t, idleGovernorConfig, PG_IDLE_GOVERNOR_CONFIG, 0);
 
 PG_RESET_TEMPLATE(idleGovernorConfig_t, idleGovernorConfig,
+    .idle_governor_mode = IDLE_GOVERNOR_MODE_OFF,
     .idle_governor_rpm = 0,
     .idle_governor_gain = 10,
+    .idle_governor_throttle = 15,
     .idle_governor_handover = 10,
     .idle_governor_ceiling = 30,
 );
