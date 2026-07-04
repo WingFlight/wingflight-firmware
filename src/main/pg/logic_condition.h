@@ -36,6 +36,7 @@ enum {
     LOGIC_CONDITION_STICKY,        // operandA=set trigger, operandB=reset trigger
     LOGIC_CONDITION_DELAY,         // operandA=trigger, operandB=hold time (ms) before true
     LOGIC_CONDITION_EDGE,          // operandA=trigger, operandB=pulse duration (ms) from rising edge
+    LOGIC_CONDITION_APPROX_EQUAL,  // true when operandA is within LOGIC_CONDITION_APPROX_TOLERANCE of operandB
     LOGIC_CONDITION_OPERATION_COUNT
 };
 

@@ -20,6 +20,8 @@
 
 #include "platform.h"
 
+#include "common/maths.h"
+
 #include "drivers/time.h"
 
 #include "fc/rc_modes.h"
@@ -51,6 +53,10 @@ typedef struct {
 
 static logicConditionState_t conditionState[LOGIC_CONDITION_COUNT];
 static bool conditionValue[LOGIC_CONDITION_COUNT];
+
+// Fixed tolerance (in operandB's own units) for LOGIC_CONDITION_APPROX_EQUAL -
+// nominally +/-10, not user-configurable.
+#define LOGIC_CONDITION_APPROX_TOLERANCE 10.0f
 
 static float logicConditionGetOperandValue(uint8_t type, int16_t value)
 {
@@ -124,6 +130,9 @@ static bool logicConditionEvaluate(int index)
     switch (condition->operation) {
         case LOGIC_CONDITION_EQUAL:
             return a == b;
+
+        case LOGIC_CONDITION_APPROX_EQUAL:
+            return ABS(a - b) <= LOGIC_CONDITION_APPROX_TOLERANCE;
 
         case LOGIC_CONDITION_GREATER_THAN:
             return a > b;

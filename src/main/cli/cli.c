@@ -297,6 +297,7 @@ static const char * const logicOperationNames[] = {
     [LOGIC_CONDITION_STICKY]        = "sticky",
     [LOGIC_CONDITION_DELAY]         = "delay",
     [LOGIC_CONDITION_EDGE]          = "edge",
+    [LOGIC_CONDITION_APPROX_EQUAL]  = "approx_equal",
 };
 
 // Logic condition operand type names
