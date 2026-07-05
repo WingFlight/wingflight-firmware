@@ -396,41 +396,52 @@ static float imuCalcKpGain(timeUs_t currentTimeUs, bool useAcc, const float *gyr
     return ret;
 }
 
+// Converts Euler angles (decidegrees) to a quaternion. Shared by imuComputeQuaternionFromRPY
+// (GPS heading reinit, below) and flight/autohover.c (builds its held vertical-attitude target) --
+// exposed unconditionally since autohover doesn't depend on USE_GPS. The yaw negation matches
+// imuUpdateEulerAngles()/setpoint.c's documented CW-stick-vs-gyro-sign convention; don't re-derive
+// this elsewhere, it's easy to get the sign wrong in a way that only shows up as a wrong heading.
+void imuEulerToQuaternion(int16_t roll, int16_t pitch, int16_t yaw, quaternion *out)
+{
+    if (roll > 1800) {
+        roll -= 3600;
+    }
+
+    if (pitch > 1800) {
+        pitch -= 3600;
+    }
+
+    if (yaw > 1800) {
+        yaw -= 3600;
+    }
+
+    const sincosf_t scRoll = sincos_approx(DECIDEGREES_TO_RADIANS(roll) * 0.5f);
+    const sincosf_t scPitch = sincos_approx(DECIDEGREES_TO_RADIANS(pitch) * 0.5f);
+    const sincosf_t scYaw = sincos_approx(DECIDEGREES_TO_RADIANS(-yaw) * 0.5f);
+
+    out->w = scRoll.cos * scPitch.cos * scYaw.cos + scRoll.sin * scPitch.sin * scYaw.sin;
+    out->x = scRoll.sin * scPitch.cos * scYaw.cos - scRoll.cos * scPitch.sin * scYaw.sin;
+    out->y = scRoll.cos * scPitch.sin * scYaw.cos + scRoll.sin * scPitch.cos * scYaw.sin;
+    out->z = scRoll.cos * scPitch.cos * scYaw.sin - scRoll.sin * scPitch.sin * scYaw.cos;
+}
+
 #if defined(USE_GPS)
 static void imuComputeQuaternionFromRPY(quaternionProducts *quatProd, int16_t initialRoll, int16_t initialPitch, int16_t initialYaw)
 {
-    if (initialRoll > 1800) {
-        initialRoll -= 3600;
-    }
+    quaternion q0123;
+    imuEulerToQuaternion(initialRoll, initialPitch, initialYaw, &q0123);
 
-    if (initialPitch > 1800) {
-        initialPitch -= 3600;
-    }
+    quatProd->xx = sq(q0123.x);
+    quatProd->yy = sq(q0123.y);
+    quatProd->zz = sq(q0123.z);
 
-    if (initialYaw > 1800) {
-        initialYaw -= 3600;
-    }
+    quatProd->xy = q0123.x * q0123.y;
+    quatProd->xz = q0123.x * q0123.z;
+    quatProd->yz = q0123.y * q0123.z;
 
-    const sincosf_t scRoll = sincos_approx(DECIDEGREES_TO_RADIANS(initialRoll) * 0.5f);
-    const sincosf_t scPitch = sincos_approx(DECIDEGREES_TO_RADIANS(initialPitch) * 0.5f);
-    const sincosf_t scYaw = sincos_approx(DECIDEGREES_TO_RADIANS(-initialYaw) * 0.5f);
-
-    const float q0 = scRoll.cos * scPitch.cos * scYaw.cos + scRoll.sin * scPitch.sin * scYaw.sin;
-    const float q1 = scRoll.sin * scPitch.cos * scYaw.cos - scRoll.cos * scPitch.sin * scYaw.sin;
-    const float q2 = scRoll.cos * scPitch.sin * scYaw.cos + scRoll.sin * scPitch.cos * scYaw.sin;
-    const float q3 = scRoll.cos * scPitch.cos * scYaw.sin - scRoll.sin * scPitch.sin * scYaw.cos;
-
-    quatProd->xx = sq(q1);
-    quatProd->yy = sq(q2);
-    quatProd->zz = sq(q3);
-
-    quatProd->xy = q1 * q2;
-    quatProd->xz = q1 * q3;
-    quatProd->yz = q2 * q3;
-
-    quatProd->wx = q0 * q1;
-    quatProd->wy = q0 * q2;
-    quatProd->wz = q0 * q3;
+    quatProd->wx = q0123.w * q0123.x;
+    quatProd->wy = q0123.w * q0123.y;
+    quatProd->wz = q0123.w * q0123.z;
 
     imuComputeRotationMatrix();
 

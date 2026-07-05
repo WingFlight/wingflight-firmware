@@ -65,6 +65,9 @@ float getCosTiltAngle(void);
 void getQuaternion(quaternion * q);
 void imuUpdateAttitude(timeUs_t currentTimeUs);
 
+void imuQuaternionMultiplication(quaternion *q1, quaternion *q2, quaternion *result);
+void imuEulerToQuaternion(int16_t roll, int16_t pitch, int16_t yaw, quaternion *out);
+
 void imuInit(void);
 
 #ifdef SIMULATOR_BUILD

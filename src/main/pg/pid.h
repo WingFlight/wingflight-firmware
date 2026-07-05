@@ -75,6 +75,12 @@ typedef struct {
     uint16_t lookahead_ms;         // The lookahead window in milliseconds used to reduce overshoot
 } pidTrainerMode_t;
 
+typedef struct {
+    uint8_t  gain;                 // Correction strength back to the held vertical attitude/heading
+    uint8_t  max_angle;            // Max degrees the stick may deflect the target off vertical/held heading
+    uint16_t max_rate;             // deg/s clamp on the commanded attitude-capture rate (safety limit)
+} pidAutoHoverMode_t;
+
 #define MAX_PROFILE_NAME_LENGTH 8u
 
 typedef struct pidProfile_s {
@@ -106,6 +112,7 @@ typedef struct pidProfile_s {
     pidAngleMode_t      angle;
     pidHorizonMode_t    horizon;
     pidTrainerMode_t    trainer;
+    pidAutoHoverMode_t  autohover;
 
 } pidProfile_t;
 

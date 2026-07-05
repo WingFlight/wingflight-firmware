@@ -482,6 +482,8 @@ static void crsfFlightModeInfo(char *buf)
         flightMode = "GPS-RESCUE";
     } else if (FLIGHT_MODE(PASSTHROUGH_MODE)) {
         flightMode = "PASSTHROUGH";
+    } else if (FLIGHT_MODE(AUTOHOVER_MODE)) {
+        flightMode = "AUTOHOVER";
     } else if (FLIGHT_MODE(HORIZON_MODE)) {
         flightMode = "HORIZON";
     } else if (FLIGHT_MODE(ANGLE_MODE)) {

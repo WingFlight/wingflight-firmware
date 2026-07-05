@@ -71,6 +71,7 @@ typedef enum {
     BOXUSER2,
     BOXUSER3,
     BOXUSER4,
+    BOXAUTOHOVER,       // AUTO HOVER: quaternion-based vertical prop-hang attitude/heading hold
 
     CHECKBOX_ITEM_COUNT,
 

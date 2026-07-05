@@ -39,9 +39,10 @@ PG_RESET_TEMPLATE(pidConfig_t, pidConfig,
 );
 
 // v0->v1: added master_gain. v1->v2: master_gain widened from one shared
-// value to one per axis - old saved profiles reset to defaults rather than
-// reinterpreting their stored bytes at the new, wider struct layout.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 2);
+// value to one per axis. v2->v3: added autohover sub-struct - old saved
+// profiles reset to defaults rather than reinterpreting their stored bytes
+// at the new, wider struct layout.
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 3);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -74,6 +75,9 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .trainer.gain = 75,
         .trainer.angle_limit = 20,
         .trainer.lookahead_ms = 50,
+        .autohover.gain = 50,
+        .autohover.max_angle = 30,
+        .autohover.max_rate = 300,
     );
 }
 
