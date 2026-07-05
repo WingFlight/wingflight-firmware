@@ -114,7 +114,11 @@ typedef struct pidProfile_s {
     pidTrainerMode_t    trainer;
     pidAutoHoverMode_t  autohover;
 
+    uint8_t             cross_axis_relax_strength; // Percent max roll feedback attenuation from yaw setpoint activity
+    uint8_t             cross_axis_relax_level;    // Yaw setpoint level where max attenuation is reached
+    uint8_t             cross_axis_relax_cutoff;   // Hz smoothing cutoff for yaw setpoint detector
+    uint8_t             cross_axis_relax_pitch_strength; // Percent max pitch feedback attenuation from yaw setpoint activity
+
 } pidProfile_t;
 
 PG_DECLARE_ARRAY(pidProfile_t, PID_PROFILE_COUNT, pidProfiles);
-

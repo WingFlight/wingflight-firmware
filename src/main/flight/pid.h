@@ -85,6 +85,10 @@ typedef struct pid_s {
 
     uint8_t itermRelaxType;
     uint8_t itermRelaxLevel[PID_AXIS_COUNT];
+    float crossAxisRelaxStrength;
+    float crossAxisRelaxPitchStrength;
+    uint8_t crossAxisRelaxLevel;
+    float crossAxisRelaxYawActivity;
 
     float itermDecayRate;
     float itermDecayLimit;
@@ -97,6 +101,7 @@ typedef struct pid_s {
     filter_t gyrorFilter[PID_AXIS_COUNT];
 
     pt1Filter_t relaxFilter[PID_AXIS_COUNT];
+    pt1Filter_t crossAxisRelaxFilter;
 
     difFilter_t dtermFilter[PID_AXIS_COUNT];
     difFilter_t btermFilter[PID_AXIS_COUNT];
@@ -150,4 +155,3 @@ ADJFUN_DECLARE(YAW_DTERM_CUTOFF)
 ADJFUN_DECLARE(PITCH_B_GAIN)
 ADJFUN_DECLARE(ROLL_B_GAIN)
 ADJFUN_DECLARE(YAW_B_GAIN)
-

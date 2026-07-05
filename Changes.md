@@ -6,6 +6,13 @@ the APIs or flight performance.
 
 ## Flight Performance
 
+Fixed-wing cross-axis relax is added for normal stabilization. When enabled,
+yaw/rudder command can attenuate roll and/or pitch P/I/D feedback so
+rudder-induced coupling is not held artificially flat. The feature is
+configured by `cross_axis_relax_strength`,
+`cross_axis_relax_pitch_strength`, `cross_axis_relax_level`, and
+`cross_axis_relax_cutoff`, and defaults to off.
+
 The decimator is changed to use a Bessel filter (#287). It should give more
 consistent D-term reaction on transients.
 
@@ -19,15 +26,23 @@ The fixed-wing I-term decay settings are renamed from
 `iterm_decay_time` / `iterm_decay_limit`. The old CLI names remain accepted
 as aliases for compatibility with existing dumps. MSP byte layout is unchanged.
 
+Added `cross_axis_relax_strength`, `cross_axis_relax_pitch_strength`,
+`cross_axis_relax_level`, and `cross_axis_relax_cutoff` PID profile settings.
+
 
 ## MSP Changes
 
 ### MSP_PID_PROFILE
 
+- appended `cross_axis_relax_strength`, `cross_axis_relax_level`,
+  `cross_axis_relax_cutoff`, and `cross_axis_relax_pitch_strength`.
 - `error_rotation` parameter is unused (#294)
 
 ### MSP_SET_PID_PROFILE
 
+- accepts optional appended `cross_axis_relax_strength`,
+  `cross_axis_relax_level`, `cross_axis_relax_cutoff`, and
+  `cross_axis_relax_pitch_strength`.
 - `error_rotation` parameter is unused (#294)
 
 ### MSP_PILOT_CONFIG

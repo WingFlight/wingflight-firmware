@@ -3,6 +3,7 @@
 ESC Programing
 Improve telemetry conditions
 IdleUP governor
+Added fixed-wing cross-axis relax tuning for rudder-to-roll coupling in normal stabilization.
 
 # 0.0.2
 

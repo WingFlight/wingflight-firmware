@@ -1633,6 +1633,10 @@ static bool blackboxWriteSysinfo(void)
                                                                             currentPidProfile->iterm_decay_limit);
         BLACKBOX_PRINT_HEADER_LINE("fw_tpa", "%d,%d",                       currentPidProfile->fw_tpa_breakpoint,
                                                                             currentPidProfile->fw_tpa_rate);
+        BLACKBOX_PRINT_HEADER_LINE("cross_axis_relax", "%d,%d,%d,%d",       currentPidProfile->cross_axis_relax_strength,
+                                                                            currentPidProfile->cross_axis_relax_level,
+                                                                            currentPidProfile->cross_axis_relax_cutoff,
+                                                                            currentPidProfile->cross_axis_relax_pitch_strength);
 
 
         BLACKBOX_PRINT_HEADER_LINE("deadband", "%d",                        rcControlsConfig()->rc_deadband);

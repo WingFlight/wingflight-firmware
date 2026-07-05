@@ -408,6 +408,7 @@ static void INIT_CODE pidInitFilters(const pidProfile_t *pidProfile)
         difFilterInit(&pid.btermFilter[i], pidProfile->bterm_cutoff[i], pid.freq);
         pt1FilterInit(&pid.relaxFilter[i], 1, pid.freq);
     }
+    pt1FilterInit(&pid.crossAxisRelaxFilter, 1, pid.freq);
 
 }
 
@@ -478,6 +479,14 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
             pid.itermRelaxLevel[i] = constrain(pidProfile->iterm_relax_level[i], 10, 250);
         }
     }
+
+    // Fixed-wing cross-axis relax: yaw stick activity can soften roll feedback
+    // and/or pitch feedback so rudder does not feel like an artificial hold.
+    pid.crossAxisRelaxStrength = constrain(pidProfile->cross_axis_relax_strength, 0, 100) * 0.01f;
+    pid.crossAxisRelaxPitchStrength = constrain(pidProfile->cross_axis_relax_pitch_strength, 0, 100) * 0.01f;
+    pid.crossAxisRelaxLevel = constrain(pidProfile->cross_axis_relax_level, 10, 250);
+    const uint8_t crossAxisRelaxCutoff = constrain(pidProfile->cross_axis_relax_cutoff, 1, 100);
+    pt1FilterUpdate(&pid.crossAxisRelaxFilter, crossAxisRelaxCutoff, pid.freq);
 
 
     // Initialise sub-profiles
@@ -575,6 +584,30 @@ static float applyItermRelax(int axis, float itermError, float gyroRate, float s
     }
 
     return itermError;
+}
+
+static void updateCrossAxisRelax(void)
+{
+    if (pid.crossAxisRelaxStrength <= 0 && pid.crossAxisRelaxPitchStrength <= 0) {
+        pid.crossAxisRelaxYawActivity = 0;
+        return;
+    }
+
+    pid.crossAxisRelaxYawActivity = pt1FilterApply(&pid.crossAxisRelaxFilter, fabsf(getSetpoint(PID_YAW)));
+}
+
+static float getCrossAxisRelaxFactor(int axis)
+{
+    const float strength = (axis == PID_ROLL) ? pid.crossAxisRelaxStrength :
+                           (axis == PID_PITCH) ? pid.crossAxisRelaxPitchStrength : 0;
+
+    if (strength <= 0) {
+        return 1.0f;
+    }
+
+    const float relaxAmount = MIN(1.0f, pid.crossAxisRelaxYawActivity / pid.crossAxisRelaxLevel) * strength;
+
+    return 1.0f - relaxAmount;
 }
 
 
@@ -687,11 +720,14 @@ static void pidApplyMode1(uint8_t axis)
     // Throttle-based gain attenuation
     const float atten = pidThrottleAttenuation();
 
+    // Cross-axis relax
+    const float crossAxisRelax = getCrossAxisRelaxFactor(axis);
+
 
   //// P-term
 
     // Calculate P-component
-    pid.data[axis].P = pid.coef[axis].Kp * pid.masterGain[axis] * atten * errorRate;
+    pid.data[axis].P = pid.coef[axis].Kp * pid.masterGain[axis] * atten * crossAxisRelax * errorRate;
 
 
   //// D-term (gyro only)
@@ -700,13 +736,13 @@ static void pidApplyMode1(uint8_t axis)
     const float dTerm = difFilterApply(&pid.dtermFilter[axis], -gyroRate);
 
     // Calculate D-component
-    pid.data[axis].D = pid.coef[axis].Kd * pid.masterGain[axis] * atten * dTerm;
+    pid.data[axis].D = pid.coef[axis].Kd * pid.masterGain[axis] * atten * crossAxisRelax * dTerm;
 
 
   //// I-term
 
     // Apply error relax
-    const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint);
+    const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax;
 
     // Saturation
     const bool saturation = (pidAxisSaturated(axis) && pid.data[axis].axisError * itermErrorRate > 0);
@@ -716,7 +752,7 @@ static void pidApplyMode1(uint8_t axis)
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
-    pid.data[axis].I = pid.coef[axis].Ki * pid.masterGain[axis] * pid.data[axis].axisError;
+    pid.data[axis].I = pid.coef[axis].Ki * pid.masterGain[axis] * crossAxisRelax * pid.data[axis].axisError;
 
     // Apply error decay (fixed rate -- no ground/airborne distinction; a plane
     // sitting on its wheels isn't at risk of tipping over from I-term windup
@@ -757,6 +793,8 @@ void pidController(const pidProfile_t *pidProfile, timeUs_t currentTimeUs)
 
     // Rotate pitch/roll axis error with yaw rotation
     rotateAxisError();
+
+    updateCrossAxisRelax();
 
     // Apply PID for each axis
     switch (pid.pidMode) {

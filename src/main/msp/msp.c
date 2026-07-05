@@ -2008,6 +2008,11 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->autohover.gain);
         sbufWriteU8(dst, currentPidProfile->autohover.max_angle);
         sbufWriteU16(dst, currentPidProfile->autohover.max_rate);
+        /* Cross-axis relax */
+        sbufWriteU8(dst, currentPidProfile->cross_axis_relax_strength);
+        sbufWriteU8(dst, currentPidProfile->cross_axis_relax_level);
+        sbufWriteU8(dst, currentPidProfile->cross_axis_relax_cutoff);
+        sbufWriteU8(dst, currentPidProfile->cross_axis_relax_pitch_strength);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -2985,6 +2990,15 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->autohover.gain = sbufReadU8(src);
             currentPidProfile->autohover.max_angle = sbufReadU8(src);
             currentPidProfile->autohover.max_rate = sbufReadU16(src);
+        }
+        /* Cross-axis relax */
+        if (sbufBytesRemaining(src) >= 3) {
+            currentPidProfile->cross_axis_relax_strength = sbufReadU8(src);
+            currentPidProfile->cross_axis_relax_level = sbufReadU8(src);
+            currentPidProfile->cross_axis_relax_cutoff = sbufReadU8(src);
+        }
+        if (sbufBytesRemaining(src) >= 1) {
+            currentPidProfile->cross_axis_relax_pitch_strength = sbufReadU8(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);
