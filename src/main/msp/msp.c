@@ -2004,6 +2004,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->master_gain[PID_ROLL]);
         sbufWriteU8(dst, currentPidProfile->master_gain[PID_PITCH]);
         sbufWriteU8(dst, currentPidProfile->master_gain[PID_YAW]);
+        /* Auto Hover */
+        sbufWriteU8(dst, currentPidProfile->autohover.gain);
+        sbufWriteU8(dst, currentPidProfile->autohover.max_angle);
+        sbufWriteU16(dst, currentPidProfile->autohover.max_rate);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -2975,6 +2979,12 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->master_gain[PID_ROLL] = sbufReadU8(src);
             currentPidProfile->master_gain[PID_PITCH] = sbufReadU8(src);
             currentPidProfile->master_gain[PID_YAW] = sbufReadU8(src);
+        }
+        /* Auto Hover */
+        if (sbufBytesRemaining(src) >= 4) {
+            currentPidProfile->autohover.gain = sbufReadU8(src);
+            currentPidProfile->autohover.max_angle = sbufReadU8(src);
+            currentPidProfile->autohover.max_rate = sbufReadU16(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

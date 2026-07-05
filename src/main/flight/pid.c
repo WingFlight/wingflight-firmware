@@ -54,6 +54,7 @@
 #include "flight/mixer.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
+#include "flight/autohover.h"
 #include "flight/rpm_filter.h"
 
 #include "pid.h"
@@ -482,6 +483,7 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     // Initialise sub-profiles
 #ifdef USE_ACC
     levelingInit(pidProfile);
+    autoHoverInit(pidProfile);
 #endif
 #ifdef USE_ACRO_TRAINER
     acroTrainerInit(pidProfile);
@@ -584,7 +586,12 @@ static float pidApplySetpoint(uint8_t axis)
 #ifdef USE_ACC
     // Apply leveling modes
     if (FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE)) {
+        // Failsafe/GPS rescue take priority over AUTO HOVER and force recovery to level, even
+        // while genuinely hovering vertically -- a deliberate safety choice.
         setpoint = angleModeApply(axis, setpoint);
+    }
+    else if (FLIGHT_MODE(AUTOHOVER_MODE)) {
+        setpoint = autoHoverApply(axis, setpoint);
     }
     else if (FLIGHT_MODE(HORIZON_MODE)) {
         setpoint = horizonModeApply(axis, setpoint);

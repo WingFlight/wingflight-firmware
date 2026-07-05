@@ -158,6 +158,9 @@ typedef enum {
     ADJUSTMENT_MASTER_GAIN_ROLL          = 85,
     ADJUSTMENT_MASTER_GAIN_YAW           = 86,
 
+    // Auto Hover
+    ADJUSTMENT_AUTOHOVER_GAIN            = 87,
+
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;
 

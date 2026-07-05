@@ -125,6 +125,7 @@ typedef enum {
     DEBUG_HS_BLEED,
     DEBUG_GOV_MOTOR,
     DEBUG_GYRO_CALIBRATION,
+    DEBUG_AUTOHOVER,
     DEBUG_COUNT
 } debugType_e;
 

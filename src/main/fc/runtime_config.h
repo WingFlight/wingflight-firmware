@@ -88,6 +88,7 @@ typedef enum {
     GPS_RESCUE_MODE_BIT  = 6,
     PASSTHROUGH_MODE_BIT = 7,
     INFLIGHT_MODE_BIT    = 8,
+    AUTOHOVER_MODE_BIT   = 9,
 } flightModeBits_e;
 
 typedef enum {
@@ -110,6 +111,10 @@ typedef enum {
     // switched off with throttle back at idle (read as "landed", since some pilots delay disarming
     // while taxiing back).
     INFLIGHT_MODE        = BIT(INFLIGHT_MODE_BIT),
+    // AUTO HOVER: quaternion-based hold of a vertical (90 degree pitch) attitude and heading, for
+    // 3D "prop hang" hover. See flight/autohover.c for why this can't reuse ANGLE_MODE/HORIZON_MODE's
+    // Euler-angle leveling code (gimbal lock exactly at the target attitude).
+    AUTOHOVER_MODE       = BIT(AUTOHOVER_MODE_BIT),
 } flightModeFlags_e;
 
 extern uint16_t flightModeFlags;

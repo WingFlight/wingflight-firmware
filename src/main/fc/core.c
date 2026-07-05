@@ -73,6 +73,7 @@
 #include "flight/mixer.h"
 #include "flight/pid.h"
 #include "flight/trainer.h"
+#include "flight/autohover.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
@@ -667,27 +668,37 @@ void processRxModes(timeUs_t currentTimeUs)
         }
 #endif
 
-        if (IS_RC_MODE_ACTIVE(BOXANGLE)) {
+        if (IS_RC_MODE_ACTIVE(BOXAUTOHOVER)) {
+            DISABLE_FLIGHT_MODE(ANGLE_MODE);
+            DISABLE_FLIGHT_MODE(HORIZON_MODE);
+            DISABLE_FLIGHT_MODE(TRAINER_MODE);
+            ENABLE_FLIGHT_MODE(AUTOHOVER_MODE);
+        }
+        else if (IS_RC_MODE_ACTIVE(BOXANGLE)) {
             ENABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
+            DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
         }
         else if (IS_RC_MODE_ACTIVE(BOXHORIZON)) {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             ENABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
+            DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
         }
 #ifdef USE_ACRO_TRAINER
         else if (IS_RC_MODE_ACTIVE(BOXTRAINER)) {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             ENABLE_FLIGHT_MODE(TRAINER_MODE);
+            DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
         }
 #endif
         else {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
+            DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
         }
     }
 
@@ -747,6 +758,9 @@ void processRxModes(timeUs_t currentTimeUs)
 #ifdef USE_ACRO_TRAINER
     acroTrainerSetState(FLIGHT_MODE(TRAINER_MODE));
 #endif // USE_ACRO_TRAINER
+#ifdef USE_ACC
+    autoHoverSetState(FLIGHT_MODE(AUTOHOVER_MODE));
+#endif // USE_ACC
 
     if (!IS_RC_MODE_ACTIVE(BOXPREARM) && ARMING_FLAG(WAS_ARMED_WITH_PREARM)) {
         DISABLE_ARMING_FLAG(WAS_ARMED_WITH_PREARM);
