@@ -112,8 +112,12 @@ float autoHoverApply(int axis, float pidSetpoint)
         // Held target: vertical, at the captured heading, plus the pilot's stick deflection as a
         // small local (body-frame) rotation offset -- same "deflect away from the hold and spring
         // back when centred" feel as angleModeApply, just centred on vertical instead of level.
+        // Bench-confirmed: +900 here drives the elevator toward nose-down, not nose-up (the
+        // stabilisation loop itself is correct -- verified via blackbox, axisP/axisF go strongly
+        // positive on engage exactly as intended -- it was just chasing the wrong target). -900
+        // is the physically-vertical, nose-up target.
         quaternion qBase;
-        imuEulerToQuaternion(0, 900, autoHover.HeadingTargetDecidegrees, &qBase);
+        imuEulerToQuaternion(0, -900, autoHover.HeadingTargetDecidegrees, &qBase);
 
         const float rollOffset  = DEGREES_TO_RADIANS(autoHover.MaxAngle * getDeflection(FD_ROLL));
         const float pitchOffset = DEGREES_TO_RADIANS(autoHover.MaxAngle * getDeflection(FD_PITCH));
