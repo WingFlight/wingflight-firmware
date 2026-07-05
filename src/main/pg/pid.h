@@ -75,11 +75,6 @@ typedef struct {
     uint16_t lookahead_ms;         // The lookahead window in milliseconds used to reduce overshoot
 } pidTrainerMode_t;
 
-typedef struct {
-    uint8_t gain;                  // Correction strength back to the held attitude
-    uint8_t deadband;              // Stick deflection (% of full travel) below which an axis locks
-} pidAttHoldMode_t;
-
 #define MAX_PROFILE_NAME_LENGTH 8u
 
 typedef struct pidProfile_s {
@@ -111,7 +106,6 @@ typedef struct pidProfile_s {
     pidAngleMode_t      angle;
     pidHorizonMode_t    horizon;
     pidTrainerMode_t    trainer;
-    pidAttHoldMode_t    atthold;
 
 } pidProfile_t;
 

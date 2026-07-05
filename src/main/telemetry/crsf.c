@@ -488,8 +488,6 @@ static void crsfFlightModeInfo(char *buf)
         flightMode = "ANGLE";
     } else if (FLIGHT_MODE(TRAINER_MODE)) {
         flightMode = "TRAINER";
-    } else if (FLIGHT_MODE(ATTHOLD_MODE)) {
-        flightMode = "ATTITUDE";
     } else if (FLIGHT_MODE(ALTHOLD_MODE)) {
         flightMode = "ALTHOLD";
     } else {

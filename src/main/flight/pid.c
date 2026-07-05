@@ -54,7 +54,6 @@
 #include "flight/mixer.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
-#include "flight/atthold.h"
 #include "flight/rpm_filter.h"
 
 #include "pid.h"
@@ -483,7 +482,6 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     // Initialise sub-profiles
 #ifdef USE_ACC
     levelingInit(pidProfile);
-    attHoldModeInit(pidProfile);
 #endif
 #ifdef USE_ACRO_TRAINER
     acroTrainerInit(pidProfile);
@@ -596,9 +594,6 @@ static float pidApplySetpoint(uint8_t axis)
         setpoint = acroTrainerApply(axis, setpoint);
     }
 #endif
-    else if (FLIGHT_MODE(ATTHOLD_MODE)) {
-        setpoint = attHoldModeApply(axis, setpoint);
-    }
 #endif
 
     // Save setpoint

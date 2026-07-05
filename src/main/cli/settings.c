@@ -1098,9 +1098,6 @@ const clivalue_t valueTable[] = {
     { "acro_trainer_gain",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 25, 255 }, PG_PID_PROFILE, offsetof(pidProfile_t, trainer.gain) },
 #endif // USE_ACRO_TRAINER
 
-    { "atthold_gain",                VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, atthold.gain) },
-    { "atthold_deadband",            VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, atthold.deadband) },
-
 
 // PG_TELEMETRY_CONFIG
 #ifdef USE_TELEMETRY
