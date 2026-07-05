@@ -89,6 +89,7 @@ typedef enum {
     PASSTHROUGH_MODE_BIT = 7,
     INFLIGHT_MODE_BIT    = 8,
     AUTOHOVER_MODE_BIT   = 9,
+    MANUAL_MODE_BIT      = 10,
 } flightModeBits_e;
 
 typedef enum {
@@ -115,6 +116,11 @@ typedef enum {
     // 3D "prop hang" hover. See flight/autohover.c for why this can't reuse ANGLE_MODE/HORIZON_MODE's
     // Euler-angle leveling code (gimbal lock exactly at the target attitude).
     AUTOHOVER_MODE       = BIT(AUTOHOVER_MODE_BIT),
+    // MANUAL: pilot flies the same rate/expo curve as stabilised (rate) flight, but the mixer
+    // takes that shaped setpoint directly instead of the gyro-corrected PID output -- no
+    // stabilisation at all, unlike PASSTHROUGH_MODE which also strips the rates/expo curve itself
+    // and feeds raw radio deflection straight through.
+    MANUAL_MODE          = BIT(MANUAL_MODE_BIT),
 } flightModeFlags_e;
 
 extern uint16_t flightModeFlags;

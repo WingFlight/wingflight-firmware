@@ -26,6 +26,7 @@
 
 float getSetpoint(int axis);
 float getDeflection(int axis);
+float getManualDeflection(int axis);
 
 void setpointInit(void);
 void setpointInitProfile(void);

@@ -108,6 +108,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
 //    BOXITEM(BOXGOVSUSPEND, "GOVERNOR SUSPEND", 56), // heli governor removed
 //    BOXITEM(BOXGOVBYPASS, "GOVERNOR BYPASS", 57), // heli governor removed
     BOXITEM(BOXAUTOHOVER, "AUTO HOVER", 58),
+    BOXITEM(BOXMANUAL, "MANUAL", 59),
 };
 
 // mask of enabled IDs, calculated on startup based on enabled features. boxId_e is used as bit index
@@ -233,6 +234,7 @@ void initActiveBoxIds(void)
 
     BME(BOXOSD);
     BME(BOXPASSTHROUGH);
+    BME(BOXMANUAL);
     BME(BOXIDLEUP);
 
 #ifdef USE_TELEMETRY

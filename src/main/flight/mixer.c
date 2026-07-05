@@ -44,6 +44,7 @@
 #include "flight/wiggle.h"
 #include "flight/logic_condition.h"
 #include "flight/idle_governor.h"
+#include "flight/setpoint.h"
 
 #include "rx/rx.h"
 
@@ -313,13 +314,24 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_STABILIZED_PITCH, pidGetOutput(PID_PITCH));
     mixerSetInput(MIXER_IN_STABILIZED_YAW, pidGetOutput(PID_YAW));
 
-    // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels
+    // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels, bypassing the
+    // rates/expo curve as well as PID - direct radio to surfaces. Takes priority over MANUAL
+    // if both happen to be active at once.
     if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
         mixer.input[MIXER_IN_STABILIZED_ROLL]  = mixer.input[MIXER_IN_RC_CHANNEL_ROLL];
         mixer.input[MIXER_IN_STABILIZED_PITCH] = mixer.input[MIXER_IN_RC_CHANNEL_PITCH];
         // Yaw command is reversed in setpoint.c relative to raw RC (unlike other axes);
         // keep the same reversal here so passthrough yaw direction matches stabilized.
         mixer.input[MIXER_IN_STABILIZED_YAW]   = -mixer.input[MIXER_IN_RC_CHANNEL_YAW];
+    }
+    // BOXMANUAL mode: replace stabilized inputs with the same rates/expo-shaped setpoint the
+    // PID rate loop targets, but skip the gyro-corrected PID output itself - same stick feel as
+    // stabilized flight, no stabilization. getManualDeflection() already matches the stabilized
+    // sign convention (yaw included), so no extra reversal is needed here.
+    else if (IS_RC_MODE_ACTIVE(BOXMANUAL)) {
+        mixer.input[MIXER_IN_STABILIZED_ROLL]  = getManualDeflection(FD_ROLL);
+        mixer.input[MIXER_IN_STABILIZED_PITCH] = getManualDeflection(FD_PITCH);
+        mixer.input[MIXER_IN_STABILIZED_YAW]   = getManualDeflection(FD_YAW);
     }
 
     // Calculate cyclic
