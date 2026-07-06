@@ -167,6 +167,7 @@
 #define PG_GENERIC_MIXER_CURVES      1009
 #define PG_GENERIC_LOGIC_CONDITIONS  1010
 #define PG_IDLE_GOVERNOR_CONFIG      1011
+#define PG_GAIN_CURVES               1012
 
 // OSD configuration (subject to change)
 #define PG_OSD_FONT_CONFIG 2047

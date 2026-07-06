@@ -83,6 +83,21 @@ typedef struct {
 
 #define MAX_PROFILE_NAME_LENGTH 8u
 
+#define GAIN_CURVE_COUNT   8
+#define GAIN_CURVE_POINTS  6
+
+typedef struct {
+    uint16_t x;   // 0..1000, |stick deflection| * 1000
+    uint16_t y;   // 0..500, percent multiplier (100 = unscaled, matches master_gain's own scale)
+} gainCurvePoint_t;
+
+typedef struct {
+    uint8_t          count;                      // 0 (disabled) or 2..GAIN_CURVE_POINTS
+    gainCurvePoint_t points[GAIN_CURVE_POINTS];   // ascending by x
+} gainCurve_t;
+
+PG_DECLARE_ARRAY(gainCurve_t, GAIN_CURVE_COUNT, gainCurves);
+
 typedef struct pidProfile_s {
 
     char                profileName[MAX_PROFILE_NAME_LENGTH + 1];
@@ -92,6 +107,7 @@ typedef struct pidProfile_s {
     uint8_t             pid_mode;
 
     uint8_t             master_gain[PID_AXIS_COUNT];  // Live per-axis P/I/D/F scale, percent (100 = unscaled) - in-flight tuning aid, doesn't alter the underlying gains
+    uint8_t             gain_curve[PID_AXIS_COUNT];   // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1), scales master_gain by |stick deflection|
 
     uint8_t             fw_tpa_breakpoint;
     uint8_t             fw_tpa_rate;

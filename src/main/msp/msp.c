@@ -1678,6 +1678,16 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         }
         break;
 
+    case MSP_GAIN_CURVES:
+        for (int i = 0; i < GAIN_CURVE_COUNT; i++) {
+            sbufWriteU8(dst, gainCurves(i)->count);
+            for (int p = 0; p < GAIN_CURVE_POINTS; p++) {
+                sbufWriteU16(dst, gainCurves(i)->points[p].x);
+                sbufWriteU16(dst, gainCurves(i)->points[p].y);
+            }
+        }
+        break;
+
     case MSP_LOGIC_CONDITIONS:
         for (int i = 0; i < LOGIC_CONDITION_COUNT; i++) {
             sbufWriteU8(dst, logicConditions(i)->enabled);
@@ -2013,6 +2023,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->cross_axis_relax_level);
         sbufWriteU8(dst, currentPidProfile->cross_axis_relax_cutoff);
         sbufWriteU8(dst, currentPidProfile->cross_axis_relax_pitch_strength);
+        /* Gain curve assignment (per axis) */
+        sbufWriteU8(dst, currentPidProfile->gain_curve[PID_ROLL]);
+        sbufWriteU8(dst, currentPidProfile->gain_curve[PID_PITCH]);
+        sbufWriteU8(dst, currentPidProfile->gain_curve[PID_YAW]);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -3000,6 +3014,12 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (sbufBytesRemaining(src) >= 1) {
             currentPidProfile->cross_axis_relax_pitch_strength = sbufReadU8(src);
         }
+        /* Gain curve assignment (per axis) */
+        if (sbufBytesRemaining(src) >= 3) {
+            currentPidProfile->gain_curve[PID_ROLL] = sbufReadU8(src);
+            currentPidProfile->gain_curve[PID_PITCH] = sbufReadU8(src);
+            currentPidProfile->gain_curve[PID_YAW] = sbufReadU8(src);
+        }
         /* Load new values */
         pidLoadProfile(currentPidProfile);
         break;
@@ -3436,6 +3456,18 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         for (int p = 0; p < MIXER_CURVE_POINTS; p++) {
             mixerCurvesMutable(i)->points[p].x = sbufReadU16(src);
             mixerCurvesMutable(i)->points[p].y = sbufReadU16(src);
+        }
+        break;
+
+    case MSP_SET_GAIN_CURVE:
+        i = sbufReadU8(src);
+        if (i >= GAIN_CURVE_COUNT) {
+            return MSP_RESULT_ERROR;
+        }
+        gainCurvesMutable(i)->count = sbufReadU8(src);
+        for (int p = 0; p < GAIN_CURVE_POINTS; p++) {
+            gainCurvesMutable(i)->points[p].x = sbufReadU16(src);
+            gainCurvesMutable(i)->points[p].y = sbufReadU16(src);
         }
         break;
 
