@@ -327,6 +327,7 @@ static const char * const mixerInputNames[] = {
     [MIXER_IN_RC_CHANNEL_AUX1]       = "AUX1",
     [MIXER_IN_RC_CHANNEL_AUX2]       = "AUX2",
     [MIXER_IN_RC_CHANNEL_AUX3]       = "AUX3",
+    [MIXER_IN_RC_CHANNEL_8]          = "CH8",
     [MIXER_IN_RC_CHANNEL_9]          = "CH9",
     [MIXER_IN_RC_CHANNEL_10]         = "CH10",
     [MIXER_IN_RC_CHANNEL_11]         = "CH11",
