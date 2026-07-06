@@ -38,12 +38,28 @@ PG_RESET_TEMPLATE(pidConfig_t, pidConfig,
     .filter_process_denom = FILTER_PROCESS_DENOM_DEFAULT,
 );
 
+PG_REGISTER_ARRAY_WITH_RESET_FN(gainCurve_t, GAIN_CURVE_COUNT, gainCurves, PG_GAIN_CURVES, 0);
+
+void pgResetFn_gainCurves(gainCurve_t *curve)
+{
+    // Default every curve to a neutral 2-point flat line, so an unconfigured
+    // curve slot has no effect if an axis is assigned to it.
+    for (int i = 0; i < GAIN_CURVE_COUNT; i++) {
+        curve[i].count = 2;
+        curve[i].points[0].x = 0;
+        curve[i].points[0].y = 100;
+        curve[i].points[1].x = 1000;
+        curve[i].points[1].y = 100;
+    }
+}
+
 // v0->v1: added master_gain. v1->v2: master_gain widened from one shared
 // value to one per axis. v2->v3: added autohover sub-struct. v3->v4: added
 // fixed-wing cross-axis relax settings. v4->v5: added pitch strength for
-// cross-axis relax - old saved profiles reset to defaults rather than
-// reinterpreting their stored bytes at the new, wider struct layout.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 5);
+// cross-axis relax. v5->v6: added gain_curve (index into gainCurves, scales
+// master_gain by |stick deflection|) - old saved profiles reset to defaults
+// rather than reinterpreting their stored bytes at the new, wider struct layout.
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 6);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -56,6 +72,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
         },
         .pid_mode = 1,
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
+        .gain_curve = { [PID_ROLL] = 0, [PID_PITCH] = 0, [PID_YAW] = 0 },
         .fw_tpa_breakpoint = 100,
         .fw_tpa_rate = 0,
         .iterm_decay_time = 6,

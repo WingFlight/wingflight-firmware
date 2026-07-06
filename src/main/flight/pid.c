@@ -428,6 +428,10 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     for (int i = 0; i < PID_AXIS_COUNT; i++)
         pid.masterGain[i] = pidProfile->master_gain[i] * 0.01f;
 
+    // Optional per-axis curve that further scales master gain by |stick deflection|
+    for (int i = 0; i < PID_AXIS_COUNT; i++)
+        pid.gainCurveIndex[i] = pidProfile->gain_curve[i];
+
     // Fixed-wing throttle-based gain attenuation
     pid.fwTpaBreakpoint = pidProfile->fw_tpa_breakpoint * 0.01f;
     pid.fwTpaRate = pidProfile->fw_tpa_rate * 0.01f;
@@ -690,6 +694,37 @@ static void pidApplyMode0(uint8_t axis)
  **
  ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** **/
 
+// Linear interpolation through a curve's (ascending-x) points, evaluated on
+// |stick deflection| (0..1). Mirrors mixerEvaluateCurve()'s algorithm but the
+// domain is unipolar since the caller always passes a magnitude.
+static float pidEvaluateGainCurve(const gainCurve_t *curve, float stickMag)
+{
+    const int n = curve->count;
+
+    if (n < 2)
+        return 1.0f;
+
+    const float xs = stickMag * 1000.0f;
+
+    if (xs <= curve->points[0].x)
+        return curve->points[0].y * 0.01f;
+
+    if (xs >= curve->points[n - 1].x)
+        return curve->points[n - 1].y * 0.01f;
+
+    for (int i = 0; i < n - 1; i++) {
+        const gainCurvePoint_t *p0 = &curve->points[i];
+        const gainCurvePoint_t *p1 = &curve->points[i + 1];
+
+        if (xs >= p0->x && xs <= p1->x) {
+            const float t = (p1->x != p0->x) ? (xs - p0->x) / (float)(p1->x - p0->x) : 0;
+            return (p0->y + t * (p1->y - p0->y)) * 0.01f;
+        }
+    }
+
+    return 1.0f;
+}
+
 static float pidThrottleAttenuation(void)
 {
     // Throttle is a proxy for prop-wash dynamic pressure over the control
@@ -723,11 +758,18 @@ static void pidApplyMode1(uint8_t axis)
     // Cross-axis relax
     const float crossAxisRelax = getCrossAxisRelaxFactor(axis);
 
+    // Optional per-axis curve scaling master gain by |stick deflection|
+    const uint8_t curveIdx = pid.gainCurveIndex[axis];
+    const float curveMult = curveIdx > 0
+        ? pidEvaluateGainCurve(gainCurves(curveIdx - 1), fabsf(getRcDeflection(axis)))
+        : 1.0f;
+    const float masterGain = pid.masterGain[axis] * curveMult;
+
 
   //// P-term
 
     // Calculate P-component
-    pid.data[axis].P = pid.coef[axis].Kp * pid.masterGain[axis] * atten * crossAxisRelax * errorRate;
+    pid.data[axis].P = pid.coef[axis].Kp * masterGain * atten * crossAxisRelax * errorRate;
 
 
   //// D-term (gyro only)
@@ -736,7 +778,7 @@ static void pidApplyMode1(uint8_t axis)
     const float dTerm = difFilterApply(&pid.dtermFilter[axis], -gyroRate);
 
     // Calculate D-component
-    pid.data[axis].D = pid.coef[axis].Kd * pid.masterGain[axis] * atten * crossAxisRelax * dTerm;
+    pid.data[axis].D = pid.coef[axis].Kd * masterGain * atten * crossAxisRelax * dTerm;
 
 
   //// I-term
@@ -752,7 +794,7 @@ static void pidApplyMode1(uint8_t axis)
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
-    pid.data[axis].I = pid.coef[axis].Ki * pid.masterGain[axis] * crossAxisRelax * pid.data[axis].axisError;
+    pid.data[axis].I = pid.coef[axis].Ki * masterGain * crossAxisRelax * pid.data[axis].axisError;
 
     // Apply error decay (fixed rate -- no ground/airborne distinction; a plane
     // sitting on its wheels isn't at risk of tipping over from I-term windup
@@ -766,7 +808,7 @@ static void pidApplyMode1(uint8_t axis)
   //// Feedforward
 
     // Calculate F component
-    pid.data[axis].F = pid.coef[axis].Kf * pid.masterGain[axis] * setpoint;
+    pid.data[axis].F = pid.coef[axis].Kf * masterGain * setpoint;
 
 
   //// Feedforward Boost (FF Derivative)
