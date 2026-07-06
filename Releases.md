@@ -1,3 +1,13 @@
+# 0.0.4
+
+Fix missing channel slot handling.
+Fix pitch-up direction when enabling auto-hover.
+Add distinct manual and passthrough modes.
+Add auto-hover flight mode support.
+Add cross-axis relax behavior.
+Remove atthold mode.
+Update default servo rate.
+
 # 0.0.3
 
 ESC Programing
