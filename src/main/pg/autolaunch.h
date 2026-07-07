@@ -14,7 +14,7 @@
 #include "pg/pg.h"
 
 typedef struct autolaunchConfig_s {
-    uint8_t auto_throttle;       // 0 = launch throttle immediately after arming, 1 = wait for throw detection
+    uint8_t auto_throttle;       // 0 = skip throw detection after throttle confirmation, 1 = wait for throw detection
     uint8_t launch_throttle;     // percent
     uint8_t climb_angle;         // degrees nose-up target
     uint8_t stick_threshold;     // percent roll/pitch/yaw deflection needed for pilot takeover

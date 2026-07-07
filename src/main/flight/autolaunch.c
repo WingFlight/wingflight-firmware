@@ -31,10 +31,16 @@
 
 #include "autolaunch.h"
 
+#define AUTOLAUNCH_START_THROTTLE_THRESHOLD 0.05f
+#define AUTOLAUNCH_MOTOR_SPINUP_TIME_US     500000
+#define AUTOLAUNCH_MAX_LAUNCH_ANGLE_DEG     45.0f
+
 typedef enum {
     AUTOLAUNCH_IDLE = 0,
+    AUTOLAUNCH_WAIT_THROTTLE,
     AUTOLAUNCH_WAIT_THROW,
     AUTOLAUNCH_MOTOR_DELAY,
+    AUTOLAUNCH_MOTOR_SPINUP,
     AUTOLAUNCH_LAUNCHING,
     AUTOLAUNCH_DONE,
 } autolaunchState_e;
@@ -65,8 +71,10 @@ static bool pilotTookOver(void)
 
 static bool throwDetected(timeUs_t currentTimeUs)
 {
+    const bool attitudeOk = fabsf(attitude.values.roll / 10.0f) <= AUTOLAUNCH_MAX_LAUNCH_ANGLE_DEG &&
+                            fabsf(attitude.values.pitch / 10.0f) <= AUTOLAUNCH_MAX_LAUNCH_ANGLE_DEG;
     const float forwardAccelCms = acc.accADC[X] * acc.dev.acc_1G_rec * 981.0f;
-    const bool accelHigh = forwardAccelCms > autolaunchConfig()->accel_threshold;
+    const bool accelHigh = attitudeOk && forwardAccelCms > autolaunchConfig()->accel_threshold;
 
     if (!accelHigh) {
         autolaunch.detectStartUs = 0;
@@ -95,7 +103,7 @@ void autolaunchUpdate(timeUs_t currentTimeUs)
             return;
         }
 
-        setState(autolaunchConfig()->auto_throttle ? AUTOLAUNCH_WAIT_THROW : AUTOLAUNCH_LAUNCHING, currentTimeUs);
+        setState(AUTOLAUNCH_WAIT_THROTTLE, currentTimeUs);
     }
 
     if (!autolaunch.armedWithMode || pilotTookOver()) {
@@ -103,7 +111,11 @@ void autolaunchUpdate(timeUs_t currentTimeUs)
         return;
     }
 
-    if (autolaunch.state == AUTOLAUNCH_WAIT_THROW) {
+    if (autolaunch.state == AUTOLAUNCH_WAIT_THROTTLE) {
+        if (getThrottle() > AUTOLAUNCH_START_THROTTLE_THRESHOLD) {
+            setState(autolaunchConfig()->auto_throttle ? AUTOLAUNCH_WAIT_THROW : AUTOLAUNCH_MOTOR_SPINUP, currentTimeUs);
+        }
+    } else if (autolaunch.state == AUTOLAUNCH_WAIT_THROW) {
         if (throwDetected(currentTimeUs)) {
             setState(AUTOLAUNCH_MOTOR_DELAY, currentTimeUs);
         } else if (cmpTimeUs(currentTimeUs, autolaunch.stateStartUs + autolaunchConfig()->timeout * 1000) >= 0) {
@@ -111,6 +123,10 @@ void autolaunchUpdate(timeUs_t currentTimeUs)
         }
     } else if (autolaunch.state == AUTOLAUNCH_MOTOR_DELAY) {
         if (cmpTimeUs(currentTimeUs, autolaunch.stateStartUs + autolaunchConfig()->motor_delay * 1000) >= 0) {
+            setState(AUTOLAUNCH_MOTOR_SPINUP, currentTimeUs);
+        }
+    } else if (autolaunch.state == AUTOLAUNCH_MOTOR_SPINUP) {
+        if (cmpTimeUs(currentTimeUs, autolaunch.stateStartUs + AUTOLAUNCH_MOTOR_SPINUP_TIME_US) >= 0) {
             setState(AUTOLAUNCH_LAUNCHING, currentTimeUs);
         }
     }
@@ -118,22 +134,33 @@ void autolaunchUpdate(timeUs_t currentTimeUs)
 
 bool autolaunchIsActive(void)
 {
-    return autolaunch.state == AUTOLAUNCH_WAIT_THROW || autolaunch.state == AUTOLAUNCH_MOTOR_DELAY || autolaunch.state == AUTOLAUNCH_LAUNCHING;
+    return autolaunch.state == AUTOLAUNCH_WAIT_THROTTLE ||
+           autolaunch.state == AUTOLAUNCH_WAIT_THROW ||
+           autolaunch.state == AUTOLAUNCH_MOTOR_DELAY ||
+           autolaunch.state == AUTOLAUNCH_MOTOR_SPINUP ||
+           autolaunch.state == AUTOLAUNCH_LAUNCHING;
 }
 
 bool autolaunchHasThrottleOverride(void)
 {
-    return autolaunch.state == AUTOLAUNCH_WAIT_THROW || autolaunch.state == AUTOLAUNCH_MOTOR_DELAY || autolaunch.state == AUTOLAUNCH_LAUNCHING;
+    return autolaunchIsActive();
 }
 
 float autolaunchGetThrottle(void)
 {
-    if (autolaunch.state == AUTOLAUNCH_WAIT_THROW || autolaunch.state == AUTOLAUNCH_MOTOR_DELAY) {
+    if (autolaunch.state == AUTOLAUNCH_WAIT_THROTTLE || autolaunch.state == AUTOLAUNCH_WAIT_THROW || autolaunch.state == AUTOLAUNCH_MOTOR_DELAY) {
         return 0.0f;
     }
 
+    const float targetThrottle = MAX(getThrottle(), autolaunchConfig()->launch_throttle / 100.0f);
+
+    if (autolaunch.state == AUTOLAUNCH_MOTOR_SPINUP) {
+        const float ramp = constrainf((float)cmpTimeUs(micros(), autolaunch.stateStartUs) / AUTOLAUNCH_MOTOR_SPINUP_TIME_US, 0.0f, 1.0f);
+        return targetThrottle * ramp;
+    }
+
     if (autolaunch.state == AUTOLAUNCH_LAUNCHING) {
-        return MAX(getThrottle(), autolaunchConfig()->launch_throttle / 100.0f);
+        return targetThrottle;
     }
 
     return getThrottle();
@@ -141,7 +168,7 @@ float autolaunchGetThrottle(void)
 
 float autolaunchApplyAxis(int axis, float setpoint)
 {
-    if (autolaunch.state != AUTOLAUNCH_MOTOR_DELAY && autolaunch.state != AUTOLAUNCH_LAUNCHING) {
+    if (autolaunch.state != AUTOLAUNCH_MOTOR_DELAY && autolaunch.state != AUTOLAUNCH_MOTOR_SPINUP && autolaunch.state != AUTOLAUNCH_LAUNCHING) {
         return setpoint;
     }
 
