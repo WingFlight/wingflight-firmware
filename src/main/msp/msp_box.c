@@ -42,6 +42,8 @@
 
 #include "pg/piniobox.h"
 
+#include "config/feature.h"
+
 #include "msp_box.h"
 
 
@@ -109,6 +111,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
 //    BOXITEM(BOXGOVBYPASS, "GOVERNOR BYPASS", 57), // heli governor removed
     BOXITEM(BOXAUTOHOVER, "AUTO HOVER", 58),
     BOXITEM(BOXMANUAL, "MANUAL", 59),
+    BOXITEM(BOXAUTOLAUNCH, "AUTOLAUNCH", 60),
 };
 
 // mask of enabled IDs, calculated on startup based on enabled features. boxId_e is used as bit index
@@ -236,6 +239,9 @@ void initActiveBoxIds(void)
     BME(BOXPASSTHROUGH);
     BME(BOXMANUAL);
     BME(BOXIDLEUP);
+    if (featureIsEnabled(FEATURE_AUTOLAUNCH)) {
+        BME(BOXAUTOLAUNCH);
+    }
 
 #ifdef USE_TELEMETRY
     if (featureIsEnabled(FEATURE_TELEMETRY)) {

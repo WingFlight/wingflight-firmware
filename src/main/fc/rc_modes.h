@@ -73,6 +73,7 @@ typedef enum {
     BOXUSER4,
     BOXAUTOHOVER,       // AUTO HOVER: quaternion-based vertical prop-hang attitude/heading hold
     BOXMANUAL,          // MANUAL: same rates/expo curve as stabilised flight, but no gyro correction
+    BOXAUTOLAUNCH,      // AUTOLAUNCH: fixed-wing hand-launch assist
 
     CHECKBOX_ITEM_COUNT,
 

@@ -61,6 +61,7 @@
 #include "fc/stats.h"
 
 #include "flight/failsafe.h"
+#include "flight/autolaunch.h"
 #include "flight/gps_rescue.h"
 #include "flight/wiggle.h"
 
@@ -641,6 +642,8 @@ void processRxModes(timeUs_t currentTimeUs)
     }
 
     updateActivatedModes();
+
+    autolaunchUpdate(currentTimeUs);
 
     if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
         ENABLE_FLIGHT_MODE(PASSTHROUGH_MODE);

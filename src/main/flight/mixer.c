@@ -44,6 +44,7 @@
 #include "flight/wiggle.h"
 #include "flight/logic_condition.h"
 #include "flight/idle_governor.h"
+#include "flight/autolaunch.h"
 #include "flight/setpoint.h"
 
 #include "rx/rx.h"
@@ -338,7 +339,8 @@ static void mixerUpdateInputs(void)
     mixerUpdateCyclic();
 
     // Update throttle (idle governor holds RPM at idle when BOXIDLEUP is engaged)
-    mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, idleGovernorApply(getThrottle()));
+    const float throttle = autolaunchHasThrottleOverride() ? autolaunchGetThrottle() : idleGovernorApply(getThrottle());
+    mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, throttle);
 }
 
 void mixerUpdate(timeUs_t currentTimeUs)

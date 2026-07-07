@@ -91,6 +91,7 @@ COMMON_SRC = \
             fc/rc_modes.c \
             fc/rc_rates.c \
             flight/position.c \
+            flight/autolaunch.c \
             flight/failsafe.c \
             flight/gps_rescue.c \
             flight/dyn_notch_filter.c \

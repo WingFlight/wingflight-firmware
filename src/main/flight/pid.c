@@ -51,6 +51,7 @@
 #include "fc/runtime_config.h"
 
 #include "flight/imu.h"
+#include "flight/autolaunch.h"
 #include "flight/mixer.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
@@ -639,6 +640,8 @@ static float pidApplySetpoint(uint8_t axis)
     }
 #endif
 #endif
+
+    setpoint = autolaunchApplyAxis(axis, setpoint);
 
     // Save setpoint
     pid.data[axis].setPoint = setpoint;

@@ -115,6 +115,7 @@
 #include "osd/osd_warnings.h"
 
 #include "pg/beeper.h"
+#include "pg/autolaunch.h"
 #include "pg/board.h"
 #include "pg/dyn_notch.h"
 #include "pg/gyrodev.h"
@@ -1375,6 +1376,17 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, idleGovernorConfig()->idle_governor_throttle);
         sbufWriteU8(dst, idleGovernorConfig()->idle_governor_handover);
         sbufWriteU8(dst, idleGovernorConfig()->idle_governor_ceiling);
+        break;
+
+    case MSP2_WING_AUTOLAUNCH_CONFIG:
+        sbufWriteU8(dst, autolaunchConfig()->auto_throttle);
+        sbufWriteU8(dst, autolaunchConfig()->launch_throttle);
+        sbufWriteU8(dst, autolaunchConfig()->climb_angle);
+        sbufWriteU8(dst, autolaunchConfig()->stick_threshold);
+        sbufWriteU16(dst, autolaunchConfig()->accel_threshold);
+        sbufWriteU16(dst, autolaunchConfig()->detect_time);
+        sbufWriteU16(dst, autolaunchConfig()->motor_delay);
+        sbufWriteU16(dst, autolaunchConfig()->timeout);
         break;
 
     case MSP_RC:
@@ -3866,6 +3878,17 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         idleGovernorConfigMutable()->idle_governor_throttle = sbufReadU8(src);
         idleGovernorConfigMutable()->idle_governor_handover = sbufReadU8(src);
         idleGovernorConfigMutable()->idle_governor_ceiling = sbufReadU8(src);
+        break;
+
+    case MSP2_WING_SET_AUTOLAUNCH_CONFIG:
+        autolaunchConfigMutable()->auto_throttle = sbufReadU8(src);
+        autolaunchConfigMutable()->launch_throttle = sbufReadU8(src);
+        autolaunchConfigMutable()->climb_angle = sbufReadU8(src);
+        autolaunchConfigMutable()->stick_threshold = sbufReadU8(src);
+        autolaunchConfigMutable()->accel_threshold = sbufReadU16(src);
+        autolaunchConfigMutable()->detect_time = sbufReadU16(src);
+        autolaunchConfigMutable()->motor_delay = sbufReadU16(src);
+        autolaunchConfigMutable()->timeout = sbufReadU16(src);
         break;
 
     case MSP_SET_BATTERY_PROFILE:

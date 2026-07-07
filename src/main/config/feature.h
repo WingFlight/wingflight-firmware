@@ -55,7 +55,7 @@ typedef enum {
     FEATURE_UNUSED_21              = BIT(21),
     FEATURE_UNUSED_22              = BIT(22),
     FEATURE_UNUSED_23              = BIT(23),
-    FEATURE_UNUSED_24              = BIT(24),
+    FEATURE_AUTOLAUNCH             = BIT(24),
     FEATURE_RX_SPI                 = BIT(25),
     FEATURE_UNUSED_26              = BIT(26), // was FEATURE_GOVERNOR (heli governor removed)
     FEATURE_ESC_SENSOR             = BIT(27),
@@ -76,7 +76,6 @@ typedef enum {
     FEATURE_UNUSED_21 | \
     FEATURE_UNUSED_22 | \
     FEATURE_UNUSED_23 | \
-    FEATURE_UNUSED_24 | \
     0)
 
 void featureInit(void);

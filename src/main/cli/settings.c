@@ -74,6 +74,7 @@
 #include "osd/osd.h"
 
 #include "pg/adc.h"
+#include "pg/autolaunch.h"
 #include "pg/beeper.h"
 #include "pg/beeper_dev.h"
 #include "pg/bus_i2c.h"
@@ -811,6 +812,16 @@ const clivalue_t valueTable[] = {
     { "idle_governor_throttle",     VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_throttle) },
     { "idle_governor_handover",     VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_handover) },
     { "idle_governor_ceiling",      VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_ceiling) },
+
+// PG_AUTOLAUNCH_CONFIG
+    { "autolaunch_auto_throttle",   VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_AUTOLAUNCH_CONFIG, offsetof(autolaunchConfig_t, auto_throttle) },
+    { "autolaunch_throttle",        VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_AUTOLAUNCH_CONFIG, offsetof(autolaunchConfig_t, launch_throttle) },
+    { "autolaunch_climb_angle",     VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 45 }, PG_AUTOLAUNCH_CONFIG, offsetof(autolaunchConfig_t, climb_angle) },
+    { "autolaunch_stick_threshold", VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_AUTOLAUNCH_CONFIG, offsetof(autolaunchConfig_t, stick_threshold) },
+    { "autolaunch_accel_thresh",    VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 5000 }, PG_AUTOLAUNCH_CONFIG, offsetof(autolaunchConfig_t, accel_threshold) },
+    { "autolaunch_detect_time",     VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 1000 }, PG_AUTOLAUNCH_CONFIG, offsetof(autolaunchConfig_t, detect_time) },
+    { "autolaunch_motor_delay",     VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 5000 }, PG_AUTOLAUNCH_CONFIG, offsetof(autolaunchConfig_t, motor_delay) },
+    { "autolaunch_timeout",         VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 30000 }, PG_AUTOLAUNCH_CONFIG, offsetof(autolaunchConfig_t, timeout) },
 #ifdef USE_DSHOT
 #ifdef USE_DSHOT_DMAR
     { "dshot_burst",                VAR_UINT8  | HARDWARE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON_AUTO }, PG_MOTOR_CONFIG, offsetof(motorConfig_t, dev.useBurstDshot) },
