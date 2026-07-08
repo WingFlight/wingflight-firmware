@@ -1,3 +1,8 @@
+# 0.0.5
+
+Add AUTO TRIM flight mode (servo-center capture, ported from iNav's BOXAUTOTRIM).
+Fix auto-hover fighting aileron input, allowing free rotation in hover.
+
 # 0.0.4
 
 Fix missing channel slot handling.
