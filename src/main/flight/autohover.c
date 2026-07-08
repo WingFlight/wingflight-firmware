@@ -46,6 +46,12 @@
 // feature lives at. Roll and yaw become degenerate in Euler terms right at the moment control
 // matters most, so leveling.c's angleModeApply/horizonModeApply cannot simply be re-aimed here.
 //
+// Only pitch and yaw are attitude-held (they reposition the nose horizontally while vertical).
+// Roll is a free rate pass-through, not held -- in this vertical attitude the aircraft's roll
+// axis coincides with the world vertical axis, so roll is the pilot's spin/pirouette control,
+// the same role yaw plays in normal nose-level flight (compare angleModeApply/horizonModeApply,
+// which likewise leave yaw unheld).
+//
 // Known limitations (documented, not fixed here):
 // - Does not subtract accelerometerConfig()->accelerometerTrims like leveling.c/trainer.c do, so a
 //   pilot with board-mount trim dialled in will hover systematically off-vertical by that amount.
@@ -109,9 +115,20 @@ float autoHoverApply(int axis, float pidSetpoint)
     }
 
     if (axis == FD_ROLL) {
-        // Held target: vertical, at the captured heading, plus the pilot's stick deflection as a
-        // small local (body-frame) rotation offset -- same "deflect away from the hold and spring
-        // back when centred" feel as angleModeApply, just centred on vertical instead of level.
+        // Roll (aileron) is deliberately NOT held here. In a 90-degree nose-up hover the
+        // aircraft's roll axis coincides with the world vertical axis, so roll is the
+        // "spin about vertical" (pirouette) axis, not a position-hold axis -- physically the
+        // same role yaw plays in normal (nose-level) flight. angleModeApply/horizonModeApply
+        // leave yaw as a raw pass-through for exactly this reason (see leveling.c); roll gets
+        // the same treatment here. Passing pidSetpoint straight through lets a held aileron
+        // deflection produce continuous rotation instead of converging on a bounded +-MaxAngle
+        // offset and fighting the stick.
+        rate[FD_ROLL] = pidSetpoint;
+
+        // Held target: vertical, at the captured heading, plus the pilot's pitch/yaw stick
+        // deflection as a small local (body-frame) rotation offset -- same "deflect away from
+        // the hold and spring back when centred" feel as angleModeApply, just centred on
+        // vertical instead of level. Roll is intentionally omitted from this offset (see above).
         // Bench-confirmed: +900 here drives the elevator toward nose-down, not nose-up (the
         // stabilisation loop itself is correct -- verified via blackbox, axisP/axisF go strongly
         // positive on engage exactly as intended -- it was just chasing the wrong target). -900
@@ -119,13 +136,12 @@ float autoHoverApply(int axis, float pidSetpoint)
         quaternion qBase;
         imuEulerToQuaternion(0, -900, autoHover.HeadingTargetDecidegrees, &qBase);
 
-        const float rollOffset  = DEGREES_TO_RADIANS(autoHover.MaxAngle * getDeflection(FD_ROLL));
         const float pitchOffset = DEGREES_TO_RADIANS(autoHover.MaxAngle * getDeflection(FD_PITCH));
         const float yawOffset   = DEGREES_TO_RADIANS(autoHover.MaxAngle * getDeflection(FD_YAW));
 
         quaternion qStickOffset = {
             .w = 1.0f,
-            .x = rollOffset * 0.5f,
+            .x = 0.0f,
             .y = pitchOffset * 0.5f,
             .z = yawOffset * 0.5f,
         };
@@ -173,9 +189,12 @@ float autoHoverApply(int axis, float pidSetpoint)
         // singularity-free across the full 0-180 degree range, unlike an acos/axis-angle
         // decomposition (which needs its own shortest-path check plus a division that blows up as
         // the error angle approaches zero). Magnitude saturates smoothly toward 2.0 rad as the true
-        // error approaches 180 degrees, rather than growing unbounded.
+        // error approaches 180 degrees, rather than growing unbounded. Only pitch/yaw (indices 1
+        // and 2) feed the corrective loop -- errorDeg[0] (roll) is intentionally left unused since
+        // roll is free-running (see above); referencing it here would just reintroduce the P-loop
+        // fighting the pilot's spin.
         float errorDeg[3] = {
-            (2.0f * qError.x) / M_RADf,
+            0.0f,
             (2.0f * qError.y) / M_RADf,
             (2.0f * qError.z) / M_RADf,
         };
@@ -183,26 +202,25 @@ float autoHoverApply(int axis, float pidSetpoint)
         // Same pre-airborne attenuation angleModeApply/horizonModeApply use, so the switch can't
         // be armed/tested on the ground and snap violently.
         if (!isAirborne()) {
-            errorDeg[0] *= 0.25f;
             errorDeg[1] *= 0.25f;
             errorDeg[2] *= 0.25f;
         }
 
         float magnitude = 0.0f;
-        for (int i = 0; i < 3; i++) {
+        for (int i = FD_PITCH; i <= FD_YAW; i++) {
             rate[i] = errorDeg[i] * autoHover.Gain;
             magnitude += sq(rate[i]);
         }
         magnitude = sqrtf(magnitude);
 
         // Clamp the vector's magnitude, not each axis independently -- per-axis clamping would
-        // distort the rotation axis mid-maneuver (e.g. pitch saturating before roll), turning a
-        // clean single-axis snap-to-vertical into a curved one.
+        // distort the rotation axis mid-maneuver (e.g. pitch saturating before yaw), turning a
+        // clean single-axis snap-to-vertical into a curved one. Roll is excluded -- it's the
+        // pilot's free-running rate command, not part of this corrective vector.
         if (magnitude > autoHover.MaxRate && magnitude > 0.0f) {
             const float scale = autoHover.MaxRate / magnitude;
-            rate[0] *= scale;
-            rate[1] *= scale;
-            rate[2] *= scale;
+            rate[FD_PITCH] *= scale;
+            rate[FD_YAW] *= scale;
         }
     }
 
