@@ -74,6 +74,7 @@
 #include "flight/pid.h"
 #include "flight/trainer.h"
 #include "flight/autohover.h"
+#include "flight/autotrim.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
@@ -767,6 +768,9 @@ void processRxModes(timeUs_t currentTimeUs)
 #ifdef USE_ACC
     autoHoverSetState(FLIGHT_MODE(AUTOHOVER_MODE));
 #endif // USE_ACC
+#ifdef USE_SERVOS
+    autoTrimUpdate();
+#endif // USE_SERVOS
 
     if (!IS_RC_MODE_ACTIVE(BOXPREARM) && ARMING_FLAG(WAS_ARMED_WITH_PREARM)) {
         DISABLE_ARMING_FLAG(WAS_ARMED_WITH_PREARM);

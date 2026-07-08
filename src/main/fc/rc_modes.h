@@ -73,6 +73,8 @@ typedef enum {
     BOXUSER4,
     BOXAUTOHOVER,       // AUTO HOVER: quaternion-based vertical prop-hang attitude/heading hold
     BOXMANUAL,          // MANUAL: same rates/expo curve as stabilised flight, but no gyro correction
+    BOXAUTOTRIM,        // AUTO TRIM: while armed, captures actual servo output over a fixed window
+                         // and writes it as the new center (see flight/autotrim.c)
 
     CHECKBOX_ITEM_COUNT,
 
