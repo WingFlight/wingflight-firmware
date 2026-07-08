@@ -655,6 +655,14 @@ void processRxModes(timeUs_t currentTimeUs)
         DISABLE_FLIGHT_MODE(MANUAL_MODE);
     }
 
+#ifdef USE_SERVOS
+    if (IS_RC_MODE_ACTIVE(BOXAUTOTRIM)) {
+        ENABLE_FLIGHT_MODE(AUTOTRIM_MODE);
+    } else {
+        DISABLE_FLIGHT_MODE(AUTOTRIM_MODE);
+    }
+#endif // USE_SERVOS
+
     if (!cliMode &&
 #ifdef USE_CMS
         !cmsInMenu &&

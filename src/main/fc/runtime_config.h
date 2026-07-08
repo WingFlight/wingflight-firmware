@@ -90,6 +90,7 @@ typedef enum {
     INFLIGHT_MODE_BIT    = 8,
     AUTOHOVER_MODE_BIT   = 9,
     MANUAL_MODE_BIT      = 10,
+    AUTOTRIM_MODE_BIT    = 11,
 } flightModeBits_e;
 
 typedef enum {
@@ -121,6 +122,10 @@ typedef enum {
     // stabilisation at all, unlike PASSTHROUGH_MODE which also strips the rates/expo curve itself
     // and feeds raw radio deflection straight through.
     MANUAL_MODE          = BIT(MANUAL_MODE_BIT),
+    // AUTO TRIM: mirrors BOXAUTOTRIM's switch position (not the internal capture state machine in
+    // flight/autotrim.c) purely so telemetry/OSD/Lua consumers can see it, the same way every other
+    // switch-driven mode is exposed.
+    AUTOTRIM_MODE        = BIT(AUTOTRIM_MODE_BIT),
 } flightModeFlags_e;
 
 extern uint16_t flightModeFlags;
