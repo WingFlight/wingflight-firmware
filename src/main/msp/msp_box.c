@@ -236,6 +236,7 @@ void initActiveBoxIds(void)
     BME(BOXOSD);
     BME(BOXPASSTHROUGH);
     BME(BOXMANUAL);
+    BME(BOXAUTOTRIM);
     BME(BOXIDLEUP);
 
 #ifdef USE_TELEMETRY
