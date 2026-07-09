@@ -38,6 +38,48 @@
 #endif
 #endif
 
+#ifdef USE_FBUS_MUX_FPGA
+#ifndef FBUS_MUX_FPGA_CS_PIN
+#define FBUS_MUX_FPGA_CS_PIN            NONE
+#endif
+
+#ifndef FBUS_MUX_FPGA_CRESET_PIN
+#define FBUS_MUX_FPGA_CRESET_PIN        NONE
+#endif
+
+#ifndef FBUS_MUX_FPGA_CDONE_PIN
+#define FBUS_MUX_FPGA_CDONE_PIN         NONE
+#endif
+
+#ifndef FBUS_MUX_FPGA_SPI_INSTANCE
+#define FBUS_MUX_FPGA_SPI_INSTANCE      NULL
+#endif
+
+#ifndef FBUS_MUX_FPGA_SPI_CLOCK_KHZ
+#define FBUS_MUX_FPGA_SPI_CLOCK_KHZ     1000
+#endif
+
+#ifndef FBUS_MUX_FPGA_SEND_IN_PIN
+#define FBUS_MUX_FPGA_SEND_IN_PIN        NONE
+#endif
+
+#ifndef FBUS_MUX_FPGA_CONFIG_UART_PORT
+#define FBUS_MUX_FPGA_CONFIG_UART_PORT   -1
+#endif
+
+#ifndef FBUS_MUX_FPGA_CONFIG_UART_BAUD
+#define FBUS_MUX_FPGA_CONFIG_UART_BAUD   115200
+#endif
+
+#ifndef FBUS_MUX_FPGA_CONFIG_WORD
+#define FBUS_MUX_FPGA_CONFIG_WORD        0
+#endif
+
+#ifndef FBUS_MUX_FPGA_PORT_COUNT
+#define FBUS_MUX_FPGA_PORT_COUNT         4
+#endif
+#endif
+
 // pg/flash
 
 #ifdef USE_FLASH_M25P16

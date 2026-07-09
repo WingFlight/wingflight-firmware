@@ -35,6 +35,8 @@
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
 #include "drivers/fbus_sensor.h"
+#include "drivers/serial.h"
+#include "drivers/fbus_mux_fpga.h"
 
 #include "flight/mixer.h"
 #include "flight/servos.h"
@@ -307,6 +309,10 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
     if (!fbusMasterPort)
         return;
 
+#ifdef USE_FBUS_MUX_FPGA
+    fbusMuxFpgaOnFbusTxUpdate(currentTimeUs, isSerialTransmitBufferEmpty(fbusMasterPort));
+#endif
+
     // Keep derived FBUS sensor states (timeouts/GPS mirrors) updated.
     fbusSensorUpdate(currentTimeUs);
 
@@ -326,6 +332,10 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
         setBusServoOutput(ch, value);
     }
     fbusMasterPrepareFrame(&frame, channels, currentTimeUs);
+
+#ifdef USE_FBUS_MUX_FPGA
+    fbusMuxFpgaOnFbusTxStart(currentTimeUs, sizeof(frame), serialGetBaudRate(fbusMasterPort));
+#endif
 
     // serial output
     serialWriteBuf(fbusMasterPort, (const uint8_t *)&frame, sizeof(frame));

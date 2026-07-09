@@ -58,6 +58,7 @@
 #include "drivers/dshot.h"
 #include "drivers/dshot_command.h"
 #include "drivers/flash.h"
+#include "drivers/fbus_mux_fpga.h"
 #include "drivers/io.h"
 #include "drivers/motor.h"
 #include "drivers/osd.h"
@@ -129,6 +130,7 @@
 #include "pg/battery.h"
 #include "pg/sbus_output.h"
 #include "pg/fbus_master.h"
+#include "pg/fbus_mux_fpga.h"
 #include "pg/bus_servo.h"
 #include "pg/logic_condition.h"
 
@@ -1364,6 +1366,18 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, batteryConfig()->smartfuel_voltage_drop_rate);
         sbufWriteU8(dst, batteryConfig()->smartfuel_charge_drop_rate);
         sbufWriteU8(dst, batteryConfig()->smartfuel_sag_gain);
+        break;
+#endif
+
+#ifdef USE_FBUS_MUX_FPGA
+    case MSP2_GET_FBUS_MUX_PORT_CONFIG:
+        {
+            const unsigned portCount = MIN(fbusMuxFpgaConfig()->muxPortCount, ARRAYLEN(fbusMuxFpgaConfig()->muxPortModePwm));
+            sbufWriteU8(dst, portCount);
+            for (unsigned i = 0; i < portCount; i++) {
+                sbufWriteU8(dst, fbusMuxFpgaConfig()->muxPortModePwm[i] ? 1 : 0);
+            }
+        }
         break;
 #endif
 
@@ -3855,6 +3869,32 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         batteryConfigMutable()->smartfuel_charge_drop_rate = sbufReadU8(src);
         batteryConfigMutable()->smartfuel_sag_gain = sbufReadU8(src);
         smartFuelInit();
+        break;
+#endif
+
+#ifdef USE_FBUS_MUX_FPGA
+    case MSP2_SET_FBUS_MUX_PORT_CONFIG:
+        {
+            const unsigned portCount = MIN(fbusMuxFpgaConfig()->muxPortCount, ARRAYLEN(fbusMuxFpgaConfig()->muxPortModePwm));
+            for (unsigned i = 0; i < portCount; i++) {
+                if (!sbufBytesRemaining(src)) {
+                    return MSP_RESULT_ERROR;
+                }
+
+                const uint8_t mode = sbufReadU8(src);
+                if (mode > 1) {
+                    return MSP_RESULT_ERROR;
+                }
+
+                fbusMuxFpgaConfigMutable()->muxPortModePwm[i] = mode;
+            }
+
+            for (unsigned i = portCount; i < ARRAYLEN(fbusMuxFpgaConfigMutable()->muxPortModePwm); i++) {
+                fbusMuxFpgaConfigMutable()->muxPortModePwm[i] = 0;
+            }
+        }
+
+        fbusMuxFpgaSendConfigWord(fbusMuxFpgaGetConfigWord());
         break;
 #endif
 

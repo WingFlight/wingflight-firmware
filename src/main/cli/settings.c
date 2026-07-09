@@ -108,6 +108,7 @@
 #include "pg/freq.h"
 #include "pg/sbus_output.h"
 #include "pg/fbus_master.h"
+#include "pg/fbus_mux_fpga.h"
 #include "pg/sport_master.h"
 #include "pg/bus_servo.h"
 
@@ -1650,6 +1651,17 @@ const clivalue_t valueTable[] = {
     { "fbus_master_telemetry_rate",    VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = {FBUS_MASTER_TELEMETRY_RATE_MIN_HZ, FBUS_MASTER_TELEMETRY_RATE_MAX_HZ}, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, telemetryRate) },
     { "fbus_master_discovery_ms",      VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = {FBUS_MASTER_DISCOVERY_TIME_MIN_MS, FBUS_MASTER_DISCOVERY_TIME_MAX_MS}, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, sensorDiscoveryTimeMs) },
     { "fbus_master_forwarded_sensors", VAR_UINT8 | MASTER_VALUE | MODE_ARRAY, .config.array.length = FBUS_MASTER_MAX_FORWARDED_SENSORS, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, forwardedSensors) },
+#endif
+
+#ifdef USE_FBUS_MUX_FPGA
+    { "fbus_mux_fpga_enabled",          VAR_UINT8 | HARDWARE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, enabled) },
+    { "fbus_mux_fpga_load_on_boot",     VAR_UINT8 | HARDWARE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, loadAtStartup) },
+    { "fbus_mux_fpga_ports",            VAR_UINT8 | HARDWARE_VALUE | MODE_ARRAY, .config.array.length = FBUS_MUX_FPGA_PORT_COUNT, PG_DRIVER_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, muxPortModePwm) },
+    { "fbus_mux_fpga_spi_bus",          VAR_UINT8 | HARDWARE_VALUE, .config.minmaxUnsigned = { 0, SPIDEV_COUNT }, PG_DRIVER_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, spiDevice) },
+    { "fbus_mux_fpga_spi_clock_khz",    VAR_UINT16 | HARDWARE_VALUE, .config.minmaxUnsigned = { 100, 25000 }, PG_DRIVER_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, spiClockKhz) },
+    { "fbus_mux_fpga_cfg_uart",         VAR_INT8 | HARDWARE_VALUE, .config.minmax = { SERIAL_PORT_NONE, SERIAL_PORT_IDENTIFIER_MAX }, PG_DRIVER_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, configUartPort) },
+    { "fbus_mux_fpga_cfg_uart_baud",    VAR_UINT32 | HARDWARE_VALUE, .config.u32Max = 3000000, PG_DRIVER_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, configUartBaud) },
+    { "fbus_mux_fpga_cfg_word",         VAR_UINT16 | HARDWARE_VALUE, .config.minmaxUnsigned = { 0, 65535 }, PG_DRIVER_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, muxConfigWord) },
 #endif
 
 #ifdef USE_SPORT_MASTER

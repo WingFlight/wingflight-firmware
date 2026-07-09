@@ -168,6 +168,7 @@
 #define PG_GENERIC_LOGIC_CONDITIONS  1010
 #define PG_IDLE_GOVERNOR_CONFIG      1011
 #define PG_GAIN_CURVES               1012
+#define PG_DRIVER_FBUS_MUX_FPGA_CONFIG 1013
 
 // OSD configuration (subject to change)
 #define PG_OSD_FONT_CONFIG 2047

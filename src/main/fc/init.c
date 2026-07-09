@@ -69,6 +69,7 @@
 #include "drivers/fbus_sensor.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fbus_mux_fpga.h"
 #include "drivers/sensor.h"
 #include "drivers/serial.h"
 #include "drivers/serial_softserial.h"
@@ -709,6 +710,10 @@ void init(void)
 
 #ifdef USE_FBUS_MASTER
     fbusMasterInit();
+#endif
+
+#ifdef USE_FBUS_MUX_FPGA
+    fbusMuxFpgaInit();
 #endif
 
 #ifdef USE_PINIO

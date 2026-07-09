@@ -1,0 +1,4 @@
+# Unified target variant for H743 with FBUS mux FPGA support.
+
+TARGET_FLAGS += -DUSE_FBUS_MUX_FPGA
+TARGET_FLAGS += -DFBUS_MUX_FPGA_PORT_COUNT=4

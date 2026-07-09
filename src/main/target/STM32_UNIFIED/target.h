@@ -410,7 +410,7 @@
  * STM32H743
  */
 
-#elif defined(STM32H743)
+#elif defined(STM32H743) || defined(STM32H743_MUX)
 
 #define TARGET_BOARD_IDENTIFIER "SH74"
 
