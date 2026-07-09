@@ -37,7 +37,7 @@ typedef enum {
     BOXANGLE,
     BOXHORIZON,
     BOXTRAINER,
-    BOXATTHOLD,         // reserved (attitude hold removed) -- kept to avoid renumbering later ids
+    BOXATTHOLD,         // ATT HOLD: quaternion-based hold of whatever attitude the stick was released at
     BOXALTHOLD,
     BOXRESCUE,          // reserved (heli rescue removed) -- kept to avoid renumbering later ids
     BOXGPSRESCUE,

@@ -44,6 +44,7 @@
 #include "flight/trainer.h"
 #include "flight/leveling.h"
 #include "flight/autohover.h"
+#include "flight/atthold.h"
 
 #include "io/beeper.h"
 #include "io/ledstrip.h"
@@ -202,6 +203,8 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
     ADJ_ENTRY(MASTER_GAIN_YAW,              25, 200),
 
     ADJ_ENTRY(AUTOHOVER_GAIN,               0, 250),
+
+    ADJ_ENTRY(ATTHOLD_GAIN,                 0, 250),
 
 };
 

@@ -161,6 +161,9 @@ typedef enum {
     // Auto Hover
     ADJUSTMENT_AUTOHOVER_GAIN            = 87,
 
+    // Att Hold
+    ADJUSTMENT_ATTHOLD_GAIN               = 88,
+
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;
 

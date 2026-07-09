@@ -57,9 +57,12 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // value to one per axis. v2->v3: added autohover sub-struct. v3->v4: added
 // fixed-wing cross-axis relax settings. v4->v5: added pitch strength for
 // cross-axis relax. v5->v6: added gain_curve (index into gainCurves, scales
-// master_gain by |stick deflection|) - old saved profiles reset to defaults
-// rather than reinterpreting their stored bytes at the new, wider struct layout.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 6);
+// master_gain by |stick deflection|). v6->v7: added atthold sub-struct
+// (reuses the reserved gain/deadband wire slot left by the old atthold
+// removal; max_rate is a new field appended at the tail) - old saved
+// profiles reset to defaults rather than reinterpreting their stored bytes
+// at the new, wider struct layout.
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 7);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -96,6 +99,9 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .autohover.gain = 50,
         .autohover.max_angle = 30,
         .autohover.max_rate = 300,
+        .atthold.gain = 40,
+        .atthold.deadband = 5,
+        .atthold.max_rate = 300,
         .cross_axis_relax_strength = 0,
         .cross_axis_relax_level = 100,
         .cross_axis_relax_cutoff = 10,

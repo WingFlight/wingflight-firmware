@@ -74,6 +74,7 @@
 #include "flight/pid.h"
 #include "flight/trainer.h"
 #include "flight/autohover.h"
+#include "flight/atthold.h"
 #include "flight/autotrim.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
@@ -687,19 +688,29 @@ void processRxModes(timeUs_t currentTimeUs)
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
+            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
             ENABLE_FLIGHT_MODE(AUTOHOVER_MODE);
+        }
+        else if (IS_RC_MODE_ACTIVE(BOXATTHOLD)) {
+            DISABLE_FLIGHT_MODE(ANGLE_MODE);
+            DISABLE_FLIGHT_MODE(HORIZON_MODE);
+            DISABLE_FLIGHT_MODE(TRAINER_MODE);
+            DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
+            ENABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
         else if (IS_RC_MODE_ACTIVE(BOXANGLE)) {
             ENABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
             DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
+            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
         else if (IS_RC_MODE_ACTIVE(BOXHORIZON)) {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             ENABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
             DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
+            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
 #ifdef USE_ACRO_TRAINER
         else if (IS_RC_MODE_ACTIVE(BOXTRAINER)) {
@@ -707,6 +718,7 @@ void processRxModes(timeUs_t currentTimeUs)
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             ENABLE_FLIGHT_MODE(TRAINER_MODE);
             DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
+            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
 #endif
         else {
@@ -714,6 +726,7 @@ void processRxModes(timeUs_t currentTimeUs)
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
             DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
+            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
     }
 
@@ -775,6 +788,7 @@ void processRxModes(timeUs_t currentTimeUs)
 #endif // USE_ACRO_TRAINER
 #ifdef USE_ACC
     autoHoverSetState(FLIGHT_MODE(AUTOHOVER_MODE));
+    attHoldSetState(FLIGHT_MODE(ATTHOLD_MODE));
 #endif // USE_ACC
 #ifdef USE_SERVOS
     autoTrimUpdate();

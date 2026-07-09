@@ -81,6 +81,13 @@ typedef struct {
     uint16_t max_rate;             // deg/s clamp on the commanded attitude-capture rate (safety limit)
 } pidAutoHoverMode_t;
 
+typedef struct {
+    uint8_t  gain;                 // Correction strength back to the held (frozen) attitude
+    uint8_t  deadband;             // Percent stick deflection below which the hold freezes and corrects;
+                                    // above which the target free-tracks current attitude (no correction)
+    uint16_t max_rate;             // deg/s clamp on the commanded correction rate (safety limit)
+} pidAttHoldMode_t;
+
 #define MAX_PROFILE_NAME_LENGTH 8u
 
 #define GAIN_CURVE_COUNT   8
@@ -129,6 +136,7 @@ typedef struct pidProfile_s {
     pidHorizonMode_t    horizon;
     pidTrainerMode_t    trainer;
     pidAutoHoverMode_t  autohover;
+    pidAttHoldMode_t    atthold;
 
     uint8_t             cross_axis_relax_strength; // Percent max roll feedback attenuation from yaw setpoint activity
     uint8_t             cross_axis_relax_level;    // Yaw setpoint level where max attenuation is reached

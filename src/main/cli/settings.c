@@ -1107,6 +1107,10 @@ const clivalue_t valueTable[] = {
     { "autohover_max_angle",        VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 90 }, PG_PID_PROFILE, offsetof(pidProfile_t, autohover.max_angle) },
     { "autohover_max_rate",         VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 1800 }, PG_PID_PROFILE, offsetof(pidProfile_t, autohover.max_rate) },
 
+    { "atthold_gain",               VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_PID_PROFILE, offsetof(pidProfile_t, atthold.gain) },
+    { "atthold_deadband",           VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, atthold.deadband) },
+    { "atthold_max_rate",           VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 1800 }, PG_PID_PROFILE, offsetof(pidProfile_t, atthold.max_rate) },
+
 
 // PG_TELEMETRY_CONFIG
 #ifdef USE_TELEMETRY

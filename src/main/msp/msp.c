@@ -1997,9 +1997,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_gain
         sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_ratio
         sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_cutoff
-        /* Attitude hold -- removed */
-        sbufWriteU8(dst, 0); // was currentPidProfile->atthold.gain
-        sbufWriteU8(dst, 0); // was currentPidProfile->atthold.deadband
+        /* Att Hold */
+        sbufWriteU8(dst, currentPidProfile->atthold.gain);
+        sbufWriteU8(dst, currentPidProfile->atthold.deadband);
         /* B-term cutoffs */
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[0]);
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[1]);
@@ -2027,6 +2027,8 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->gain_curve[PID_ROLL]);
         sbufWriteU8(dst, currentPidProfile->gain_curve[PID_PITCH]);
         sbufWriteU8(dst, currentPidProfile->gain_curve[PID_YAW]);
+        /* Att Hold max rate */
+        sbufWriteU16(dst, currentPidProfile->atthold.max_rate);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -2972,10 +2974,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             sbufReadU8(src);
             sbufReadU8(src);
         }
-        /* Attitude hold -- removed */
+        /* Att Hold */
         if (sbufBytesRemaining(src) >= 2) {
-            sbufReadU8(src); // was currentPidProfile->atthold.gain
-            sbufReadU8(src); // was currentPidProfile->atthold.deadband
+            currentPidProfile->atthold.gain = sbufReadU8(src);
+            currentPidProfile->atthold.deadband = sbufReadU8(src);
         }
         /* B-term cutoffs */
         if (sbufBytesRemaining(src) >= 3) {
@@ -3019,6 +3021,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->gain_curve[PID_ROLL] = sbufReadU8(src);
             currentPidProfile->gain_curve[PID_PITCH] = sbufReadU8(src);
             currentPidProfile->gain_curve[PID_YAW] = sbufReadU8(src);
+        }
+        /* Att Hold max rate */
+        if (sbufBytesRemaining(src) >= 2) {
+            currentPidProfile->atthold.max_rate = sbufReadU16(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

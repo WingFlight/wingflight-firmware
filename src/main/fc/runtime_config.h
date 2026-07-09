@@ -84,7 +84,7 @@ typedef enum {
     HORIZON_MODE_BIT     = 2,
     TRAINER_MODE_BIT     = 3,
     ALTHOLD_MODE_BIT     = 4,
-    ATTHOLD_MODE_BIT     = 5,  // reserved (attitude hold removed) -- kept to avoid renumbering later bits
+    ATTHOLD_MODE_BIT     = 5,
     GPS_RESCUE_MODE_BIT  = 6,
     PASSTHROUGH_MODE_BIT = 7,
     INFLIGHT_MODE_BIT    = 8,
@@ -99,7 +99,12 @@ typedef enum {
     HORIZON_MODE         = BIT(HORIZON_MODE_BIT),
     TRAINER_MODE         = BIT(TRAINER_MODE_BIT),
     ALTHOLD_MODE         = BIT(ALTHOLD_MODE_BIT),
-    ATTHOLD_MODE         = BIT(ATTHOLD_MODE_BIT),  // reserved (attitude hold removed) -- kept to avoid renumbering later bits
+    // ATT HOLD: quaternion-based hold of whatever attitude the aircraft was in when every stick
+    // last returned to center -- any orientation, not just level or vertical. See flight/atthold.c;
+    // generalizes AUTOHOVER_MODE's quaternion approach (same gimbal-lock reasoning applies here,
+    // since this must survive inverted/knife-edge attitudes too) but freezes/tracks based on a
+    // stick deadband instead of AUTOHOVER's always-on bounded offset.
+    ATTHOLD_MODE         = BIT(ATTHOLD_MODE_BIT),
     GPS_RESCUE_MODE      = BIT(GPS_RESCUE_MODE_BIT),
     PASSTHROUGH_MODE     = BIT(PASSTHROUGH_MODE_BIT),
     // Latched "are we actually flying" signal for telemetry/dashboard consumers, not a pilot-
@@ -135,11 +140,12 @@ extern uint16_t flightModeFlags;
 #define FLIGHT_MODE(mask) (flightModeFlags & (mask))
 
 // macro to initialize map from boxId_e flightModeBits. Keep it in sync with flightModeFlags_e enum.
-// [BOXARM], [BOXRESCUE] (heli rescue removed), and [BOXATTHOLD] (attitude hold removed) are left unpopulated
+// [BOXARM] and [BOXRESCUE] (heli rescue removed) are left unpopulated
 #define BOXID_TO_FLIGHT_MODE_MAP_INITIALIZER {           \
    [BOXANGLE]       = ANGLE_MODE_BIT,                    \
    [BOXHORIZON]     = HORIZON_MODE_BIT,                  \
    [BOXTRAINER]     = TRAINER_MODE_BIT,                  \
+   [BOXATTHOLD]     = ATTHOLD_MODE_BIT,                  \
    [BOXALTHOLD]     = ALTHOLD_MODE_BIT,                  \
    [BOXGPSRESCUE]   = GPS_RESCUE_MODE_BIT,               \
    [BOXFAILSAFE]    = FAILSAFE_MODE_BIT,                 \
