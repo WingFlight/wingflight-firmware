@@ -46,6 +46,7 @@
 #include "drivers/vtx_common.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fc_link.h"
 #include "drivers/fbus_sensor.h"
 
 #include "config/config.h"
@@ -443,6 +444,10 @@ task_attribute_t task_attributes[TASK_COUNT] = {
 
 #ifdef USE_SPORT_MASTER
     [TASK_SPORT_MASTER] = DEFINE_TASK("SPORT_MASTER", NULL, NULL, taskSportMaster, TASK_PERIOD_MS(12), TASK_PRIORITY_MEDIUM),
+#endif
+
+#ifdef USE_FC_LINK
+    [TASK_FC_LINK] = DEFINE_TASK("FC_LINK", NULL, NULL, fcLinkUpdate, TASK_PERIOD_HZ(50), TASK_PRIORITY_LOW),
 #endif
 };
 

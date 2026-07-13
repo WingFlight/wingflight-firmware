@@ -108,6 +108,7 @@
 #include "pg/freq.h"
 #include "pg/sbus_output.h"
 #include "pg/fbus_master.h"
+#include "pg/fc_link.h"
 #include "pg/sport_master.h"
 #include "pg/bus_servo.h"
 
@@ -1661,6 +1662,13 @@ const clivalue_t valueTable[] = {
 #ifdef USE_SPORT_MASTER
     { "sport_master_pinswap",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_SPORT_MASTER_CONFIG, offsetof(sportMasterConfig_t, pinSwap) },
     { "sport_master_inverted",         VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_SPORT_MASTER_CONFIG, offsetof(sportMasterConfig_t, inverted) },
+#endif
+
+#ifdef USE_FC_LINK
+    { "fc_link_rate_hz",               VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = {FC_LINK_RATE_MIN_HZ, FC_LINK_RATE_MAX_HZ}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, rateHz) },
+    { "fc_link_peer_timeout_ms",       VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = {FC_LINK_PEER_TIMEOUT_MIN_MS, FC_LINK_PEER_TIMEOUT_MAX_MS}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, peerTimeoutMs) },
+    { "fc_link_pinswap",               VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, pinSwap) },
+    { "fc_link_inverted",              VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, inverted) },
 #endif
 
 };
