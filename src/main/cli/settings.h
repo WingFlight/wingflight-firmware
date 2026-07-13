@@ -129,7 +129,7 @@ typedef enum {
 #ifdef USE_SMARTFUEL
     TABLE_SMARTFUEL_MODE,
 #endif
-    TABLE_IDLE_GOVERNOR_MODE,
+    TABLE_GOVERNOR_MODE,
 
     LOOKUP_TABLE_COUNT
 } lookupTableIndex_e;

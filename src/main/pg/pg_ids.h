@@ -166,7 +166,7 @@
 #define PG_DRIVER_SPORT_MASTER_CONFIG 1008
 #define PG_GENERIC_MIXER_CURVES      1009
 #define PG_GENERIC_LOGIC_CONDITIONS  1010
-#define PG_IDLE_GOVERNOR_CONFIG      1011
+#define PG_GOVERNOR_CONFIG           1011
 #define PG_GAIN_CURVES               1012
 
 // OSD configuration (subject to change)

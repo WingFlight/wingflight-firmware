@@ -108,15 +108,15 @@ typedef enum {
     GPS_RESCUE_MODE      = BIT(GPS_RESCUE_MODE_BIT),
     PASSTHROUGH_MODE     = BIT(PASSTHROUGH_MODE_BIT),
     // Latched "are we actually flying" signal for telemetry/dashboard consumers, not a pilot-
-    // selectable mode. Engaging IDLE UP is treated as a deliberate "starting the flight" signal
-    // (robust even at idle throttle -- unlike a bare throttle threshold, which a plane legitimately
-    // dips below in normal flight); a plain throttle threshold and, where a baro/GPS fix is
-    // available, altitude gain above the armed baseline (for gentle/glider-style launches that
-    // never cross the throttle threshold) are the fallbacks for setups that don't use idle up.
-    // Once set, holds through momentary throttle/mode dips so mid-flight noise doesn't flicker it
-    // back off -- it only clears on disarm, or earlier if idle up was used this flight and gets
-    // switched off with throttle back at idle (read as "landed", since some pilots delay disarming
-    // while taxiing back).
+    // selectable mode. Engaging the GOVERNOR switch is treated as a deliberate "starting the
+    // flight" signal (robust even at idle throttle -- unlike a bare throttle threshold, which a
+    // plane legitimately dips below in normal flight); a plain throttle threshold and, where a
+    // baro/GPS fix is available, altitude gain above the armed baseline (for gentle/glider-style
+    // launches that never cross the throttle threshold) are the fallbacks for setups that don't
+    // use the governor switch. Once set, holds through momentary throttle/mode dips so mid-flight
+    // noise doesn't flicker it back off -- it only clears on disarm, or earlier if the governor
+    // switch was used this flight and gets switched off with throttle back at idle (read as
+    // "landed", since some pilots delay disarming while taxiing back).
     INFLIGHT_MODE        = BIT(INFLIGHT_MODE_BIT),
     // AUTO HOVER: quaternion-based hold of a vertical (90 degree pitch) attitude and heading, for
     // 3D "prop hang" hover. See flight/autohover.c for why this can't reuse ANGLE_MODE/HORIZON_MODE's

@@ -22,17 +22,19 @@
 #include "platform.h"
 
 #include "pg/pg_ids.h"
-#include "pg/idle_governor.h"
+#include "pg/governor.h"
 
 
-PG_REGISTER_WITH_RESET_TEMPLATE(idleGovernorConfig_t, idleGovernorConfig, PG_IDLE_GOVERNOR_CONFIG, 0);
+PG_REGISTER_WITH_RESET_TEMPLATE(governorConfig_t, governorConfig, PG_GOVERNOR_CONFIG, 0);
 
-PG_RESET_TEMPLATE(idleGovernorConfig_t, idleGovernorConfig,
-    .idle_governor_mode = IDLE_GOVERNOR_MODE_OFF,
-    .idle_governor_rpm = 0,
-    .idle_governor_gain = 20,
-    .idle_governor_i_gain = 30,
-    .idle_governor_throttle = 15,
-    .idle_governor_handover = 10,
-    .idle_governor_ceiling = 30,
+PG_RESET_TEMPLATE(governorConfig_t, governorConfig,
+    .governor_mode = GOVERNOR_MODE_OFF,
+    .governor_rpm = 0,
+    .governor_gain = 20,
+    .governor_i_gain = 30,
+    .governor_throttle = 15,
+    .governor_handover = 10,
+    .governor_ceiling = 30,
+    .governor_rpm_min = 0,
+    .governor_rpm_max = 0,
 );

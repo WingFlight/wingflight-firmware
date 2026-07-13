@@ -294,6 +294,6 @@
 #define MSP_DEBUG                            254
 
 #define MSP2_WING_BOARD_AUTO_ALIGN           0x5F00
-#define MSP2_WING_IDLE_GOVERNOR_CONFIG       0x5F01
-#define MSP2_WING_SET_IDLE_GOVERNOR_CONFIG   0x5F02
+#define MSP2_WING_GOVERNOR_CONFIG            0x5F01
+#define MSP2_WING_SET_GOVERNOR_CONFIG        0x5F02
 #define MSP_V2_FRAME                         255

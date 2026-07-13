@@ -81,8 +81,8 @@
 #include "pg/displayport_profiles.h"
 #include "pg/dyn_notch.h"
 #include "pg/flash.h"
+#include "pg/governor.h"
 #include "pg/gyrodev.h"
-#include "pg/idle_governor.h"
 #include "pg/max7456.h"
 #include "pg/mco.h"
 #include "pg/motor.h"
@@ -495,8 +495,8 @@ static const char * const lookupTableSmartFuelMode[] = {
 };
 #endif
 
-static const char * const lookupTableIdleGovernorMode[] = {
-    "OFF", "RPM", "THROTTLE",
+static const char * const lookupTableGovernorMode[] = {
+    "OFF", "RPM", "THROTTLE", "RPM_RANGE",
 };
 
 #define LOOKUP_TABLE_ENTRY(name) { name, ARRAYLEN(name) }
@@ -610,7 +610,7 @@ const lookupTableEntry_t lookupTables[] = {
 #ifdef USE_SMARTFUEL
     LOOKUP_TABLE_ENTRY(lookupTableSmartFuelMode),
 #endif
-    LOOKUP_TABLE_ENTRY(lookupTableIdleGovernorMode),
+    LOOKUP_TABLE_ENTRY(lookupTableGovernorMode),
 };
 
 #undef LOOKUP_TABLE_ENTRY
@@ -803,14 +803,16 @@ const clivalue_t valueTable[] = {
     { "max_throttle",               VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX }, PG_MOTOR_CONFIG, offsetof(motorConfig_t, maxthrottle) },
     { "min_command",                VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX }, PG_MOTOR_CONFIG, offsetof(motorConfig_t, mincommand) },
 
-// PG_IDLE_GOVERNOR_CONFIG
-    { "idle_governor_mode",         VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_IDLE_GOVERNOR_MODE }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_mode) },
-    { "idle_governor_rpm",          VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 50000 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_rpm) },
-    { "idle_governor_gain",         VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 20000 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_gain) },
-    { "idle_governor_i_gain",       VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 200 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_i_gain) },
-    { "idle_governor_throttle",     VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_throttle) },
-    { "idle_governor_handover",     VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_handover) },
-    { "idle_governor_ceiling",      VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_IDLE_GOVERNOR_CONFIG, offsetof(idleGovernorConfig_t, idle_governor_ceiling) },
+// PG_GOVERNOR_CONFIG
+    { "governor_mode",              VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_GOVERNOR_MODE }, PG_GOVERNOR_CONFIG, offsetof(governorConfig_t, governor_mode) },
+    { "governor_rpm",               VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 50000 }, PG_GOVERNOR_CONFIG, offsetof(governorConfig_t, governor_rpm) },
+    { "governor_gain",              VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 20000 }, PG_GOVERNOR_CONFIG, offsetof(governorConfig_t, governor_gain) },
+    { "governor_i_gain",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 200 }, PG_GOVERNOR_CONFIG, offsetof(governorConfig_t, governor_i_gain) },
+    { "governor_throttle",          VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_GOVERNOR_CONFIG, offsetof(governorConfig_t, governor_throttle) },
+    { "governor_handover",          VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_GOVERNOR_CONFIG, offsetof(governorConfig_t, governor_handover) },
+    { "governor_ceiling",           VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_GOVERNOR_CONFIG, offsetof(governorConfig_t, governor_ceiling) },
+    { "governor_rpm_min",           VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 50000 }, PG_GOVERNOR_CONFIG, offsetof(governorConfig_t, governor_rpm_min) },
+    { "governor_rpm_max",           VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 50000 }, PG_GOVERNOR_CONFIG, offsetof(governorConfig_t, governor_rpm_max) },
 #ifdef USE_DSHOT
 #ifdef USE_DSHOT_DMAR
     { "dshot_burst",                VAR_UINT8  | HARDWARE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON_AUTO }, PG_MOTOR_CONFIG, offsetof(motorConfig_t, dev.useBurstDshot) },
