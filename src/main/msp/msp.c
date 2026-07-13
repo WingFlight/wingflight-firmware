@@ -118,7 +118,7 @@
 #include "pg/board.h"
 #include "pg/dyn_notch.h"
 #include "pg/gyrodev.h"
-#include "pg/idle_governor.h"
+#include "pg/governor.h"
 #include "pg/motor.h"
 #include "pg/rx.h"
 #include "pg/rx_spi.h"
@@ -1367,14 +1367,16 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 #endif
 
-    case MSP2_WING_IDLE_GOVERNOR_CONFIG:
-        sbufWriteU8(dst, idleGovernorConfig()->idle_governor_mode);
-        sbufWriteU16(dst, idleGovernorConfig()->idle_governor_rpm);
-        sbufWriteU16(dst, idleGovernorConfig()->idle_governor_gain);
-        sbufWriteU16(dst, idleGovernorConfig()->idle_governor_i_gain);
-        sbufWriteU8(dst, idleGovernorConfig()->idle_governor_throttle);
-        sbufWriteU8(dst, idleGovernorConfig()->idle_governor_handover);
-        sbufWriteU8(dst, idleGovernorConfig()->idle_governor_ceiling);
+    case MSP2_WING_GOVERNOR_CONFIG:
+        sbufWriteU8(dst, governorConfig()->governor_mode);
+        sbufWriteU16(dst, governorConfig()->governor_rpm);
+        sbufWriteU16(dst, governorConfig()->governor_gain);
+        sbufWriteU16(dst, governorConfig()->governor_i_gain);
+        sbufWriteU8(dst, governorConfig()->governor_throttle);
+        sbufWriteU8(dst, governorConfig()->governor_handover);
+        sbufWriteU8(dst, governorConfig()->governor_ceiling);
+        sbufWriteU16(dst, governorConfig()->governor_rpm_min);
+        sbufWriteU16(dst, governorConfig()->governor_rpm_max);
         break;
 
     case MSP_RC:
@@ -3866,14 +3868,16 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         break;
 #endif
 
-    case MSP2_WING_SET_IDLE_GOVERNOR_CONFIG:
-        idleGovernorConfigMutable()->idle_governor_mode = sbufReadU8(src);
-        idleGovernorConfigMutable()->idle_governor_rpm = sbufReadU16(src);
-        idleGovernorConfigMutable()->idle_governor_gain = sbufReadU16(src);
-        idleGovernorConfigMutable()->idle_governor_i_gain = sbufReadU16(src);
-        idleGovernorConfigMutable()->idle_governor_throttle = sbufReadU8(src);
-        idleGovernorConfigMutable()->idle_governor_handover = sbufReadU8(src);
-        idleGovernorConfigMutable()->idle_governor_ceiling = sbufReadU8(src);
+    case MSP2_WING_SET_GOVERNOR_CONFIG:
+        governorConfigMutable()->governor_mode = sbufReadU8(src);
+        governorConfigMutable()->governor_rpm = sbufReadU16(src);
+        governorConfigMutable()->governor_gain = sbufReadU16(src);
+        governorConfigMutable()->governor_i_gain = sbufReadU16(src);
+        governorConfigMutable()->governor_throttle = sbufReadU8(src);
+        governorConfigMutable()->governor_handover = sbufReadU8(src);
+        governorConfigMutable()->governor_ceiling = sbufReadU8(src);
+        governorConfigMutable()->governor_rpm_min = sbufReadU16(src);
+        governorConfigMutable()->governor_rpm_max = sbufReadU16(src);
         break;
 
     case MSP_SET_BATTERY_PROFILE:
