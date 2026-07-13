@@ -37,6 +37,9 @@ typedef struct fcLinkPeerState_s {
     uint16_t seq;
 } fcLinkPeerState_t;
 
+// Matches SBUS_OUT_CHANNELS (the larger of SBUS_OUT/FBUS_MASTER channel counts).
+#define FC_LINK_MAX_CHANNELS 18
+
 void fcLinkInit(void);
 void fcLinkUpdate(timeUs_t currentTimeUs);
 
@@ -50,3 +53,15 @@ bool fcLinkIsMaster(void);
 bool fcLinkPeerLost(void);
 
 const fcLinkPeerState_t *fcLinkGetPeerState(void);
+
+// Called by whichever bus output (SBUS_OUT/FBUS_MASTER) actually computed its
+// own channel values this cycle, so they can be forwarded to the peer.
+void fcLinkPublishChannels(const float *channels, uint8_t count);
+
+// True when this board should output the peer's relayed channels instead of
+// its own locally-computed ones (SLAVE, link enabled, peer heartbeat alive).
+bool fcLinkShouldRelay(void);
+
+// Fills out[0..count) with the most recently received peer channel values.
+// Only meaningful when fcLinkShouldRelay() is true.
+void fcLinkGetRelayChannels(float *out, uint8_t count);

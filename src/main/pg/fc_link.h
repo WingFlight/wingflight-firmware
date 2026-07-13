@@ -21,17 +21,17 @@
 #include "pg/pg.h"
 
 // Role is NOT stored here. It comes from which serial port function was
-// assigned (FUNCTION_FC_LINK_MASTER / _SLAVE / _AUTO in io/serial.h), so the
-// role can never drift out of sync with the port assignment.
+// assigned (FUNCTION_FC_LINK_MASTER / _SLAVE in io/serial.h), so the role
+// can never drift out of sync with the port assignment.
 
 #define FC_LINK_RATE_MIN_HZ 5
-#define FC_LINK_RATE_MAX_HZ 100
+#define FC_LINK_RATE_MAX_HZ 200
 
 #define FC_LINK_PEER_TIMEOUT_MIN_MS 100
 #define FC_LINK_PEER_TIMEOUT_MAX_MS 5000
 
 typedef struct fcLinkConfig_s {
-    uint16_t rateHz;                  // heartbeat send rate
+    uint16_t rateHz;                  // heartbeat + channel relay send rate
     uint16_t peerTimeoutMs;           // time without a valid heartbeat before the peer is considered lost
     uint8_t inverted;
     uint8_t pinSwap;

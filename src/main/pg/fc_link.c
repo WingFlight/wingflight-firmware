@@ -27,7 +27,10 @@ PG_REGISTER_WITH_RESET_FN(fcLinkConfig_t, fcLinkConfig,
 
 void pgResetFn_fcLinkConfig(fcLinkConfig_t *config)
 {
-    config->rateHz = 10;
+    // Fast enough that a relaying SLAVE's output doesn't visibly step
+    // between updates -- comparable to the SBUS_OUT/FBUS_MASTER cadence
+    // it's standing in for.
+    config->rateHz = 50;
     config->peerTimeoutMs = 500;
     config->inverted = 0;
     config->pinSwap = 0;

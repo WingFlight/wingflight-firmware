@@ -35,6 +35,7 @@
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
 #include "drivers/fbus_sensor.h"
+#include "drivers/fc_link.h"
 
 #include "flight/mixer.h"
 #include "flight/servos.h"
@@ -315,15 +316,34 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
         return;
     }
 
+    // Get this cycle's channel values, unless we're a SLAVE relaying the
+    // MASTER's actual output over FC Link -- then use that instead, so both
+    // boards present identical channels to the redundancy bus.
+    float values[FBUS_MASTER_CHANNELS];
+    bool relaying = false;
+#ifdef USE_FC_LINK
+    relaying = fcLinkShouldRelay();
+    if (relaying) {
+        fcLinkGetRelayChannels(values, FBUS_MASTER_CHANNELS);
+    }
+#endif
+    if (!relaying) {
+        for (int ch = 0; ch < FBUS_MASTER_CHANNELS; ch++) {
+            values[ch] = fbusMasterGetChannelValue(ch);
+        }
+#ifdef USE_FC_LINK
+        fcLinkPublishChannels(values, FBUS_MASTER_CHANNELS);
+#endif
+    }
+
     // Start sending.
     fbusMasterFrame_t frame;
     uint16_t channels[FBUS_MASTER_CHANNELS];
     for (int ch = 0; ch < FBUS_MASTER_CHANNELS; ch++) {
-        float value = fbusMasterGetChannelValue(ch);
-        channels[ch] = fbusMasterConvertToSbus(value);
-        
+        channels[ch] = fbusMasterConvertToSbus(values[ch]);
+
         // Store the output value for getServoOutput() to retrieve
-        setBusServoOutput(ch, value);
+        setBusServoOutput(ch, values[ch]);
     }
     fbusMasterPrepareFrame(&frame, channels, currentTimeUs);
 

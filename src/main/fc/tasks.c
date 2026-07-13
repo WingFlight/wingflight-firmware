@@ -447,7 +447,8 @@ task_attribute_t task_attributes[TASK_COUNT] = {
 #endif
 
 #ifdef USE_FC_LINK
-    [TASK_FC_LINK] = DEFINE_TASK("FC_LINK", NULL, NULL, fcLinkUpdate, TASK_PERIOD_HZ(50), TASK_PRIORITY_LOW),
+    // 200Hz ceiling so the configured fc_link_rate_hz (up to FC_LINK_RATE_MAX_HZ) is actually reachable.
+    [TASK_FC_LINK] = DEFINE_TASK("FC_LINK", NULL, NULL, fcLinkUpdate, TASK_PERIOD_HZ(200), TASK_PRIORITY_LOW),
 #endif
 };
 

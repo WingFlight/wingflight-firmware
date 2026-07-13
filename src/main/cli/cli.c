@@ -5503,9 +5503,10 @@ static void cliFcLink(const char *cmdName, char *cmdline)
 
     const bool peerLost = fcLinkPeerLost();
 
-    cliPrintLinef("FC Link: role=%s peer=%s",
+    cliPrintLinef("FC Link: role=%s peer=%s relaying=%s",
         fcLinkGetRole() == FC_LINK_ROLE_MASTER ? "MASTER" : "SLAVE",
-        peerLost ? "LOST" : "OK");
+        peerLost ? "LOST" : "OK",
+        fcLinkShouldRelay() ? "yes" : "no");
 
     if (!peerLost) {
         const fcLinkPeerState_t *peer = fcLinkGetPeerState();

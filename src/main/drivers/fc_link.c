@@ -16,11 +16,17 @@
  */
 
 // Secondary UART link between two flight controllers sharing one SBUS/FBUS
-// redundancy bus. Carries a small heartbeat (role + arm/failsafe/RX status)
-// so a standby board can tell its peer is alive. Role comes solely from
-// which port function was assigned (FUNCTION_FC_LINK_MASTER/_SLAVE) and is
-// fixed for the life of the boot -- there is no negotiation to get wrong.
+// redundancy bus. Carries a heartbeat (role + arm/failsafe/RX status) plus
+// the sender's current bus-servo channel values, so a SLAVE can relay the
+// MASTER's actual output onto its own bus link while the two agree -- the
+// redundancy bus device only checks frame validity, not channel content, so
+// two independently-computed streams could otherwise disagree every frame.
+// The SLAVE falls back to its own locally-computed channels the moment the
+// peer heartbeat is lost. Role comes solely from which port function was
+// assigned (FUNCTION_FC_LINK_MASTER/_SLAVE) and is fixed for the life of the
+// boot -- there is no negotiation to get wrong.
 
+#include <math.h>
 #include <string.h>
 
 #include "platform.h"
@@ -43,7 +49,7 @@
 #include "flight/failsafe.h"
 #include "rx/rx.h"
 
-#define FC_LINK_BAUDRATE 115200
+#define FC_LINK_BAUDRATE 460800
 #define FC_LINK_SYNC_BYTE 0xF7
 
 #define MS2US(ms) ((ms) * 1000)
@@ -53,6 +59,7 @@ typedef struct __attribute__((packed)) {
     uint8_t role;        // fcLinkRole_e of the sender
     uint8_t flags;        // bit0 armed, bit1 failsafeActive, bit2 rxReceivingSignal
     uint16_t seq;
+    uint16_t channels[FC_LINK_MAX_CHANNELS]; // sender's current bus-servo output, in microseconds
     uint8_t checksum;
 } fcLinkFrame_t;
 
@@ -71,6 +78,9 @@ static timeUs_t nextSendTimeUs = 0;
 static timeUs_t lastPeerFrameUs = 0;
 static bool everReceivedPeerFrame = false;
 static fcLinkPeerState_t peerState;
+static uint16_t peerChannels[FC_LINK_MAX_CHANNELS];
+
+static uint16_t localChannels[FC_LINK_MAX_CHANNELS];
 
 static uint8_t rxBuf[sizeof(fcLinkFrame_t)];
 static uint8_t rxIdx = 0;
@@ -94,6 +104,8 @@ static void fcLinkHandleFrame(const fcLinkFrame_t *frame)
     peerState.failsafeActive = frame->flags & FC_LINK_FLAG_FAILSAFE_ACTIVE;
     peerState.rxReceivingSignal = frame->flags & FC_LINK_FLAG_RX_RECEIVING;
     peerState.seq = frame->seq;
+
+    memcpy(peerChannels, frame->channels, sizeof(peerChannels));
 }
 
 static void fcLinkDataReceive(uint16_t c, void *data)
@@ -131,6 +143,7 @@ static void fcLinkSendHeartbeat(timeUs_t currentTimeUs)
                             (rxIsReceivingSignal() ? FC_LINK_FLAG_RX_RECEIVING : 0)),
         .seq = txSeq++,
     };
+    memcpy(frame.channels, localChannels, sizeof(frame.channels));
     frame.checksum = fcLinkChecksum(&frame);
 
     serialWriteBuf(fcLinkPort, (const uint8_t *)&frame, sizeof(frame));
@@ -166,6 +179,31 @@ const fcLinkPeerState_t *fcLinkGetPeerState(void)
     return &peerState;
 }
 
+void fcLinkPublishChannels(const float *channels, uint8_t count)
+{
+    if (count > FC_LINK_MAX_CHANNELS) {
+        count = FC_LINK_MAX_CHANNELS;
+    }
+    for (uint8_t i = 0; i < count; i++) {
+        localChannels[i] = (uint16_t)lrintf(channels[i]);
+    }
+}
+
+bool fcLinkShouldRelay(void)
+{
+    return fcLinkIsEnabled() && localRole == FC_LINK_ROLE_SLAVE && !fcLinkPeerLost();
+}
+
+void fcLinkGetRelayChannels(float *out, uint8_t count)
+{
+    if (count > FC_LINK_MAX_CHANNELS) {
+        count = FC_LINK_MAX_CHANNELS;
+    }
+    for (uint8_t i = 0; i < count; i++) {
+        out[i] = (float)peerChannels[i];
+    }
+}
+
 void fcLinkUpdate(timeUs_t currentTimeUs)
 {
     if (!fcLinkPort) {
@@ -195,6 +233,12 @@ void fcLinkInit(void)
     localRole = (function == FUNCTION_FC_LINK_MASTER) ? FC_LINK_ROLE_MASTER : FC_LINK_ROLE_SLAVE;
 
     memset(&peerState, 0, sizeof(peerState));
+
+    // Neutral midpoint until the first local channel publish arrives.
+    for (uint8_t i = 0; i < FC_LINK_MAX_CHANNELS; i++) {
+        localChannels[i] = 1500;
+        peerChannels[i] = 1500;
+    }
 
     fcLinkPort = openSerialPort(
         portConfig->identifier, function, fcLinkDataReceive, NULL, FC_LINK_BAUDRATE, MODE_RXTX,
