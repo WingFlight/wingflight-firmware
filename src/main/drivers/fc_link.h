@@ -37,8 +37,11 @@ typedef struct fcLinkPeerState_s {
     uint16_t seq;
 } fcLinkPeerState_t;
 
-// Matches SBUS_OUT_CHANNELS (the larger of SBUS_OUT/FBUS_MASTER channel counts).
-#define FC_LINK_MAX_CHANNELS 18
+// Covers the whole servo index space: PWM servos (0..MAX_SUPPORTED_PWM_SERVOS-1)
+// plus bus servos (BUS_SERVO_OFFSET..+BUS_SERVO_CHANNELS-1), i.e. MAX_SUPPORTED_SERVOS.
+// Kept as a plain constant (rather than including target headers here) and
+// checked against MAX_SUPPORTED_SERVOS via _Static_assert in servos.c.
+#define FC_LINK_MAX_CHANNELS 26
 
 void fcLinkInit(void);
 void fcLinkUpdate(timeUs_t currentTimeUs);
@@ -54,14 +57,16 @@ bool fcLinkPeerLost(void);
 
 const fcLinkPeerState_t *fcLinkGetPeerState(void);
 
-// Called by whichever bus output (SBUS_OUT/FBUS_MASTER) actually computed its
-// own channel values this cycle, so they can be forwarded to the peer.
-void fcLinkPublishChannels(const float *channels, uint8_t count);
+// Called by whichever output stage (PWM servoUpdate(), SBUS_OUT, FBUS_MASTER)
+// actually computed its own channel values this cycle, so they can be
+// forwarded to the peer. startIndex is the absolute servo index of channels[0].
+void fcLinkPublishChannels(uint8_t startIndex, const float *channels, uint8_t count);
 
 // True when this board should output the peer's relayed channels instead of
 // its own locally-computed ones (SLAVE, link enabled, peer heartbeat alive).
 bool fcLinkShouldRelay(void);
 
-// Fills out[0..count) with the most recently received peer channel values.
-// Only meaningful when fcLinkShouldRelay() is true.
-void fcLinkGetRelayChannels(float *out, uint8_t count);
+// Fills out[0..count) with the most recently received peer channel values,
+// starting at absolute servo index startIndex. Only meaningful when
+// fcLinkShouldRelay() is true.
+void fcLinkGetRelayChannels(uint8_t startIndex, float *out, uint8_t count);

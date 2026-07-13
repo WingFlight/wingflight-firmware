@@ -324,7 +324,7 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
 #ifdef USE_FC_LINK
     relaying = fcLinkShouldRelay();
     if (relaying) {
-        fcLinkGetRelayChannels(values, FBUS_MASTER_CHANNELS);
+        fcLinkGetRelayChannels(BUS_SERVO_OFFSET, values, FBUS_MASTER_CHANNELS);
     }
 #endif
     if (!relaying) {
@@ -332,7 +332,7 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
             values[ch] = fbusMasterGetChannelValue(ch);
         }
 #ifdef USE_FC_LINK
-        fcLinkPublishChannels(values, FBUS_MASTER_CHANNELS);
+        fcLinkPublishChannels(BUS_SERVO_OFFSET, values, FBUS_MASTER_CHANNELS);
 #endif
     }
 

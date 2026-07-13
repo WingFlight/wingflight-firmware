@@ -17,8 +17,9 @@
 
 // Secondary UART link between two flight controllers sharing one SBUS/FBUS
 // redundancy bus. Carries a heartbeat (role + arm/failsafe/RX status) plus
-// the sender's current bus-servo channel values, so a SLAVE can relay the
-// MASTER's actual output onto its own bus link while the two agree -- the
+// the sender's current servo channel values (PWM and bus servos alike), so a
+// SLAVE can relay the MASTER's actual output everywhere the MASTER outputs
+// it while the two agree -- the
 // redundancy bus device only checks frame validity, not channel content, so
 // two independently-computed streams could otherwise disagree every frame.
 // The SLAVE falls back to its own locally-computed channels the moment the
@@ -179,13 +180,16 @@ const fcLinkPeerState_t *fcLinkGetPeerState(void)
     return &peerState;
 }
 
-void fcLinkPublishChannels(const float *channels, uint8_t count)
+void fcLinkPublishChannels(uint8_t startIndex, const float *channels, uint8_t count)
 {
-    if (count > FC_LINK_MAX_CHANNELS) {
-        count = FC_LINK_MAX_CHANNELS;
+    if (startIndex >= FC_LINK_MAX_CHANNELS) {
+        return;
+    }
+    if (startIndex + count > FC_LINK_MAX_CHANNELS) {
+        count = FC_LINK_MAX_CHANNELS - startIndex;
     }
     for (uint8_t i = 0; i < count; i++) {
-        localChannels[i] = (uint16_t)lrintf(channels[i]);
+        localChannels[startIndex + i] = (uint16_t)lrintf(channels[i]);
     }
 }
 
@@ -194,13 +198,16 @@ bool fcLinkShouldRelay(void)
     return fcLinkIsEnabled() && localRole == FC_LINK_ROLE_SLAVE && !fcLinkPeerLost();
 }
 
-void fcLinkGetRelayChannels(float *out, uint8_t count)
+void fcLinkGetRelayChannels(uint8_t startIndex, float *out, uint8_t count)
 {
-    if (count > FC_LINK_MAX_CHANNELS) {
-        count = FC_LINK_MAX_CHANNELS;
+    if (startIndex >= FC_LINK_MAX_CHANNELS) {
+        return;
+    }
+    if (startIndex + count > FC_LINK_MAX_CHANNELS) {
+        count = FC_LINK_MAX_CHANNELS - startIndex;
     }
     for (uint8_t i = 0; i < count; i++) {
-        out[i] = (float)peerChannels[i];
+        out[i] = (float)peerChannels[startIndex + i];
     }
 }
 
