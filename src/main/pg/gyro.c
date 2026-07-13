@@ -44,8 +44,8 @@ PG_REGISTER_WITH_RESET_FN(gyroConfig_t, gyroConfig, PG_GYRO_CONFIG, 9);
 
 void pgResetFn_gyroConfig(gyroConfig_t *gyroConfig)
 {
-    gyroConfig->gyroCalibrationDuration = 125;        // 1.25 seconds
-    gyroConfig->gyroMovementCalibrationThreshold = 48;
+    gyroConfig->gyroCalibrationDuration = 200;        // 2.0 seconds
+    gyroConfig->gyroMovementCalibrationThreshold = 100;
     gyroConfig->gyro_hardware_lpf = GYRO_HARDWARE_LPF_NORMAL;
     gyroConfig->gyro_decimation_hz = 500;
     gyroConfig->gyro_lpf1_type = GYRO_LPF1_TYPE_DEFAULT;
