@@ -78,6 +78,7 @@ bool cliMode = false;
 #include "drivers/io.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fc_link.h"
 #include "drivers/io_impl.h"
 
 #include "pg/bus_servo.h"
@@ -5484,8 +5485,36 @@ static void cliFbusSensors(const char *cmdName, char *cmdline)
         
         cliPrintLinefeed();
     }
-    
+
     cliPrintLinefeed();
+}
+#endif
+
+#ifdef USE_FC_LINK
+static void cliFcLink(const char *cmdName, char *cmdline)
+{
+    UNUSED(cmdName);
+    UNUSED(cmdline);
+
+    if (!fcLinkIsEnabled()) {
+        cliPrintLine("FC Link: not enabled on any port");
+        return;
+    }
+
+    const bool peerLost = fcLinkPeerLost();
+
+    cliPrintLinef("FC Link: role=%s peer=%s",
+        fcLinkGetRole() == FC_LINK_ROLE_MASTER ? "MASTER" : "SLAVE",
+        peerLost ? "LOST" : "OK");
+
+    if (!peerLost) {
+        const fcLinkPeerState_t *peer = fcLinkGetPeerState();
+        cliPrintLinef("Peer status: armed=%s failsafe=%s rx=%s seq=%u",
+            peer->armed ? "yes" : "no",
+            peer->failsafeActive ? "yes" : "no",
+            peer->rxReceivingSignal ? "yes" : "no",
+            peer->seq);
+    }
 }
 #endif
 
@@ -7063,6 +7092,9 @@ const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("exit", NULL, NULL, cliExit),
 #if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
     CLI_COMMAND_DEF("fbus_sensors", "show observed FBUS sensors", "[clear]", cliFbusSensors),
+#endif
+#ifdef USE_FC_LINK
+    CLI_COMMAND_DEF("fc_link", "show FC link heartbeat status", NULL, cliFcLink),
 #endif
     CLI_COMMAND_DEF("feature", "configure features",
         "list\r\n"
