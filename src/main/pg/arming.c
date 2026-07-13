@@ -18,6 +18,8 @@
 #include "types.h"
 #include "platform.h"
 
+#include "common/utils.h"
+
 #include "pg/pg_ids.h"
 #include "pg/arming.h"
 
@@ -32,5 +34,5 @@ PG_RESET_TEMPLATE(armingConfig_t, armingConfig,
     .enable_stick_commands = false,
     .wiggle_frequency = 10,
     .wiggle_strength = 50,
-    .wiggle_flags = 0,
+    .wiggle_flags = BIT(WIGGLE_READY),
 );

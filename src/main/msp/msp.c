@@ -1441,6 +1441,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 
     case MSP_ARMING_CONFIG:
         sbufWriteU8(dst, armingConfig()->auto_disarm_delay);
+        sbufWriteU32(dst, armingConfig()->wiggle_flags);
         break;
 
     case MSP_RC_TUNING:
@@ -2552,6 +2553,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
     case MSP_SET_ARMING_CONFIG:
         armingConfigMutable()->auto_disarm_delay = sbufReadU8(src);
+        armingConfigMutable()->wiggle_flags = sbufReadU32(src);
         break;
 
     case MSP_SET_PID_TUNING:
