@@ -16,13 +16,18 @@
  */
 
 // Secondary UART link between two flight controllers sharing one SBUS/FBUS
-// redundancy bus. Carries a heartbeat (role + arm/failsafe/RX status) plus
-// the sender's current servo channel values (PWM and bus servos alike), so a
-// SLAVE can relay the MASTER's actual output everywhere the MASTER outputs
-// it while the two agree -- the
-// redundancy bus device only checks frame validity, not channel content, so
-// two independently-computed streams could otherwise disagree every frame.
-// The SLAVE falls back to its own locally-computed channels the moment the
+// redundancy bus. Two frame types share the wire:
+//  - a fast heartbeat carrying role/arm/failsafe/RX status plus the sender's
+//    current servo channel values (PWM and bus servos alike), so a SLAVE can
+//    relay the MASTER's actual output everywhere the MASTER outputs it. The
+//    redundancy bus device only checks frame validity, not channel content,
+//    so two independently-computed streams could otherwise disagree every
+//    frame; relaying keeps them identical while the link is up.
+//  - a slower "tuning" frame carrying the MASTER's currently active PID and
+//    rate profile, so a SLAVE's fallback tuning matches whatever MASTER is
+//    actually flying with (including in-flight adjustment-function changes
+//    that were never saved to EEPROM), not just its own last-saved values.
+// Both fall back to the SLAVE's own local computation/tuning the moment the
 // peer heartbeat is lost. Role comes solely from which port function was
 // assigned (FUNCTION_FC_LINK_MASTER/_SLAVE) and is fixed for the life of the
 // boot -- there is no negotiation to get wrong.
@@ -46,12 +51,17 @@
 
 #include "pg/fc_link.h"
 
+#include "fc/rc_rates.h"
 #include "fc/runtime_config.h"
 #include "flight/failsafe.h"
+#include "flight/pid.h"
+#include "flight/setpoint.h"
 #include "rx/rx.h"
 
 #define FC_LINK_BAUDRATE 460800
 #define FC_LINK_SYNC_BYTE 0xF7
+#define FC_LINK_TUNING_SYNC_BYTE 0xF8
+#define FC_LINK_TUNING_RATE_HZ 4
 
 #define MS2US(ms) ((ms) * 1000)
 
@@ -60,9 +70,21 @@ typedef struct __attribute__((packed)) {
     uint8_t role;        // fcLinkRole_e of the sender
     uint8_t flags;        // bit0 armed, bit1 failsafeActive, bit2 rxReceivingSignal
     uint16_t seq;
-    uint16_t channels[FC_LINK_MAX_CHANNELS]; // sender's current bus-servo output, in microseconds
+    uint16_t channels[FC_LINK_MAX_CHANNELS]; // sender's current servo output, in microseconds
     uint8_t checksum;
 } fcLinkFrame_t;
+
+// Mirrors the sender's currently *active* tuning (post adjustment-function,
+// pre/post save -- whatever it's actually flying with right now), not the
+// full EEPROM config. Applied directly into the receiver's live profile;
+// never written to EEPROM by this path.
+typedef struct __attribute__((packed)) {
+    uint8_t sync;
+    uint16_t seq;
+    pidProfile_t pidProfile;
+    controlRateConfig_t rateProfile;
+    uint8_t checksum;
+} fcLinkTuningFrame_t;
 
 enum {
     FC_LINK_FLAG_ARMED           = (1 << 0),
@@ -76,6 +98,9 @@ static fcLinkRole_e localRole = FC_LINK_ROLE_MASTER;
 static uint16_t txSeq = 0;
 static timeUs_t nextSendTimeUs = 0;
 
+static uint16_t tuningTxSeq = 0;
+static timeUs_t nextTuningSendTimeUs = 0;
+
 static timeUs_t lastPeerFrameUs = 0;
 static bool everReceivedPeerFrame = false;
 static fcLinkPeerState_t peerState;
@@ -83,14 +108,22 @@ static uint16_t peerChannels[FC_LINK_MAX_CHANNELS];
 
 static uint16_t localChannels[FC_LINK_MAX_CHANNELS];
 
-static uint8_t rxBuf[sizeof(fcLinkFrame_t)];
-static uint8_t rxIdx = 0;
+// Producer (ISR) / consumer (fcLinkUpdate, scheduler task context) handoff.
+// The apply step touches live PID coefficients that the control loop task
+// also reads, so it must not run from interrupt context -- deferring it here
+// means it's serialized against other tasks by the (non-preemptive) scheduler
+// instead of racing an arbitrary control-loop read.
+static fcLinkTuningFrame_t pendingTuningFrame;
+static volatile bool tuningFramePending = false;
 
-static uint8_t fcLinkChecksum(const fcLinkFrame_t *frame)
+static uint8_t rxBuf[sizeof(fcLinkTuningFrame_t)];
+static uint8_t rxIdx = 0;
+static uint8_t rxExpectedLen = 0;
+
+static uint8_t fcLinkChecksumBytes(const uint8_t *bytes, size_t len)
 {
-    const uint8_t *bytes = (const uint8_t *)frame;
     uint8_t checksum = 0;
-    for (unsigned i = 0; i < offsetof(fcLinkFrame_t, checksum); i++) {
+    for (size_t i = 0; i < len; i++) {
         checksum ^= bytes[i];
     }
     return checksum;
@@ -113,20 +146,32 @@ static void fcLinkDataReceive(uint16_t c, void *data)
 {
     UNUSED(data);
 
-    if (rxIdx == 0 && (uint8_t)c != FC_LINK_SYNC_BYTE) {
-        return;
+    if (rxIdx == 0) {
+        if ((uint8_t)c == FC_LINK_SYNC_BYTE) {
+            rxExpectedLen = sizeof(fcLinkFrame_t);
+        } else if ((uint8_t)c == FC_LINK_TUNING_SYNC_BYTE) {
+            rxExpectedLen = sizeof(fcLinkTuningFrame_t);
+        } else {
+            return;
+        }
     }
 
     rxBuf[rxIdx++] = (uint8_t)c;
 
-    if (rxIdx >= sizeof(fcLinkFrame_t)) {
-        fcLinkFrame_t frame;
-        memcpy(&frame, rxBuf, sizeof(frame));
-        rxIdx = 0;
-
-        if (fcLinkChecksum(&frame) == frame.checksum) {
-            fcLinkHandleFrame(&frame);
+    if (rxIdx >= rxExpectedLen) {
+        if (rxBuf[0] == FC_LINK_SYNC_BYTE) {
+            fcLinkFrame_t frame;
+            memcpy(&frame, rxBuf, sizeof(frame));
+            if (fcLinkChecksumBytes(rxBuf, offsetof(fcLinkFrame_t, checksum)) == frame.checksum) {
+                fcLinkHandleFrame(&frame);
+            }
+        } else {
+            if (fcLinkChecksumBytes(rxBuf, offsetof(fcLinkTuningFrame_t, checksum)) == rxBuf[offsetof(fcLinkTuningFrame_t, checksum)]) {
+                memcpy(&pendingTuningFrame, rxBuf, sizeof(pendingTuningFrame));
+                tuningFramePending = true;
+            }
         }
+        rxIdx = 0;
     }
 }
 
@@ -145,11 +190,46 @@ static void fcLinkSendHeartbeat(timeUs_t currentTimeUs)
         .seq = txSeq++,
     };
     memcpy(frame.channels, localChannels, sizeof(frame.channels));
-    frame.checksum = fcLinkChecksum(&frame);
+    frame.checksum = fcLinkChecksumBytes((const uint8_t *)&frame, offsetof(fcLinkFrame_t, checksum));
 
     serialWriteBuf(fcLinkPort, (const uint8_t *)&frame, sizeof(frame));
 
     nextSendTimeUs = currentTimeUs + (1000000 / constrain(fcLinkConfig()->rateHz, FC_LINK_RATE_MIN_HZ, FC_LINK_RATE_MAX_HZ));
+}
+
+static void fcLinkSendTuning(timeUs_t currentTimeUs)
+{
+    if (serialTxBytesFree(fcLinkPort) < sizeof(fcLinkTuningFrame_t)) {
+        return;
+    }
+
+    fcLinkTuningFrame_t frame;
+    frame.sync = FC_LINK_TUNING_SYNC_BYTE;
+    frame.seq = tuningTxSeq++;
+    memcpy(&frame.pidProfile, currentPidProfile, sizeof(frame.pidProfile));
+    memcpy(&frame.rateProfile, currentControlRateProfile, sizeof(frame.rateProfile));
+    frame.checksum = fcLinkChecksumBytes((const uint8_t *)&frame, offsetof(fcLinkTuningFrame_t, checksum));
+
+    serialWriteBuf(fcLinkPort, (const uint8_t *)&frame, sizeof(frame));
+
+    nextTuningSendTimeUs = currentTimeUs + (1000000 / FC_LINK_TUNING_RATE_HZ);
+}
+
+static void fcLinkApplyTuningFrame(const fcLinkTuningFrame_t *frame)
+{
+    // Only a SLAVE ever adopts a peer's tuning; MASTER just discards it.
+    if (localRole != FC_LINK_ROLE_SLAVE) {
+        return;
+    }
+
+    memcpy(currentPidProfile, &frame->pidProfile, sizeof(*currentPidProfile));
+    memcpy(currentControlRateProfile, &frame->rateProfile, sizeof(*currentControlRateProfile));
+
+    // Bake the raw gains/cutoffs into the live controller state, same as any
+    // other profile change -- without this the copied values would sit
+    // unused until the next unrelated profile reload.
+    pidLoadProfile(currentPidProfile);
+    setpointInitProfile();
 }
 
 bool fcLinkIsEnabled(void)
@@ -217,8 +297,17 @@ void fcLinkUpdate(timeUs_t currentTimeUs)
         return;
     }
 
+    if (tuningFramePending) {
+        tuningFramePending = false;
+        fcLinkApplyTuningFrame(&pendingTuningFrame);
+    }
+
     if (cmpTimeUs(currentTimeUs, nextSendTimeUs) >= 0) {
         fcLinkSendHeartbeat(currentTimeUs);
+    }
+
+    if (cmpTimeUs(currentTimeUs, nextTuningSendTimeUs) >= 0) {
+        fcLinkSendTuning(currentTimeUs);
     }
 }
 
