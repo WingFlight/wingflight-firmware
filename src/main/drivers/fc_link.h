@@ -70,3 +70,12 @@ bool fcLinkShouldRelay(void);
 // starting at absolute servo index startIndex. Only meaningful when
 // fcLinkShouldRelay() is true.
 void fcLinkGetRelayChannels(uint8_t startIndex, float *out, uint8_t count);
+
+// Base/setup config sync (mixer, servos, ports, etc. -- everything except
+// per-board identity settings like serial port function assignments). Unlike
+// channel/tuning mirroring, this is one-shot and always ends in a SLAVE
+// EEPROM write + reboot, never a continuous background process. SLAVE-only;
+// a request is ignored by a MASTER-role board. Returns false if refused
+// outright (not a SLAVE, link down, or peer firmware/EEPROM version doesn't
+// match) rather than actually attempting the transfer.
+bool fcLinkTriggerConfigSync(void);

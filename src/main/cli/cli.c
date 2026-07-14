@@ -5494,7 +5494,15 @@ static void cliFbusSensors(const char *cmdName, char *cmdline)
 static void cliFcLink(const char *cmdName, char *cmdline)
 {
     UNUSED(cmdName);
-    UNUSED(cmdline);
+
+    if (!isEmpty(cmdline) && strncasecmp(cmdline, "sync", 4) == 0) {
+        if (fcLinkTriggerConfigSync()) {
+            cliPrintLine("FC Link: config sync requested from MASTER");
+        } else {
+            cliPrintLine("FC Link: sync refused (not a SLAVE, link down, or peer firmware/EEPROM version mismatch)");
+        }
+        return;
+    }
 
     if (!fcLinkIsEnabled()) {
         cliPrintLine("FC Link: not enabled on any port");
@@ -7095,7 +7103,7 @@ const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("fbus_sensors", "show observed FBUS sensors", "[clear]", cliFbusSensors),
 #endif
 #ifdef USE_FC_LINK
-    CLI_COMMAND_DEF("fc_link", "show FC link heartbeat status", NULL, cliFcLink),
+    CLI_COMMAND_DEF("fc_link", "show FC link heartbeat status", "[sync]", cliFcLink),
 #endif
     CLI_COMMAND_DEF("feature", "configure features",
         "list\r\n"
