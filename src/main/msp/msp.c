@@ -1406,6 +1406,12 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, fcLinkConfig()->syncMixerServos);
         sbufWriteU8(dst, fcLinkConfig()->syncPidRates);
         sbufWriteU8(dst, fcLinkConfig()->syncRx);
+        sbufWriteU8(dst, fcLinkConfig()->syncMotor);
+        sbufWriteU8(dst, fcLinkConfig()->syncTelemetry);
+        sbufWriteU8(dst, fcLinkConfig()->syncModesAdjustments);
+        sbufWriteU8(dst, fcLinkConfig()->syncGps);
+        sbufWriteU8(dst, fcLinkConfig()->syncOsd);
+        sbufWriteU8(dst, fcLinkConfig()->syncVtx);
         sbufWriteU8(dst, fcLinkConfig()->syncOther);
         break;
 
@@ -3924,6 +3930,12 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         fcLinkConfigMutable()->syncMixerServos = sbufReadU8(src);
         fcLinkConfigMutable()->syncPidRates = sbufReadU8(src);
         fcLinkConfigMutable()->syncRx = sbufReadU8(src);
+        fcLinkConfigMutable()->syncMotor = sbufReadU8(src);
+        fcLinkConfigMutable()->syncTelemetry = sbufReadU8(src);
+        fcLinkConfigMutable()->syncModesAdjustments = sbufReadU8(src);
+        fcLinkConfigMutable()->syncGps = sbufReadU8(src);
+        fcLinkConfigMutable()->syncOsd = sbufReadU8(src);
+        fcLinkConfigMutable()->syncVtx = sbufReadU8(src);
         fcLinkConfigMutable()->syncOther = sbufReadU8(src);
         break;
 #endif

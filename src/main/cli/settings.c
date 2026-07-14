@@ -1672,6 +1672,12 @@ const clivalue_t valueTable[] = {
     { "fc_link_sync_mixer_servos",     VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncMixerServos) },
     { "fc_link_sync_pid_rates",        VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncPidRates) },
     { "fc_link_sync_rx",               VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncRx) },
+    { "fc_link_sync_motor",            VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncMotor) },
+    { "fc_link_sync_telemetry",        VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncTelemetry) },
+    { "fc_link_sync_modes_adjustments", VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncModesAdjustments) },
+    { "fc_link_sync_gps",              VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncGps) },
+    { "fc_link_sync_osd",              VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncOsd) },
+    { "fc_link_sync_vtx",              VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncVtx) },
     { "fc_link_sync_other",            VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncOther) },
 #endif
 

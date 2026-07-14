@@ -39,6 +39,12 @@ void pgResetFn_fcLinkConfig(fcLinkConfig_t *config)
     config->syncMixerServos = 1;
     config->syncPidRates = 1;
     config->syncRx = 1;
+    config->syncMotor = 1;
+    config->syncTelemetry = 1;
+    config->syncModesAdjustments = 1;
+    config->syncGps = 1;
+    config->syncOsd = 1;
+    config->syncVtx = 1;
     config->syncOther = 1;
 }
 

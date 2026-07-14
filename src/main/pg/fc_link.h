@@ -42,6 +42,12 @@ typedef struct fcLinkConfig_s {
     uint8_t syncMixerServos;
     uint8_t syncPidRates;
     uint8_t syncRx;
+    uint8_t syncMotor;
+    uint8_t syncTelemetry;
+    uint8_t syncModesAdjustments;
+    uint8_t syncGps;
+    uint8_t syncOsd;
+    uint8_t syncVtx;
     uint8_t syncOther;
 } fcLinkConfig_t;
 

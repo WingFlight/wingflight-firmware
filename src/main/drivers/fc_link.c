@@ -64,9 +64,13 @@
 #include "config/config.h"
 #include "config/config_eeprom.h"
 
+#include "pg/fbus_master.h"
 #include "pg/fc_link.h"
+#include "pg/motor.h"
 #include "pg/pg.h"
 #include "pg/pg_ids.h"
+#include "pg/sbus_output.h"
+#include "pg/telemetry.h"
 
 #include "fc/rc_rates.h"
 #include "fc/runtime_config.h"
@@ -107,6 +111,14 @@
 
 #define MS2US(ms) ((ms) * 1000)
 
+// See fcLinkConfigPgnPartialRanges().
+#define FC_LINK_PARTIAL_RANGE_MAX 2
+
+typedef struct {
+    uint16_t offset;
+    uint16_t length;
+} fcLinkByteRange_t;
+
 // User-facing base-config-sync categories. Coarse on purpose: every
 // non-excluded PG (see fcLinkConfigPgnExcluded()/fcLinkConfigPgnCategory())
 // falls into exactly one of these.
@@ -114,6 +126,12 @@ typedef enum {
     FC_LINK_SYNC_CATEGORY_MIXER_SERVOS = 0,
     FC_LINK_SYNC_CATEGORY_PID_RATES,
     FC_LINK_SYNC_CATEGORY_RX,
+    FC_LINK_SYNC_CATEGORY_MOTOR,
+    FC_LINK_SYNC_CATEGORY_TELEMETRY,
+    FC_LINK_SYNC_CATEGORY_MODES_ADJUSTMENTS,
+    FC_LINK_SYNC_CATEGORY_GPS,
+    FC_LINK_SYNC_CATEGORY_OSD,
+    FC_LINK_SYNC_CATEGORY_VTX,
     FC_LINK_SYNC_CATEGORY_OTHER,
     FC_LINK_SYNC_CATEGORY_COUNT,
 } fcLinkSyncCategory_e;
@@ -310,19 +328,27 @@ static bool fcLinkConfigPgnExcluded(uint16_t pgn)
             return true;
 
         // Per-board wiring flags, same rationale as PG_DRIVER_FC_LINK_CONFIG
-        // above (pinSwap/halfDuplex).
+        // above (pinSwap/halfDuplex). PG_DRIVER_SPORT_MASTER_CONFIG is
+        // *entirely* pinSwap+inverted (2 fields, no tuning content at all),
+        // so it belongs here rather than needing partial-range treatment.
         case PG_ESC_SENSOR_CONFIG:
+        case PG_DRIVER_SPORT_MASTER_CONFIG:
             return true;
 
-        // Mixed pin-map + tuning PGs. fc_link syncs whole PGs -- these can't
-        // be split -- and a wrong pin/protocol assignment here can break
-        // motor or servo output outright, so exclude wholesale rather than
-        // risk it for the sake of syncing the handful of tuning fields
-        // (minthrottle/maxthrottle/etc, LED brightness/timing) they also
-        // carry.
-        case PG_MOTOR_CONFIG:
+        // Mixed pin-map + tuning PG, excluded wholesale: fc_link syncs whole
+        // PGs by default, and a wrong pin assignment here could break the
+        // LED strip's data pin. Unlike PG_MOTOR_CONFIG below, its tuning
+        // content (brightness/beacon/blink timing) isn't worth the extra
+        // partial-sync machinery.
         case PG_LED_STRIP_CONFIG:
             return true;
+
+        // PG_MOTOR_CONFIG, PG_DRIVER_SBUS_OUT_CONFIG, PG_DRIVER_FBUS_MASTER_CONFIG,
+        // and PG_TELEMETRY_CONFIG are intentionally NOT excluded here -- see
+        // fcLinkConfigPgnPartialRanges(). Each mixes hardware pin/protocol/
+        // wiring assignment with genuine tuning; only the tuning portion is
+        // ever synced, never the hardware fields (ioTags, pinSwap, inverted,
+        // halfDuplex, etc).
 
         // Accumulated runtime stats (flight time/distance), not config.
         case PG_STATS_CONFIG:
@@ -342,7 +368,6 @@ static fcLinkSyncCategory_e fcLinkConfigPgnCategory(uint16_t pgn)
         case PG_GENERIC_MIXER_RULES:
         case PG_GENERIC_MIXER_CURVES:
         case PG_GENERIC_MIXER_INPUTS:
-        case PG_GENERIC_LOGIC_CONDITIONS: // gates mixerRule_t.condition
         case PG_SERVO_PARAMS:
         case PG_GOVERNOR_CONFIG:          // propulsion/motor-speed control, not attitude
             return FC_LINK_SYNC_CATEGORY_MIXER_SERVOS;
@@ -354,6 +379,7 @@ static fcLinkSyncCategory_e fcLinkConfigPgnCategory(uint16_t pgn)
         case PG_RPM_FILTER_CONFIG:
         case PG_DYN_NOTCH_CONFIG:
         case PG_GYRO_CONFIG:      // filtering feeds the PID loop directly
+        case PG_IMU_CONFIG:       // DCM kp/ki attitude-estimation gains, flight-tuning-adjacent
             return FC_LINK_SYNC_CATEGORY_PID_RATES;
 
         case PG_RX_CONFIG:
@@ -364,8 +390,93 @@ static fcLinkSyncCategory_e fcLinkConfigPgnCategory(uint16_t pgn)
         case PG_RX_SPEKTRUM_SPI_CONFIG:
             return FC_LINK_SYNC_CATEGORY_RX;
 
+        // Only the partial (tuning) range of each ever participates -- see
+        // fcLinkConfigPgnPartialRanges().
+        case PG_MOTOR_CONFIG:
+            return FC_LINK_SYNC_CATEGORY_MOTOR;
+
+        case PG_TELEMETRY_CONFIG:
+        case PG_DRIVER_SBUS_OUT_CONFIG:
+        case PG_DRIVER_FBUS_MASTER_CONFIG:
+            return FC_LINK_SYNC_CATEGORY_TELEMETRY;
+
+        // General-purpose gating primitives (a logic condition can reference
+        // RC channels, modes, sensors, or other conditions -- not mixer-
+        // specific despite feeding mixerRule_t.condition too) grouped with
+        // the mode/adjustment-range config that uses them the same way.
+        case PG_MODE_ACTIVATION_PROFILE:
+        case PG_MODE_ACTIVATION_CONFIG:
+        case PG_ADJUSTMENT_RANGE_CONFIG:
+        case PG_GENERIC_LOGIC_CONDITIONS:
+            return FC_LINK_SYNC_CATEGORY_MODES_ADJUSTMENTS;
+
+        case PG_GPS_CONFIG:
+        case PG_GPS_RESCUE:
+        case PG_POSITION:
+            return FC_LINK_SYNC_CATEGORY_GPS;
+
+        case PG_OSD_CONFIG:
+        case PG_OSD_ELEMENT_CONFIG:
+        case PG_DISPLAY_PORT_MSP_CONFIG:
+        case PG_DISPLAY_PORT_MAX7456_CONFIG:
+        case PG_VCD_CONFIG:
+            return FC_LINK_SYNC_CATEGORY_OSD;
+
+        case PG_VTX_CONFIG:
+        case PG_VTX_SETTINGS_CONFIG:
+        case PG_VTX_TABLE_CONFIG:
+            return FC_LINK_SYNC_CATEGORY_VTX;
+
         default:
             return FC_LINK_SYNC_CATEGORY_OTHER;
+    }
+}
+
+// Some PGs mix hardware pin/protocol/wiring assignment with genuine tuning
+// in one struct that fc_link can't cleanly split into separate PGs. For
+// those, only the listed byte ranges participate in fingerprinting,
+// streaming, or applying -- never the rest of the PG -- so the hardware
+// portion is never touched regardless of category settings. Ranges are
+// listed in ascending offset order and never overlap. Returns 0 (ranges[]
+// untouched) for every other PG, meaning "use the whole PG" as before.
+static uint8_t fcLinkConfigPgnPartialRanges(uint16_t pgn, fcLinkByteRange_t ranges[FC_LINK_PARTIAL_RANGE_MAX])
+{
+    switch (pgn) {
+        case PG_MOTOR_CONFIG:
+            // Everything from minthrottle onward; motorConfig_t.dev (pins,
+            // PWM protocol/rate, transport, dshot options) is never touched.
+            ranges[0].offset = offsetof(motorConfig_t, minthrottle);
+            ranges[0].length = sizeof(motorConfig_t) - ranges[0].offset;
+            return 1;
+
+        case PG_DRIVER_SBUS_OUT_CONFIG:
+            // frameRate only; pinSwap/inverted (the rest of the struct) are
+            // per-board wiring, never synced.
+            ranges[0].offset = 0;
+            ranges[0].length = offsetof(sbusOutConfig_t, pinSwap);
+            return 1;
+
+        case PG_DRIVER_FBUS_MASTER_CONFIG:
+            // frameRate, then telemetryRate onward; pinSwap/inverted sit in
+            // between and are skipped.
+            ranges[0].offset = 0;
+            ranges[0].length = offsetof(fbusMasterConfig_t, pinSwap);
+            ranges[1].offset = offsetof(fbusMasterConfig_t, telemetryRate);
+            ranges[1].length = sizeof(fbusMasterConfig_t) - ranges[1].offset;
+            return 2;
+
+        case PG_TELEMETRY_CONFIG:
+            // gpsNoFixLatitude/Longitude, then frsky_coordinate_format
+            // onward; telemetry_inverted/halfDuplex/pinSwap sit in between
+            // and are skipped.
+            ranges[0].offset = 0;
+            ranges[0].length = offsetof(telemetryConfig_t, telemetry_inverted);
+            ranges[1].offset = offsetof(telemetryConfig_t, frsky_coordinate_format);
+            ranges[1].length = sizeof(telemetryConfig_t) - ranges[1].offset;
+            return 2;
+
+        default:
+            return 0;
     }
 }
 
@@ -381,6 +492,18 @@ static bool fcLinkSyncCategoryEnabled(fcLinkSyncCategory_e category)
             return fcLinkConfig()->syncPidRates;
         case FC_LINK_SYNC_CATEGORY_RX:
             return fcLinkConfig()->syncRx;
+        case FC_LINK_SYNC_CATEGORY_MOTOR:
+            return fcLinkConfig()->syncMotor;
+        case FC_LINK_SYNC_CATEGORY_TELEMETRY:
+            return fcLinkConfig()->syncTelemetry;
+        case FC_LINK_SYNC_CATEGORY_MODES_ADJUSTMENTS:
+            return fcLinkConfig()->syncModesAdjustments;
+        case FC_LINK_SYNC_CATEGORY_GPS:
+            return fcLinkConfig()->syncGps;
+        case FC_LINK_SYNC_CATEGORY_OSD:
+            return fcLinkConfig()->syncOsd;
+        case FC_LINK_SYNC_CATEGORY_VTX:
+            return fcLinkConfig()->syncVtx;
         case FC_LINK_SYNC_CATEGORY_OTHER:
         default:
             return fcLinkConfig()->syncOther;
@@ -408,7 +531,15 @@ static void fcLinkComputeConfigFingerprint(uint16_t out[FC_LINK_SYNC_CATEGORY_CO
             continue;
         }
         const fcLinkSyncCategory_e category = fcLinkConfigPgnCategory(pgn);
-        out[category] = crc16_ccitt_update(out[category], reg->address, pgSize(reg));
+        fcLinkByteRange_t ranges[FC_LINK_PARTIAL_RANGE_MAX];
+        const uint8_t rangeCount = fcLinkConfigPgnPartialRanges(pgn, ranges);
+        if (rangeCount == 0) {
+            out[category] = crc16_ccitt_update(out[category], reg->address, pgSize(reg));
+        } else {
+            for (uint8_t i = 0; i < rangeCount; i++) {
+                out[category] = crc16_ccitt_update(out[category], reg->address + ranges[i].offset, ranges[i].length);
+            }
+        }
     }
 }
 
@@ -652,18 +783,39 @@ static void fcLinkApplyConfigFrame(const fcLinkConfigFrame_t *frame)
     }
 
     const pgRegistry_t *reg = pgFind(frame->pgn);
-    if (reg && !fcLinkConfigPgnExcluded(frame->pgn)
-        && pgSize(reg) == frame->size
-        && frame->size <= sizeof(frame->payload)) {
-        // Counts toward completion regardless of this board's category
-        // choice -- MASTER's SYNC_START count includes every non-excluded
-        // PG unconditionally, so the completion check must too, or a
-        // session with any category disabled would always come up short
-        // and get discarded as if it had failed. Only the actual write into
-        // the live registry is gated by category.
-        configSyncReceivedCount++;
-        if (fcLinkSyncCategoryEnabled(fcLinkConfigPgnCategory(frame->pgn))) {
-            memcpy(reg->address, frame->payload, frame->size);
+    if (reg && !fcLinkConfigPgnExcluded(frame->pgn)) {
+        fcLinkByteRange_t ranges[FC_LINK_PARTIAL_RANGE_MAX];
+        const uint8_t rangeCount = fcLinkConfigPgnPartialRanges(frame->pgn, ranges);
+        uint16_t expectedSize = pgSize(reg);
+        if (rangeCount > 0) {
+            expectedSize = 0;
+            for (uint8_t i = 0; i < rangeCount; i++) {
+                expectedSize += ranges[i].length;
+            }
+        }
+
+        if (expectedSize == frame->size && frame->size <= sizeof(frame->payload)) {
+            // Counts toward completion regardless of this board's category
+            // choice -- MASTER's SYNC_START count includes every non-excluded
+            // PG unconditionally, so the completion check must too, or a
+            // session with any category disabled would always come up short
+            // and get discarded as if it had failed. Only the actual write
+            // into the live registry is gated by category. For a partial PG,
+            // each range's own offset keeps the write inside the tuning
+            // portion only -- the hardware portion (pins/protocol/wiring) is
+            // never touched.
+            configSyncReceivedCount++;
+            if (fcLinkSyncCategoryEnabled(fcLinkConfigPgnCategory(frame->pgn))) {
+                if (rangeCount == 0) {
+                    memcpy(reg->address, frame->payload, frame->size);
+                } else {
+                    uint16_t read = 0;
+                    for (uint8_t i = 0; i < rangeCount; i++) {
+                        memcpy(reg->address + ranges[i].offset, frame->payload + read, ranges[i].length);
+                        read += ranges[i].length;
+                    }
+                }
+            }
         }
     }
     // If not found/excluded/size-mismatched, just don't count it -- the
@@ -731,9 +883,26 @@ static void fcLinkServiceConfigSyncSend(timeUs_t currentTimeUs)
             }
 
             if (found) {
+                fcLinkByteRange_t ranges[FC_LINK_PARTIAL_RANGE_MAX];
+                const uint8_t rangeCount = fcLinkConfigPgnPartialRanges(pgN(found), ranges);
                 frame.pgn = pgN(found);
-                frame.size = pgSize(found);
-                memcpy(frame.payload, found->address, MIN(frame.size, sizeof(frame.payload)));
+                if (rangeCount == 0) {
+                    frame.size = pgSize(found);
+                    memcpy(frame.payload, found->address, MIN(frame.size, sizeof(frame.payload)));
+                } else {
+                    // Concatenate each range's bytes back-to-back; the SLAVE
+                    // re-derives the same ranges (same order) from pgn to
+                    // unpack, so the wire format itself doesn't need to know
+                    // how many ranges there were.
+                    uint16_t written = 0;
+                    for (uint8_t i = 0; i < rangeCount; i++) {
+                        const uint16_t remaining = sizeof(frame.payload) - written;
+                        const uint16_t chunk = MIN(ranges[i].length, remaining);
+                        memcpy(frame.payload + written, found->address + ranges[i].offset, chunk);
+                        written += chunk;
+                    }
+                    frame.size = written;
+                }
                 configSyncSendIndex++;
             } else {
                 configSyncSendState = CONFIG_SYNC_SEND_END;
