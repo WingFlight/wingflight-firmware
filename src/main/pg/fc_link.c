@@ -34,6 +34,12 @@ void pgResetFn_fcLinkConfig(fcLinkConfig_t *config)
     config->peerTimeoutMs = 500;
     config->inverted = 0;
     config->pinSwap = 0;
+
+    // Default to today's behavior: sync everything.
+    config->syncMixerServos = 1;
+    config->syncPidRates = 1;
+    config->syncRx = 1;
+    config->syncOther = 1;
 }
 
 #endif

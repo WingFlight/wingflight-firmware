@@ -1669,6 +1669,10 @@ const clivalue_t valueTable[] = {
     { "fc_link_peer_timeout_ms",       VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = {FC_LINK_PEER_TIMEOUT_MIN_MS, FC_LINK_PEER_TIMEOUT_MAX_MS}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, peerTimeoutMs) },
     { "fc_link_pinswap",               VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, pinSwap) },
     { "fc_link_inverted",              VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, inverted) },
+    { "fc_link_sync_mixer_servos",     VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncMixerServos) },
+    { "fc_link_sync_pid_rates",        VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncPidRates) },
+    { "fc_link_sync_rx",               VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncRx) },
+    { "fc_link_sync_other",            VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_FC_LINK_CONFIG, offsetof(fcLinkConfig_t, syncOther) },
 #endif
 
 };

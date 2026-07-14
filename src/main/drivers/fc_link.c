@@ -89,6 +89,12 @@
 // wider than one byte time can only mean the rest of that frame is gone.
 #define FC_LINK_RX_BYTE_GAP_MAX_US 100
 
+// How often a SLAVE re-checks the peer's (saved) config fingerprint for
+// drift once already running -- not just at boot. A REQUEST frame is cheap,
+// so this can be fairly frequent without being wasteful; a full re-stream
+// only actually happens when a real, saved mismatch is found.
+#define FC_LINK_AUTO_SYNC_CHECK_INTERVAL_MS 5000
+
 // Comfortably above the largest single registered parameter group (the
 // biggest is the per-profile PID array, a few hundred bytes worst case).
 #define FC_LINK_CONFIG_CHUNK_MAX 768
@@ -101,6 +107,17 @@
 
 #define MS2US(ms) ((ms) * 1000)
 
+// User-facing base-config-sync categories. Coarse on purpose: every
+// non-excluded PG (see fcLinkConfigPgnExcluded()/fcLinkConfigPgnCategory())
+// falls into exactly one of these.
+typedef enum {
+    FC_LINK_SYNC_CATEGORY_MIXER_SERVOS = 0,
+    FC_LINK_SYNC_CATEGORY_PID_RATES,
+    FC_LINK_SYNC_CATEGORY_RX,
+    FC_LINK_SYNC_CATEGORY_OTHER,
+    FC_LINK_SYNC_CATEGORY_COUNT,
+} fcLinkSyncCategory_e;
+
 typedef struct __attribute__((packed)) {
     uint8_t sync;
     uint8_t role;        // fcLinkRole_e of the sender
@@ -109,7 +126,7 @@ typedef struct __attribute__((packed)) {
     uint8_t eepromConfVersion;   // EEPROM_CONF_VERSION -- must match to accept a config sync
     uint8_t fcVersionMajor;
     uint8_t fcVersionMinor;
-    uint16_t configFingerprint;  // folded CRC over all syncable PGs; mismatch triggers a SLAVE auto-sync
+    uint16_t configFingerprint[FC_LINK_SYNC_CATEGORY_COUNT]; // per-category folded CRC; a mismatch in a category the SLAVE has enabled triggers an auto-sync
     uint16_t channels[FC_LINK_MAX_CHANNELS]; // sender's current servo output, in microseconds
     uint8_t checksum;
 } fcLinkFrame_t;
@@ -160,7 +177,14 @@ static uint16_t peerChannels[FC_LINK_MAX_CHANNELS];
 static uint8_t peerEepromConfVersion = 0;
 static uint8_t peerFcVersionMajor = 0;
 static uint8_t peerFcVersionMinor = 0;
-static uint16_t peerConfigFingerprint = 0;
+static uint16_t peerConfigFingerprint[FC_LINK_SYNC_CATEGORY_COUNT];
+
+// Snapshot of our own *saved* config, refreshed only by fcLinkNotifyConfigSaved()
+// (after a real EEPROM write) -- never recomputed from live memory on a timer,
+// so a value mid-edit in some tool that hasn't saved yet can never look like
+// drift. Broadcast as-is in every heartbeat; fcLinkInit() seeds it from
+// whatever's already loaded (i.e. the persisted config) at boot.
+static uint16_t localConfigFingerprint[FC_LINK_SYNC_CATEGORY_COUNT];
 
 static uint16_t localChannels[FC_LINK_MAX_CHANNELS];
 
@@ -188,7 +212,7 @@ static timeUs_t lastRxByteUs = 0;
 static fcLinkDebugStats_t debugStats;
 
 // SLAVE receive-side config-sync progress.
-static bool configSyncAutoAttempted = false;
+static timeUs_t nextAutoSyncCheckTimeUs = 0;
 static bool configSyncInProgress = false;
 static uint16_t configSyncExpectedCount = 0;
 static uint16_t configSyncReceivedCount = 0;
@@ -230,25 +254,170 @@ static bool fcLinkConfigPgnExcluded(uint16_t pgn)
         // assignment above.
         case PG_DRIVER_FC_LINK_CONFIG:
             return true;
+
+        // Pure pin-map PGs -- every field is an ioTag_t (or equivalent),
+        // nothing lost by excluding. PG_SERVO_CONFIG in particular is only
+        // ioTags; the actual servo tuning lives in the separate, syncable
+        // PG_SERVO_PARAMS.
+        case PG_SERVO_CONFIG:
+        case PG_PWM_CONFIG:
+        case PG_PPM_CONFIG:
+        case PG_RX_SPI_CONFIG:
+        case PG_RX_CC2500_SPI_CONFIG:
+        case PG_RX_EXPRESSLRS_SPI_CONFIG:
+        case PG_BEEPER_DEV_CONFIG:
+        case PG_SONAR_CONFIG:
+        case PG_VTX_IO_CONFIG:
+        case PG_GYRO_DEVICE_CONFIG:
+        case PG_ADC_CONFIG:
+        case PG_I2C_CONFIG:
+        case PG_SPI_PIN_CONFIG:
+        case PG_QUADSPI_CONFIG:
+        case PG_MCO_CONFIG:
+        case PG_SERIAL_UART_CONFIG:
+        case PG_SERIAL_PIN_CONFIG:
+        case PG_ESCSERIAL_CONFIG:
+        case PG_SDIO_CONFIG:
+        case PG_SDIO_PIN_CONFIG:
+        case PG_PULLUP_CONFIG:
+        case PG_PULLDOWN_CONFIG:
+        case PG_PINIO_CONFIG:
+        case PG_PINIOBOX_CONFIG:
+        case PG_TIMER_IO_CONFIG:
+        case PG_TIMER_UP_CONFIG:
+        case PG_FLASH_CONFIG:
+        case PG_SDCARD_CONFIG:
+        case PG_CAMERA_CONTROL_CONFIG:
+        case PG_MAX7456_CONFIG:
+        case PG_USB_CONFIG:
+        case PG_DASHBOARD_CONFIG:
+        case PG_STATUS_LED_CONFIG:
+            return true;
+
+        // Per-unit sensor calibration -- manufacturing-tolerance trims, not
+        // shared tuning. Wrong even between two identical-model boards.
+        case PG_ACCELEROMETER_CONFIG:
+        case PG_COMPASS_CONFIG:
+        case PG_BAROMETER_CONFIG:
+        case PG_CURRENT_SENSOR_ADC_CONFIG:
+        case PG_VOLTAGE_SENSOR_ADC_CONFIG:
+        case PG_FREQ_SENSOR_CONFIG:
+            return true;
+
+        // Board identity.
+        case PG_BOARD_ALIGNMENT:
+        case PG_BOARD_CONFIG:
+            return true;
+
+        // Per-board wiring flags, same rationale as PG_DRIVER_FC_LINK_CONFIG
+        // above (pinSwap/halfDuplex).
+        case PG_ESC_SENSOR_CONFIG:
+            return true;
+
+        // Mixed pin-map + tuning PGs. fc_link syncs whole PGs -- these can't
+        // be split -- and a wrong pin/protocol assignment here can break
+        // motor or servo output outright, so exclude wholesale rather than
+        // risk it for the sake of syncing the handful of tuning fields
+        // (minthrottle/maxthrottle/etc, LED brightness/timing) they also
+        // carry.
+        case PG_MOTOR_CONFIG:
+        case PG_LED_STRIP_CONFIG:
+            return true;
+
+        // Accumulated runtime stats (flight time/distance), not config.
+        case PG_STATS_CONFIG:
+            return true;
+
         default:
             return false;
     }
 }
 
-// Folded CRC over every syncable PG's live bytes. Two boards running
-// identical firmware produce the same value iff their syncable config is
-// byte-for-byte identical, since PG_FOREACH order is fixed by the firmware
-// image itself.
-static uint16_t fcLinkComputeConfigFingerprint(void)
+// Which user-facing sync category a (non-excluded) PG belongs to. Only
+// called for PGs that already pass fcLinkConfigPgnExcluded() == false.
+static fcLinkSyncCategory_e fcLinkConfigPgnCategory(uint16_t pgn)
 {
-    uint16_t crc = 0xFFFF;
+    switch (pgn) {
+        case PG_GENERIC_MIXER_CONFIG:
+        case PG_GENERIC_MIXER_RULES:
+        case PG_GENERIC_MIXER_CURVES:
+        case PG_GENERIC_MIXER_INPUTS:
+        case PG_GENERIC_LOGIC_CONDITIONS: // gates mixerRule_t.condition
+        case PG_SERVO_PARAMS:
+        case PG_GOVERNOR_CONFIG:          // propulsion/motor-speed control, not attitude
+            return FC_LINK_SYNC_CATEGORY_MIXER_SERVOS;
+
+        case PG_PID_PROFILE:
+        case PG_CONTROL_RATE_PROFILES:
+        case PG_PID_CONFIG:
+        case PG_GAIN_CURVES:      // stick-gain scaling feeding setpoint
+        case PG_RPM_FILTER_CONFIG:
+        case PG_DYN_NOTCH_CONFIG:
+        case PG_GYRO_CONFIG:      // filtering feeds the PID loop directly
+            return FC_LINK_SYNC_CATEGORY_PID_RATES;
+
+        case PG_RX_CONFIG:
+        case PG_RC_CONTROLS_CONFIG:
+        case PG_RX_FAILSAFE_CHANNEL_CONFIG:
+        case PG_FAILSAFE_CONFIG:
+        case PG_FLYSKY_CONFIG:
+        case PG_RX_SPEKTRUM_SPI_CONFIG:
+            return FC_LINK_SYNC_CATEGORY_RX;
+
+        default:
+            return FC_LINK_SYNC_CATEGORY_OTHER;
+    }
+}
+
+// This board's own willingness to accept a given category (SLAVE-side only
+// concept, but harmless to evaluate on a MASTER too since it's never
+// consulted there).
+static bool fcLinkSyncCategoryEnabled(fcLinkSyncCategory_e category)
+{
+    switch (category) {
+        case FC_LINK_SYNC_CATEGORY_MIXER_SERVOS:
+            return fcLinkConfig()->syncMixerServos;
+        case FC_LINK_SYNC_CATEGORY_PID_RATES:
+            return fcLinkConfig()->syncPidRates;
+        case FC_LINK_SYNC_CATEGORY_RX:
+            return fcLinkConfig()->syncRx;
+        case FC_LINK_SYNC_CATEGORY_OTHER:
+        default:
+            return fcLinkConfig()->syncOther;
+    }
+}
+
+// Per-category folded CRC over every syncable PG's live bytes, computed in a
+// single PG_FOREACH pass. Two boards running identical firmware produce the
+// same per-category value iff that category's PGs are byte-for-byte
+// identical, since PG_FOREACH order is fixed by the firmware image itself.
+// Deliberately NOT called on a timer/every heartbeat -- only at boot and
+// from fcLinkNotifyConfigSaved(), so it only ever reflects actually-saved
+// config (see localConfigFingerprint's doc comment). Every board computes
+// all FC_LINK_SYNC_CATEGORY_COUNT values unconditionally -- categorization
+// is classification, not filtering; only the SLAVE's local sync-category
+// toggles decide which mismatches actually matter (see fcLinkUpdate()).
+static void fcLinkComputeConfigFingerprint(uint16_t out[FC_LINK_SYNC_CATEGORY_COUNT])
+{
+    for (int i = 0; i < FC_LINK_SYNC_CATEGORY_COUNT; i++) {
+        out[i] = 0xFFFF;
+    }
     PG_FOREACH(reg) {
-        if (fcLinkConfigPgnExcluded(pgN(reg))) {
+        const uint16_t pgn = pgN(reg);
+        if (fcLinkConfigPgnExcluded(pgn)) {
             continue;
         }
-        crc = crc16_ccitt_update(crc, reg->address, pgSize(reg));
+        const fcLinkSyncCategory_e category = fcLinkConfigPgnCategory(pgn);
+        out[category] = crc16_ccitt_update(out[category], reg->address, pgSize(reg));
     }
-    return crc;
+}
+
+void fcLinkNotifyConfigSaved(void)
+{
+    if (!fcLinkIsEnabled()) {
+        return;
+    }
+    fcLinkComputeConfigFingerprint(localConfigFingerprint);
 }
 
 static bool fcLinkPeerConfigCompatible(void)
@@ -272,7 +441,7 @@ static void fcLinkHandleFrame(const fcLinkFrame_t *frame)
     peerEepromConfVersion = frame->eepromConfVersion;
     peerFcVersionMajor = frame->fcVersionMajor;
     peerFcVersionMinor = frame->fcVersionMinor;
-    peerConfigFingerprint = frame->configFingerprint;
+    memcpy(peerConfigFingerprint, frame->configFingerprint, sizeof(peerConfigFingerprint));
 
     memcpy(peerChannels, frame->channels, sizeof(peerChannels));
 }
@@ -373,8 +542,8 @@ static void fcLinkSendHeartbeat(timeUs_t currentTimeUs)
         .eepromConfVersion = EEPROM_CONF_VERSION,
         .fcVersionMajor = FC_VERSION_MAJOR,
         .fcVersionMinor = FC_VERSION_MINOR,
-        .configFingerprint = fcLinkComputeConfigFingerprint(),
     };
+    memcpy(frame.configFingerprint, localConfigFingerprint, sizeof(frame.configFingerprint));
     memcpy(frame.channels, localChannels, sizeof(frame.channels));
     frame.checksum = fcLinkChecksumBytes((const uint8_t *)&frame, offsetof(fcLinkFrame_t, checksum));
 
@@ -486,8 +655,16 @@ static void fcLinkApplyConfigFrame(const fcLinkConfigFrame_t *frame)
     if (reg && !fcLinkConfigPgnExcluded(frame->pgn)
         && pgSize(reg) == frame->size
         && frame->size <= sizeof(frame->payload)) {
-        memcpy(reg->address, frame->payload, frame->size);
+        // Counts toward completion regardless of this board's category
+        // choice -- MASTER's SYNC_START count includes every non-excluded
+        // PG unconditionally, so the completion check must too, or a
+        // session with any category disabled would always come up short
+        // and get discarded as if it had failed. Only the actual write into
+        // the live registry is gated by category.
         configSyncReceivedCount++;
+        if (fcLinkSyncCategoryEnabled(fcLinkConfigPgnCategory(frame->pgn))) {
+            memcpy(reg->address, frame->payload, frame->size);
+        }
     }
     // If not found/excluded/size-mismatched, just don't count it -- the
     // SYNC_END count check catches the shortfall and the whole session is
@@ -666,12 +843,27 @@ void fcLinkUpdate(timeUs_t currentTimeUs)
         configSyncInProgress = false;
     }
 
-    // Auto-trigger: once per boot, only if the peer is a compatible build
-    // and its config actually differs from ours.
-    if (localRole == FC_LINK_ROLE_SLAVE && !configSyncAutoAttempted && !fcLinkPeerLost()) {
-        configSyncAutoAttempted = true;
-        if (fcLinkPeerConfigCompatible() && peerConfigFingerprint != fcLinkComputeConfigFingerprint()) {
-            fcLinkSendConfigSyncRequest();
+    // Auto-trigger: periodically (not just once at boot) check whether the
+    // peer's *saved* config differs from ours in a category we currently
+    // accept -- a category this board has deliberately excluded is allowed
+    // to differ from the peer forever without ever triggering a sync.
+    // Skipped entirely while a sync is already in flight (nothing to gain by
+    // requesting another) or while either board might be flying, since a
+    // mismatch found then could never actually commit anyway (see the
+    // SYNC_END handling in fcLinkApplyConfigFrame()) -- no point spending
+    // bandwidth re-streaming the whole config every interval for no effect.
+    if (localRole == FC_LINK_ROLE_SLAVE && !fcLinkPeerLost() && !configSyncInProgress
+        && !ARMING_FLAG(ARMED) && !peerState.armed
+        && cmpTimeUs(currentTimeUs, nextAutoSyncCheckTimeUs) >= 0) {
+        nextAutoSyncCheckTimeUs = currentTimeUs + MS2US(FC_LINK_AUTO_SYNC_CHECK_INTERVAL_MS);
+        if (fcLinkPeerConfigCompatible()) {
+            for (int i = 0; i < FC_LINK_SYNC_CATEGORY_COUNT; i++) {
+                if (fcLinkSyncCategoryEnabled((fcLinkSyncCategory_e)i)
+                    && localConfigFingerprint[i] != peerConfigFingerprint[i]) {
+                    fcLinkSendConfigSyncRequest();
+                    break;
+                }
+            }
         }
     }
 
@@ -716,6 +908,11 @@ void fcLinkInit(void)
         SERIAL_STOPBITS_1 | SERIAL_PARITY_NO |
             (fcLinkConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED) |
             (fcLinkConfig()->pinSwap ? SERIAL_PINSWAP : SERIAL_NOSWAP));
+
+    // Baseline fingerprint: whatever's already loaded into the live registry
+    // at this point in boot *is* the persisted config (nothing has run yet
+    // that could have live-edited it), so this is a valid "saved" snapshot.
+    fcLinkComputeConfigFingerprint(localConfigFingerprint);
 }
 
 #endif

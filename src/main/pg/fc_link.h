@@ -35,6 +35,14 @@ typedef struct fcLinkConfig_s {
     uint16_t peerTimeoutMs;           // time without a valid heartbeat before the peer is considered lost
     uint8_t inverted;
     uint8_t pinSwap;
+
+    // SLAVE-side only: which base-config-sync categories this board is
+    // willing to accept from a MASTER. MASTER always streams every syncable
+    // PG regardless of its own values here; the SLAVE decides what to apply.
+    uint8_t syncMixerServos;
+    uint8_t syncPidRates;
+    uint8_t syncRx;
+    uint8_t syncOther;
 } fcLinkConfig_t;
 
 PG_DECLARE(fcLinkConfig_t, fcLinkConfig);

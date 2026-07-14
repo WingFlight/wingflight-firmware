@@ -92,10 +92,22 @@ bool fcLinkShouldRelay(void);
 void fcLinkGetRelayChannels(uint8_t startIndex, float *out, uint8_t count);
 
 // Base/setup config sync (mixer, servos, ports, etc. -- everything except
-// per-board identity settings like serial port function assignments). Unlike
-// channel/tuning mirroring, this is one-shot and always ends in a SLAVE
-// EEPROM write + reboot, never a continuous background process. SLAVE-only;
-// a request is ignored by a MASTER-role board. Returns false if refused
-// outright (not a SLAVE, link down, or peer firmware/EEPROM version doesn't
-// match) rather than actually attempting the transfer.
+// per-board identity settings like serial port function assignments). Each
+// transfer is one-shot and always ends in a SLAVE EEPROM write + reboot --
+// never a continuous streaming process -- but a SLAVE periodically re-checks
+// whether the peer's *saved* config has since drifted (see
+// fcLinkNotifyConfigSaved()) and re-triggers a fresh transfer automatically
+// when it has, not just once at boot. SLAVE-only; a request is ignored by a
+// MASTER-role board. Returns false if refused outright (not a SLAVE, link
+// down, or peer firmware/EEPROM version doesn't match) rather than actually
+// attempting the transfer.
 bool fcLinkTriggerConfigSync(void);
+
+// Called once after any real EEPROM write (config.c's writeEEPROM(), from
+// whichever source -- CLI `save`, MSP_EEPROM_WRITE from the configurator or
+// a Lua script, CMS menus, RX bind flows, fc_link's own SLAVE-side commit).
+// Snapshots the fingerprint that gets broadcast/compared for auto-sync
+// purposes, so drift detection reacts only to config that's actually been
+// committed -- never to a value mid-edit in some tool that hasn't saved yet.
+// A no-op if fc_link isn't enabled on this board.
+void fcLinkNotifyConfigSaved(void);
