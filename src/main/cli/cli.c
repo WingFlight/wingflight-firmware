@@ -5504,6 +5504,19 @@ static void cliFcLink(const char *cmdName, char *cmdline)
         return;
     }
 
+    if (!isEmpty(cmdline) && strncasecmp(cmdline, "debug", 5) == 0) {
+        const fcLinkDebugStats_t *stats = fcLinkGetDebugStats();
+        cliPrintLinef("FC Link TX: heartbeatSent=%u heartbeatSkipped=%u",
+            stats->txHeartbeatSent, stats->txHeartbeatSkipped);
+        cliPrintLinef("FC Link RX: bytes=%u unsynced=%u abandoned=%u",
+            stats->rxByteTotal, stats->rxUnsyncedByte, stats->rxFrameAbandoned);
+        cliPrintLinef("Heartbeat: ok=%u checksumFail=%u", stats->heartbeatOk, stats->heartbeatChecksumFail);
+        cliPrintLinef("Tuning: ok=%u checksumFail=%u", stats->tuningOk, stats->tuningChecksumFail);
+        cliPrintLinef("Config: ok=%u checksumFail=%u requestsSeen=%u",
+            stats->configOk, stats->configChecksumFail, stats->configRequestSeen);
+        return;
+    }
+
     if (!fcLinkIsEnabled()) {
         cliPrintLine("FC Link: not enabled on any port");
         return;
@@ -7103,7 +7116,7 @@ const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("fbus_sensors", "show observed FBUS sensors", "[clear]", cliFbusSensors),
 #endif
 #ifdef USE_FC_LINK
-    CLI_COMMAND_DEF("fc_link", "show FC link heartbeat status", "[sync]", cliFcLink),
+    CLI_COMMAND_DEF("fc_link", "show FC link heartbeat status", "[sync|debug]", cliFcLink),
 #endif
     CLI_COMMAND_DEF("feature", "configure features",
         "list\r\n"

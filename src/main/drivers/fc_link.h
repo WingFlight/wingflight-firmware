@@ -37,6 +37,25 @@ typedef struct fcLinkPeerState_s {
     uint16_t seq;
 } fcLinkPeerState_t;
 
+// Bench-debug counters for `fc_link debug` -- lets a dead/flaky link be
+// diagnosed from the CLI (byte activity, framing, checksum pass/fail per
+// frame type, and whether TX is even being attempted) without needing a
+// logic analyzer.
+typedef struct fcLinkDebugStats_s {
+    uint32_t rxByteTotal;        // every byte handed to the receiver, synced or not
+    uint32_t rxUnsyncedByte;     // byte seen while idle that matched no known sync value
+    uint32_t rxFrameAbandoned;   // partial frame dropped by the inter-byte gap timeout
+    uint32_t heartbeatOk;
+    uint32_t heartbeatChecksumFail;
+    uint32_t tuningOk;
+    uint32_t tuningChecksumFail;
+    uint32_t configOk;           // any valid CONFIG_SYNC_BYTE frame (request/start/pg/end)
+    uint32_t configChecksumFail;
+    uint32_t configRequestSeen;  // subset of configOk that was specifically a sync REQUEST
+    uint32_t txHeartbeatSent;    // heartbeat actually handed to serialWriteBuf()
+    uint32_t txHeartbeatSkipped; // heartbeat due, but serialTxBytesFree() had no room
+} fcLinkDebugStats_t;
+
 // Covers the whole servo index space: PWM servos (0..MAX_SUPPORTED_PWM_SERVOS-1)
 // plus bus servos (BUS_SERVO_OFFSET..+BUS_SERVO_CHANNELS-1), i.e. MAX_SUPPORTED_SERVOS.
 // Kept as a plain constant (rather than including target headers here) and
@@ -56,6 +75,7 @@ bool fcLinkIsMaster(void);
 bool fcLinkPeerLost(void);
 
 const fcLinkPeerState_t *fcLinkGetPeerState(void);
+const fcLinkDebugStats_t *fcLinkGetDebugStats(void);
 
 // Called by whichever output stage (PWM servoUpdate(), SBUS_OUT, FBUS_MASTER)
 // actually computed its own channel values this cycle, so they can be

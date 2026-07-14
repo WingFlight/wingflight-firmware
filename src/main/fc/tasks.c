@@ -619,4 +619,8 @@ void tasksInit(void)
     setTaskEnabled(TASK_SPORT_MASTER, sportMasterIsEnabled());
 #endif
 
+#ifdef USE_FC_LINK
+    setTaskEnabled(TASK_FC_LINK, fcLinkIsEnabled());
+#endif
+
 }

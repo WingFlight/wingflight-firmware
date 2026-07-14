@@ -83,6 +83,12 @@
 #define FC_LINK_TUNING_RATE_HZ 4
 #define FC_LINK_CONFIG_SEND_RATE_HZ 20
 
+// A dropped/corrupted byte mid-frame must not be allowed to silently
+// misalign every frame that follows. Bytes within one frame stream back to
+// back off the TX FIFO (~2.2us/bit at FC_LINK_BAUDRATE); a gap this much
+// wider than one byte time can only mean the rest of that frame is gone.
+#define FC_LINK_RX_BYTE_GAP_MAX_US 100
+
 // Comfortably above the largest single registered parameter group (the
 // biggest is the per-profile PID array, a few hundred bytes worst case).
 #define FC_LINK_CONFIG_CHUNK_MAX 768
@@ -170,8 +176,16 @@ static fcLinkConfigFrame_t pendingConfigFrame;
 static volatile bool configFramePending = false;
 
 static uint8_t rxBuf[sizeof(fcLinkConfigFrame_t)];
-static uint8_t rxIdx = 0;
+static uint16_t rxIdx = 0;
 static uint16_t rxExpectedLen = 0;
+static timeUs_t lastRxByteUs = 0;
+
+// Bench-debug counters (cheap, always-on) -- exposed via `fc_link debug` so a
+// dead link can be diagnosed from the CLI without a logic analyzer: whether
+// bytes are arriving at all, whether they're framing as any known sync byte,
+// whether frames are stalling mid-receive, and which frame types pass/fail
+// their checksum.
+static fcLinkDebugStats_t debugStats;
 
 // SLAVE receive-side config-sync progress.
 static bool configSyncAutoAttempted = false;
@@ -208,6 +222,13 @@ static bool fcLinkConfigPgnExcluded(uint16_t pgn)
 {
     switch (pgn) {
         case PG_SERIAL_CONFIG:
+            return true;
+        // Per-board electrical settings (pinswap/inverted especially exist
+        // specifically to handle two boards being wired asymmetrically) --
+        // copying these from the peer would silently undo whatever this
+        // board's own wiring required, exactly like the serial port function
+        // assignment above.
+        case PG_DRIVER_FC_LINK_CONFIG:
             return true;
         default:
             return false;
@@ -260,6 +281,19 @@ static void fcLinkDataReceive(uint16_t c, void *data)
 {
     UNUSED(data);
 
+    debugStats.rxByteTotal++;
+
+    const timeUs_t nowUs = microsISR();
+    if (rxIdx > 0 && cmpTimeUs(nowUs, lastRxByteUs) > (timeDelta_t)FC_LINK_RX_BYTE_GAP_MAX_US) {
+        // Mid-frame stall (dropped/corrupted byte) -- abandon the partial
+        // frame now rather than keep accumulating into the wrong offset
+        // until FC_LINK_CONFIG_CHUNK_MAX-ish bytes of noise happen to fail
+        // a checksum on their own.
+        rxIdx = 0;
+        debugStats.rxFrameAbandoned++;
+    }
+    lastRxByteUs = nowUs;
+
     if (rxIdx == 0) {
         if ((uint8_t)c == FC_LINK_SYNC_BYTE) {
             rxExpectedLen = sizeof(fcLinkFrame_t);
@@ -268,6 +302,7 @@ static void fcLinkDataReceive(uint16_t c, void *data)
         } else if ((uint8_t)c == FC_LINK_CONFIG_SYNC_BYTE) {
             rxExpectedLen = sizeof(fcLinkConfigFrame_t);
         } else {
+            debugStats.rxUnsyncedByte++;
             return;
         }
     }
@@ -280,27 +315,37 @@ static void fcLinkDataReceive(uint16_t c, void *data)
                 fcLinkFrame_t frame;
                 memcpy(&frame, rxBuf, sizeof(frame));
                 if (fcLinkChecksumBytes(rxBuf, offsetof(fcLinkFrame_t, checksum)) == frame.checksum) {
+                    debugStats.heartbeatOk++;
                     fcLinkHandleFrame(&frame);
+                } else {
+                    debugStats.heartbeatChecksumFail++;
                 }
                 break;
             }
             case FC_LINK_TUNING_SYNC_BYTE: {
                 if (fcLinkChecksumBytes(rxBuf, offsetof(fcLinkTuningFrame_t, checksum)) == rxBuf[offsetof(fcLinkTuningFrame_t, checksum)]) {
+                    debugStats.tuningOk++;
                     memcpy(&pendingTuningFrame, rxBuf, sizeof(pendingTuningFrame));
                     tuningFramePending = true;
+                } else {
+                    debugStats.tuningChecksumFail++;
                 }
                 break;
             }
             case FC_LINK_CONFIG_SYNC_BYTE: {
                 if (fcLinkChecksumBytes(rxBuf, offsetof(fcLinkConfigFrame_t, checksum)) == rxBuf[offsetof(fcLinkConfigFrame_t, checksum)]) {
+                    debugStats.configOk++;
                     fcLinkConfigFrame_t frame;
                     memcpy(&frame, rxBuf, sizeof(frame));
                     if (frame.pgn == FC_LINK_CONFIG_PGN_REQUEST) {
+                        debugStats.configRequestSeen++;
                         configSyncRequestPending = true;
                     } else {
                         memcpy(&pendingConfigFrame, &frame, sizeof(pendingConfigFrame));
                         configFramePending = true;
                     }
+                } else {
+                    debugStats.configChecksumFail++;
                 }
                 break;
             }
@@ -314,6 +359,7 @@ static void fcLinkDataReceive(uint16_t c, void *data)
 static void fcLinkSendHeartbeat(timeUs_t currentTimeUs)
 {
     if (serialTxBytesFree(fcLinkPort) < sizeof(fcLinkFrame_t)) {
+        debugStats.txHeartbeatSkipped++;
         return;
     }
 
@@ -333,6 +379,7 @@ static void fcLinkSendHeartbeat(timeUs_t currentTimeUs)
     frame.checksum = fcLinkChecksumBytes((const uint8_t *)&frame, offsetof(fcLinkFrame_t, checksum));
 
     serialWriteBuf(fcLinkPort, (const uint8_t *)&frame, sizeof(frame));
+    debugStats.txHeartbeatSent++;
 
     nextSendTimeUs = currentTimeUs + (1000000 / constrain(fcLinkConfig()->rateHz, FC_LINK_RATE_MIN_HZ, FC_LINK_RATE_MAX_HZ));
 }
@@ -559,6 +606,11 @@ bool fcLinkPeerLost(void)
 const fcLinkPeerState_t *fcLinkGetPeerState(void)
 {
     return &peerState;
+}
+
+const fcLinkDebugStats_t *fcLinkGetDebugStats(void)
+{
+    return &debugStats;
 }
 
 void fcLinkPublishChannels(uint8_t startIndex, const float *channels, uint8_t count)
