@@ -37,6 +37,17 @@ typedef struct fcLinkPeerState_s {
     uint16_t seq;
 } fcLinkPeerState_t;
 
+// What the peer reported in its last heartbeat -- compare against this
+// board's own EEPROM_CONF_VERSION/FC_VERSION_MAJOR/FC_VERSION_MINOR (see
+// build/version.h, config/config_eeprom.h) to see why fcLinkTriggerConfigSync()
+// might be refusing: a config sync is only offered between byte-identical
+// firmware builds.
+typedef struct fcLinkPeerVersionInfo_s {
+    uint8_t eepromConfVersion;
+    uint8_t fcVersionMajor;
+    uint8_t fcVersionMinor;
+} fcLinkPeerVersionInfo_t;
+
 // Bench-debug counters for `fc_link debug` -- lets a dead/flaky link be
 // diagnosed from the CLI (byte activity, framing, checksum pass/fail per
 // frame type, and whether TX is even being attempted) without needing a
@@ -76,6 +87,7 @@ bool fcLinkPeerLost(void);
 
 const fcLinkPeerState_t *fcLinkGetPeerState(void);
 const fcLinkDebugStats_t *fcLinkGetDebugStats(void);
+fcLinkPeerVersionInfo_t fcLinkGetPeerVersionInfo(void);
 
 // Called by whichever output stage (PWM servoUpdate(), SBUS_OUT, FBUS_MASTER)
 // actually computed its own channel values this cycle, so they can be

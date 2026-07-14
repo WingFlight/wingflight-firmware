@@ -299,4 +299,5 @@
 #define MSP2_WING_FC_LINK_STATUS             0x5F03
 #define MSP2_WING_FC_LINK_SYNC_CONFIG        0x5F04
 #define MSP2_WING_SET_FC_LINK_SYNC_CONFIG    0x5F05
+#define MSP2_WING_TRIGGER_FC_LINK_SYNC       0x5F06
 #define MSP_V2_FRAME                         255

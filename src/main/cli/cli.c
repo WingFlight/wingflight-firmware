@@ -5536,6 +5536,14 @@ static void cliFcLink(const char *cmdName, char *cmdline)
             peer->failsafeActive ? "yes" : "no",
             peer->rxReceivingSignal ? "yes" : "no",
             peer->seq);
+
+        const fcLinkPeerVersionInfo_t peerVersion = fcLinkGetPeerVersionInfo();
+        const bool versionMatch = peerVersion.eepromConfVersion == EEPROM_CONF_VERSION
+            && peerVersion.fcVersionMajor == FC_VERSION_MAJOR
+            && peerVersion.fcVersionMinor == FC_VERSION_MINOR;
+        cliPrintLinef("Local build:  eeprom=%d fc=%d.%d", EEPROM_CONF_VERSION, FC_VERSION_MAJOR, FC_VERSION_MINOR);
+        cliPrintLinef("Peer build:   eeprom=%d fc=%d.%d (%s)", peerVersion.eepromConfVersion,
+            peerVersion.fcVersionMajor, peerVersion.fcVersionMinor, versionMatch ? "matches" : "MISMATCH");
     }
 }
 #endif

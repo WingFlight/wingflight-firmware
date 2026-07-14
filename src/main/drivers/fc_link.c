@@ -785,6 +785,15 @@ const fcLinkPeerState_t *fcLinkGetPeerState(void)
     return &peerState;
 }
 
+fcLinkPeerVersionInfo_t fcLinkGetPeerVersionInfo(void)
+{
+    return (fcLinkPeerVersionInfo_t){
+        .eepromConfVersion = peerEepromConfVersion,
+        .fcVersionMajor = peerFcVersionMajor,
+        .fcVersionMinor = peerFcVersionMinor,
+    };
+}
+
 const fcLinkDebugStats_t *fcLinkGetDebugStats(void)
 {
     return &debugStats;

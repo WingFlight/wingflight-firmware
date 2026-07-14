@@ -1408,6 +1408,14 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, fcLinkConfig()->syncRx);
         sbufWriteU8(dst, fcLinkConfig()->syncOther);
         break;
+
+    // Manual equivalent of the CLI's `fc_link sync` -- same one-shot request,
+    // same refusal rules (not a SLAVE, link down, or peer version mismatch).
+    // Response byte mirrors fcLinkTriggerConfigSync()'s bool so the GUI can
+    // tell the user whether the request was actually accepted.
+    case MSP2_WING_TRIGGER_FC_LINK_SYNC:
+        sbufWriteU8(dst, fcLinkTriggerConfigSync());
+        break;
 #endif
 
     case MSP_RC:
