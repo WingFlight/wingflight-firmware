@@ -14,6 +14,12 @@ typedef enum {
     BOARD_AUTO_ALIGN_REJECTED_ARMED = 3,
     BOARD_AUTO_ALIGN_TIMEOUT = 4,
     BOARD_AUTO_ALIGN_NO_MATCH = 5,
+    // Every sample this feature ever sees is raw, uncalibrated accADC (see
+    // accelerometer.c: applyAccelerationTrims() runs after
+    // boardAutoAlignProcessSample(), not before) -- an uncalibrated per-axis
+    // bias skews both the "up" baseline and the cross-product-derived tilt
+    // axis. Refuse to start until accHasBeenCalibrated() is true.
+    BOARD_AUTO_ALIGN_REJECTED_UNCALIBRATED = 6,
 } boardAutoAlignState_e;
 
 typedef struct boardAutoAlignStatus_s {
