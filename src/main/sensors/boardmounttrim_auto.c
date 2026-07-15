@@ -11,6 +11,7 @@
 
 #include "common/axis.h"
 #include "common/maths.h"
+#include "common/sensor_alignment.h"
 #include "common/utils.h"
 
 #include "config/config.h"
@@ -51,6 +52,22 @@ static bool normalizeVector(const float *src, float *dst)
     dst[Y] = src[Y] / mag;
     dst[Z] = src[Z] / mag;
     return true;
+}
+
+// applyMatrixRotation() computes vDest[b] = sum_a m[a][b]*vSrc[a] (a
+// column-dot-product against the matrix built by buildRotationMatrix()) --
+// i.e. it applies M^T, not M. Rotation matrices are orthonormal, so
+// (M^T)^-1 == M: this is the textbook row-dot-product multiply, and it
+// exactly undoes whatever applyMatrixRotation(v, m) did to a vector.
+static void undoMatrixRotation(const float *src, const fp_rotationMatrix_t *rotationMatrix, float *dst)
+{
+    const float x = src[X];
+    const float y = src[Y];
+    const float z = src[Z];
+
+    dst[X] = rotationMatrix->m[X][X] * x + rotationMatrix->m[X][Y] * y + rotationMatrix->m[X][Z] * z;
+    dst[Y] = rotationMatrix->m[Y][X] * x + rotationMatrix->m[Y][Y] * y + rotationMatrix->m[Y][Z] * z;
+    dst[Z] = rotationMatrix->m[Z][X] * x + rotationMatrix->m[Z][Y] * y + rotationMatrix->m[Z][Z] * z;
 }
 
 static void resetAccumulator(const float *seedSample, timeUs_t now)
@@ -132,26 +149,41 @@ void boardMountTrimAutoProcessSample(const float *correctedAccVector)
         return;
     }
 
+    // The result must always be the absolute trim needed as if starting
+    // from zero, not a delta added to whatever's already configured --
+    // otherwise re-running this (or running it after a manual edit)
+    // compounds instead of converging. avgUnit already has whatever
+    // mountTrim is CURRENTLY configured baked in (it's sampled after the
+    // full board-alignment + mount-trim rotation), so back that out first.
+    fp_rotationMatrix_t currentTrimMatrix;
+    buildRotationMatrixFromAlignment(&boardAlignment()->mountTrim, &currentTrimMatrix);
+    float untrimmedUnit[XYZ_AXIS_COUNT];
+    undoMatrixRotation(avgUnit, &currentTrimMatrix, untrimmedUnit);
+
     // Mirrors flight/imu.c:311-312's attitude.values.roll/pitch formulas
     // (atan2_approx(rMat[2][1], rMat[2][2]) and (pi/2)-acos_approx(-rMat[2][0])),
-    // applied to our own fully-corrected stationary sample instead of the
-    // fused rMat estimate -- imu.c's own accelerometer correction term
-    // (imu.c:254-257) treats a normalized stationary accel reading as
-    // directly comparable to rMat[2], so the same decomposition applies.
-    const float rollResidualRad = atan2_approx(avgUnit[Y], avgUnit[Z]);
-    const float pitchResidualRad = (0.5f * M_PIf) - acos_approx(-avgUnit[X]);
+    // applied to our untrimmed stationary sample instead of the fused rMat
+    // estimate -- imu.c's own accelerometer correction term (imu.c:254-257)
+    // treats a normalized stationary accel reading as directly comparable
+    // to rMat[2], so the same decomposition applies. This gives the
+    // *apparent* tilt the sensor measures on a physically level aircraft;
+    // the trim that cancels it is the opposite rotation, so it's negated
+    // below (verified against a physical bench test -- the unnegated value
+    // corrected in the wrong direction).
+    const float apparentRollRad = atan2_approx(untrimmedUnit[Y], untrimmedUnit[Z]);
+    const float apparentPitchRad = (0.5f * M_PIf) - acos_approx(-untrimmedUnit[X]);
 
-    const int16_t rollResidualDecidegrees = lrintf(rollResidualRad * (1800.0f / M_PIf));
-    const int16_t pitchResidualDecidegrees = lrintf(pitchResidualRad * (1800.0f / M_PIf));
+    const int16_t rollTrimDecidegrees = lrintf(-apparentRollRad * (1800.0f / M_PIf));
+    const int16_t pitchTrimDecidegrees = lrintf(-apparentPitchRad * (1800.0f / M_PIf));
 
-    if (ABS(rollResidualDecidegrees) > BOARD_MOUNT_TRIM_AUTO_MAX_RESIDUAL_DECIDEGREES
-        || ABS(pitchResidualDecidegrees) > BOARD_MOUNT_TRIM_AUTO_MAX_RESIDUAL_DECIDEGREES) {
+    if (ABS(rollTrimDecidegrees) > BOARD_MOUNT_TRIM_AUTO_MAX_RESIDUAL_DECIDEGREES
+        || ABS(pitchTrimDecidegrees) > BOARD_MOUNT_TRIM_AUTO_MAX_RESIDUAL_DECIDEGREES) {
         boardMountTrimAutoRuntime.status.state = BOARD_MOUNT_TRIM_AUTO_OUT_OF_RANGE;
         return;
     }
 
-    const int16_t newRoll = constrain(boardAlignment()->mountTrim.roll + rollResidualDecidegrees, -3600, 3600);
-    const int16_t newPitch = constrain(boardAlignment()->mountTrim.pitch + pitchResidualDecidegrees, -3600, 3600);
+    const int16_t newRoll = constrain(rollTrimDecidegrees, -3600, 3600);
+    const int16_t newPitch = constrain(pitchTrimDecidegrees, -3600, 3600);
 
     boardAlignmentMutable()->mountTrim.roll = newRoll;
     boardAlignmentMutable()->mountTrim.pitch = newPitch;
