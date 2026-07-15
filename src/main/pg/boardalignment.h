@@ -20,12 +20,27 @@
 #include "types.h"
 #include "platform.h"
 
+#include "common/sensor_alignment.h"
+
 #include "pg/pg.h"
 
 typedef struct {
     int32_t rollDegrees;
     int32_t pitchDegrees;
     int32_t yawDegrees;
+
+    // Fine correction for a mounting surface that isn't perfectly level
+    // relative to the airframe's true reference, composed AFTER (outermost
+    // to) rollDegrees/pitchDegrees/yawDegrees above -- see
+    // initBoardAlignment()/alignBoard() in sensors/boardalignment.c. Kept
+    // deliberately separate from the discrete alignment above: composing a
+    // fine trim into the same fixed roll->pitch->yaw sequence as a large
+    // 90-degree-step correction makes the trim's effective axis depend on
+    // whatever the discrete correction happens to be (e.g. a "roll" trim
+    // shows up entirely as pitch once yaw=270 -- verified algebraically).
+    // Reuses sensorAlignment_t (decidegrees, already used for gyro/mag chip
+    // alignment) rather than inventing a new type.
+    sensorAlignment_t mountTrim;
 } boardAlignment_t;
 
 PG_DECLARE(boardAlignment_t, boardAlignment);

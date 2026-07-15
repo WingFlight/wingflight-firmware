@@ -296,4 +296,6 @@
 #define MSP2_WING_BOARD_AUTO_ALIGN           0x5F00
 #define MSP2_WING_GOVERNOR_CONFIG            0x5F01
 #define MSP2_WING_SET_GOVERNOR_CONFIG        0x5F02
+#define MSP2_WING_BOARD_MOUNT_TRIM           0x5F03
+#define MSP2_WING_SET_BOARD_MOUNT_TRIM       0x5F04
 #define MSP_V2_FRAME                         255

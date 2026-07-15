@@ -1434,6 +1434,12 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, boardAlignment()->yawDegrees);
         break;
 
+    case MSP2_WING_BOARD_MOUNT_TRIM:
+        sbufWriteS16(dst, boardAlignment()->mountTrim.roll);
+        sbufWriteS16(dst, boardAlignment()->mountTrim.pitch);
+        sbufWriteS16(dst, boardAlignment()->mountTrim.yaw);
+        break;
+
     case MSP_DEBUG_CONFIG:
         sbufWriteU8(dst, DEBUG_COUNT);
         sbufWriteU8(dst, DEBUG_VALUE_COUNT);
@@ -3425,6 +3431,12 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         boardAlignmentMutable()->rollDegrees = sbufReadU16(src);
         boardAlignmentMutable()->pitchDegrees = sbufReadU16(src);
         boardAlignmentMutable()->yawDegrees = sbufReadU16(src);
+        break;
+
+    case MSP2_WING_SET_BOARD_MOUNT_TRIM:
+        boardAlignmentMutable()->mountTrim.roll = sbufReadS16(src);
+        boardAlignmentMutable()->mountTrim.pitch = sbufReadS16(src);
+        boardAlignmentMutable()->mountTrim.yaw = sbufReadS16(src);
         break;
 
     case MSP_SET_MIXER_CONFIG:

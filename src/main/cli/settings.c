@@ -850,6 +850,9 @@ const clivalue_t valueTable[] = {
     { "align_board_roll",           VAR_INT16  | MASTER_VALUE, .config.minmax = { -180, 360 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, rollDegrees) },
     { "align_board_pitch",          VAR_INT16  | MASTER_VALUE, .config.minmax = { -180, 360 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, pitchDegrees) },
     { "align_board_yaw",            VAR_INT16  | MASTER_VALUE, .config.minmax = { -180, 360 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, yawDegrees) },
+    { "align_board_trim_roll",      VAR_INT16  | MASTER_VALUE, .config.minmax = { -3600, 3600 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, mountTrim.roll) },
+    { "align_board_trim_pitch",     VAR_INT16  | MASTER_VALUE, .config.minmax = { -3600, 3600 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, mountTrim.pitch) },
+    { "align_board_trim_yaw",       VAR_INT16  | MASTER_VALUE, .config.minmax = { -3600, 3600 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, mountTrim.yaw) },
 
 // PG_BATTERY_CONFIG
 
