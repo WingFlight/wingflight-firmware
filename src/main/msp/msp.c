@@ -144,6 +144,7 @@
 #include "sensors/smartfuel.h"
 #include "sensors/boardalignment.h"
 #include "sensors/boardalignment_auto.h"
+#include "sensors/boardmounttrim_auto.h"
 #include "sensors/compass.h"
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
@@ -2176,6 +2177,23 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             sbufWriteS16(dst, status.pitchDegrees);
             sbufWriteS16(dst, status.yawDegrees);
             sbufWriteU8(dst, status.matchedSamples);
+        }
+        break;
+
+    case MSP2_WING_BOARD_MOUNT_TRIM_AUTO:
+        if (sbufBytesRemaining(src) >= 1) {
+            const uint8_t action = sbufReadU8(src);
+            if (action == 1) {
+                boardMountTrimAutoStart();
+            }
+        }
+
+        {
+            const boardMountTrimAutoStatus_t status = boardMountTrimAutoGetStatus();
+            sbufWriteU8(dst, status.state);
+            sbufWriteS16(dst, status.rollTrimDecidegrees);
+            sbufWriteS16(dst, status.pitchTrimDecidegrees);
+            sbufWriteU8(dst, status.stabilityPercent);
         }
         break;
 
