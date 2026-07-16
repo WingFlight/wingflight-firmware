@@ -22,12 +22,27 @@
 
 #include "pg/boardalignment.h"
 
+#include "sensors/acceleration.h"
 #include "sensors/boardalignment.h"
 #include "sensors/boardalignment_auto.h"
 
 #define BOARD_AUTO_ALIGN_TIMEOUT_US (15 * 1000000)
 #define BOARD_AUTO_ALIGN_MIN_MATCHED_SAMPLES 12
 #define BOARD_AUTO_ALIGN_MIN_TILT_ANGLE_DEG 20.0f
+
+// The accelerometer reads the *reaction* force, not gravity itself, so at
+// rest (level) it reads +1g along the body's up axis -- imu.c's Mahony
+// correction treats the raw (unnegated) acc reading as directly comparable
+// to rMat[2], which is (0,0,1) at identity/level attitude. So baseline
+// (captured at rest) already IS the body "up" direction, no sign flip.
+//
+// The pitch-axis sign below is the one assumption this file can't verify
+// without hardware: it assumes the wizard's "raise the tail" instruction
+// produces a *negative* rotation about the standard body pitch axis (nose
+// tips down as the tail comes up). If a bench test comes back consistently
+// wrong by a fixed rotation (not randomly wrong -- that would mean this
+// fix didn't take), flip this single constant.
+#define BOARD_AUTO_ALIGN_TAIL_LIFT_SIGN (-1.0f)
 
 static const int16_t rightAngleSteps[] = { 0, 90, 180, 270 };
 
@@ -57,6 +72,13 @@ static bool normalizeVector(const float *src, float *dst)
     return true;
 }
 
+static void crossProduct(const float *a, const float *b, float *dst)
+{
+    dst[X] = a[Y] * b[Z] - a[Z] * b[Y];
+    dst[Y] = a[Z] * b[X] - a[X] * b[Z];
+    dst[Z] = a[X] * b[Y] - a[Y] * b[X];
+}
+
 static void rotateVectorByBoardAlignment(const float *src, int16_t rollDeg, int16_t pitchDeg, int16_t yawDeg, float *dst)
 {
     fp_angles_t rotationAngles;
@@ -74,10 +96,26 @@ static void rotateVectorByBoardAlignment(const float *src, int16_t rollDeg, int1
     applyMatrixRotation(dst, &rotationMatrix);
 }
 
-static bool findBestRightAngleAlignment(const float *baseline, const float *current, int16_t *rollOut, int16_t *pitchOut, int16_t *yawOut)
+// Derives a full right-handed orthonormal reference frame (bodyX/Y/Z, in
+// raw sensor coordinates) from just the resting baseline and one in-gesture
+// sample -- no second gesture needed:
+//   - bodyZ (the body "up" axis) is the baseline itself: a rotation about
+//     any axis through the origin never changes a vector's own direction if
+//     it doesn't move, and gravity read at rest already *is* the up axis
+//     (see the sign-convention comment above BOARD_AUTO_ALIGN_TAIL_LIFT_SIGN).
+//   - bodyY (the pitch axis the tail-lift rotates about) is
+//     cross(baseline, current): a pure single-axis rotation only ever moves
+//     a vector within the plane perpendicular to that axis, so the cross
+//     product of a before/during-gesture pair of samples points along the
+//     rotation axis itself, regardless of how far the user tilted.
+//   - bodyX completes the right-handed frame via cross(bodyY, bodyZ) --
+//     algebraically guaranteed perpendicular to both, no matter how sloppy
+//     the physical gesture was (that imprecision instead shows up as
+//     candidate jitter across samples, which the caller's consecutive-match
+//     counter already filters out).
+static bool computeReferenceAxes(const float *baseline, const float *current,
+    float *bodyXOut, float *bodyYOut, float *bodyZOut)
 {
-    const float minTiltSin = sin_approx(BOARD_AUTO_ALIGN_MIN_TILT_ANGLE_DEG * RAD);
-
     float baselineUnit[XYZ_AXIS_COUNT];
     float currentUnit[XYZ_AXIS_COUNT];
     if (!normalizeVector(baseline, baselineUnit) || !normalizeVector(current, currentUnit)) {
@@ -86,11 +124,44 @@ static bool findBestRightAngleAlignment(const float *baseline, const float *curr
 
     const float dot = baselineUnit[X] * currentUnit[X] + baselineUnit[Y] * currentUnit[Y] + baselineUnit[Z] * currentUnit[Z];
     if (dot > cos_approx(BOARD_AUTO_ALIGN_MIN_TILT_ANGLE_DEG * RAD)) {
+        return false; // not enough tilt yet to trust the cross product's direction
+    }
+
+    bodyZOut[X] = baselineUnit[X];
+    bodyZOut[Y] = baselineUnit[Y];
+    bodyZOut[Z] = baselineUnit[Z];
+
+    float pitchAxis[XYZ_AXIS_COUNT];
+    crossProduct(baselineUnit, currentUnit, pitchAxis);
+    if (!normalizeVector(pitchAxis, bodyYOut)) {
+        return false; // baseline/current parallel (shouldn't happen once past the tilt gate above)
+    }
+    bodyYOut[X] *= BOARD_AUTO_ALIGN_TAIL_LIFT_SIGN;
+    bodyYOut[Y] *= BOARD_AUTO_ALIGN_TAIL_LIFT_SIGN;
+    bodyYOut[Z] *= BOARD_AUTO_ALIGN_TAIL_LIFT_SIGN;
+
+    crossProduct(bodyYOut, bodyZOut, bodyXOut);
+
+    return true;
+}
+
+// Finds the one of the 24 physically-possible right-angle board mountings
+// that rotates the observed (bodyX,bodyY,bodyZ) frame onto the standard
+// aircraft body frame -- i.e. scores every candidate by *signed* agreement
+// (no fabsf) against the known target directions, so it can actually tell
+// right-side-up from upside-down and "tail going up" from "tail going
+// down", unlike the fabsf()-based heuristic this replaced.
+static bool findBestRightAngleAlignment(const float *baseline, const float *current, int16_t *rollOut, int16_t *pitchOut, int16_t *yawOut)
+{
+    float bodyX[XYZ_AXIS_COUNT];
+    float bodyY[XYZ_AXIS_COUNT];
+    float bodyZ[XYZ_AXIS_COUNT];
+    if (!computeReferenceAxes(baseline, current, bodyX, bodyY, bodyZ)) {
         return false;
     }
 
     bool found = false;
-    float bestScore = 1e9f;
+    float bestScore = -1e9f;
 
     for (size_t i = 0; i < ARRAYLEN(rightAngleSteps); i++) {
         for (size_t j = 0; j < ARRAYLEN(rightAngleSteps); j++) {
@@ -99,29 +170,21 @@ static bool findBestRightAngleAlignment(const float *baseline, const float *curr
                 const int16_t pitch = rightAngleSteps[j];
                 const int16_t yaw = rightAngleSteps[k];
 
-                float baselineRotated[XYZ_AXIS_COUNT];
-                float currentRotated[XYZ_AXIS_COUNT];
-                rotateVectorByBoardAlignment(baselineUnit, roll, pitch, yaw, baselineRotated);
-                rotateVectorByBoardAlignment(currentUnit, roll, pitch, yaw, currentRotated);
+                float xRotated[XYZ_AXIS_COUNT];
+                float yRotated[XYZ_AXIS_COUNT];
+                float zRotated[XYZ_AXIS_COUNT];
+                rotateVectorByBoardAlignment(bodyX, roll, pitch, yaw, xRotated);
+                rotateVectorByBoardAlignment(bodyY, roll, pitch, yaw, yRotated);
+                rotateVectorByBoardAlignment(bodyZ, roll, pitch, yaw, zRotated);
 
-                const float deltaX = currentRotated[X] - baselineRotated[X];
-                const float deltaY = currentRotated[Y] - baselineRotated[Y];
+                // Signed dot-product agreement against the standard basis
+                // (1,0,0)/(0,1,0)/(0,0,1) -- higher is better, and unlike
+                // fabsf() this rewards the correctly-signed candidate only,
+                // so a sign-flipped (e.g. upside-down) candidate now scores
+                // clearly worse instead of tying with the correct one.
+                const float score = xRotated[X] + yRotated[Y] + zRotated[Z];
 
-                if (fabsf(deltaX) < minTiltSin) {
-                    continue;
-                }
-
-                // Allow substantial roll coupling, but gate out movements dominated by roll.
-                if (fabsf(deltaY) > 0.90f || fabsf(deltaY) > (fabsf(deltaX) * 1.10f)) {
-                    continue;
-                }
-
-                const float score = fabsf(baselineRotated[X])
-                    + fabsf(baselineRotated[Y])
-                    + fabsf(deltaY)
-                    + fabsf((1.0f - fabsf(baselineRotated[Z])));
-
-                if (!found || score < bestScore) {
+                if (!found || score > bestScore) {
                     found = true;
                     bestScore = score;
                     *rollOut = roll;
@@ -207,6 +270,11 @@ bool boardAutoAlignStart(void)
 
     if (ARMING_FLAG(ARMED)) {
         boardAutoAlignRuntime.status.state = BOARD_AUTO_ALIGN_REJECTED_ARMED;
+        return false;
+    }
+
+    if (!accHasBeenCalibrated()) {
+        boardAutoAlignRuntime.status.state = BOARD_AUTO_ALIGN_REJECTED_UNCALIBRATED;
         return false;
     }
 

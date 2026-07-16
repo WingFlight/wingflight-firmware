@@ -55,7 +55,7 @@
 #define MSP_PROTOCOL_VERSION                 0
 
 #define API_VERSION_MAJOR                    22
-#define API_VERSION_MINOR                    2
+#define API_VERSION_MINOR                    3
 #define API_VERSION_LENGTH                   2
 
 #define FLIGHT_CONTROLLER_IDENTIFIER_LENGTH  4
@@ -296,8 +296,11 @@
 #define MSP2_WING_BOARD_AUTO_ALIGN           0x5F00
 #define MSP2_WING_GOVERNOR_CONFIG            0x5F01
 #define MSP2_WING_SET_GOVERNOR_CONFIG        0x5F02
-#define MSP2_WING_FC_LINK_STATUS             0x5F03
-#define MSP2_WING_FC_LINK_SYNC_CONFIG        0x5F04
-#define MSP2_WING_SET_FC_LINK_SYNC_CONFIG    0x5F05
-#define MSP2_WING_TRIGGER_FC_LINK_SYNC       0x5F06
+#define MSP2_WING_BOARD_MOUNT_TRIM           0x5F03
+#define MSP2_WING_SET_BOARD_MOUNT_TRIM       0x5F04
+#define MSP2_WING_BOARD_MOUNT_TRIM_AUTO      0x5F05
+#define MSP2_WING_FC_LINK_STATUS             0x5F06
+#define MSP2_WING_FC_LINK_SYNC_CONFIG        0x5F07
+#define MSP2_WING_SET_FC_LINK_SYNC_CONFIG    0x5F08
+#define MSP2_WING_TRIGGER_FC_LINK_SYNC       0x5F09
 #define MSP_V2_FRAME                         255

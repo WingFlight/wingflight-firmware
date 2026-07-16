@@ -37,6 +37,7 @@
 #include "sensors/acceleration_init.h"
 #include "sensors/boardalignment.h"
 #include "sensors/boardalignment_auto.h"
+#include "sensors/boardmounttrim_auto.h"
 
 #include "acceleration.h"
 
@@ -140,6 +141,8 @@ void accUpdate(timeUs_t currentTimeUs, rollAndPitchTrims_t *rollAndPitchTrims)
     }
 
     applyAccelerationTrims(accelerationRuntime.accelerationTrims);
+
+    boardMountTrimAutoProcessSample(acc.accADC);
 
     ++accelerationRuntime.accumulatedMeasurementCount;
     for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
