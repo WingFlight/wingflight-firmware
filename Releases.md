@@ -1,3 +1,13 @@
+# 0.0.6
+
+Add Mounting-surface trim (manual entry and auto-detect wizard).
+Add throttle range governor.
+Add ready-to-arm surface wiggle.
+Add auto trim bit to flight mode sensors.
+Rework ATTHOLD mode with a new implementation.
+Fix Board Auto-Align sign-blind scoring; gate on accelerometer calibration.
+Reduce gyro calibration sensitivity to cope with windy days.
+
 # 0.0.5
 
 Add AUTO TRIM flight mode (servo-center capture, ported from iNav's BOXAUTOTRIM).
