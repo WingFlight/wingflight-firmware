@@ -37,39 +37,57 @@
 static bool standardBoardAlignment = true;     // board orientation correction
 static fp_rotationMatrix_t boardRotation;
 
+static bool standardMountTrim = true;          // mounting surface trim, applied after board orientation
+static fp_rotationMatrix_t mountTrimRotation;
+
 static inline bool isBoardAlignmentStandard(const boardAlignment_t *boardAlignment)
 {
     return !boardAlignment->rollDegrees && !boardAlignment->pitchDegrees && !boardAlignment->yawDegrees;
+}
+
+static inline bool isMountTrimStandard(const boardAlignment_t *boardAlignment)
+{
+    return !boardAlignment->mountTrim.roll && !boardAlignment->mountTrim.pitch && !boardAlignment->mountTrim.yaw;
 }
 
 void initBoardAlignment(const boardAlignment_t *boardAlignment)
 {
     standardBoardAlignment = true;
 
-    if (isBoardAlignmentStandard(boardAlignment)) {
-        return;
+    if (!isBoardAlignmentStandard(boardAlignment)) {
+        standardBoardAlignment = false;
+
+        fp_angles_t rotationAngles;
+        rotationAngles.angles.roll  = degreesToRadians(boardAlignment->rollDegrees );
+        rotationAngles.angles.pitch = degreesToRadians(boardAlignment->pitchDegrees);
+        rotationAngles.angles.yaw   = degreesToRadians(boardAlignment->yawDegrees  );
+
+        buildRotationMatrix(&rotationAngles, &boardRotation);
     }
 
-    standardBoardAlignment = false;
+    standardMountTrim = true;
 
-    fp_angles_t rotationAngles;
-    rotationAngles.angles.roll  = degreesToRadians(boardAlignment->rollDegrees );
-    rotationAngles.angles.pitch = degreesToRadians(boardAlignment->pitchDegrees);
-    rotationAngles.angles.yaw   = degreesToRadians(boardAlignment->yawDegrees  );
+    if (!isMountTrimStandard(boardAlignment)) {
+        standardMountTrim = false;
 
-    buildRotationMatrix(&rotationAngles, &boardRotation);
+        buildRotationMatrixFromAlignment(&boardAlignment->mountTrim, &mountTrimRotation);
+    }
 }
 
 static inline void alignBoard(float *vec)
 {
     applyMatrixRotation(vec, &boardRotation);
+
+    if (!standardMountTrim) {
+        applyMatrixRotation(vec, &mountTrimRotation);
+    }
 }
 
 FAST_CODE void alignSensorViaMatrix(float *dest, fp_rotationMatrix_t* sensorRotationMatrix)
 {
     applyMatrixRotation(dest, sensorRotationMatrix);
 
-    if (!standardBoardAlignment) {
+    if (!standardBoardAlignment || !standardMountTrim) {
         alignBoard(dest);
     }
 }
@@ -124,7 +142,7 @@ FAST_CODE void alignSensorViaRotation(float *dest, uint8_t rotation)
         break;
     }
 
-    if (!standardBoardAlignment) {
+    if (!standardBoardAlignment || !standardMountTrim) {
         alignBoard(dest);
     }
 }

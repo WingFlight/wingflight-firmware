@@ -144,6 +144,7 @@
 #include "sensors/smartfuel.h"
 #include "sensors/boardalignment.h"
 #include "sensors/boardalignment_auto.h"
+#include "sensors/boardmounttrim_auto.h"
 #include "sensors/compass.h"
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
@@ -1434,6 +1435,12 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, boardAlignment()->yawDegrees);
         break;
 
+    case MSP2_WING_BOARD_MOUNT_TRIM:
+        sbufWriteS16(dst, boardAlignment()->mountTrim.roll);
+        sbufWriteS16(dst, boardAlignment()->mountTrim.pitch);
+        sbufWriteS16(dst, boardAlignment()->mountTrim.yaw);
+        break;
+
     case MSP_DEBUG_CONFIG:
         sbufWriteU8(dst, DEBUG_COUNT);
         sbufWriteU8(dst, DEBUG_VALUE_COUNT);
@@ -2170,6 +2177,23 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             sbufWriteS16(dst, status.pitchDegrees);
             sbufWriteS16(dst, status.yawDegrees);
             sbufWriteU8(dst, status.matchedSamples);
+        }
+        break;
+
+    case MSP2_WING_BOARD_MOUNT_TRIM_AUTO:
+        if (sbufBytesRemaining(src) >= 1) {
+            const uint8_t action = sbufReadU8(src);
+            if (action == 1) {
+                boardMountTrimAutoStart();
+            }
+        }
+
+        {
+            const boardMountTrimAutoStatus_t status = boardMountTrimAutoGetStatus();
+            sbufWriteU8(dst, status.state);
+            sbufWriteS16(dst, status.rollTrimDecidegrees);
+            sbufWriteS16(dst, status.pitchTrimDecidegrees);
+            sbufWriteU8(dst, status.stabilityPercent);
         }
         break;
 
@@ -3425,6 +3449,12 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         boardAlignmentMutable()->rollDegrees = sbufReadU16(src);
         boardAlignmentMutable()->pitchDegrees = sbufReadU16(src);
         boardAlignmentMutable()->yawDegrees = sbufReadU16(src);
+        break;
+
+    case MSP2_WING_SET_BOARD_MOUNT_TRIM:
+        boardAlignmentMutable()->mountTrim.roll = sbufReadS16(src);
+        boardAlignmentMutable()->mountTrim.pitch = sbufReadS16(src);
+        boardAlignmentMutable()->mountTrim.yaw = sbufReadS16(src);
         break;
 
     case MSP_SET_MIXER_CONFIG:
