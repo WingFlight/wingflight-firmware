@@ -1,3 +1,7 @@
+# 0.0.7
+
+Fix stabilization break when mounting-surface trim is set without board alignment.
+
 # 0.0.6
 
 Add Mounting-surface trim (manual entry and auto-detect wizard).
