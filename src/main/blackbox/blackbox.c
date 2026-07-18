@@ -1631,8 +1631,8 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_ARRAY("error_limit", "%d", 3,                 currentPidProfile->error_limit);
         BLACKBOX_PRINT_HEADER_LINE("iterm_decay", "%d,%d",                  currentPidProfile->iterm_decay_time,
                                                                             currentPidProfile->iterm_decay_limit);
-        BLACKBOX_PRINT_HEADER_LINE("fw_tpa", "%d,%d",                       currentPidProfile->fw_tpa_breakpoint,
-                                                                            currentPidProfile->fw_tpa_rate);
+        BLACKBOX_PRINT_HEADER_LINE("fw_tpa", "%d,%d",                       currentPidProfile->fw_tpa_gain,
+                                                                            currentPidProfile->fw_tpa_curve);
         BLACKBOX_PRINT_HEADER_LINE("cross_axis_relax", "%d,%d,%d,%d",       currentPidProfile->cross_axis_relax_strength,
                                                                             currentPidProfile->cross_axis_relax_level,
                                                                             currentPidProfile->cross_axis_relax_cutoff,

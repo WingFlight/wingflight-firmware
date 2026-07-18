@@ -61,8 +61,10 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // (reuses the reserved gain/deadband wire slot left by the old atthold
 // removal; max_rate is a new field appended at the tail) - old saved
 // profiles reset to defaults rather than reinterpreting their stored bytes
-// at the new, wider struct layout.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 7);
+// at the new, wider struct layout. v7->v8: replaced fw_tpa_breakpoint/
+// fw_tpa_rate with fw_tpa_gain (baseline scale) and fw_tpa_curve (index into
+// the shared gainCurves pool), mirroring master_gain/gain_curve.
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 8);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -76,8 +78,8 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .pid_mode = 1,
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
         .gain_curve = { [PID_ROLL] = 0, [PID_PITCH] = 0, [PID_YAW] = 0 },
-        .fw_tpa_breakpoint = 100,
-        .fw_tpa_rate = 0,
+        .fw_tpa_gain = 100,
+        .fw_tpa_curve = 0,
         .iterm_decay_time = 6,
         .iterm_decay_limit = 35,
         .iterm_relax_type = ITERM_RELAX_RPY,

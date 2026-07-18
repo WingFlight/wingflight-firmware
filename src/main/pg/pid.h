@@ -116,8 +116,8 @@ typedef struct pidProfile_s {
     uint8_t             master_gain[PID_AXIS_COUNT];  // Live per-axis P/I/D/F scale, percent (100 = unscaled) - in-flight tuning aid, doesn't alter the underlying gains
     uint8_t             gain_curve[PID_AXIS_COUNT];   // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1), scales master_gain by |stick deflection|
 
-    uint8_t             fw_tpa_breakpoint;
-    uint8_t             fw_tpa_rate;
+    uint8_t             fw_tpa_gain;                  // Baseline throttle attenuation scale, percent (100 = unscaled) - mirrors master_gain
+    uint8_t             fw_tpa_curve;                 // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1), further scales fw_tpa_gain by throttle - mirrors gain_curve
 
     uint8_t             iterm_decay_time;
     uint8_t             iterm_decay_limit;

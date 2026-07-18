@@ -433,9 +433,10 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     for (int i = 0; i < PID_AXIS_COUNT; i++)
         pid.gainCurveIndex[i] = pidProfile->gain_curve[i];
 
-    // Fixed-wing throttle-based gain attenuation
-    pid.fwTpaBreakpoint = pidProfile->fw_tpa_breakpoint * 0.01f;
-    pid.fwTpaRate = pidProfile->fw_tpa_rate * 0.01f;
+    // Fixed-wing throttle-based gain attenuation: baseline gain plus an
+    // optional shaping curve, mirroring master_gain + gain_curve
+    pid.fwTpaGain = pidProfile->fw_tpa_gain * 0.01f;
+    pid.fwTpaCurveIndex = pidProfile->fw_tpa_curve;
 
     // Roll axis
     pid.coef[PID_ROLL].Kp = ROLL_P_TERM_SCALE * pidProfile->pid[PID_ROLL].P;
@@ -701,16 +702,17 @@ static void pidApplyMode0(uint8_t axis)
  ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** **/
 
 // Linear interpolation through a curve's (ascending-x) points, evaluated on
-// |stick deflection| (0..1). Mirrors mixerEvaluateCurve()'s algorithm but the
-// domain is unipolar since the caller always passes a magnitude.
-static float pidEvaluateGainCurve(const gainCurve_t *curve, float stickMag)
+// a 0..1 magnitude -- |stick deflection| for per-axis gain curves, throttle
+// for fw_tpa_curve. Mirrors mixerEvaluateCurve()'s algorithm but the domain
+// is unipolar since the caller always passes a magnitude.
+static float pidEvaluateGainCurve(const gainCurve_t *curve, float mag)
 {
     const int n = curve->count;
 
     if (n < 2)
         return 1.0f;
 
-    const float xs = stickMag * 1000.0f;
+    const float xs = mag * 1000.0f;
 
     if (xs <= curve->points[0].x)
         return curve->points[0].y * 0.01f;
@@ -737,14 +739,14 @@ static float pidThrottleAttenuation(void)
     // surfaces, not airspeed -- on aircraft that hover/harrier at or past
     // stall, surfaces stay authoritative at high throttle regardless of
     // airspeed, so gain is attenuated as throttle rises, not as it falls.
-    const float throttle = getThrottle();
+    // Mirrors masterGain + gain_curve: fwTpaGain is the baseline scale, an
+    // optional curve from the same shared pool further shapes it by
+    // throttle (0..1) instead of |stick deflection|.
+    const float curveMult = pid.fwTpaCurveIndex > 0
+        ? pidEvaluateGainCurve(gainCurves(pid.fwTpaCurveIndex - 1), getThrottle())
+        : 1.0f;
 
-    if (throttle <= pid.fwTpaBreakpoint || pid.fwTpaBreakpoint >= 1.0f)
-        return 1.0f;
-
-    const float x = (throttle - pid.fwTpaBreakpoint) / (1.0f - pid.fwTpaBreakpoint);
-
-    return 1.0f - x * pid.fwTpaRate;
+    return pid.fwTpaGain * curveMult;
 }
 
 static void pidApplyMode1(uint8_t axis)

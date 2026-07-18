@@ -2017,9 +2017,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         /* Inertia precomps */
         sbufWriteU8(dst, 0); // was currentPidProfile->yaw_inertia_precomp_gain
         sbufWriteU8(dst, 0); // was currentPidProfile->yaw_inertia_precomp_cutoff
-        /* Fixed-wing throttle-based gain attenuation */
-        sbufWriteU8(dst, currentPidProfile->fw_tpa_breakpoint);
-        sbufWriteU8(dst, currentPidProfile->fw_tpa_rate);
+        /* Fixed-wing throttle-based gain attenuation (gain + curve index) */
+        sbufWriteU8(dst, currentPidProfile->fw_tpa_gain);
+        sbufWriteU8(dst, currentPidProfile->fw_tpa_curve);
         /* Master gain (per axis) */
         sbufWriteU8(dst, currentPidProfile->master_gain[PID_ROLL]);
         sbufWriteU8(dst, currentPidProfile->master_gain[PID_PITCH]);
@@ -3018,10 +3018,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             sbufReadU8(src);
             sbufReadU8(src);
         }
-        /* Fixed-wing throttle-based gain attenuation */
+        /* Fixed-wing throttle-based gain attenuation (gain + curve index) */
         if (sbufBytesRemaining(src) >= 2) {
-            currentPidProfile->fw_tpa_breakpoint = sbufReadU8(src);
-            currentPidProfile->fw_tpa_rate = sbufReadU8(src);
+            currentPidProfile->fw_tpa_gain = sbufReadU8(src);
+            currentPidProfile->fw_tpa_curve = sbufReadU8(src);
         }
         /* Master gain (per axis) */
         if (sbufBytesRemaining(src) >= 3) {

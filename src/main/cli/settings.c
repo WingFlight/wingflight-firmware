@@ -1049,8 +1049,8 @@ const clivalue_t valueTable[] = {
 
     { "master_gain",                VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = PID_AXIS_COUNT, PG_PID_PROFILE, offsetof(pidProfile_t, master_gain) },
 
-    { "fw_tpa_breakpoint",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_breakpoint) },
-    { "fw_tpa_rate",                VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_rate) },
+    { "fw_tpa_gain",                VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 25, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_gain) },
+    { "fw_tpa_curve",               VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, GAIN_CURVE_COUNT }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_curve) },
 
     { "pitch_p_gain",               VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_PID_PROFILE, offsetof(pidProfile_t, pid[PID_PITCH].P) },
     { "pitch_i_gain",               VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_PID_PROFILE, offsetof(pidProfile_t, pid[PID_PITCH].I) },
