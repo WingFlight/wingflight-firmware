@@ -34,6 +34,7 @@
 
 #include "drivers/time.h"
 #include "drivers/pwm_output.h"
+#include "drivers/fc_link.h"
 
 #include "sensors/gyro.h"
 
@@ -57,6 +58,11 @@ static FAST_DATA_ZERO_INIT float        servoResolution[MAX_SUPPORTED_SERVOS];
 static FAST_DATA_ZERO_INIT int16_t      servoOverride[MAX_SUPPORTED_SERVOS];
 
 static FAST_DATA_ZERO_INIT timerChannel_t servoChannel[MAX_SUPPORTED_SERVOS];
+
+#ifdef USE_FC_LINK
+_Static_assert(FC_LINK_MAX_CHANNELS == MAX_SUPPORTED_SERVOS,
+    "FC_LINK_MAX_CHANNELS must cover the whole servo index space (PWM + bus servos)");
+#endif
 
 
 uint8_t getServoCount(void)
@@ -285,6 +291,20 @@ float geometryCorrection(float pos)
 
 void servoUpdate(void)
 {
+#ifdef USE_FC_LINK
+    // A SLAVE relaying the MASTER's actual output takes its PWM servo
+    // positions from the link too, for the same reason as the bus outputs:
+    // whatever's downstream of these pins shouldn't see two boards disagree.
+    if (fcLinkShouldRelay()) {
+        float relayed[MAX_SUPPORTED_PWM_SERVOS];
+        fcLinkGetRelayChannels(0, relayed, servoCount);
+        for (int i = 0; i < servoCount; i++) {
+            servoSetOutput(i, relayed[i]);
+        }
+        return;
+    }
+#endif
+
     float input[MAX_SUPPORTED_SERVOS];
     float cyclic_ratio = 1;
 
@@ -334,6 +354,10 @@ void servoUpdate(void)
 
         servoSetOutput(i, pos);
     }
+
+#ifdef USE_FC_LINK
+    fcLinkPublishChannels(0, servoOutput, servoCount);
+#endif
 }
 
 #endif

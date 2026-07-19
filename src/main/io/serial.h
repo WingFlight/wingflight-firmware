@@ -54,7 +54,16 @@ typedef enum {
     FUNCTION_SBUS_OUT            = (1 << 18), // 262144
     FUNCTION_FBUS_MASTER         = (1 << 19), // 524288
     FUNCTION_SPORT_MASTER        = (1 << 20), // 1048576
+    // FC_LINK: which function is assigned to the port IS the role, on
+    // purpose. There is no separate "role" setting that could fall out of
+    // sync with the port assignment -- MASTER and SLAVE are picked
+    // deliberately, one per board, the same way every other serial function
+    // is assigned.
+    FUNCTION_FC_LINK_MASTER      = (1 << 21), // 2097152
+    FUNCTION_FC_LINK_SLAVE       = (1 << 22), // 4194304
 } serialPortFunction_e;
+
+#define FC_LINK_FUNCTIONS_MASK (FUNCTION_FC_LINK_MASTER | FUNCTION_FC_LINK_SLAVE)
 
 #define TELEMETRY_SHAREABLE_PORT_FUNCTIONS_MASK (FUNCTION_TELEMETRY_FRSKY_HUB | FUNCTION_TELEMETRY_LTM | FUNCTION_TELEMETRY_MAVLINK)
 #define TELEMETRY_PORT_FUNCTIONS_MASK (TELEMETRY_SHAREABLE_PORT_FUNCTIONS_MASK | FUNCTION_TELEMETRY_HOTT | FUNCTION_TELEMETRY_SMARTPORT)

@@ -78,6 +78,7 @@ bool cliMode = false;
 #include "drivers/io.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fc_link.h"
 #include "drivers/io_impl.h"
 
 #include "pg/bus_servo.h"
@@ -5484,8 +5485,66 @@ static void cliFbusSensors(const char *cmdName, char *cmdline)
         
         cliPrintLinefeed();
     }
-    
+
     cliPrintLinefeed();
+}
+#endif
+
+#ifdef USE_FC_LINK
+static void cliFcLink(const char *cmdName, char *cmdline)
+{
+    UNUSED(cmdName);
+
+    if (!isEmpty(cmdline) && strncasecmp(cmdline, "sync", 4) == 0) {
+        if (fcLinkTriggerConfigSync()) {
+            cliPrintLine("FC Link: config sync requested from MASTER");
+        } else {
+            cliPrintLine("FC Link: sync refused (not a SLAVE, link down, or peer firmware/EEPROM version mismatch)");
+        }
+        return;
+    }
+
+    if (!isEmpty(cmdline) && strncasecmp(cmdline, "debug", 5) == 0) {
+        const fcLinkDebugStats_t *stats = fcLinkGetDebugStats();
+        cliPrintLinef("FC Link TX: heartbeatSent=%u heartbeatSkipped=%u",
+            stats->txHeartbeatSent, stats->txHeartbeatSkipped);
+        cliPrintLinef("FC Link RX: bytes=%u unsynced=%u abandoned=%u",
+            stats->rxByteTotal, stats->rxUnsyncedByte, stats->rxFrameAbandoned);
+        cliPrintLinef("Heartbeat: ok=%u checksumFail=%u", stats->heartbeatOk, stats->heartbeatChecksumFail);
+        cliPrintLinef("Tuning: ok=%u checksumFail=%u", stats->tuningOk, stats->tuningChecksumFail);
+        cliPrintLinef("Config: ok=%u checksumFail=%u requestsSeen=%u",
+            stats->configOk, stats->configChecksumFail, stats->configRequestSeen);
+        return;
+    }
+
+    if (!fcLinkIsEnabled()) {
+        cliPrintLine("FC Link: not enabled on any port");
+        return;
+    }
+
+    const bool peerLost = fcLinkPeerLost();
+
+    cliPrintLinef("FC Link: role=%s peer=%s relaying=%s",
+        fcLinkGetRole() == FC_LINK_ROLE_MASTER ? "MASTER" : "SLAVE",
+        peerLost ? "LOST" : "OK",
+        fcLinkShouldRelay() ? "yes" : "no");
+
+    if (!peerLost) {
+        const fcLinkPeerState_t *peer = fcLinkGetPeerState();
+        cliPrintLinef("Peer status: armed=%s failsafe=%s rx=%s seq=%u",
+            peer->armed ? "yes" : "no",
+            peer->failsafeActive ? "yes" : "no",
+            peer->rxReceivingSignal ? "yes" : "no",
+            peer->seq);
+
+        const fcLinkPeerVersionInfo_t peerVersion = fcLinkGetPeerVersionInfo();
+        const bool versionMatch = peerVersion.eepromConfVersion == EEPROM_CONF_VERSION
+            && peerVersion.fcVersionMajor == FC_VERSION_MAJOR
+            && peerVersion.fcVersionMinor == FC_VERSION_MINOR;
+        cliPrintLinef("Local build:  eeprom=%d fc=%d.%d", EEPROM_CONF_VERSION, FC_VERSION_MAJOR, FC_VERSION_MINOR);
+        cliPrintLinef("Peer build:   eeprom=%d fc=%d.%d (%s)", peerVersion.eepromConfVersion,
+            peerVersion.fcVersionMajor, peerVersion.fcVersionMinor, versionMatch ? "matches" : "MISMATCH");
+    }
 }
 #endif
 
@@ -7063,6 +7122,9 @@ const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("exit", NULL, NULL, cliExit),
 #if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
     CLI_COMMAND_DEF("fbus_sensors", "show observed FBUS sensors", "[clear]", cliFbusSensors),
+#endif
+#ifdef USE_FC_LINK
+    CLI_COMMAND_DEF("fc_link", "show FC link heartbeat status", "[sync|debug]", cliFcLink),
 #endif
     CLI_COMMAND_DEF("feature", "configure features",
         "list\r\n"

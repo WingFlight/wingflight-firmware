@@ -46,6 +46,7 @@
 #include "drivers/vtx_common.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fc_link.h"
 #include "drivers/fbus_sensor.h"
 
 #include "config/config.h"
@@ -444,6 +445,11 @@ task_attribute_t task_attributes[TASK_COUNT] = {
 #ifdef USE_SPORT_MASTER
     [TASK_SPORT_MASTER] = DEFINE_TASK("SPORT_MASTER", NULL, NULL, taskSportMaster, TASK_PERIOD_MS(12), TASK_PRIORITY_MEDIUM),
 #endif
+
+#ifdef USE_FC_LINK
+    // 200Hz ceiling so the configured fc_link_rate_hz (up to FC_LINK_RATE_MAX_HZ) is actually reachable.
+    [TASK_FC_LINK] = DEFINE_TASK("FC_LINK", NULL, NULL, fcLinkUpdate, TASK_PERIOD_HZ(200), TASK_PRIORITY_LOW),
+#endif
 };
 
 task_t *getTask(unsigned taskId)
@@ -611,6 +617,10 @@ void tasksInit(void)
 #ifdef USE_SPORT_MASTER
     rescheduleTask(TASK_SPORT_MASTER, TASK_PERIOD_MS(12));
     setTaskEnabled(TASK_SPORT_MASTER, sportMasterIsEnabled());
+#endif
+
+#ifdef USE_FC_LINK
+    setTaskEnabled(TASK_FC_LINK, fcLinkIsEnabled());
 #endif
 
 }

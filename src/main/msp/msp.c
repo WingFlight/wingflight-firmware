@@ -57,6 +57,7 @@
 #include "drivers/display.h"
 #include "drivers/dshot.h"
 #include "drivers/dshot_command.h"
+#include "drivers/fc_link.h"
 #include "drivers/flash.h"
 #include "drivers/io.h"
 #include "drivers/motor.h"
@@ -117,6 +118,7 @@
 #include "pg/beeper.h"
 #include "pg/board.h"
 #include "pg/dyn_notch.h"
+#include "pg/fc_link.h"
 #include "pg/gyrodev.h"
 #include "pg/governor.h"
 #include "pg/motor.h"
@@ -1379,6 +1381,49 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, governorConfig()->governor_rpm_min);
         sbufWriteU16(dst, governorConfig()->governor_rpm_max);
         break;
+
+#ifdef USE_FC_LINK
+    case MSP2_WING_FC_LINK_STATUS:
+        sbufWriteU8(dst, fcLinkIsEnabled());
+        sbufWriteU8(dst, fcLinkGetRole());
+        sbufWriteU8(dst, fcLinkPeerLost());
+        {
+            const fcLinkPeerState_t *peer = fcLinkGetPeerState();
+            sbufWriteU8(dst, peer->armed);
+            sbufWriteU8(dst, peer->failsafeActive);
+            sbufWriteU8(dst, peer->rxReceivingSignal);
+            sbufWriteU16(dst, peer->seq);
+        }
+        {
+            const fcLinkDebugStats_t *stats = fcLinkGetDebugStats();
+            sbufWriteU32(dst, stats->txHeartbeatSent);
+            sbufWriteU32(dst, stats->rxByteTotal);
+            sbufWriteU32(dst, stats->heartbeatOk);
+            sbufWriteU32(dst, stats->heartbeatChecksumFail);
+        }
+        break;
+
+    case MSP2_WING_FC_LINK_SYNC_CONFIG:
+        sbufWriteU8(dst, fcLinkConfig()->syncMixerServos);
+        sbufWriteU8(dst, fcLinkConfig()->syncPidRates);
+        sbufWriteU8(dst, fcLinkConfig()->syncRx);
+        sbufWriteU8(dst, fcLinkConfig()->syncMotor);
+        sbufWriteU8(dst, fcLinkConfig()->syncTelemetry);
+        sbufWriteU8(dst, fcLinkConfig()->syncModesAdjustments);
+        sbufWriteU8(dst, fcLinkConfig()->syncGps);
+        sbufWriteU8(dst, fcLinkConfig()->syncOsd);
+        sbufWriteU8(dst, fcLinkConfig()->syncVtx);
+        sbufWriteU8(dst, fcLinkConfig()->syncOther);
+        break;
+
+    // Manual equivalent of the CLI's `fc_link sync` -- same one-shot request,
+    // same refusal rules (not a SLAVE, link down, or peer version mismatch).
+    // Response byte mirrors fcLinkTriggerConfigSync()'s bool so the GUI can
+    // tell the user whether the request was actually accepted.
+    case MSP2_WING_TRIGGER_FC_LINK_SYNC:
+        sbufWriteU8(dst, fcLinkTriggerConfigSync());
+        break;
+#endif
 
     case MSP_RC:
         for (int i = 0; i < activeRcChannelCount; i++) {
@@ -3909,6 +3954,21 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         governorConfigMutable()->governor_rpm_min = sbufReadU16(src);
         governorConfigMutable()->governor_rpm_max = sbufReadU16(src);
         break;
+
+#ifdef USE_FC_LINK
+    case MSP2_WING_SET_FC_LINK_SYNC_CONFIG:
+        fcLinkConfigMutable()->syncMixerServos = sbufReadU8(src);
+        fcLinkConfigMutable()->syncPidRates = sbufReadU8(src);
+        fcLinkConfigMutable()->syncRx = sbufReadU8(src);
+        fcLinkConfigMutable()->syncMotor = sbufReadU8(src);
+        fcLinkConfigMutable()->syncTelemetry = sbufReadU8(src);
+        fcLinkConfigMutable()->syncModesAdjustments = sbufReadU8(src);
+        fcLinkConfigMutable()->syncGps = sbufReadU8(src);
+        fcLinkConfigMutable()->syncOsd = sbufReadU8(src);
+        fcLinkConfigMutable()->syncVtx = sbufReadU8(src);
+        fcLinkConfigMutable()->syncOther = sbufReadU8(src);
+        break;
+#endif
 
     case MSP_SET_BATTERY_PROFILE:
         {

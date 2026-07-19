@@ -38,6 +38,7 @@
 
 #include "drivers/castle_telemetry_decode.h"
 #include "drivers/dshot_command.h"
+#include "drivers/fc_link.h"
 #include "drivers/motor.h"
 #include "drivers/system.h"
 
@@ -775,6 +776,14 @@ void writeEEPROM(void)
     systemConfigMutable()->configurationState = CONFIGURATION_STATE_CONFIGURED;
 
     writeUnmodifiedConfigToEEPROM();
+
+#ifdef USE_FC_LINK
+    // Single choke point for "config has actually been saved" -- every
+    // source (CLI `save`, MSP_EEPROM_WRITE from the configurator or a Lua
+    // script, CMS menus, RX bind flows) funnels through here, so fc_link's
+    // auto-sync drift detection only ever reacts to committed config.
+    fcLinkNotifyConfigSaved();
+#endif
 }
 
 void dispatchConfigWrite(struct dispatchEntry_s* self)

@@ -24,6 +24,7 @@
 #include "build/build_config.h"
 #include "common/maths.h"
 #include "common/time.h"
+#include "drivers/fc_link.h"
 #include "fc/runtime_config.h"
 #include "flight/mixer.h"
 #include "flight/pid.h"
@@ -38,6 +39,11 @@
 // SBUS payload value range for analog channels
 #define SBUS_MIN 192
 #define SBUS_MAX 1792
+
+#ifdef USE_FC_LINK
+_Static_assert(BUS_SERVO_OFFSET + SBUS_OUT_CHANNELS <= FC_LINK_MAX_CHANNELS,
+    "FC_LINK_MAX_CHANNELS must cover the whole SBUS_OUT bus-servo slice");
+#endif
 
 static serialPort_t *sbusOutPort = NULL;
 
@@ -260,9 +266,21 @@ void sbusOutUpdate(timeUs_t currentTimeUs)
     if (serialTxBytesFree(sbusOutPort) <= sizeof(sbusOutFrame_t))
         return;
 
-    // Process all mixer channels with servoUpdate() logic
+    // Process all mixer channels with servoUpdate() logic, unless we're a
+    // SLAVE relaying the MASTER's actual output over FC Link -- then use
+    // that instead, so both boards present identical channels to the
+    // redundancy bus.
     float mixerOutputs[SBUS_OUT_CHANNELS];
+#ifdef USE_FC_LINK
+    if (fcLinkShouldRelay()) {
+        fcLinkGetRelayChannels(BUS_SERVO_OFFSET, mixerOutputs, SBUS_OUT_CHANNELS);
+    } else {
+        sbusOutProcessMixerChannels(mixerOutputs);
+        fcLinkPublishChannels(BUS_SERVO_OFFSET, mixerOutputs, SBUS_OUT_CHANNELS);
+    }
+#else
     sbusOutProcessMixerChannels(mixerOutputs);
+#endif
 
     // Prepare SBUS frame
     sbusOutFrame_t frame;
