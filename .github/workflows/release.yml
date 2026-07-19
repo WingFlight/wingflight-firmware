@@ -49,3 +49,16 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Publish firmware for browser downloads
+      env:
+        ARTIFACTS_REPO_TOKEN: ${{ secrets.ARTIFACTS_REPO_TOKEN }}
+      run: |
+        git clone --depth 1 "https://x-access-token:${ARTIFACTS_REPO_TOKEN}@github.com/WingFlight/wingflight-artifacts.git" artifacts-repo
+        mkdir -p "artifacts-repo/firmware/${{ env.GIT_TAG }}"
+        cp obj/*.hex "artifacts-repo/firmware/${{ env.GIT_TAG }}/"
+        cd artifacts-repo
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add "firmware/${{ env.GIT_TAG }}"
+        git commit -m "firmware: ${{ env.GIT_TAG }}"
+        git push origin master
