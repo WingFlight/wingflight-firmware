@@ -1,3 +1,7 @@
+# 0.0.8
+
+Rework fixed-wing throttle attenuation (TPA) to use the shared gain-curve pool instead of a fixed linear ramp.
+
 # 0.0.7
 
 Fix stabilization break when mounting-surface trim is set without board alignment.
