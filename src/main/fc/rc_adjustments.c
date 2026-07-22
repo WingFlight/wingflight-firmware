@@ -72,6 +72,10 @@
 // No consegutive changes closer than this milliseconds
 #define REPEAT_DELAY     200
 
+// Servo trims are meant to be nudged continuously in flight via a momentary switch,
+// so they repeat much faster than other stepped adjustments (e.g. PID gains, rates).
+#define TRIM_REPEAT_DELAY 20
+
 // Timeout for the last changed adjustment (report for telemetry)
 #define ADJUSTMENT_LATENCY_MS 3000
 
@@ -229,6 +233,13 @@ static void blackboxAdjustmentEvent(int adjFunc, int value)
 #endif
 }
 
+static bool isServoTrimAdjustment(int adjFunc)
+{
+    return adjFunc == ADJUSTMENT_SERVO_TRIM_ROLL ||
+        adjFunc == ADJUSTMENT_SERVO_TRIM_PITCH ||
+        adjFunc == ADJUSTMENT_SERVO_TRIM_YAW;
+}
+
 static void updateAdjustmentData(int adjFunc, int value)
 {
     const timeMs_t now = millis();
@@ -337,7 +348,7 @@ void processRcAdjustments(void)
 
                         setConfigDirty();
 
-                        adjState->deadTime = now + REPEAT_DELAY;
+                        adjState->deadTime = now + (isServoTrimAdjustment(adjFunc) ? TRIM_REPEAT_DELAY : REPEAT_DELAY);
                         adjState->adjValue = adjval;
 
                         changed = true;

@@ -51,7 +51,6 @@ enum {
 void servoInit(void);
 void servoUpdate(void);
 void servoShutdown(void);
-bool servoTrimCommit(void);
 
 void validateAndFixServoConfig(void);
 
