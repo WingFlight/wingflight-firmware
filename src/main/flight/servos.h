@@ -20,6 +20,7 @@
 #include "config/config.h"
 
 #include "pg/servos.h"
+#include "pg/adjustments.h"
 
 #define DEFAULT_SERVO_FLAGS      0
 #define DEFAULT_SERVO_CENTER  1500
@@ -52,6 +53,10 @@ void servoUpdate(void);
 void servoShutdown(void);
 
 void validateAndFixServoConfig(void);
+
+ADJFUN_DECLARE(SERVO_TRIM_ROLL)
+ADJFUN_DECLARE(SERVO_TRIM_PITCH)
+ADJFUN_DECLARE(SERVO_TRIM_YAW)
 
 uint8_t getServoCount(void);
 uint16_t getServoOutput(uint8_t servo);
