@@ -111,6 +111,7 @@
 #include "io/displayport_msp.h"
 #include "io/flashfs.h"
 #include "io/gps.h"
+#include "io/hil_sensor.h"
 #include "io/ledstrip.h"
 #include "io/piniobox.h"
 #include "io/rcdevice_cam.h"
@@ -772,6 +773,10 @@ void init(void)
     if (featureIsEnabled(FEATURE_ESC_SENSOR)) {
         escSensorInit();
     }
+#endif
+
+#ifdef USE_HIL_SENSOR_OVERRIDE
+    hilSensorInit();
 #endif
 
 #ifdef USE_FREQ_SENSOR

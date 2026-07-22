@@ -1,0 +1,75 @@
+<?xml version="1.0" ?>
+<!--
+  Wingflight HITL world (Phase A draft).
+
+  Standard gz-sim boilerplate (physics/scene/broadcaster/sensors system
+  plugins - the same fixed set used by every default gz-sim/PX4-gazebo-models
+  world) plus a placeholder <include> for the PX4 fixed-wing model.
+
+  TODO (Phase A step 3, see ../../hitl_plan.txt and hitl_todo.md):
+  1. Run ./scripts/fetch_px4_models.sh to populate .cache/px4-gazebo-models/.
+  2. Confirm the actual model folder name (rc_cessna vs advanced_plane, or
+     another) under .cache/px4-gazebo-models/models/ and update the <uri>
+     below to match (currently a placeholder guess: "rc_cessna").
+  3. Run ./scripts/verify_topics.sh against this file and confirm IMU /
+     air_pressure topics appear for the model; adjust the model name/pose
+     here if it fails to spawn.
+-->
+<sdf version="1.9">
+  <world name="wingflight">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-air-pressure-system" name="gz::sim::systems::AirPressure"/>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>1000 1000</size>
+            </plane>
+          </geometry>
+        </visual>
+      </link>
+    </model>
+
+    <!-- TODO: confirm folder name via fetch_px4_models.sh output, then
+         uncomment and fix the <uri> below. Left commented out so this
+         world is at least loadable (ground + sun only) before that step
+         is done. -->
+    <!--
+    <include>
+      <uri>model://rc_cessna</uri>
+      <name>plane</name>
+      <pose>0 0 0.2 0 0 0</pose>
+    </include>
+    -->
+  </world>
+</sdf>

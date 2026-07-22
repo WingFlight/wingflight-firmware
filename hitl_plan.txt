@@ -1,0 +1,207 @@
+# Plan: Real-Board HITL with PX4-style Gazebo Environment (Wingflight)
+
+## TL;DR
+Build a HIL bridge connecting a real physical Wingflight FC board to a Gazebo
+(Harmonic/gz-sim) simulation using PX4's stock fixed-wing "plane" model. New
+firmware capability lets the real board's sensor drivers be overridden with
+simulated data from Gazebo while preserving real scheduler timing. Manual
+flight testing uses a real RC receiver wired directly to the FC (existing
+SerialRX drivers, no firmware change). Fully-automatic flight testing injects
+RC via MSP_SET_RAW_RC (RX_PROVIDER_MSP, already compiled in) following
+scripted maneuver patterns. Actuator output is read back via existing
+MSP_SERVO/MSP_MOTOR telemetry and applied to Gazebo's aircraft model. A new
+evaluation tool compares captured telemetry against Gazebo ground truth /
+tolerance thresholds for pass/fail reporting, for both stability tests
+(step/doublet inputs) and full flight-pattern tests.
+
+## Research findings (confirmed in codebase)
+- Existing X-Plane HITL: MSP/TCP 5761 + FDM/UDP 5502, `scripts/hitl-*.ps1`,
+  external plugin repo `wingflight-xplane-plugin`, `tools/XPSDK430`.
+- Existing legacy Gazebo SITL: `src/main/target/SITL/{target.c,target.h,
+  udplink.c/h,README.md}`. Uses Gazebo 8 classic + ArduCopterPlugin, iris
+  QUADCOPTER model (wrong airframe for fixed-wing), UDP 9002 (servo out,
+  hardcoded 4 motors) / 9003 (fdm_packet in: quat, gyro, accel, baro, GPS).
+  Sensor injection via `fakeAccSet()`/`fakeGyroSet()`/`fakeMagSet()`/
+  `fakeBaroSet()` in `drivers/accgyro/accgyro_fake.c`,
+  `drivers/barometer/barometer_fake.c`, `drivers/compass/compass_fake.c`.
+  This legacy Gazebo-classic/iris setup is **superseded** by this plan, not
+  extended.
+- No `MSP2_SENSOR_*` external-sensor-injection messages exist anywhere in
+  this repo (confirmed via grep) — must design a new sensor-injection wire
+  protocol.
+- `RX_PROVIDER_MSP` (`src/main/rx/msp.c`) is generic code, gated by
+  `USE_RX_MSP` which IS already defined for all builds in
+  `src/main/target/common_pre.h:365` — no firmware change needed to use
+  MSP-injected RC on real ARM targets.
+- Real serial RX protocols (CRSF, SBUS, GHST, IBUS, etc.) are already
+  compiled in generically via `common_pre.h` — real receiver hardware wiring
+  works today.
+- Real-time gyro loop (`TASK_GYRO`, `src/main/fc/tasks.c:348`) runs at
+  `TASK_GYROPID_DESIRED_PERIOD` driven by real hardware EXTI/timer sync in
+  `src/main/scheduler/scheduler.c` (`GYRO_LOCK_COUNT`). This is NOT swappable
+  to packet-driven sync like SITL's `SIMULATOR_GYROPID_SYNC` without major
+  scheduler redesign — see Further Considerations #1 for the recommended
+  approach.
+- `src/main/sensors/gyro.c` (`gyroUpdateSensor`/`gyroUpdate`) and
+  `src/main/sensors/acceleration.c` are the real-hardware sensor read paths
+  to patch for injection. `src/main/sensors/barometer.c` and
+  `src/main/io/gps.c` are the equivalents for baro/GPS.
+
+## Phases / Steps
+
+### Phase A: Gazebo Environment (foundational, start immediately)
+1. Install Gazebo Harmonic (gz-sim) toolchain; document setup.
+2. Fetch/reference PX4's stock fixed-wing "plane" SDF model + world (from the
+   px4-gazebo-models project) — create a Wingflight-specific world (analogous
+   to the legacy `iris_wingflight.world` but using the plane model). Store
+   under `hitl/gazebo/` (NOT `tools/gazebo/` — the top-level `.gitignore`
+   blanket-ignores `/tools/` for downloaded build-toolchain artifacts, so
+   anything placed there is untracked by git; the `tools/build-xplane-plugin*`
+   / `tools/XPSDK430` convention this originally referenced does not
+   actually exist in this repo checkout — treat that as unverified).
+3. Verify actuator/sensor topics available for the plane model via
+   `gz topic -l` (IMU, air_pressure, navsat/GPS, airspeed if present).
+
+### Phase B: HIL Bridge (host tool) — depends on Phase A topic names
+4. New tool directory `hitl/bridge/` (Python + gz-transport bindings).
+5. Gazebo subscriber: IMU (gyro+accel), orientation, navsat/GPS, air_pressure,
+   airspeed → internal sim sensor state.
+6. Gazebo actuator publisher: consumes servo telemetry (Phase D) → aileron/
+   elevator/rudder/throttle actuator topics on the plane model.
+7. Serial link to real FC: NEW lightweight binary protocol on a **dedicated
+   UART** (not the MSP/CLI USB link) carrying quat/euler + accel + gyro +
+   baro + GPS + airspeed (field set modeled on SITL's `fdm_packet` for
+   consistency). Document the wire format explicitly.
+8. Time-base handling: sim-time vs wall-clock, reusing the `simRate` concept
+   from `src/main/target/SITL/target.c` as a reference pattern.
+
+### Phase C: Firmware — HIL Sensor Override (real ARM targets) — HIGH RISK
+Depends on the Phase B protocol spec.
+9. New opt-in compile flag, e.g. `USE_HIL_SENSOR_OVERRIDE` (never
+   default-on):
+   - New UART receive task parsing the Phase B protocol.
+   - Patch `src/main/sensors/gyro.c` (`gyroUpdateSensor`) and
+     `src/main/sensors/acceleration.c` to substitute injected values instead
+     of real SPI/I2C readings, WHILE the physical gyro chip (if present)
+     keeps driving scheduler timing/EXTI — preserves `scheduler.c`'s
+     real-time model (see Further Considerations #1).
+   - Substitute `src/main/sensors/barometer.c` and `src/main/io/gps.c` reads
+     similarly.
+   - Gate activation behind an explicit build-time flag plus a CLI/runtime
+     safety condition; must never be reachable in a normal production build.
+10. Do NOT short-circuit the attitude estimator (unlike SITL's
+    `imuSetAttitudeQuat`/`imuSetAttitudeRPY` shortcut) — inject only raw
+    gyro/accel/baro/GPS so the real IMU-fusion + PID stack is genuinely
+    exercised under test.
+
+### Phase D: Actuator Telemetry Read-back — depends on Phase C
+11. Reuse existing `MSP_SERVO` (103) / `MSP_MOTOR` (104) responses; the
+    bridge polls over the same or a secondary link. Verify rate/latency
+    sufficiency in Verification step 3; if insufficient, add a push-style
+    telemetry message on the dedicated UART instead of polling MSP.
+12. Physical PWM/servo wiring (bench jig or disconnected) is out of firmware
+    scope — Gazebo actuator input comes from telemetry values, independent
+    of physical wiring choices.
+
+### Phase E: RC Input Paths — depends on Phase C (parallel with D)
+13. Manual flight testing: real transmitter + real receiver wired directly
+    to the FC UART/RX pin using existing SerialRX drivers (CRSF/SBUS already
+    compiled in) — no firmware change, just board wiring + CLI
+    `rx_provider`/`serialrx_provider` config.
+14. Automatic pattern testing: set `rx_provider` = `RX_PROVIDER_MSP` (already
+    compiled via `USE_RX_MSP`) and have the bridge/pattern-runner inject
+    `MSP_SET_RAW_RC` frames per a scripted maneuver timeline — generalize the
+    existing pattern from `scripts/hitl-servo-check.ps1` /
+    `scripts/sitl-rc-check.ps1` to the real-board serial MSP link.
+
+### Phase F: Automated Pattern & Evaluation Tooling — depends on Phase E
+15. New pattern-runner (e.g. `hitl/bridge/patterns/*.yaml`) defining
+    stick sequences over time (doublets, step inputs, race-track pattern,
+    climb/descent, coordinated turns).
+16. Data capture: enable onboard blackbox logging during runs; ALSO capture
+    the bridge's own MSP telemetry stream (attitude/GPS/servo) into CSV for
+    direct correlation with Gazebo ground truth (the bridge has full sim
+    state — a strong oracle for tolerance comparisons).
+17. New evaluation tool (e.g. `hitl/bridge/evaluate.py`) comparing
+    captured FC telemetry/blackbox vs Gazebo ground-truth trajectory/attitude
+    per maneuver segment against configurable tolerance thresholds, producing
+    a pass/fail report (console + report file) per maneuver plus an overall
+    summary.
+
+### Phase G: Stability Testing Harness — depends on Phase F infra
+18. Add a "stability" maneuver set distinct from flight patterns: doublets/
+    step-inputs on roll/pitch/yaw from trimmed level flight, measuring rise
+    time/overshoot/settling time/steady-state error per axis via the same
+    evaluation tool (control-theory-specific metrics, not trajectory
+    tracking).
+19. Optionally support Gazebo wind-gust/disturbance injection (gz-sim wind
+    plugin) for disturbance-rejection stability tests.
+
+## Relevant files
+- `src/main/target/SITL/target.c`, `src/main/target/SITL/udplink.h` —
+  reference patterns for FDM packet layout, simRate time dilation, sensor
+  injection API.
+- `src/main/sensors/gyro.c`, `src/main/sensors/acceleration.c`,
+  `src/main/sensors/barometer.c`, `src/main/io/gps.c` — real sensor read
+  paths to patch for Phase C injection.
+- `src/main/scheduler/scheduler.c` — real-time gyro sync (`GYRO_LOCK_COUNT`);
+  do not redesign, override only sampled values.
+- `src/main/rx/msp.c`, `src/main/rx/rx.c` — existing `RX_PROVIDER_MSP` path
+  for automatic-pattern RC injection (no change expected).
+- `src/main/target/common_pre.h` — confirms `USE_RX_MSP` / `USE_SERIALRX_*`
+  are already compiled in generically.
+- `src/main/msp/msp.c` — `MSP_SERVO`/`MSP_MOTOR` telemetry (Phase D
+  read-back).
+- New: `hitl/bridge/` (bridge + patterns + `evaluate.py`),
+  `hitl/gazebo/` (world/model assets), new target flag/module for Phase C.
+
+## Verification
+1. Regression build of default (non-HIL) targets with
+   `USE_HIL_SENSOR_OVERRIDE` OFF — confirm zero code-size/behavior impact.
+2. Bridge-only run (Phase A/B, no real board): verify Gazebo topic pub/sub
+   via `gz topic -l` / `gz topic -echo`, mock serial loopback test.
+3. Full loop with a real dev board running Phase C firmware: confirm
+   injected sensor data reflected in the FC's own `MSP_ATTITUDE` vs Gazebo
+   ground truth; confirm actuator telemetry drives the Gazebo plane model
+   realistically (visual + numeric check); measure achieved injection
+   rate/latency to decide MSP-polling vs push-telemetry (Phase D step 11).
+4. Automated pattern run producing a pass/fail report on a known-good PID
+   tune, then intentionally detune to confirm the evaluator correctly flags
+   failures (sanity-check the evaluator itself).
+
+## Decisions
+- Real physical FC board in the loop (per user choice), not PC-only SITL.
+- Modern Gazebo (Harmonic/gz-sim), matching current PX4 default — legacy
+  Gazebo-classic/iris SITL setup is superseded, not extended.
+- Reuse PX4's stock fixed-wing "plane" airframe model.
+- Manual RC input via a real receiver wired directly to the FC (no firmware
+  change).
+- Automatic pattern RC via MSP injection (`RX_PROVIDER_MSP`, already
+  available).
+- Evaluation: compare logs/telemetry vs expected trajectory/attitude
+  tolerances with pass/fail reporting (not just manual log review).
+- Sensor injection over a dedicated UART with a new binary protocol (not
+  reusing MSP for injection) since no `MSP2_SENSOR_*` infra exists and MSP is
+  lower priority/rate; MSP is still used for actuator telemetry read-back and
+  automatic RC injection where latency requirements are looser.
+
+## Further Considerations
+1. Sensor-injection latency/rate: real gyro loop runs up to ~1-8kHz via
+   hardware EXTI; a serial link realistically sustains ~hundreds of Hz to
+   ~1kHz. Recommended: keep the physical gyro chip wired for scheduler
+   timing, override only the sampled VALUE in `gyroUpdateSensor()`/accel
+   equivalent with the latest injected reading (zero-order hold) — reduces
+   effective control bandwidth but avoids a scheduler redesign. Needs
+   confirmation that this trade-off is acceptable for fixed-wing test goals
+   before Phase C implementation starts.
+2. Which target board to use for the first real-hardware HIL bench (affects
+   available UARTs and whether a physical gyro chip can be dedicated purely
+   to timing while its data is overridden).
+3. Actuator telemetry via MSP polling vs a new push protocol — start with
+   MSP_SERVO/MSP_MOTOR polling for simplicity; only add a push channel on the
+   dedicated UART if Verification step 3 shows insufficient rate/latency.
+
+## Status
+See `hitl_todo.md` for the up-to-date open/done task list — kept there
+instead of duplicated here to avoid drift.
+

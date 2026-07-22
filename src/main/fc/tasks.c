@@ -65,6 +65,7 @@
 #include "io/dashboard.h"
 #include "io/flashfs.h"
 #include "io/gps.h"
+#include "io/hil_sensor.h"
 #include "io/ledstrip.h"
 #include "io/piniobox.h"
 #include "io/serial.h"
@@ -395,6 +396,10 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_ESC_SENSOR] = DEFINE_TASK("ESC_SENSOR", NULL, NULL, escSensorProcess, TASK_PERIOD_HZ(ESC_SENSOR_TASK_FREQ_HZ), TASK_PRIORITY_LOW),
 #endif
 
+#ifdef USE_HIL_SENSOR_OVERRIDE
+    [TASK_HIL_SENSOR] = DEFINE_TASK("HIL_SENSOR", NULL, NULL, hilSensorUpdate, TASK_PERIOD_HZ(500), TASK_PRIORITY_MEDIUM),
+#endif
+
 #ifdef USE_CMS
     [TASK_CMS] = DEFINE_TASK("CMS", NULL, NULL, cmsHandler, TASK_PERIOD_HZ(20), TASK_PRIORITY_LOW),
 #endif
@@ -560,6 +565,10 @@ void tasksInit(void)
 #ifdef USE_ESC_SENSOR
     rescheduleTask(TASK_ESC_SENSOR, TASK_PERIOD_HZ(escSensorConfig()->update_hz));
     setTaskEnabled(TASK_ESC_SENSOR, featureIsEnabled(FEATURE_ESC_SENSOR));
+#endif
+
+#ifdef USE_HIL_SENSOR_OVERRIDE
+    setTaskEnabled(TASK_HIL_SENSOR, findSerialPortConfig(FUNCTION_HIL_SENSOR) != NULL);
 #endif
 
 #ifdef USE_ADC_INTERNAL

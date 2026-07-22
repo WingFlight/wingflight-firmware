@@ -123,8 +123,11 @@ Other devices can be added starting from id 50.
 | FUNCTION_SBUS_OUT            | 262144 |
 | FUNCTION_FBUS_MASTER         | 524288 |
 | FUNCTION_SPORT_MASTER        | 1048576 |
+| FUNCTION_HIL_SENSOR          | 2097152 |
 
-Note: values above `FUNCTION_LIDAR_TF` require more than 16 bits. `FUNCTION_SPORT_MASTER` = `(1<<20)` requires 21 bits.
+Note: values above `FUNCTION_LIDAR_TF` require more than 16 bits. `FUNCTION_SPORT_MASTER` = `(1<<20)` requires 21 bits. `FUNCTION_HIL_SENSOR` = `(1<<21)` requires 22 bits.
+
+`FUNCTION_HIL_SENSOR` is only available in builds compiled with `USE_HIL_SENSOR_OVERRIDE` (opt-in HIL bench builds, never on by default — see `hitl/bridge/PROTOCOL.md`).
 
 ### 3. MSP Baudrates
 

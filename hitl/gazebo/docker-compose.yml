@@ -1,0 +1,27 @@
+# Local, project-scoped Gazebo Harmonic environment. Nothing here is
+# installed on the host - `docker compose build` builds an image tagged
+# only for this project, and `models/` (fetched by scripts/fetch_px4_models.sh)
+# lives under hitl/gazebo/.cache on the host, bind-mounted in below.
+#
+# Usage (from repo root or this directory):
+#   docker compose -f hitl/gazebo/docker-compose.yml build
+#   docker compose -f hitl/gazebo/docker-compose.yml run --rm gazebo bash
+
+services:
+  gazebo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wingflight-gazebo:local
+    volumes:
+      - ./:/workspace/hitl/gazebo
+      - ../bridge:/workspace/hitl/bridge
+    working_dir: /workspace/hitl/gazebo
+    environment:
+      # Picked up by `gz sim` so it can find fetched PX4 models/worlds
+      # without copying them into the image.
+      - GZ_SIM_RESOURCE_PATH=/workspace/hitl/gazebo/.cache/px4-gazebo-models/models:/workspace/hitl/gazebo/.cache/px4-gazebo-models/worlds:/workspace/hitl/gazebo/worlds
+    # Headless by default (no GUI passthrough configured yet - see README).
+    # Use `docker compose run` for an interactive shell rather than `up`.
+    stdin_open: true
+    tty: true

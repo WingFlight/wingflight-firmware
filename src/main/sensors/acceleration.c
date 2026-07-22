@@ -34,6 +34,8 @@
 
 #include "config/feature.h"
 
+#include "io/hil_sensor.h"
+
 #include "sensors/acceleration_init.h"
 #include "sensors/boardalignment.h"
 #include "sensors/boardalignment_auto.h"
@@ -135,6 +137,13 @@ void accUpdate(timeUs_t currentTimeUs, rollAndPitchTrims_t *rollAndPitchTrims)
     } else {
         alignSensorViaRotation(acc.accADC, acc.dev.accAlign);
     }
+
+#ifdef USE_HIL_SENSOR_OVERRIDE
+    // Real chip readFn() above still gates on real EXTI/scheduler timing;
+    // only the sampled value is substituted here, in the FC's canonical
+    // (post-alignment) body frame. See hitl/bridge/PROTOCOL.md.
+    hilSensorOverrideAcc(acc.accADC, acc.dev.acc_1G);
+#endif
 
     if (!accIsCalibrationComplete()) {
         performAcclerationCalibration(rollAndPitchTrims);

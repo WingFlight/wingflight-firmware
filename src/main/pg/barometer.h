@@ -36,6 +36,7 @@ typedef enum {
     BARO_BMP388     = 7,
     BARO_DPS310     = 8,
     BARO_BMP581     = 9,
+    BARO_FAKE       = 10, // only selectable in USE_HIL_SENSOR_OVERRIDE builds
 } baroSensor_e;
 
 

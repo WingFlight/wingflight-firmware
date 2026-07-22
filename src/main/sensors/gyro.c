@@ -35,6 +35,8 @@
 #include "config/config.h"
 #include "config/feature.h"
 
+#include "io/hil_sensor.h"
+
 #include "pg/gyro.h"
 #include "pg/gyrodev.h"
 
@@ -298,6 +300,14 @@ static FAST_CODE void gyroUpdateSensor(gyroSensor_t *gyroSensor)
                 alignSensorViaMatrix(gyroSensor->gyroDev.gyroADC, &gyroSensor->gyroDev.rotationMatrix);
             else
                 alignSensorViaRotation(gyroSensor->gyroDev.gyroADC, gyroSensor->gyroDev.gyroAlign);
+
+#ifdef USE_HIL_SENSOR_OVERRIDE
+            // Real chip readFn() above still gates on real EXTI/scheduler
+            // timing; only the sampled value is substituted here, in the FC's
+            // canonical (post-alignment) body frame. See
+            // hitl/bridge/PROTOCOL.md.
+            hilSensorOverrideGyro(gyroSensor->gyroDev.gyroADC, gyroSensor->gyroDev.scale);
+#endif
         }
     }
 }

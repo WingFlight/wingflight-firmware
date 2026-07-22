@@ -55,6 +55,7 @@ COMMON_SRC = \
             fc/runtime_config.c \
             fc/stats.c \
             io/beeper.c \
+            io/hil_sensor.c \
             io/piniobox.c \
             io/serial.c \
             io/smartaudio_protocol.c \

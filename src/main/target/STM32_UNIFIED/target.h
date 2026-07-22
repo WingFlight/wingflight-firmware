@@ -28,6 +28,18 @@
 
 #define USE_CUSTOM_DEFAULTS
 
+/*
+ * Real-board HITL support (opt-in only, e.g.
+ * `make TARGET=STM32F7X2 EXTRA_FLAGS=-DUSE_HIL_SENSOR_OVERRIDE`).
+ * Never defined here directly - see hitl/bridge/PROTOCOL.md.
+ * USE_FAKE_BARO is only needed to provide the BARO_FAKE hardware option
+ * used for barometer injection; gyro/accel injection patches the real
+ * sensor driver's sampled value directly and does not need a fake driver.
+ */
+#ifdef USE_HIL_SENSOR_OVERRIDE
+#define USE_FAKE_BARO
+#endif
+
 #define USE_BEEPER
 
 #undef  USE_GYRO_DLPF_EXPERIMENTAL
