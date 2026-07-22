@@ -56,8 +56,48 @@ static FAST_DATA_ZERO_INIT float        servoResolution[MAX_SUPPORTED_SERVOS];
 
 static FAST_DATA_ZERO_INIT int16_t      servoOverride[MAX_SUPPORTED_SERVOS];
 
+static FAST_DATA_ZERO_INIT float        servoAxisTrim[3];  // per-axis trim in µs [ROLL=0, PITCH=1, YAW=2]
+
 static FAST_DATA_ZERO_INIT timerChannel_t servoChannel[MAX_SUPPORTED_SERVOS];
 
+
+int get_ADJUSTMENT_SERVO_TRIM_ROLL(void)    { return lrintf(servoAxisTrim[0]); }
+void set_ADJUSTMENT_SERVO_TRIM_ROLL(int v)  { servoAxisTrim[0] = (float)v; }
+
+int get_ADJUSTMENT_SERVO_TRIM_PITCH(void)   { return lrintf(servoAxisTrim[1]); }
+void set_ADJUSTMENT_SERVO_TRIM_PITCH(int v) { servoAxisTrim[1] = (float)v; }
+
+int get_ADJUSTMENT_SERVO_TRIM_YAW(void)     { return lrintf(servoAxisTrim[2]); }
+void set_ADJUSTMENT_SERVO_TRIM_YAW(int v)   { servoAxisTrim[2] = (float)v; }
+
+/*
+ * Compute the total trim offset in microseconds for servo servo_idx,
+ * summing the per-axis runtime trim for each stabilized axis that has
+ * a mixer rule driving this servo (each axis counted at most once).
+ */
+static float servoComputeAxisTrim(int servo_idx)
+{
+    float trim = 0;
+    int applied = 0;
+
+    for (int r = 0; r < MIXER_RULE_COUNT; r++) {
+        const mixerRule_t *rule = mixerRules(r);
+        if (!rule->oper) continue;
+        if (rule->output != (uint8_t)(MIXER_SERVO_OFFSET + servo_idx)) continue;
+
+        if (rule->input == MIXER_IN_STABILIZED_ROLL && !(applied & 1)) {
+            trim += servoAxisTrim[0];
+            applied |= 1;
+        } else if (rule->input == MIXER_IN_STABILIZED_PITCH && !(applied & 2)) {
+            trim += servoAxisTrim[1];
+            applied |= 2;
+        } else if (rule->input == MIXER_IN_STABILIZED_YAW && !(applied & 4)) {
+            trim += servoAxisTrim[2];
+            applied |= 4;
+        }
+    }
+    return trim;
+}
 
 uint8_t getServoCount(void)
 {
@@ -283,6 +323,29 @@ float geometryCorrection(float pos)
 }
 #endif
 
+bool servoTrimCommit(void)
+{
+    bool changed = false;
+    // Bake runtime axis trim into each servo's persistent mid point
+    const uint8_t count = getServoCount();
+    for (int i = 0; i < count; i++) {
+        float trim = servoComputeAxisTrim(i);
+        if (trim != 0) {
+            servoParamsMutable(i)->mid += lrintf(trim);
+            changed = true;
+        }
+    }
+    if (changed) {
+        // Constrain all mid values to valid signal range
+        validateAndFixServoConfig();
+        // Clear runtime trim
+        servoAxisTrim[0] = 0;
+        servoAxisTrim[1] = 0;
+        servoAxisTrim[2] = 0;
+    }
+    return changed;
+}
+
 void servoUpdate(void)
 {
     float input[MAX_SUPPORTED_SERVOS];
@@ -330,7 +393,7 @@ void servoUpdate(void)
         float scale = (pos > 0) ? servo->rpos : servo->rneg;
 
         pos = limitTravel(i, scale * pos, servo->min, servo->max);
-        pos = servo->mid + pos;
+        pos = servo->mid + servoComputeAxisTrim(i) + pos;
 
         servoSetOutput(i, pos);
     }

@@ -447,6 +447,9 @@ void disarm(flightLogDisarmReason_e reason)
 #ifdef USE_PERSISTENT_STATS
         saveRequired |= statsOnDisarm();
 #endif
+#ifdef USE_SERVOS
+        saveRequired |= servoTrimCommit();
+#endif
 
         // let the disarming process complete and then execute the actual save
         if (saveRequired) {

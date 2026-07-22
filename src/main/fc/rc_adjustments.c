@@ -206,6 +206,10 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 
     ADJ_ENTRY(ATTHOLD_GAIN,                 0, 250),
 
+    ADJ_ENTRY(SERVO_TRIM_ROLL,             -200, 200),
+    ADJ_ENTRY(SERVO_TRIM_PITCH,            -200, 200),
+    ADJ_ENTRY(SERVO_TRIM_YAW,             -200, 200),
+
 };
 
 
