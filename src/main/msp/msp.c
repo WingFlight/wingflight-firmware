@@ -2021,9 +2021,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->fw_tpa_gain);
         sbufWriteU8(dst, currentPidProfile->fw_tpa_curve);
         /* Master gain (per axis) */
-        sbufWriteU8(dst, currentPidProfile->master_gain[PID_ROLL]);
-        sbufWriteU8(dst, currentPidProfile->master_gain[PID_PITCH]);
-        sbufWriteU8(dst, currentPidProfile->master_gain[PID_YAW]);
+        sbufWriteU16(dst, currentPidProfile->master_gain[PID_ROLL]);
+        sbufWriteU16(dst, currentPidProfile->master_gain[PID_PITCH]);
+        sbufWriteU16(dst, currentPidProfile->master_gain[PID_YAW]);
         /* Auto Hover */
         sbufWriteU8(dst, currentPidProfile->autohover.gain);
         sbufWriteU8(dst, currentPidProfile->autohover.max_angle);
@@ -3024,10 +3024,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->fw_tpa_curve = sbufReadU8(src);
         }
         /* Master gain (per axis) */
-        if (sbufBytesRemaining(src) >= 3) {
-            currentPidProfile->master_gain[PID_ROLL] = sbufReadU8(src);
-            currentPidProfile->master_gain[PID_PITCH] = sbufReadU8(src);
-            currentPidProfile->master_gain[PID_YAW] = sbufReadU8(src);
+        if (sbufBytesRemaining(src) >= 6) {
+            currentPidProfile->master_gain[PID_ROLL] = sbufReadU16(src);
+            currentPidProfile->master_gain[PID_PITCH] = sbufReadU16(src);
+            currentPidProfile->master_gain[PID_YAW] = sbufReadU16(src);
         }
         /* Auto Hover */
         if (sbufBytesRemaining(src) >= 4) {

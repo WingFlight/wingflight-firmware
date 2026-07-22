@@ -63,8 +63,10 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // profiles reset to defaults rather than reinterpreting their stored bytes
 // at the new, wider struct layout. v7->v8: replaced fw_tpa_breakpoint/
 // fw_tpa_rate with fw_tpa_gain (baseline scale) and fw_tpa_curve (index into
-// the shared gainCurves pool), mirroring master_gain/gain_curve.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 8);
+// the shared gainCurves pool), mirroring master_gain/gain_curve. v8->v9:
+// master_gain widened from uint8_t to uint16_t per axis to allow values up
+// to 1000 (was capped at 255).
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 9);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
