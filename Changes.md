@@ -21,6 +21,12 @@ PID Mode 3 is maintained for backward compatibility.
 
 ## Configuration Changes
 
+Added airborne re-arm grace settings `rearm_grace_seconds` and
+`rearm_min_armed_seconds`. After the aircraft has been armed for the minimum
+time and has latched in-flight state, an accidental disarm opens a short re-arm
+window where only throttle and angle arming checks are ignored; all hard safety
+checks still apply.
+
 The fixed-wing I-term decay settings are renamed from
 `error_decay_time_cyclic` / `error_decay_limit_cyclic` to
 `iterm_decay_time` / `iterm_decay_limit`. The old CLI names remain accepted
