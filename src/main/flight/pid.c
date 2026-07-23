@@ -733,6 +733,19 @@ static float pidEvaluateGainCurve(const gainCurve_t *curve, float mag)
     return 1.0f;
 }
 
+static float pidAxisGainCurvePosition(uint8_t axis)
+{
+    return fminf(1.0f, fabsf(getRcDeflection(axis)));
+}
+
+static float pidAxisGainCurve(uint8_t axis)
+{
+    const uint8_t curveIdx = pid.gainCurveIndex[axis];
+    return curveIdx > 0
+        ? pidEvaluateGainCurve(gainCurves(curveIdx - 1), pidAxisGainCurvePosition(axis))
+        : 1.0f;
+}
+
 static float pidThrottleAttenuation(void)
 {
     // Throttle is a proxy for prop-wash dynamic pressure over the control
@@ -747,6 +760,41 @@ static float pidThrottleAttenuation(void)
         : 1.0f;
 
     return pid.fwTpaGain * curveMult;
+}
+
+static uint32_t pidScaleToCentiPercent(float scale)
+{
+    return lrintf(fmaxf(0.0f, scale) * 10000.0f);
+}
+
+static uint32_t pidGainToCenti(float gain)
+{
+    return lrintf(fmaxf(0.0f, gain) * 100.0f);
+}
+
+void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
+{
+    memset(runtimeGains, 0, sizeof(*runtimeGains));
+
+    const float fwTpa = pidThrottleAttenuation();
+    runtimeGains->fwTpa = pidScaleToCentiPercent(fwTpa);
+
+    for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+        const pidf_t *raw = &currentPidProfile->pid[axis];
+        const float gainCurve = pidAxisGainCurve(axis);
+        const float masterGain = pid.masterGain[axis] * gainCurve;
+
+        runtimeGains->raw[axis] = *raw;
+        runtimeGains->masterGain[axis] = currentPidProfile->master_gain[axis];
+        runtimeGains->gainCurve[axis] = pidScaleToCentiPercent(gainCurve);
+        runtimeGains->gainCurvePosition[axis] = pidScaleToCentiPercent(pidAxisGainCurvePosition(axis));
+
+        runtimeGains->effective[axis].P = pidGainToCenti(raw->P * masterGain * fwTpa);
+        runtimeGains->effective[axis].I = pidGainToCenti(raw->I * masterGain);
+        runtimeGains->effective[axis].D = pidGainToCenti(raw->D * masterGain * fwTpa);
+        runtimeGains->effective[axis].F = pidGainToCenti(raw->F * masterGain);
+        runtimeGains->effective[axis].B = pidGainToCenti(raw->B);
+    }
 }
 
 static void pidApplyMode1(uint8_t axis)
@@ -767,10 +815,7 @@ static void pidApplyMode1(uint8_t axis)
     const float crossAxisRelax = getCrossAxisRelaxFactor(axis);
 
     // Optional per-axis curve scaling master gain by |stick deflection|
-    const uint8_t curveIdx = pid.gainCurveIndex[axis];
-    const float curveMult = curveIdx > 0
-        ? pidEvaluateGainCurve(gainCurves(curveIdx - 1), fabsf(getRcDeflection(axis)))
-        : 1.0f;
+    const float curveMult = pidAxisGainCurve(axis);
     const float masterGain = pid.masterGain[axis] * curveMult;
 
 

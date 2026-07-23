@@ -1380,6 +1380,32 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, governorConfig()->governor_rpm_max);
         break;
 
+    case MSP2_WING_EFFECTIVE_PID_GAINS: {
+        pidRuntimeGains_t runtimeGains;
+        pidGetRuntimeGains(&runtimeGains);
+
+        sbufWriteU8(dst, 2); // payload version
+        sbufWriteU8(dst, currentPidProfile->pid_mode);
+        sbufWriteU32(dst, runtimeGains.fwTpa);
+
+        for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+            sbufWriteU16(dst, runtimeGains.raw[axis].P);
+            sbufWriteU16(dst, runtimeGains.raw[axis].I);
+            sbufWriteU16(dst, runtimeGains.raw[axis].D);
+            sbufWriteU16(dst, runtimeGains.raw[axis].F);
+            sbufWriteU16(dst, runtimeGains.raw[axis].B);
+            sbufWriteU16(dst, runtimeGains.masterGain[axis]);
+            sbufWriteU32(dst, runtimeGains.gainCurve[axis]);
+            sbufWriteU32(dst, runtimeGains.gainCurvePosition[axis]);
+            sbufWriteU32(dst, runtimeGains.effective[axis].P);
+            sbufWriteU32(dst, runtimeGains.effective[axis].I);
+            sbufWriteU32(dst, runtimeGains.effective[axis].D);
+            sbufWriteU32(dst, runtimeGains.effective[axis].F);
+            sbufWriteU32(dst, runtimeGains.effective[axis].B);
+        }
+        break;
+    }
+
     case MSP_RC:
         for (int i = 0; i < activeRcChannelCount; i++) {
             sbufWriteU16(dst, (int16_t)rcInput[i]);
