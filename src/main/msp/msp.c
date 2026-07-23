@@ -3492,7 +3492,19 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (i >= MIXER_CURVE_COUNT) {
             return MSP_RESULT_ERROR;
         }
-        mixerCurvesMutable(i)->count = sbufReadU8(src);
+        {
+            // count is later used unchecked as an array bound/loop limit by
+            // mixerEvaluateCurve() (points[count-1], points[i+1]) -- reject
+            // anything outside the wire format's actual valid range here,
+            // same as the CLI's own "mixer_curve <i> count <n>" validation
+            // (src/main/cli/cli.c), rather than trusting a raw byte that
+            // could otherwise drive an out-of-bounds read at evaluation time.
+            uint8_t pointCount = sbufReadU8(src);
+            if (pointCount < 2 || pointCount > MIXER_CURVE_POINTS) {
+                return MSP_RESULT_ERROR;
+            }
+            mixerCurvesMutable(i)->count = pointCount;
+        }
         for (int p = 0; p < MIXER_CURVE_POINTS; p++) {
             mixerCurvesMutable(i)->points[p].x = sbufReadU16(src);
             mixerCurvesMutable(i)->points[p].y = sbufReadU16(src);
@@ -3504,7 +3516,15 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (i >= GAIN_CURVE_COUNT) {
             return MSP_RESULT_ERROR;
         }
-        gainCurvesMutable(i)->count = sbufReadU8(src);
+        {
+            // Same out-of-bounds-read concern as MSP_SET_MIXER_CURVE above,
+            // for pidEvaluateGainCurve()'s points[count-1]/points[i+1].
+            uint8_t pointCount = sbufReadU8(src);
+            if (pointCount < 2 || pointCount > GAIN_CURVE_POINTS) {
+                return MSP_RESULT_ERROR;
+            }
+            gainCurvesMutable(i)->count = pointCount;
+        }
         for (int p = 0; p < GAIN_CURVE_POINTS; p++) {
             gainCurvesMutable(i)->points[p].x = sbufReadU16(src);
             gainCurvesMutable(i)->points[p].y = sbufReadU16(src);
