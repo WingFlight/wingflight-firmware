@@ -299,4 +299,5 @@
 #define MSP2_WING_BOARD_MOUNT_TRIM           0x5F03
 #define MSP2_WING_SET_BOARD_MOUNT_TRIM       0x5F04
 #define MSP2_WING_BOARD_MOUNT_TRIM_AUTO      0x5F05
+#define MSP2_WING_EFFECTIVE_PID_GAINS        0x5F06
 #define MSP_V2_FRAME                         255

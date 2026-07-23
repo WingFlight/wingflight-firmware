@@ -171,6 +171,54 @@ There are many adjustments that can be made, the numbers of them and their use i
 * A 'null' return, with all values except for the sequence id set to 0, must be made for all unused slots,
   up to the maximum number of slots calculated from the initial message.
 
+## Wing PID Gain Runtime Preview
+
+### MSP2\_WING\_EFFECTIVE\_PID\_GAINS
+
+The MSP2\_WING\_EFFECTIVE\_PID\_GAINS command returns the currently active
+PID gain values after in-flight adjustments, plus the final effective gain
+preview after the runtime master-gain and curve scaling used by the PID loop.
+This is a read-only runtime view; editable configuration still comes from
+MSP\_PID\_TUNING, MSP\_PID\_PROFILE, MSP\_ADJUSTMENT\_RANGES, and
+MSP\_GAIN\_CURVES.
+
+| Command | Msg Id | Direction |
+|---------|--------|-----------|
+| MSP2\_WING\_EFFECTIVE\_PID\_GAINS | 0x5F06 | to FC |
+
+The response starts with these header fields:
+
+| Data | Type | Notes |
+|------|------|-------|
+| version | uint8 | Payload version, currently 2 |
+| pidMode | uint8 | Current PID mode |
+| fwTpa | uint32 | Current throttle attenuation scale in centi-percent, where 10000 means 100.00% |
+
+The header is followed by one record for each PID axis in roll, pitch, yaw
+order:
+
+| Data | Type | Notes |
+|------|------|-------|
+| rawP | uint16 | Current adjusted raw P gain |
+| rawI | uint16 | Current adjusted raw I gain |
+| rawD | uint16 | Current adjusted raw D gain |
+| rawF | uint16 | Current adjusted raw F gain |
+| rawB | uint16 | Current adjusted raw B gain |
+| masterGain | uint16 | Current adjusted master gain percent |
+| gainCurve | uint32 | Current axis gain-curve scale in centi-percent |
+| gainCurvePosition | uint32 | Current axis gain-curve position in centi-percent |
+| effectiveP | uint32 | Effective P gain in centi-gain |
+| effectiveI | uint32 | Effective I gain in centi-gain |
+| effectiveD | uint32 | Effective D gain in centi-gain |
+| effectiveF | uint32 | Effective F gain in centi-gain |
+| effectiveB | uint32 | Effective B gain in centi-gain |
+
+Effective P and D include the current throttle attenuation scale. Effective I
+and F include the current master gain and axis gain curve but not throttle
+attenuation, matching the PID loop. Effective B is shown unchanged by
+master-gain, gain-curve, and throttle attenuation scaling. Cross-axis relax is
+not included in this gain preview.
+
 ## Deprecated MSP
 
 The following MSP commands are replaced by the MSP\_MODE\_RANGES and
