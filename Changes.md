@@ -38,6 +38,17 @@ same shared gain-curve pool used by per-axis `gain_curve`, further scaling
 non-linear attenuation shape instead of the previous fixed linear ramp.
 Existing PID profiles are reset to defaults on upgrade.
 
+Added `model_type` to `mixerConfig_t` (`REGULAR_AIRPLANE` / `FLYING_WING` /
+`V_TAIL_AIRPLANE` / `DELTA_WING` / `RUDDER_ELEVATOR_TRAINER` / `CUSTOM`).
+This is descriptive metadata only -- the firmware does not read it or change
+mixer behavior based on it. It exists so the configurator can show a
+simplified mixer view for named airframes and reserve the full raw rule
+editor for `CUSTOM`. Defaults to `REGULAR_AIRPLANE` on upgrade, matching the
+default mixer rule set. `mixerConfig` PG version is left at 1 (not bumped)
+so existing `tail_rotor_mode` values survive the upgrade unchanged --
+`pgResetInstance` fills the new `model_type` field with its default before
+the old, shorter stored blob is overlaid on top.
+
 
 ## MSP Changes
 
@@ -92,6 +103,18 @@ Multiple changes (#314) (#353).
 ### MSP_GOVERNOR_CONFIG
 
 Multiple changes (#314) (#353).
+
+### MSP_MIXER_CONFIG
+
+- appended `model_type` (U8, descriptive-only airframe type, see
+  Configuration Changes).
+
+### MSP_SET_MIXER_CONFIG
+
+- accepts an optional appended `model_type` (U8) after `tail_rotor_mode`.
+  Older configurator builds that only send 1 byte continue to work
+  unchanged -- `tail_rotor_mode` is still written and `model_type` is left
+  at its current value.
 
 ### MSP_BUS_SERVO_CONFIG
 

@@ -463,6 +463,10 @@ static const char * const lookupTableTailMode[] = {
     "VARIABLE", "MOTORIZED", "BIDIRECTIONAL",
 };
 
+static const char * const lookupTableModelType[] = {
+    "REGULAR_AIRPLANE", "FLYING_WING", "V_TAIL_AIRPLANE", "DELTA_WING", "RUDDER_ELEVATOR_TRAINER", "CUSTOM",
+};
+
 const char * const lookupTableErrorRelaxType[] = {
     "OFF", "RP", "RPY",
 };
@@ -597,6 +601,7 @@ const lookupTableEntry_t lookupTables[] = {
 #endif
 
     LOOKUP_TABLE_ENTRY(lookupTableTailMode),
+    LOOKUP_TABLE_ENTRY(lookupTableModelType),
     LOOKUP_TABLE_ENTRY(lookupTableErrorRelaxType),
 
 #ifdef USE_ESC_SENSOR
@@ -925,6 +930,7 @@ const clivalue_t valueTable[] = {
 
 // PG_MIXER_CONFIG
     { "tail_rotor_mode",            VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_TAIL_MODE }, PG_GENERIC_MIXER_CONFIG, offsetof(mixerConfig_t, tail_rotor_mode) },
+    { "model_type",                 VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_MODEL_TYPE }, PG_GENERIC_MIXER_CONFIG, offsetof(mixerConfig_t, model_type) },
 
 // PG_CONTROLRATE_PROFILES
 #ifdef USE_PROFILE_NAMES

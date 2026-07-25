@@ -25,10 +25,19 @@
 #include "flight/mixer.h"
 
 
+// Added model_type (descriptive-only named airframe type for the
+// configurator's simplified mixer view; defaults to REGULAR_AIRPLANE to
+// match pgResetFn_mixerRules' default glider-style rule set). PG version is
+// intentionally NOT bumped: pgLoad() resets the whole struct to defaults on
+// a version mismatch, which would silently wipe existing tail_rotor_mode
+// settings on upgrade. Leaving the version at 1 lets the old 1-byte stored
+// blob short-memcpy over tail_rotor_mode only, while model_type (not present
+// in the old blob) keeps the reset-template default applied beforehand.
 PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_GENERIC_MIXER_CONFIG, 1);
 
 PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
     .tail_rotor_mode = TAIL_MODE_VARIABLE,
+    .model_type = MODEL_TYPE_REGULAR_AIRPLANE,
 );
 
 // v1: added weightNeg (second weight applied when a rule's input is negative,

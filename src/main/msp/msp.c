@@ -1680,6 +1680,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 #endif
     case MSP_MIXER_CONFIG:
         sbufWriteU8(dst, mixerConfig()->tail_rotor_mode);
+        sbufWriteU8(dst, mixerConfig()->model_type);
         break;
 
     case MSP_MIXER_INPUTS:
@@ -3485,6 +3486,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
     case MSP_SET_MIXER_CONFIG:
         mixerConfigMutable()->tail_rotor_mode = sbufReadU8(src);
+        if (sbufBytesRemaining(src) >= 1) {
+            mixerConfigMutable()->model_type = sbufReadU8(src);
+        }
         break;
 
     case MSP_SET_MIXER_INPUT:
