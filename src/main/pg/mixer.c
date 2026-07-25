@@ -25,10 +25,11 @@
 #include "flight/mixer.h"
 
 
-PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_GENERIC_MIXER_CONFIG, 1);
+PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_GENERIC_MIXER_CONFIG, 2);
 
 PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
     .tail_rotor_mode = TAIL_MODE_VARIABLE,
+    .mixer_type = 0,
 );
 
 // v1: added weightNeg (second weight applied when a rule's input is negative,

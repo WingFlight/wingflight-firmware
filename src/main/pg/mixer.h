@@ -75,6 +75,7 @@ enum {
 typedef struct
 {
     uint8_t   tail_rotor_mode;      // Tail motor vs. variable pitch tail
+    uint16_t  mixer_type;           // Plane type identifier (0=reserved, 1=manual, others=preset IDs)
 } mixerConfig_t;
 
 PG_DECLARE(mixerConfig_t, mixerConfig);

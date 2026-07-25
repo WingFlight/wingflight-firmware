@@ -66,6 +66,15 @@ Existing PID profiles are reset to defaults on upgrade.
 
 - added `MSP_FLIGHT_STATS` and `MSP_SET_FLIGHT_STATS` (#317)
 
+### MSP2_WING_MIXER_TYPE / MSP2_WING_SET_MIXER_TYPE
+
+New MSP2 commands (0x5F07 / 0x5F08) to get and set the `mixer_type`
+parameter. The payload is a single U16 identifying the plane's mixer
+preset. ID 0 is reserved, ID 1 is manual/unset, and higher IDs correspond
+to specific mixer presets (e.g. 2 = 2 ailerons + elevator + rudder).
+The firmware only stores and exposes the value; mixer setup from a preset
+is the responsibility of the configurator or a Lua script.
+
 ### MSP_SET_MOTOR_OVERRIDE
 
 A 1.0s timeout is added to the override. The MSP call must be repeated

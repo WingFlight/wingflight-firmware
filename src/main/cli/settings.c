@@ -925,6 +925,7 @@ const clivalue_t valueTable[] = {
 
 // PG_MIXER_CONFIG
     { "tail_rotor_mode",            VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_TAIL_MODE }, PG_GENERIC_MIXER_CONFIG, offsetof(mixerConfig_t, tail_rotor_mode) },
+    { "mixer_type",                 VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 65535 }, PG_GENERIC_MIXER_CONFIG, offsetof(mixerConfig_t, mixer_type) },
 
 // PG_CONTROLRATE_PROFILES
 #ifdef USE_PROFILE_NAMES
