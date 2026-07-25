@@ -183,9 +183,9 @@ static void sendAccel(void)
 }
 #endif
 
-static void sendHeadSpeed(void)
+static void sendMotor1Speed(void)
 {
-    frSkyHubWriteFrame(ID_RPM, getHeadSpeed());
+    frSkyHubWriteFrame(ID_RPM, getMotor1Speed());
 }
 
 static void sendTemperature1(void)
@@ -542,7 +542,7 @@ void processFrSkyHubTelemetry(timeUs_t currentTimeUs)
     // Sent every 1s
     if ((cycleNum % 8) == 0) {
         sendTemperature1();
-        sendHeadSpeed();
+        sendMotor1Speed();
 
         if (isBatteryVoltageConfigured()) {
             if (telemetryIsSensorEnabled(SENSOR_VOLTAGE)) {

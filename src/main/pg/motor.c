@@ -59,10 +59,10 @@ void pgResetFn_motorConfig(motorConfig_t *motorConfig)
         motorConfig->motorPoleCount[motorIndex] = 0;
     }
 
-    motorConfig->mainRotorGearRatio[0] = 1;
-    motorConfig->mainRotorGearRatio[1] = 1;
-    motorConfig->tailRotorGearRatio[0] = 1;
-    motorConfig->tailRotorGearRatio[1] = 1;
+    motorConfig->motor1GearRatio[0] = 1;
+    motorConfig->motor1GearRatio[1] = 1;
+    motorConfig->motor2GearRatio[0] = 1;
+    motorConfig->motor2GearRatio[1] = 1;
 
 #ifdef USE_DSHOT_BITBANG
     motorConfig->dev.useDshotBitbang = DSHOT_BITBANG_DEFAULT;

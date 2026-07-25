@@ -577,7 +577,7 @@ static void osdUpdateStats(void)
 #endif
 
     if (isRpmSourceActive()) {
-        int32_t rpm = getHeadSpeed();
+        int32_t rpm = getMotor1Speed();
         if (stats.max_esc_rpm < rpm) {
             stats.max_esc_rpm = rpm;
         }

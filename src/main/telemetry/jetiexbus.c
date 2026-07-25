@@ -144,8 +144,8 @@ const exBusSensor_t jetiExSensors[] = {
     {"G-Force X",       "",         EX_TYPE_22b,   DECIMAL_MASK(3)},
     {"G-Force Y",       "",         EX_TYPE_22b,   DECIMAL_MASK(3)},
     {"G-Force Z",       "",         EX_TYPE_22b,   DECIMAL_MASK(3)},
-    {"Headspeed",       "rpm",      EX_TYPE_22b,   DECIMAL_MASK(0)},
-    {"Tailspeed",       "rpm",      EX_TYPE_22b,   DECIMAL_MASK(0)},
+    {"Motor1Speed",       "rpm",      EX_TYPE_22b,   DECIMAL_MASK(0)},
+    {"Motor2Speed",       "rpm",      EX_TYPE_22b,   DECIMAL_MASK(0)},
     {"Arming Flags",    "",         EX_TYPE_22b,   DECIMAL_MASK(0)},
     {"PID Profile",     "",         EX_TYPE_22b,   DECIMAL_MASK(0)},
     {"RATES Profile",   "",         EX_TYPE_22b,   DECIMAL_MASK(0)},
@@ -178,8 +178,8 @@ enum exSensors_e {
     EX_GFORCE_X,
     EX_GFORCE_Y,
     EX_GFORCE_Z,
-    EX_HEADSPEED,
-    EX_TAILSPEED,
+    EX_MOTOR1SPEED,
+    EX_MOTOR2SPEED,
     EX_ARMING_FLAGS,
     EX_PID_PROFILE,
     EX_RATES_PROFILE,
@@ -293,8 +293,8 @@ void initJetiExBusTelemetry(void)
     enableGpsTelemetry(featureIsEnabled(FEATURE_GPS));
 
 
-    bitArraySet(&exSensorEnabled, EX_HEADSPEED);
-    bitArraySet(&exSensorEnabled, EX_TAILSPEED);
+    bitArraySet(&exSensorEnabled, EX_MOTOR1SPEED);
+    bitArraySet(&exSensorEnabled, EX_MOTOR2SPEED);
     bitArraySet(&exSensorEnabled, EX_ARMING_FLAGS);
     bitArraySet(&exSensorEnabled, EX_PID_PROFILE);
     bitArraySet(&exSensorEnabled, EX_RATES_PROFILE);
@@ -431,12 +431,12 @@ int32_t getSensorValue(uint8_t sensor)
     break;
 #endif
 
-    case EX_HEADSPEED:
-        return telemetrySensorValue(TELEM_HEADSPEED);
+    case EX_MOTOR1SPEED:
+        return telemetrySensorValue(TELEM_MOTOR1SPEED);
     break;
 
-    case EX_TAILSPEED:
-        return telemetrySensorValue(TELEM_TAILSPEED);
+    case EX_MOTOR2SPEED:
+        return telemetrySensorValue(TELEM_MOTOR2SPEED);
     break;
 
     case EX_ARMING_FLAGS:

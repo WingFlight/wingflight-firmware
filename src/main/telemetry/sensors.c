@@ -267,10 +267,10 @@ int telemetrySensorValue(sensor_id_e id)
         case TELEM_RPM:
             return millis();
 
-        case TELEM_HEADSPEED:
-            return getHeadSpeed();
-        case TELEM_TAILSPEED:
-            return getTailSpeed();
+        case TELEM_MOTOR1SPEED:
+            return getMotor1Speed();
+        case TELEM_MOTOR2SPEED:
+            return getMotor2Speed();
 
         case TELEM_MOTOR_RPM:
             return 0;
@@ -485,8 +485,8 @@ bool telemetrySensorActive(sensor_id_e id)
             return true;
 
         case TELEM_RPM:
-        case TELEM_HEADSPEED:
-        case TELEM_TAILSPEED:
+        case TELEM_MOTOR1SPEED:
+        case TELEM_MOTOR2SPEED:
             return true;
 
         case TELEM_MOTOR_RPM:

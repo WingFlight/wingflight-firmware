@@ -1594,10 +1594,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         for (int i = 0; i < 4; i++)
             sbufWriteU8(dst, motorConfig()->motorRpmLpf[i]);
 
-        sbufWriteU16(dst, motorConfig()->mainRotorGearRatio[0]);
-        sbufWriteU16(dst, motorConfig()->mainRotorGearRatio[1]);
-        sbufWriteU16(dst, motorConfig()->tailRotorGearRatio[0]);
-        sbufWriteU16(dst, motorConfig()->tailRotorGearRatio[1]);
+        sbufWriteU16(dst, motorConfig()->motor1GearRatio[0]);
+        sbufWriteU16(dst, motorConfig()->motor1GearRatio[1]);
+        sbufWriteU16(dst, motorConfig()->motor2GearRatio[0]);
+        sbufWriteU16(dst, motorConfig()->motor2GearRatio[1]);
         break;
 
 #ifdef USE_GPS
@@ -1679,7 +1679,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 #endif
     case MSP_MIXER_CONFIG:
-        sbufWriteU8(dst, mixerConfig()->tail_rotor_mode);
         sbufWriteU8(dst, mixerConfig()->model_type);
         break;
 
@@ -2758,10 +2757,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         for (int i = 0; i < 4; i++)
             motorConfigMutable()->motorRpmLpf[i] = sbufReadU8(src);
 
-        motorConfigMutable()->mainRotorGearRatio[0] = sbufReadU16(src);
-        motorConfigMutable()->mainRotorGearRatio[1] = sbufReadU16(src);
-        motorConfigMutable()->tailRotorGearRatio[0] = sbufReadU16(src);
-        motorConfigMutable()->tailRotorGearRatio[1] = sbufReadU16(src);
+        motorConfigMutable()->motor1GearRatio[0] = sbufReadU16(src);
+        motorConfigMutable()->motor1GearRatio[1] = sbufReadU16(src);
+        motorConfigMutable()->motor2GearRatio[0] = sbufReadU16(src);
+        motorConfigMutable()->motor2GearRatio[1] = sbufReadU16(src);
         break;
 
 #ifdef USE_GPS
@@ -3485,10 +3484,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP_SET_MIXER_CONFIG:
-        mixerConfigMutable()->tail_rotor_mode = sbufReadU8(src);
-        if (sbufBytesRemaining(src) >= 1) {
-            mixerConfigMutable()->model_type = sbufReadU8(src);
-        }
+        mixerConfigMutable()->model_type = sbufReadU8(src);
         break;
 
     case MSP_SET_MIXER_INPUT:

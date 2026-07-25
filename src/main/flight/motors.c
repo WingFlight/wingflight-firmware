@@ -79,11 +79,11 @@ static FAST_DATA_ZERO_INIT filter_t       motorRpmFilter[MAX_SUPPORTED_MOTORS];
 static FAST_DATA_ZERO_INIT float          motorRpm[MAX_SUPPORTED_MOTORS];
 static FAST_DATA_ZERO_INIT float          motorRpmRaw[MAX_SUPPORTED_MOTORS];
 
-static FAST_DATA_ZERO_INIT float          mainGearRatio;
-static FAST_DATA_ZERO_INIT float          tailGearRatio;
+static FAST_DATA_ZERO_INIT float          motor1GearRatio;
+static FAST_DATA_ZERO_INIT float          motor2GearRatio;
 
-static FAST_DATA_ZERO_INIT float          headSpeed;
-static FAST_DATA_ZERO_INIT float          tailSpeed;
+static FAST_DATA_ZERO_INIT float          motor1Speed;
+static FAST_DATA_ZERO_INIT float          motor2Speed;
 
 
 
@@ -125,34 +125,34 @@ void resetMotorOverride(void)
     motorOverrideTimeout = 0;
 }
 
-float getMainGearRatio(void)
+float getMotor1GearRatio(void)
 {
-    return mainGearRatio;
+    return motor1GearRatio;
 }
 
-float getTailGearRatio(void)
+float getMotor2GearRatio(void)
 {
-    return tailGearRatio;
+    return motor2GearRatio;
 }
 
-int getHeadSpeed(void)
+int getMotor1Speed(void)
 {
-    return lrintf(headSpeed);
+    return lrintf(motor1Speed);
 }
 
-float getHeadSpeedf(void)
+float getMotor1Speedf(void)
 {
-    return headSpeed;
+    return motor1Speed;
 }
 
-int getTailSpeed(void)
+int getMotor2Speed(void)
 {
-    return lrintf(tailSpeed);
+    return lrintf(motor2Speed);
 }
 
-float getTailSpeedf(void)
+float getMotor2Speedf(void)
 {
-    return tailSpeed;
+    return motor2Speed;
 }
 
 int getMotorRPM(uint8_t motor)
@@ -248,14 +248,11 @@ INIT_CODE void motorInit(void)
 
     motorDevInit(&motorConfig()->dev, motorCount);
 
-    mainGearRatio = fmaxf(motorConfig()->mainRotorGearRatio[0], 1) /
-                    fmaxf(motorConfig()->mainRotorGearRatio[1], 1);
+    motor1GearRatio = fmaxf(motorConfig()->motor1GearRatio[0], 1) /
+                    fmaxf(motorConfig()->motor1GearRatio[1], 1);
 
-    tailGearRatio = fmaxf(motorConfig()->tailRotorGearRatio[0], 1) /
-                    fmaxf(motorConfig()->tailRotorGearRatio[1], 1);
-
-    if (!mixerMotorizedTail())
-        tailGearRatio = mainGearRatio / tailGearRatio;
+    motor2GearRatio = fmaxf(motorConfig()->motor2GearRatio[0], 1) /
+                    fmaxf(motorConfig()->motor2GearRatio[1], 1);
 }
 
 
@@ -310,8 +307,8 @@ void motorUpdate(timeUs_t currentTimeUs)
         DEBUG(RPM_SOURCE, i, motorRpmRaw[i]);
     }
 
-    headSpeed = motorRpm[0] * mainGearRatio;
-    tailSpeed = motorRpm[(motorCount > 1) ? 1 : 0] * tailGearRatio;
+    motor1Speed = motorRpm[0] * motor1GearRatio;
+    motor2Speed = motorRpm[(motorCount > 1) ? 1 : 0] * motor2GearRatio;
 }
 
 void motorStop(void)

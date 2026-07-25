@@ -43,14 +43,14 @@ bool isRpmSourceActive(void);
 bool isMotorRpmSourceActive(uint8_t motor);
 bool isMotorFastRpmSourceActive(uint8_t motor);
 
-int getHeadSpeed(void);
-int getTailSpeed(void);
+int getMotor1Speed(void);
+int getMotor2Speed(void);
 
-float getHeadSpeedf(void);
-float getTailSpeedf(void);
+float getMotor1Speedf(void);
+float getMotor2Speedf(void);
 
-float getMainGearRatio(void);
-float getTailGearRatio(void);
+float getMotor1GearRatio(void);
+float getMotor2GearRatio(void);
 
 int getMotorRPM(uint8_t motor);
 float getMotorRPMf(uint8_t motor);

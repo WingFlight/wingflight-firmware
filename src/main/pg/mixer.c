@@ -25,18 +25,18 @@
 #include "flight/mixer.h"
 
 
-// Added model_type (descriptive-only named airframe type for the
-// configurator's simplified mixer view; defaults to REGULAR_AIRPLANE to
-// match pgResetFn_mixerRules' default glider-style rule set). PG version is
-// intentionally NOT bumped: pgLoad() resets the whole struct to defaults on
-// a version mismatch, which would silently wipe existing tail_rotor_mode
-// settings on upgrade. Leaving the version at 1 lets the old 1-byte stored
-// blob short-memcpy over tail_rotor_mode only, while model_type (not present
-// in the old blob) keeps the reset-template default applied beforehand.
-PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_GENERIC_MIXER_CONFIG, 1);
+// v1: tail_rotor_mode (legacy heli tail-rotor mode: variable pitch vs.
+// motorized vs. bidirectional) plus model_type. v2: tail_rotor_mode removed
+// -- it has no meaning for wingflight's fixed-wing mixer, and the RPM
+// filter/motor code that used to key off it now just checks whether a
+// second motor is configured (getMotorCount() > 1). Removing the field
+// shifts model_type into tail_rotor_mode's old byte offset, so the PG
+// version IS bumped this time (unlike when model_type was first added) to
+// force pgLoad() to reset model_type to its default on upgrade instead of
+// short-memcpy'ing the old tail_rotor_mode byte into it.
+PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_GENERIC_MIXER_CONFIG, 2);
 
 PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
-    .tail_rotor_mode = TAIL_MODE_VARIABLE,
     .model_type = MODEL_TYPE_REGULAR_AIRPLANE,
 );
 

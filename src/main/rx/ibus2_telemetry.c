@@ -390,7 +390,7 @@ static bool ibus2GetSensorValue(uint8_t sensorType, uint8_t *valueBuffer, uint8_
         return true;
 
     case IBUS_SENSOR_TYPE_RPM_FLYSKY:
-        writeU16Unaligned(valueBuffer, constrain(getHeadSpeed(), 0, UINT16_MAX));
+        writeU16Unaligned(valueBuffer, constrain(getMotor1Speed(), 0, UINT16_MAX));
         return true;
 
     case IBUS_SENSOR_TYPE_ALT_FLYSKY:

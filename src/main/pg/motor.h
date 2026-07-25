@@ -65,8 +65,8 @@ typedef struct motorConfig_s {
     uint8_t motorRpmLpf[MAX_SUPPORTED_MOTORS];    // RPM low pass filter cutoff frequency
     int16_t motorRpmFactor[MAX_SUPPORTED_MOTORS]; // RPM correction factor
 
-    uint16_t mainRotorGearRatio[2];         // Main motor to main rotor gear ratio [N,D]
-    uint16_t tailRotorGearRatio[2];         // Main rotor to tail rotor gear ratio [N,D]
+    uint16_t motor1GearRatio[2];         // Motor 1 gear ratio, output shaft : motor [N,D]
+    uint16_t motor2GearRatio[2];         // Motor 2 gear ratio, output shaft : motor [N,D]
 
 } motorConfig_t;
 
