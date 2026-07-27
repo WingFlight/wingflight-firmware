@@ -545,7 +545,7 @@ void tryArm(void)
         armingWiggle = WIGGLE_NOT_DONE;
 
         if (!isFirstArmingGyroCalibrationRunning()) {
-            int armingDisabledReason = ffs(getArmingDisableFlags());
+            int armingDisabledReason = __builtin_ffs(getArmingDisableFlags());
             if (lastArmingDisabledReason != armingDisabledReason) {
                 lastArmingDisabledReason = armingDisabledReason;
                 beeperWarningBeeps(armingDisabledReason);

@@ -226,7 +226,11 @@ void servoInit(void)
             break;
 
         IOInit(io, OWNER_SERVO, RESOURCE_INDEX(index));
+#if defined(STM32F4) || defined(STM32F7) || defined(STM32H7) || defined(STM32G4)
         IOConfigGPIOAF(io, IOCFG_AF_PP, timer[index]->alternateFunction);
+#else
+        IOConfigGPIO(io, IOCFG_AF_PP);
+#endif
     }
 
     servoCount = index;

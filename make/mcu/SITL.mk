@@ -2,7 +2,12 @@
 INCLUDE_DIRS    := $(INCLUDE_DIRS) \
                    $(ROOT)/lib/main/dyad
 
-MCU_COMMON_SRC  := $(ROOT)/lib/main/dyad/dyad.c
+# build/atomic.c provides the emulated atomic_BASEPRI storage used by
+# ATOMIC_BLOCK() under UNIT_TEST/SIMULATOR_BUILD; it's not part of the
+# common source list since real hardware targets use inline BASEPRI asm
+# instead and never reference the variable.
+MCU_COMMON_SRC  := $(ROOT)/lib/main/dyad/dyad.c \
+                   $(ROOT)/src/main/build/atomic.c
 
 #Flags
 ARCH_FLAGS      =
@@ -12,6 +17,15 @@ STARTUP_SRC     =
 
 TARGET_FLAGS    = -D$(TARGET)
 MCU_FLASH_SIZE  := 2048
+
+# On MinGW/MSYS (native Windows) toolchains, GCC defaults to MS-style bitfield
+# layout, which breaks the packed wire-format structs (SBUS/FBUS/etc.) that
+# assume GNU/System V bitfield packing, as used on the other (ARM/Linux)
+# targets. Force GNU-style bitfield layout so the STATIC_ASSERTs on those
+# struct sizes hold on Windows too. This flag is a no-op on Linux/macOS gcc.
+ifeq ($(OSFAMILY),windows)
+ARCH_FLAGS      := $(ARCH_FLAGS) -mno-ms-bitfields
+endif
 
 ARM_SDK_PREFIX  =
 
@@ -28,7 +42,6 @@ MCU_EXCLUDES = \
             drivers/system.c \
             drivers/rcc.c \
             drivers/serial_escserial.c \
-            drivers/serial_pinconfig.c \
             drivers/serial_uart.c \
             drivers/serial_uart_init.c \
             drivers/serial_uart_pinconfig.c \
@@ -41,6 +54,23 @@ MCU_EXCLUDES = \
 
 TARGET_MAP  = $(OBJECT_DIR)/$(FORKNAME)_$(TARGET).map
 
+# MinGW/MSYS (native Windows) toolchains link libc implicitly and have no
+# separate librt (clock_gettime/nanosleep are provided via winpthreads /
+# msvcrt instead), so -lc/-lrt must be omitted there; they're required on
+# Linux/macOS.
+ifeq ($(OSFAMILY),windows)
+LD_FLAGS    := \
+              -lm \
+              -lpthread \
+              -lws2_32 \
+              $(ARCH_FLAGS) \
+              $(LTO_FLAGS) \
+              $(DEBUG_FLAGS) \
+              -Wl,-gc-sections,-Map,$(TARGET_MAP) \
+              -Wl,-L$(LINKER_DIR) \
+              -Wl,--cref \
+              -T$(LD_SCRIPT)
+else
 LD_FLAGS    := \
               -lm \
               -lpthread \
@@ -53,6 +83,7 @@ LD_FLAGS    := \
               -Wl,-L$(LINKER_DIR) \
               -Wl,--cref \
               -T$(LD_SCRIPT)
+endif
 
 ifneq ($(filter SITL_STATIC,$(OPTIONS)),)
 LD_FLAGS     += \

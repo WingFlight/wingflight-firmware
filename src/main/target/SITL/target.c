@@ -26,6 +26,9 @@
 
 #include <errno.h>
 #include <time.h>
+#if defined(_WIN32) || defined(__MINGW32__)
+#include <pthread_time.h>
+#endif
 
 #include "common/maths.h"
 
@@ -37,6 +40,7 @@
 #include "drivers/system.h"
 #include "drivers/pwm_output.h"
 #include "drivers/light_led.h"
+#include "drivers/adc.h"
 
 #include "drivers/timer.h"
 #include "drivers/timer_def.h"
@@ -69,6 +73,25 @@ static bool workerRunning = true;
 static udpLink_t stateLink, pwmLink;
 static pthread_mutex_t updateLock;
 static pthread_mutex_t mainLoopLock;
+
+// Guards startup ordering between tcpThread()'s dyad_init() and any other
+// thread (e.g. main, via serTcpOpen()) that touches dyad's internal state.
+static bool dyadReady = false;
+static pthread_mutex_t dyadReadyLock;
+static pthread_cond_t dyadReadyCond;
+
+// dyad is not thread-safe: serializes all dyad_*() calls between tcpThread's
+// dyad_update() loop and any other thread calling into dyad (e.g. the main
+// thread via drivers/serial_tcp.c).
+static pthread_mutex_t dyadLock;
+
+void simDyadLock(void) {
+    pthread_mutex_lock(&dyadLock);
+}
+
+void simDyadUnlock(void) {
+    pthread_mutex_unlock(&dyadLock);
+}
 
 int timeval_sub(struct timespec *result, struct timespec *x, struct timespec *y);
 
@@ -195,10 +218,28 @@ static void* tcpThread(void* data) {
 
     dyad_init();
     dyad_setTickInterval(0.2f);
-    dyad_setUpdateTimeout(0.5f);
+    // Keep this short: dyad_update() below blocks internally (select()) for up
+    // to this long while holding dyadLock, so a large value here starves any
+    // other thread (e.g. the main thread writing an MSP reply via
+    // drivers/serial_tcp.c's tcpDataOut()) of the lock for that whole window,
+    // multiplied by however many bytes it needs to send - previously 0.5s,
+    // which was enough to make MSP over TCP appear to hang indefinitely.
+    dyad_setUpdateTimeout(0.01f);
+
+    // Signal that dyad's internal state is ready. Other threads (e.g. the
+    // main thread, via serTcpOpen()/mspSerialAllocatePorts()) call into
+    // dyad_newStream()/dyad_addListener() and must not do so before
+    // dyad_init() has completed here, otherwise dyad's uninitialized/garbage
+    // internal state gets used, corrupting the heap.
+    pthread_mutex_lock(&dyadReadyLock);
+    dyadReady = true;
+    pthread_cond_signal(&dyadReadyCond);
+    pthread_mutex_unlock(&dyadReadyLock);
 
     while (workerRunning) {
+        simDyadLock();
         dyad_update();
+        simDyadUnlock();
     }
 
     dyad_shutdown();
@@ -225,11 +266,36 @@ void systemInit(void) {
         exit(1);
     }
 
+    if (pthread_mutex_init(&dyadReadyLock, NULL) != 0) {
+        printf("Create dyadReadyLock error!\n");
+        exit(1);
+    }
+
+    if (pthread_cond_init(&dyadReadyCond, NULL) != 0) {
+        printf("Create dyadReadyCond error!\n");
+        exit(1);
+    }
+
+    if (pthread_mutex_init(&dyadLock, NULL) != 0) {
+        printf("Create dyadLock error!\n");
+        exit(1);
+    }
+
     ret = pthread_create(&tcpWorker, NULL, tcpThread, NULL);
     if (ret != 0) {
         printf("Create tcpWorker error!\n");
         exit(1);
     }
+
+    // Wait until tcpThread() has finished calling dyad_init() before
+    // returning, since other code (e.g. serTcpOpen(), called from the main
+    // thread later during init()) calls into dyad_newStream()/
+    // dyad_addListener() and must not race with dyad's own initialization.
+    pthread_mutex_lock(&dyadReadyLock);
+    while (!dyadReady) {
+        pthread_cond_wait(&dyadReadyCond, &dyadReadyLock);
+    }
+    pthread_mutex_unlock(&dyadReadyLock);
 
     ret = udpInit(&pwmLink, "127.0.0.1", 9002, false);
     printf("init PwmOut UDP link...%d\n", ret);
@@ -243,8 +309,12 @@ void systemInit(void) {
         exit(1);
     }
 
-    // serial can't been slow down
-    rescheduleTask(TASK_SERIAL, 1);
+    // Note: task attributes (tasks[].attribute) aren't initialized until
+    // tasksInitData() runs, which happens after systemInit() returns (see
+    // fc/init.c's init()). So the "serial can't be slowed down" override for
+    // TASK_SERIAL is applied later, in fc/tasks.c's tasksInit(), instead of
+    // here via rescheduleTask() (which would dereference a NULL attribute
+    // pointer this early).
 }
 
 void systemResetHard(void){
@@ -253,6 +323,20 @@ void systemResetHard(void){
     pthread_join(tcpWorker, NULL);
     pthread_join(udpWorker, NULL);
     exit(0);
+}
+
+void systemReset(int reason)
+{
+    UNUSED(reason);
+    systemResetHard();
+}
+
+// drivers/adc.c is excluded from the SITL build (no real ADC hardware),
+// so provide a stub for the generic caller (blackbox.c, etc.).
+bool adcIsEnabled(uint8_t channel)
+{
+    UNUSED(channel);
+    return false;
 }
 
 void timerInit(void) {
@@ -392,19 +476,9 @@ int timeval_sub(struct timespec *result, struct timespec *x, struct timespec *y)
 
 // PWM part
 pwmOutputPort_t motors[MAX_SUPPORTED_MOTORS];
-static pwmOutputPort_t servos[MAX_SUPPORTED_SERVOS];
 
 // real value to send
 static int16_t motorsPwm[MAX_SUPPORTED_MOTORS];
-static int16_t servosPwm[MAX_SUPPORTED_SERVOS];
-static int16_t idlePulse;
-
-void servoDevInit(const servoDevConfig_t *servoConfig) {
-    UNUSED(servoConfig);
-    for (uint8_t servoIndex = 0; servoIndex < MAX_SUPPORTED_SERVOS; servoIndex++) {
-        servos[servoIndex].enabled = true;
-    }
-}
 
 static motorDevice_t motorPwmDevice; // Forward
 
@@ -412,14 +486,19 @@ pwmOutputPort_t *pwmGetMotors(void) {
     return motors;
 }
 
-static float pwmConvertFromExternal(uint16_t externalValue)
+static float pwmConvertToInternal(uint8_t mode, float throttle)
 {
-    return (float)externalValue;
-}
+    float value = motorConfig()->mincommand;
 
-static uint16_t pwmConvertToExternal(float motorValue)
-{
-    return (uint16_t)motorValue;
+    if (mode == MOTOR_CONTROL_BIDIR) {
+        if (throttle != 0)
+            value = scaleRangef(throttle, -1, 1, motorConfig()->minthrottle, motorConfig()->maxthrottle);
+    } else {
+        if (throttle > 0)
+            value = scaleRangef(throttle, 0, 1, motorConfig()->minthrottle, motorConfig()->maxthrottle);
+    }
+
+    return value;
 }
 
 static void pwmDisableMotors(void)
@@ -434,14 +513,9 @@ static bool pwmEnableMotors(void)
     return true;
 }
 
-static void pwmWriteMotor(uint8_t index, float value)
+static void pwmWriteMotor(uint8_t index, uint8_t mode, float value)
 {
-    motorsPwm[index] = value - idlePulse;
-}
-
-static void pwmWriteMotorInt(uint8_t index, uint16_t value)
-{
-    pwmWriteMotor(index, (float)value);
+    motorsPwm[index] = pwmConvertToInternal(mode, value) - motorConfig()->mincommand;
 }
 
 static void pwmShutdownPulsesForAllMotors(void)
@@ -468,39 +542,28 @@ static void pwmCompleteMotorUpdate(void)
     // get one "fdm_packet" can only send one "servo_packet"!!
     if (pthread_mutex_trylock(&updateLock) != 0) return;
     udpSend(&pwmLink, &pwmPkt, sizeof(servo_packet));
-//    printf("[pwm]%u:%u,%u,%u,%u\n", idlePulse, motorsPwm[0], motorsPwm[1], motorsPwm[2], motorsPwm[3]);
-}
-
-void pwmWriteServo(uint8_t index, float value) {
-    servosPwm[index] = value;
 }
 
 static motorDevice_t motorPwmDevice = {
     .vTable = {
         .postInit = motorPostInitNull,
-        .convertExternalToMotor = pwmConvertFromExternal,
-        .convertMotorToExternal = pwmConvertToExternal,
         .enable = pwmEnableMotors,
         .disable = pwmDisableMotors,
         .isMotorEnabled = pwmIsMotorEnabled,
         .updateStart = motorUpdateStartNull,
         .write = pwmWriteMotor,
-        .writeInt = pwmWriteMotorInt,
         .updateComplete = pwmCompleteMotorUpdate,
         .shutdown = pwmShutdownPulsesForAllMotors,
     }
 };
 
-motorDevice_t *motorPwmDevInit(const motorDevConfig_t *motorConfig, uint16_t _idlePulse, uint8_t motorCount, bool useUnsyncedPwm)
+motorDevice_t *motorPwmDevInit(const motorDevConfig_t *motorConfig, uint8_t motorCount)
 {
     UNUSED(motorConfig);
-    UNUSED(useUnsyncedPwm);
 
     if (motorCount > 4) {
         return NULL;
     }
-
-    idlePulse = _idlePulse;
 
     for (int motorIndex = 0; motorIndex < MAX_SUPPORTED_MOTORS && motorIndex < motorCount; motorIndex++) {
         motors[motorIndex].enabled = true;
@@ -531,8 +594,9 @@ void FLASH_Unlock(void) {
         return;
     }
 
-    // open or create
-    eepromFd = fopen(EEPROM_FILENAME,"r+");
+    // open or create (binary mode - text mode on Windows corrupts binary
+    // data via CRLF/EOF-byte translation)
+    eepromFd = fopen(EEPROM_FILENAME,"rb+");
     if (eepromFd != NULL) {
         // obtain file size:
         fseek(eepromFd , 0 , SEEK_END);
@@ -541,14 +605,14 @@ void FLASH_Unlock(void) {
 
         size_t n = fread(eepromData, 1, sizeof(eepromData), eepromFd);
         if (n == lSize) {
-            printf("[FLASH_Unlock] loaded '%s', size = %ld / %ld\n", EEPROM_FILENAME, lSize, sizeof(eepromData));
+            printf("[FLASH_Unlock] loaded '%s', size = %zu / %zu\n", EEPROM_FILENAME, lSize, sizeof(eepromData));
         } else {
             fprintf(stderr, "[FLASH_Unlock] failed to load '%s'\n", EEPROM_FILENAME);
             return;
         }
     } else {
-        printf("[FLASH_Unlock] created '%s', size = %ld\n", EEPROM_FILENAME, sizeof(eepromData));
-        if ((eepromFd = fopen(EEPROM_FILENAME, "w+")) == NULL) {
+        printf("[FLASH_Unlock] created '%s', size = %zu\n", EEPROM_FILENAME, sizeof(eepromData));
+        if ((eepromFd = fopen(EEPROM_FILENAME, "wb+")) == NULL) {
             fprintf(stderr, "[FLASH_Unlock] failed to create '%s'\n", EEPROM_FILENAME);
             return;
         }
