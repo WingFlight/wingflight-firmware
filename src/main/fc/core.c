@@ -60,6 +60,7 @@
 
 #include "flight/failsafe.h"
 #include "flight/gps_rescue.h"
+#include "flight/gps_nav.h"
 #include "flight/wiggle.h"
 
 #if defined(USE_DYN_NOTCH_FILTER)
@@ -710,6 +711,40 @@ void processRxModes(timeUs_t currentTimeUs)
             ENABLE_FLIGHT_MODE(GPS_RESCUE_MODE);
         } else {
             DISABLE_FLIGHT_MODE(GPS_RESCUE_MODE);
+        }
+#endif
+
+#ifdef USE_GPS_NAV
+        {
+            static bool wasRthActive = false;
+            static bool wasLoiterActive = false;
+
+            // RTH takes priority if both switches are active at once
+            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXRTH)) {
+                if (!wasRthActive) {
+                    navRthStart();
+                }
+                ENABLE_FLIGHT_MODE(RTH_MODE);
+                wasRthActive = true;
+            } else {
+                DISABLE_FLIGHT_MODE(RTH_MODE);
+                wasRthActive = false;
+            }
+
+            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXLOITER) && !FLIGHT_MODE(RTH_MODE)) {
+                if (!wasLoiterActive) {
+                    navLoiterStart();
+                }
+                ENABLE_FLIGHT_MODE(LOITER_MODE);
+                wasLoiterActive = true;
+            } else {
+                DISABLE_FLIGHT_MODE(LOITER_MODE);
+                wasLoiterActive = false;
+            }
+
+            if (!FLIGHT_MODE(RTH_MODE) && !FLIGHT_MODE(LOITER_MODE)) {
+                navStop();
+            }
         }
 #endif
 

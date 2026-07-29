@@ -477,6 +477,10 @@ static void crsfFlightModeInfo(char *buf)
         flightMode = "FAILSAFE";
     } else if (FLIGHT_MODE(GPS_RESCUE_MODE)) {
         flightMode = "GPS-RESCUE";
+    } else if (FLIGHT_MODE(RTH_MODE)) {
+        flightMode = "RTH";
+    } else if (FLIGHT_MODE(LOITER_MODE)) {
+        flightMode = "LOITER";
     } else if (FLIGHT_MODE(PASSTHROUGH_MODE)) {
         flightMode = "PASSTHROUGH";
     } else if (FLIGHT_MODE(MANUAL_MODE)) {

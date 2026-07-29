@@ -52,6 +52,7 @@
 #include "flight/imu.h"
 #include "flight/pid.h"
 #include "flight/gps_rescue.h"
+#include "flight/gps_nav.h"
 
 #include "scheduler/scheduler.h"
 
@@ -896,6 +897,10 @@ void gpsUpdate(timeUs_t currentTimeUs)
         updateGPSRescueState();
         minSats = gpsRescueConfig()->minSats;
     }
+#endif
+
+#if defined(USE_GPS_NAV)
+    updateGpsNav();
 #endif
 
     static bool hasFix = false;

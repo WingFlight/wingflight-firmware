@@ -314,6 +314,7 @@
 
 #if !defined(USE_ACC)
 #undef USE_GPS_RESCUE
+#undef USE_GPS_NAV
 #undef USE_ACRO_TRAINER
 #endif
 
