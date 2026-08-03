@@ -32,6 +32,7 @@
 
 #include "config/config.h"
 #include "config/config_reset.h"
+#include "config/feature.h"
 
 #include "fc/runtime_config.h"
 #include "fc/rc_controls.h"
@@ -39,6 +40,7 @@
 #include "fc/rc.h"
 
 #include "flight/pid.h"
+#include "flight/tv_pid.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/wiggle.h"
@@ -313,6 +315,15 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_STABILIZED_ROLL, pidGetOutput(PID_ROLL));
     mixerSetInput(MIXER_IN_STABILIZED_PITCH, pidGetOutput(PID_PITCH));
     mixerSetInput(MIXER_IN_STABILIZED_YAW, pidGetOutput(PID_YAW));
+
+    // Independent Thrust Vector stabilised inputs. Left at their zero default
+    // when the feature is disabled, so any mixer rule referencing them is a
+    // harmless no-op.
+    if (featureIsEnabled(FEATURE_THRUST_VECTOR)) {
+        mixerSetInput(MIXER_IN_STABILIZED_TV_ROLL, tvPidGetOutput(PID_ROLL));
+        mixerSetInput(MIXER_IN_STABILIZED_TV_PITCH, tvPidGetOutput(PID_PITCH));
+        mixerSetInput(MIXER_IN_STABILIZED_TV_YAW, tvPidGetOutput(PID_YAW));
+    }
 
     // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels, bypassing the
     // rates/expo curve as well as PID - direct radio to surfaces. Takes priority over MANUAL

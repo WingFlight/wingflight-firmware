@@ -69,6 +69,7 @@
 #endif
 
 #include "flight/pid.h"
+#include "flight/tv_pid.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/pid.h"
@@ -872,6 +873,19 @@ static void subTaskPidController(timeUs_t currentTimeUs)
 
     pidController(currentPidProfile, currentTimeUs);
 
+    // Independent Thrust Vector loop -- must run after pidController() above so
+    // it can reuse this tick's final main-loop setpoint via pidGetSetpoint().
+    // BOXTHRUSTVECTOR gates the mix live in flight, on top of the feature
+    // being enabled at all; reset (rather than just skip) while switched off
+    // so I-term doesn't silently wind up unseen and bump the output on
+    // re-engage -- it ramps back up from zero instead.
+    if (featureIsEnabled(FEATURE_THRUST_VECTOR)) {
+        if (IS_RC_MODE_ACTIVE(BOXTHRUSTVECTOR)) {
+            tvPidController(currentTimeUs);
+        } else {
+            tvPidReset();
+        }
+    }
 }
 
 static void subTaskMixerUpdate(timeUs_t currentTimeUs)
