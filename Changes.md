@@ -35,6 +35,10 @@ as aliases for compatibility with existing dumps. MSP byte layout is unchanged.
 Added `cross_axis_relax_strength`, `cross_axis_relax_pitch_strength`,
 `cross_axis_relax_level`, and `cross_axis_relax_cutoff` PID profile settings.
 
+`master_gain` now scales only the stabilizing P/I/D terms. Feedforward (`F`)
+is no longer scaled by `master_gain`, keeping F as a separate command-response
+tuning parameter while master gain remains focused on loop authority.
+
 Fixed-wing throttle PID attenuation (`fw_tpa_breakpoint` / `fw_tpa_rate`) is
 replaced by `fw_tpa_gain` and `fw_tpa_curve`, mirroring `master_gain` /
 `gain_curve`: `fw_tpa_gain` is a baseline percent scale (100 = unscaled), and

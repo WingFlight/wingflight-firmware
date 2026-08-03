@@ -153,7 +153,7 @@ typedef enum {
     ADJUSTMENT_GOV_YAW_FF               = 81,
     ADJUSTMENT_BATTERY_PROFILE          = 82,
 
-    // Live per-axis P/I/D/F scale (percent) - in-flight tuning aid, doesn't alter the underlying gains
+    // Live per-axis P/I/D scale (percent) - in-flight tuning aid, doesn't alter the underlying gains
     ADJUSTMENT_MASTER_GAIN_PITCH         = 84,
     ADJUSTMENT_MASTER_GAIN_ROLL          = 85,
     ADJUSTMENT_MASTER_GAIN_YAW           = 86,
@@ -182,4 +182,3 @@ void processRcAdjustments(void);
 const char *getAdjustmentsRangeName(void);
 int getAdjustmentsRangeFunc(void);
 int getAdjustmentsRangeValue(void);
-
