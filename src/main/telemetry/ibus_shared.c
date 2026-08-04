@@ -233,7 +233,7 @@ static uint16_t getFuel(void)
 
 static uint16_t getRPM(void)
 {
-    return getHeadSpeed();
+    return getMotor1Speed();
 }
 
 static uint16_t getMode(void)
@@ -359,7 +359,7 @@ static void setValue(uint8_t* bufferPtr, uint8_t sensorType, uint8_t length)
             value.uint16 = getTemperature();
             break;
         case IBUS_SENSOR_TYPE_RPM_FLYSKY:
-            value.int16 = getHeadSpeed();
+            value.int16 = getMotor1Speed();
             break;
         case IBUS_SENSOR_TYPE_FUEL:
             value.uint16 = getFuel();

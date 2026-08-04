@@ -460,8 +460,8 @@ static const char* const lookupTableSwitchMode[] = {
 };
 #endif
 
-static const char * const lookupTableTailMode[] = {
-    "VARIABLE", "MOTORIZED", "BIDIRECTIONAL",
+static const char * const lookupTableModelType[] = {
+    "REGULAR_AIRPLANE", "FLYING_WING", "V_TAIL_AIRPLANE", "DELTA_WING", "RUDDER_ELEVATOR_TRAINER", "CUSTOM",
 };
 
 const char * const lookupTableErrorRelaxType[] = {
@@ -597,7 +597,7 @@ const lookupTableEntry_t lookupTables[] = {
     LOOKUP_TABLE_ENTRY(lookupTableSwitchMode),
 #endif
 
-    LOOKUP_TABLE_ENTRY(lookupTableTailMode),
+    LOOKUP_TABLE_ENTRY(lookupTableModelType),
     LOOKUP_TABLE_ENTRY(lookupTableErrorRelaxType),
 
 #ifdef USE_ESC_SENSOR
@@ -834,8 +834,8 @@ const clivalue_t valueTable[] = {
     { "motor_rpm_lpf",              VAR_UINT8  | MASTER_VALUE | MODE_ARRAY, .config.array.length = MAX_SUPPORTED_MOTORS, PG_MOTOR_CONFIG, offsetof(motorConfig_t, motorRpmLpf) },
     { "motor_rpm_factor",           VAR_INT16  | MASTER_VALUE | MODE_ARRAY, .config.array.length = MAX_SUPPORTED_MOTORS, PG_MOTOR_CONFIG, offsetof(motorConfig_t, motorRpmFactor) },
 
-    { "main_rotor_gear_ratio",      VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = 2, PG_MOTOR_CONFIG, offsetof(motorConfig_t, mainRotorGearRatio) },
-    { "tail_rotor_gear_ratio",      VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = 2, PG_MOTOR_CONFIG, offsetof(motorConfig_t, tailRotorGearRatio) },
+    { "motor1_gear_ratio",      VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = 2, PG_MOTOR_CONFIG, offsetof(motorConfig_t, motor1GearRatio) },
+    { "motor2_gear_ratio",      VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = 2, PG_MOTOR_CONFIG, offsetof(motorConfig_t, motor2GearRatio) },
 
 // PG_FAILSAFE_CONFIG
     { "failsafe_delay",             VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { PERIOD_RXDATA_RECOVERY / MILLIS_PER_TENTH_SECOND, 200 }, PG_FAILSAFE_CONFIG, offsetof(failsafeConfig_t, failsafe_delay) },
@@ -925,7 +925,7 @@ const clivalue_t valueTable[] = {
 #endif // USE_BEEPER
 
 // PG_MIXER_CONFIG
-    { "tail_rotor_mode",            VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_TAIL_MODE }, PG_GENERIC_MIXER_CONFIG, offsetof(mixerConfig_t, tail_rotor_mode) },
+    { "model_type",                 VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_MODEL_TYPE }, PG_GENERIC_MIXER_CONFIG, offsetof(mixerConfig_t, model_type) },
 
 // PG_CONTROLRATE_PROFILES
 #ifdef USE_PROFILE_NAMES
@@ -1048,10 +1048,10 @@ const clivalue_t valueTable[] = {
 
     { "pid_mode",                   VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 9 }, PG_PID_PROFILE, offsetof(pidProfile_t, pid_mode) },
 
-    { "master_gain",                VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = PID_AXIS_COUNT, PG_PID_PROFILE, offsetof(pidProfile_t, master_gain) },
+    { "master_gain",                VAR_UINT16 | PROFILE_VALUE | MODE_ARRAY, .config.array.length = PID_AXIS_COUNT, PG_PID_PROFILE, offsetof(pidProfile_t, master_gain) },
 
-    { "fw_tpa_breakpoint",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_breakpoint) },
-    { "fw_tpa_rate",                VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_rate) },
+    { "fw_tpa_gain",                VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 25, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_gain) },
+    { "fw_tpa_curve",               VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, GAIN_CURVE_COUNT }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_curve) },
 
     { "pitch_p_gain",               VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_PID_PROFILE, offsetof(pidProfile_t, pid[PID_PITCH].P) },
     { "pitch_i_gain",               VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_PID_PROFILE, offsetof(pidProfile_t, pid[PID_PITCH].I) },

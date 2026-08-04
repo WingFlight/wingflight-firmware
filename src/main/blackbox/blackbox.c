@@ -269,8 +269,8 @@ static const blackboxDeltaFieldDefinition_t blackboxMainFields[] =
     {"Tbec",       -1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_8SVB),  CONDITION(TBEC)},
     {"Tesc2",      -1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG8_8SVB),  CONDITION(TESC2)},
 
-    {"headspeed",  -1, UNSIGNED, .Ipredict = PREDICT(0),       .Iencode = ENCODING(UNSIGNED_VB),  .Ppredict = PREDICT(AVERAGE_2),     .Pencode = ENCODING(SIGNED_VB),  CONDITION(HEADSPEED)},
-    {"tailspeed",  -1, UNSIGNED, .Ipredict = PREDICT(0),       .Iencode = ENCODING(UNSIGNED_VB),  .Ppredict = PREDICT(AVERAGE_2),     .Pencode = ENCODING(SIGNED_VB),  CONDITION(TAILSPEED)},
+    {"motor1speed",  -1, UNSIGNED, .Ipredict = PREDICT(0),       .Iencode = ENCODING(UNSIGNED_VB),  .Ppredict = PREDICT(AVERAGE_2),     .Pencode = ENCODING(SIGNED_VB),  CONDITION(MOTOR1SPEED)},
+    {"motor2speed",  -1, UNSIGNED, .Ipredict = PREDICT(0),       .Iencode = ENCODING(UNSIGNED_VB),  .Ppredict = PREDICT(AVERAGE_2),     .Pencode = ENCODING(SIGNED_VB),  CONDITION(MOTOR2SPEED)},
 
     {"motor",       0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(AVERAGE_2),     .Pencode = ENCODING(SIGNED_VB),  CONDITION(MOTOR_1)},
     {"motor",       1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(AVERAGE_2),     .Pencode = ENCODING(SIGNED_VB),  CONDITION(MOTOR_2)},
@@ -405,8 +405,8 @@ typedef struct blackboxMainState_s {
 
     uint16_t rssi;
 
-    uint16_t headspeed;
-    uint16_t tailspeed;
+    uint16_t motor1speed;
+    uint16_t motor2speed;
 
     int16_t motor[MAX_SUPPORTED_MOTORS];
     int16_t servo[MAX_SUPPORTED_SERVOS];
@@ -563,9 +563,9 @@ static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
         return false;
 #endif
 
-    case CONDITION(HEADSPEED):
+    case CONDITION(MOTOR1SPEED):
         return (getMotorCount() >= 1) && isFieldEnabled(FIELD_SELECT(RPM));
-    case CONDITION(TAILSPEED):
+    case CONDITION(MOTOR2SPEED):
         return (getMotorCount() >= 2) && isFieldEnabled(FIELD_SELECT(RPM));
 
     case CONDITION(TMCU):
@@ -801,11 +801,11 @@ static void writeIntraframe(void)
         blackboxWriteSignedVB(blackboxCurrent->esc2_temp);
     }
 
-    if (testBlackboxCondition(CONDITION(HEADSPEED))) {
-        blackboxWriteUnsignedVB(blackboxCurrent->headspeed);
+    if (testBlackboxCondition(CONDITION(MOTOR1SPEED))) {
+        blackboxWriteUnsignedVB(blackboxCurrent->motor1speed);
     }
-    if (testBlackboxCondition(CONDITION(TAILSPEED))) {
-        blackboxWriteUnsignedVB(blackboxCurrent->tailspeed);
+    if (testBlackboxCondition(CONDITION(MOTOR2SPEED))) {
+        blackboxWriteUnsignedVB(blackboxCurrent->motor2speed);
     }
 
     if (isFieldEnabled(FIELD_SELECT(MOTOR))) {
@@ -1002,13 +1002,13 @@ static void writeInterframe(void)
     }
     blackboxWriteTag8_8SVB(deltas, packedFieldCount);
 
-    if (testBlackboxCondition(CONDITION(HEADSPEED))) {
-        int32_t predictor = (blackboxHistory[1]->headspeed + blackboxHistory[2]->headspeed) / 2;
-        blackboxWriteSignedVB(blackboxCurrent->headspeed - predictor);
+    if (testBlackboxCondition(CONDITION(MOTOR1SPEED))) {
+        int32_t predictor = (blackboxHistory[1]->motor1speed + blackboxHistory[2]->motor1speed) / 2;
+        blackboxWriteSignedVB(blackboxCurrent->motor1speed - predictor);
     }
-    if (testBlackboxCondition(CONDITION(TAILSPEED))) {
-        int32_t predictor = (blackboxHistory[1]->tailspeed + blackboxHistory[2]->tailspeed) / 2;
-        blackboxWriteSignedVB(blackboxCurrent->tailspeed - predictor);
+    if (testBlackboxCondition(CONDITION(MOTOR2SPEED))) {
+        int32_t predictor = (blackboxHistory[1]->motor2speed + blackboxHistory[2]->motor2speed) / 2;
+        blackboxWriteSignedVB(blackboxCurrent->motor2speed - predictor);
     }
 
     if (isFieldEnabled(FIELD_SELECT(MOTOR))) {
@@ -1355,8 +1355,8 @@ static void loadMainState(timeUs_t currentTimeUs)
     }
 #endif
 
-    blackboxCurrent->headspeed = getHeadSpeed();
-    blackboxCurrent->tailspeed = getTailSpeed();
+    blackboxCurrent->motor1speed = getMotor1Speed();
+    blackboxCurrent->motor2speed = getMotor2Speed();
 
     for (int i = 0; i < getMotorCount(); i++) {
         blackboxCurrent->motor[i] = getMotorOutput(i);
@@ -1631,8 +1631,8 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_ARRAY("error_limit", "%d", 3,                 currentPidProfile->error_limit);
         BLACKBOX_PRINT_HEADER_LINE("iterm_decay", "%d,%d",                  currentPidProfile->iterm_decay_time,
                                                                             currentPidProfile->iterm_decay_limit);
-        BLACKBOX_PRINT_HEADER_LINE("fw_tpa", "%d,%d",                       currentPidProfile->fw_tpa_breakpoint,
-                                                                            currentPidProfile->fw_tpa_rate);
+        BLACKBOX_PRINT_HEADER_LINE("fw_tpa", "%d,%d",                       currentPidProfile->fw_tpa_gain,
+                                                                            currentPidProfile->fw_tpa_curve);
         BLACKBOX_PRINT_HEADER_LINE("cross_axis_relax", "%d,%d,%d,%d",       currentPidProfile->cross_axis_relax_strength,
                                                                             currentPidProfile->cross_axis_relax_level,
                                                                             currentPidProfile->cross_axis_relax_cutoff,

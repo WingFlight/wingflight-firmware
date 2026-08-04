@@ -55,11 +55,18 @@
 #define GOVERNOR_RPM_RANGE_SLEW_RATE 5.0f
 #define GOVERNOR_RPM_RANGE_FILTER_HZ 5.0f
 
+// RPM mode's optional max-RPM limiter is not a full-stick governor. It normally passes the pilot's
+// throttle through unchanged and only pulls throttle down while measured RPM exceeds governor_rpm_max.
+#define GOVERNOR_RPM_LIMIT_SLEW_RATE 5.0f
+#define GOVERNOR_RPM_LIMIT_FILTER_HZ 5.0f
+
 float governorApply(float throttle)
 {
     static float governorOutput = 0.0f;
     static float integrator = 0.0f;
+    static float limitIntegrator = 0.0f;
     static pt1Filter_t rpmErrorFilter;
+    static pt1Filter_t rpmLimitErrorFilter;
     static bool rangeFaultLatched = false;
 
     const governorConfig_t *cfg = governorConfig();
@@ -74,12 +81,16 @@ float governorApply(float throttle)
 
     bool active = false;
     bool fullRange = false;
+    bool rpmLimit = false;
     float target = throttle;
 
     switch (cfg->governor_mode) {
     case GOVERNOR_MODE_RPM:
         active = belowHandover && cfg->governor_rpm > 0 && isMotorRpmSourceActive(0);
         if (active) {
+            limitIntegrator = 0.0f;
+            rpmLimitErrorFilter.y1 = 0.0f;
+
             const float rpmError = cfg->governor_rpm - getMotorRPMf(0);
             pt1FilterUpdate(&rpmErrorFilter, GOVERNOR_RPM_FILTER_HZ, 1.0f / pidGetDT());
             const float filteredError = pt1FilterApply(&rpmErrorFilter, rpmError);
@@ -95,6 +106,28 @@ float governorApply(float throttle)
             integrator = constrainf(integrator, 0.0f, ceilingFrac);
 
             target = constrainf(pTerm + integrator, 0.0f, ceilingFrac);
+        } else if (!belowHandover && ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXGOVERNOR) &&
+            cfg->governor_rpm_max > 0 && isMotorRpmSourceActive(0)) {
+            rpmErrorFilter.y1 = 0.0f;
+            integrator = 0.0f;
+
+            const float rpmError = cfg->governor_rpm_max - getMotorRPMf(0);
+            pt1FilterUpdate(&rpmLimitErrorFilter, GOVERNOR_RPM_LIMIT_FILTER_HZ, 1.0f / pidGetDT());
+            const float filteredError = pt1FilterApply(&rpmLimitErrorFilter, rpmError);
+
+            const float pTerm = MIN(filteredError * (cfg->governor_gain * 0.000005f), 0.0f);
+
+            // This integrator is intentionally negative-only: it may remove throttle to enforce
+            // the configured max RPM, but it must never add throttle or govern to a target speed.
+            limitIntegrator += filteredError * (cfg->governor_i_gain * 0.000005f) * pidGetDT();
+            limitIntegrator = constrainf(limitIntegrator, -1.0f, 0.0f);
+
+            const float correction = constrainf(pTerm + limitIntegrator, -throttle, 0.0f);
+            if (correction < 0.0f) {
+                active = true;
+                rpmLimit = true;
+                target = throttle + correction;
+            }
         }
         break;
 
@@ -145,11 +178,14 @@ float governorApply(float throttle)
     if (!active) {
         governorOutput = throttle;
         rpmErrorFilter.y1 = 0.0f;
+        rpmLimitErrorFilter.y1 = 0.0f;
         integrator = 0.0f;
+        limitIntegrator = 0.0f;
         return throttle;
     }
 
-    const float slewRate = fullRange ? GOVERNOR_RPM_RANGE_SLEW_RATE : GOVERNOR_SLEW_RATE;
+    const float slewRate = rpmLimit ? GOVERNOR_RPM_LIMIT_SLEW_RATE :
+        (fullRange ? GOVERNOR_RPM_RANGE_SLEW_RATE : GOVERNOR_SLEW_RATE);
     governorOutput = slewLimit(governorOutput, target, slewRate * pidGetDT());
 
     return governorOutput;

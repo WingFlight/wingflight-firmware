@@ -190,7 +190,7 @@ uint16_t getMotorAveragePeriod(void)
     if (!isRpmSourceActive()) {
         return SPEKTRUM_RPM_UNUSED;
     }
-    rpm = getHeadSpeed();
+    rpm = getMotor1Speed();
 
     if (rpm > SPEKTRUM_MIN_RPM && rpm < SPEKTRUM_MAX_RPM) {
         period_us = MICROSEC_PER_MINUTE / rpm; // revs/minute -> microSeconds

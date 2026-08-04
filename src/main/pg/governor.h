@@ -24,7 +24,7 @@
 
 typedef enum {
     GOVERNOR_MODE_OFF = 0,        // feature inert, throttle passthrough
-    GOVERNOR_MODE_RPM,            // closed-loop: hold governor_rpm using motor RPM feedback, below handover only
+    GOVERNOR_MODE_RPM,            // closed-loop idle hold below handover; optional max-RPM limiter above handover
     GOVERNOR_MODE_THROTTLE,       // open-loop: hold a fixed governor_throttle %, no RPM source needed, below handover only
     GOVERNOR_MODE_RPM_RANGE,      // closed-loop: hold a target RPM mapped across the *entire* throttle
                                    // stick (governor_rpm_min at 0% -> governor_rpm_max at 100%),
@@ -41,7 +41,7 @@ typedef struct governorConfig_s {
     uint8_t  governor_handover;  // throttle handover threshold, % (0-100) (RPM/THROTTLE modes only)
     uint8_t  governor_ceiling;   // max throttle % the governor may output (safety clamp)
     uint16_t governor_rpm_min;   // target RPM at 0% throttle stick (RPM_RANGE mode)
-    uint16_t governor_rpm_max;   // target RPM at 100% throttle stick (RPM_RANGE mode); 0 = not configured
+    uint16_t governor_rpm_max;   // max-RPM limiter (RPM mode) or target RPM at 100% throttle stick (RPM_RANGE mode); 0 = off
 } governorConfig_t;
 
 PG_DECLARE(governorConfig_t, governorConfig);

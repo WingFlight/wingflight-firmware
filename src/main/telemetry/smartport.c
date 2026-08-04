@@ -208,8 +208,8 @@ static telemetrySensor_t smartportTelemetrySensors[] =
     TLM_SENSOR(ALTITUDE,                0x0100,   100,  3000,   1,  10,   0,    INT),
     TLM_SENSOR(VARIOMETER,              0x0110,   100,  3000,   1,  10,   0,    INT),
 
-    TLM_SENSOR(HEADSPEED,               0x0500,   100,  3000,   1,  10,   0,    INT),
-    TLM_SENSOR(TAILSPEED,               0x0501,   100,  3000,   1,  10,   0,    INT),
+    TLM_SENSOR(MOTOR1SPEED,               0x0500,   100,  3000,   1,  10,   0,    INT),
+    TLM_SENSOR(MOTOR2SPEED,               0x0501,   100,  3000,   1,  10,   0,    INT),
 
     TLM_SENSOR(ATTITUDE,                0x0730,   100,  3000,   1,  10,   0,    Attitude),
 

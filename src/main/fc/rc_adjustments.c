@@ -72,6 +72,10 @@
 // No consegutive changes closer than this milliseconds
 #define REPEAT_DELAY     200
 
+// Servo trims are meant to be nudged continuously in flight via a momentary switch,
+// so they repeat much faster than other stepped adjustments (e.g. PID gains, rates).
+#define TRIM_REPEAT_DELAY 20
+
 // Timeout for the last changed adjustment (report for telemetry)
 #define ADJUSTMENT_LATENCY_MS 3000
 
@@ -198,13 +202,17 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 
     ADJ_ENTRY(BATTERY_PROFILE,              1, BATTERY_PROFILE_COUNT),
 
-    ADJ_ENTRY(MASTER_GAIN_PITCH,            25, 200),
-    ADJ_ENTRY(MASTER_GAIN_ROLL,             25, 200),
-    ADJ_ENTRY(MASTER_GAIN_YAW,              25, 200),
+    ADJ_ENTRY(MASTER_GAIN_PITCH,            25, 1000),
+    ADJ_ENTRY(MASTER_GAIN_ROLL,             25, 1000),
+    ADJ_ENTRY(MASTER_GAIN_YAW,              25, 1000),
 
     ADJ_ENTRY(AUTOHOVER_GAIN,               0, 250),
 
     ADJ_ENTRY(ATTHOLD_GAIN,                 0, 250),
+
+    ADJ_ENTRY(SERVO_TRIM_ROLL,             -200, 200),
+    ADJ_ENTRY(SERVO_TRIM_PITCH,            -200, 200),
+    ADJ_ENTRY(SERVO_TRIM_YAW,             -200, 200),
 
 };
 
@@ -223,6 +231,31 @@ static void blackboxAdjustmentEvent(int adjFunc, int value)
         blackboxLogEvent(FLIGHT_LOG_EVENT_INFLIGHT_ADJUSTMENT, (flightLogEventData_t*)&eventData);
     }
 #endif
+}
+
+static bool isServoTrimAdjustment(int adjFunc)
+{
+    return adjFunc == ADJUSTMENT_SERVO_TRIM_ROLL ||
+        adjFunc == ADJUSTMENT_SERVO_TRIM_PITCH ||
+        adjFunc == ADJUSTMENT_SERVO_TRIM_YAW;
+}
+
+/*
+ * The SERVO_TRIM_* adjustments are re-baselined to zero whenever the servo
+ * mid points get persisted (see servoTrimCommit()), so that further trim is
+ * only ever allowed to move +-200us away from the last saved value. Every
+ * adjustment range driving one of those functions must be resynced right
+ * after that happens, otherwise adjState->adjValue keeps the stale
+ * pre-commit value and the next (possibly tiny) stick movement is compared
+ * against it, producing a large, discontinuous jump in cfgSet()'s delta.
+ */
+void resyncServoTrimAdjustments(void)
+{
+    for (int index = 0; index < MAX_ADJUSTMENT_RANGE_COUNT; index++) {
+        if (isServoTrimAdjustment(adjustmentRanges(index)->function)) {
+            adjustmentRangeReset(index);
+        }
+    }
 }
 
 static void updateAdjustmentData(int adjFunc, int value)
@@ -333,7 +366,7 @@ void processRcAdjustments(void)
 
                         setConfigDirty();
 
-                        adjState->deadTime = now + REPEAT_DELAY;
+                        adjState->deadTime = now + (isServoTrimAdjustment(adjFunc) ? TRIM_REPEAT_DELAY : REPEAT_DELAY);
                         adjState->adjValue = adjval;
 
                         changed = true;

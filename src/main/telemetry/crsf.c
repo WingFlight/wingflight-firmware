@@ -412,8 +412,8 @@ static void crsfFrameRPM(sbuf_t *dst)
 {
     sbufWriteU8(dst, CRSF_FRAMETYPE_RPM);
     sbufWriteU8(dst, 0);
-    sbufWriteS24BE(dst, telemetrySensorValue(TELEM_HEADSPEED));
-    sbufWriteS24BE(dst, telemetrySensorValue(TELEM_TAILSPEED));
+    sbufWriteS24BE(dst, telemetrySensorValue(TELEM_MOTOR1SPEED));
+    sbufWriteS24BE(dst, telemetrySensorValue(TELEM_MOTOR2SPEED));
 }
 
 /*
@@ -766,8 +766,8 @@ static telemetrySensor_t crsfCustomTelemetrySensors[] =
     TLM_SENSOR(ALTITUDE,                0x10B2,   200,  3000,    0,     S24),
     TLM_SENSOR(VARIOMETER,              0x10B3,   200,  3000,    0,     S16),
 
-    TLM_SENSOR(HEADSPEED,               0x10C0,   200,  3000,    0,     U16),
-    TLM_SENSOR(TAILSPEED,               0x10C1,   200,  3000,    0,     U16),
+    TLM_SENSOR(MOTOR1SPEED,               0x10C0,   200,  3000,    0,     U16),
+    TLM_SENSOR(MOTOR2SPEED,               0x10C1,   200,  3000,    0,     U16),
 
     TLM_SENSOR(ATTITUDE,                0x1100,   100,  3000,    0,     Attitude),
     TLM_SENSOR(ATTITUDE_PITCH,          0x1101,   200,  3000,    10,    S16),

@@ -299,9 +299,13 @@ static bool getFbusCombinedEscSensorData(escSensorData_t *escData)
         }
     }
 
-    if (hasEscData && fbusEscData.hasRpmConsumption) {
+    if (hasEscData && fbusEscData.hasRpm) {
         escData->id = FBUS_SENSOR_ESC;
         escData->erpm = fbusEscData.erpm;
+    }
+
+    if (hasEscData && fbusEscData.hasConsumption) {
+        escData->id = FBUS_SENSOR_ESC;
         escData->consumption = applyConsumptionCorrection(fbusEscData.consumptionMah);
     }
 
@@ -309,6 +313,7 @@ static bool getFbusCombinedEscSensorData(escSensorData_t *escData)
         escData->id = FBUS_SENSOR_ESC;
         // FBUS temperature is in C, escSensorData uses 0.1C.
         escData->temperature = (int16_t)fbusEscData.temperatureDegC * 10;
+        escData->temperature2 = (int16_t)fbusEscData.temperature2DegC * 10;
     }
 
     return true;
@@ -4044,12 +4049,26 @@ static int8_t xdfly_accept(uint16_t c)
     return 0;
 }
 
-static serialReceiveCallbackPtr xdflySensorInit(uint8_t sig)
+static serialReceiveCallbackPtr xdflySensorInit(uint8_t sig, bool bidirectional)
 {
-    rrfsmCrank  = xdfly_crank_unc_setup;
+    rrfsmStart = NULL;
+    rrfsmCrank = bidirectional ? xdfly_crank_unc_setup : NULL;
     rrfsmDecode = xdfly_decode;
     rrfsmAccept = xdfly_accept;
-    paramCommit = xdfly_param_commit;
+    rrfsmBootDelayMs = 0;
+    rrfsmMinFrameLength = bidirectional ? 0 : XDFLY_HEADER_LENGTH;
+    rrfsmFrameTimestamp = 0;
+    rrfsmFramePeriod = 0;
+    rrfsmFrameTimeout = 0;
+    readBytes = 0;
+    reqLength = 0;
+    readIngoreBytes = 0;
+    syncCount = 0;
+    xdfly_setup_status = XDFLY_INIT;
+    xdfly_connected = false;
+    xdfly_send_handshake = false;
+    xdfly_handshake_response_pending = false;
+    paramCommit = bidirectional ? xdfly_param_commit : NULL;
     escSig = sig;
     return rrfsmDataReceive;
 }
@@ -4290,9 +4309,6 @@ void INIT_CODE validateAndFixEscSensorConfig(void)
 {
     switch (escSensorConfig()->protocol) {
         case ESC_SENSOR_PROTO_GRAUPNER:
-        case ESC_SENSOR_PROTO_XDFLY:
-        case ESC_SENSOR_PROTO_OMPHOBBY:
-        case ESC_SENSOR_PROTO_ZTW:     
             escSensorConfigMutable()->halfDuplex = true;
             break;
 #ifdef USE_TELEMETRY_CASTLE
@@ -4359,13 +4375,13 @@ bool INIT_CODE escSensorInit(void)
             options |= SERIAL_PARITY_EVEN;
             break;
         case ESC_SENSOR_PROTO_OMPHOBBY:
-            callback = xdflySensorInit(ESC_SIG_OMP);
+            callback = xdflySensorInit(ESC_SIG_OMP, escHalfDuplex);
             baudrate = 115200;
-            break;        
-         case ESC_SENSOR_PROTO_ZTW:
-            callback = xdflySensorInit(ESC_SIG_ZTW);
+            break;
+        case ESC_SENSOR_PROTO_ZTW:
+            callback = xdflySensorInit(ESC_SIG_ZTW, escHalfDuplex);
             baudrate = 115200;
-            break;    
+            break;
         case ESC_SENSOR_PROTO_APD:
             baudrate = 115200;
             break;
@@ -4386,7 +4402,7 @@ bool INIT_CODE escSensorInit(void)
             baudrate = 19200;
             break;
         case ESC_SENSOR_PROTO_XDFLY:
-            callback = xdflySensorInit(ESC_SIG_XDFLY);
+            callback = xdflySensorInit(ESC_SIG_XDFLY, escHalfDuplex);
             baudrate = 115200;
             break;
         case ESC_SENSOR_PROTO_RECORD:

@@ -22,10 +22,16 @@
 
 #include "pg/pg.h"
 
+// Descriptive only -- firmware does not branch on this. It lets the
+// configurator show a simplified mixer view for named airframes and only
+// expose the raw rule editor for MODEL_TYPE_CUSTOM.
 enum {
-    TAIL_MODE_VARIABLE,
-    TAIL_MODE_MOTORIZED,
-    TAIL_MODE_BIDIRECTIONAL,
+    MODEL_TYPE_REGULAR_AIRPLANE,
+    MODEL_TYPE_FLYING_WING,
+    MODEL_TYPE_V_TAIL_AIRPLANE,
+    MODEL_TYPE_DELTA_WING,
+    MODEL_TYPE_RUDDER_ELEVATOR_TRAINER,
+    MODEL_TYPE_CUSTOM,
 };
 
 enum {
@@ -74,7 +80,7 @@ enum {
 
 typedef struct
 {
-    uint8_t   tail_rotor_mode;      // Tail motor vs. variable pitch tail
+    uint8_t   model_type;           // Named airframe type, or MODEL_TYPE_CUSTOM
 } mixerConfig_t;
 
 PG_DECLARE(mixerConfig_t, mixerConfig);

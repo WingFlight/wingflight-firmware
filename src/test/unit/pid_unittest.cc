@@ -38,7 +38,7 @@ void INIT_CODE rescueInitProfile(const pidProfile_t *) {}
 bool isSpooledUp(void) { return true; }
 void setpointInitProfile(void) {}
 bool isAirborne(void) { return true; }
-float getHeadSpeedf(void) { return 0; }
+float getMotor1Speedf(void) { return 0; }
 float rescueApply(uint8_t, float setpoint) { return setpoint; }
 float angleModeApply(int, float pidSetpoint) { return pidSetpoint; }
 float horizonModeApply(int, float pidSetpoint) { return pidSetpoint; }

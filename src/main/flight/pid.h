@@ -18,6 +18,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "common/time.h"
 #include "common/filter.h"
@@ -72,6 +73,23 @@ typedef struct {
     float Kb;
 } pidAxisCoef_t;
 
+typedef struct {
+    uint32_t P;
+    uint32_t I;
+    uint32_t D;
+    uint32_t F;
+    uint32_t B;
+} pidfCenti_t;
+
+typedef struct {
+    pidf_t raw[PID_AXIS_COUNT];                 // Current adjusted PID gains, before master/curve scaling
+    uint16_t masterGain[PID_AXIS_COUNT];        // Current adjusted per-axis master gain, percent
+    uint32_t gainCurve[PID_AXIS_COUNT];         // Current per-axis gain curve scale, centi-percent (10000 = 100.00%)
+    uint32_t gainCurvePosition[PID_AXIS_COUNT]; // Current per-axis gain curve position, centi-percent
+    uint32_t fwTpa;                             // Current throttle attenuation scale, centi-percent
+    pidfCenti_t effective[PID_AXIS_COUNT];      // Final effective PID gain values, centi-gain
+} pidRuntimeGains_t;
+
 typedef struct pid_s {
     float dT;
     float freq;
@@ -81,8 +99,8 @@ typedef struct pid_s {
     float masterGain[PID_AXIS_COUNT];  // Live per-axis P/I/D/F scale (1.0 = unscaled) - see pidProfile_t.master_gain
     uint8_t gainCurveIndex[PID_AXIS_COUNT];  // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1) - see pidProfile_t.gain_curve
 
-    float fwTpaBreakpoint;
-    float fwTpaRate;
+    float fwTpaGain;          // Baseline throttle attenuation scale (1.0 = unscaled) - see pidProfile_t.fw_tpa_gain
+    uint8_t fwTpaCurveIndex;  // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1) - see pidProfile_t.fw_tpa_curve
 
     uint8_t itermRelaxType;
     uint8_t itermRelaxLevel[PID_AXIS_COUNT];
@@ -130,6 +148,7 @@ float pidGetSetpoint(int axis);
 float pidGetOutput(int axis);
 
 const pidAxisData_t * pidGetAxisData(void);
+void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);
 
 ADJFUN_DECLARE(PID_PROFILE)
 ADJFUN_DECLARE(MASTER_GAIN_PITCH)

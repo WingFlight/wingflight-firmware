@@ -1,3 +1,37 @@
+# 0.0.10
+
+Remove legacy heli tail_rotor_mode; rename main/tail naming to motor1/motor2 throughout (gear ratios, RPM/speed accessors, telemetry sensor IDs, blackbox log fields).
+Add descriptive model_type field to mixer config.
+
+# 0.0.9
+
+Add servo trim adjustments for roll/pitch/yaw, with resync/commit support.
+Add governor RPM max limiter.
+Add FrSKY RPM S.Port sensor support.
+Add runtime effective PID gain MSP endpoint.
+Allow old and new mode for XDFLY/ZTW/OMPHOBBY ESC telemetry.
+Fix S.Port master detection when checking forwarded FBUS sensor telemetry.
+Fix mixer/gain curve point count validation from MSP.
+Widen master_gain range for finer PID gain resolution.
+
+# 0.0.8
+
+Rework fixed-wing throttle attenuation (TPA) to use the shared gain-curve pool instead of a fixed linear ramp.
+
+# 0.0.7
+
+Fix stabilization break when mounting-surface trim is set without board alignment.
+
+# 0.0.6
+
+Add Mounting-surface trim (manual entry and auto-detect wizard).
+Add throttle range governor.
+Add ready-to-arm surface wiggle.
+Add auto trim bit to flight mode sensors.
+Rework ATTHOLD mode with a new implementation.
+Fix Board Auto-Align sign-blind scoring; gate on accelerometer calibration.
+Reduce gyro calibration sensitivity to cope with windy days.
+
 # 0.0.5
 
 Add AUTO TRIM flight mode (servo-center capture, ported from iNav's BOXAUTOTRIM).

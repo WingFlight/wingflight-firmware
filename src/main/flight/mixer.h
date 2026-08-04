@@ -124,8 +124,3 @@ static inline void mixerSaturateMotorOutput(uint8_t index)
 {
     mixerSaturateOutput(index + MIXER_MOTOR_OFFSET);
 }
-
-static inline bool mixerMotorizedTail(void)
-{
-    return (mixerConfig()->tail_rotor_mode != TAIL_MODE_VARIABLE);
-}

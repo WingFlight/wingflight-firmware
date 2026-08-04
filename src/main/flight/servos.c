@@ -57,6 +57,8 @@ static FAST_DATA_ZERO_INIT float        servoResolution[MAX_SUPPORTED_SERVOS];
 
 static FAST_DATA_ZERO_INIT int16_t      servoOverride[MAX_SUPPORTED_SERVOS];
 
+static FAST_DATA_ZERO_INIT float        servoAxisTrim[3];  // last commanded per-axis trim value in µs [ROLL=0, PITCH=1, YAW=2]
+
 static FAST_DATA_ZERO_INIT timerChannel_t servoChannel[MAX_SUPPORTED_SERVOS];
 
 #ifdef USE_FC_LINK
@@ -64,6 +66,70 @@ _Static_assert(FC_LINK_MAX_CHANNELS == MAX_SUPPORTED_SERVOS,
     "FC_LINK_MAX_CHANNELS must cover the whole servo index space (PWM + bus servos)");
 #endif
 
+
+/*
+ * Apply the change (delta) in a stabilized axis's trim directly to servoParams()->mid
+ * of every servo whose mixer rule is fed by that axis, so the new center point is
+ * immediately visible (e.g. in the configurator's Servos tab) and persists like any
+ * other live-adjusted config value.
+ */
+static void applyServoAxisTrim(int axis, int newValue)
+{
+    const float delta = (float)newValue - servoAxisTrim[axis];
+    servoAxisTrim[axis] = (float)newValue;
+
+    if (delta == 0)
+        return;
+
+    static const uint8_t axisInput[3] = {
+        MIXER_IN_STABILIZED_ROLL, MIXER_IN_STABILIZED_PITCH, MIXER_IN_STABILIZED_YAW,
+    };
+
+    const uint8_t count = getServoCount();
+    for (int s = 0; s < count; s++) {
+        for (int r = 0; r < MIXER_RULE_COUNT; r++) {
+            const mixerRule_t *rule = mixerRules(r);
+            if (rule->oper && rule->output == (uint8_t)(MIXER_SERVO_OFFSET + s) &&
+                rule->input == axisInput[axis]) {
+                // SERVO_FLAG_REVERSED flips the sign of the stabilized input for this
+                // servo (servoUpdate() negates pos before applying rpos/rneg/mid), so
+                // the trim direction must be flipped the same way to stay coordinated
+                // with unreversed servos sharing the same axis.
+                const bool reversed = servoParams(s)->flags & SERVO_FLAG_REVERSED;
+                servoParamsMutable(s)->mid += lrintf(reversed ? -delta : delta);
+                break;
+            }
+        }
+    }
+
+    validateAndFixServoConfig();
+}
+
+int get_ADJUSTMENT_SERVO_TRIM_ROLL(void)    { return lrintf(servoAxisTrim[0]); }
+void set_ADJUSTMENT_SERVO_TRIM_ROLL(int v)  { applyServoAxisTrim(0, v); }
+
+int get_ADJUSTMENT_SERVO_TRIM_PITCH(void)   { return lrintf(servoAxisTrim[1]); }
+void set_ADJUSTMENT_SERVO_TRIM_PITCH(int v) { applyServoAxisTrim(1, v); }
+
+int get_ADJUSTMENT_SERVO_TRIM_YAW(void)     { return lrintf(servoAxisTrim[2]); }
+void set_ADJUSTMENT_SERVO_TRIM_YAW(int v)   { applyServoAxisTrim(2, v); }
+
+/*
+ * Re-baseline the runtime trim tracking to zero once the current servo
+ * mid points have actually been persisted (written to EEPROM). The
+ * adjustment range for SERVO_TRIM_* is clamped to +-200us of whatever
+ * servoAxisTrim[] currently reads, so without this call that window would
+ * stay relative to the value at boot rather than the last saved value,
+ * letting repeated save cycles drift the servo center arbitrarily far.
+ * The mid points themselves are already live-updated by applyServoAxisTrim(),
+ * so this only resets the tracking, it does not touch servoParams()->mid.
+ */
+void servoTrimCommit(void)
+{
+    servoAxisTrim[0] = 0;
+    servoAxisTrim[1] = 0;
+    servoAxisTrim[2] = 0;
+}
 
 uint8_t getServoCount(void)
 {

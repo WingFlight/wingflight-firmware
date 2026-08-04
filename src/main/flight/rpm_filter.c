@@ -36,6 +36,7 @@
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
 #include "flight/mixer.h"
+#include "flight/motors.h"
 
 #include "rpm_filter.h"
 
@@ -177,20 +178,22 @@ INIT_CODE void rpmFilterInit(void)
         const rpmFilterConfig_t *config = rpmFilterConfig();
         const rpmNotchConfig_t *notch = &config->custom;
 
-        const int mainMotorIndex = 0;
-        const int tailMotorIndex = mixerMotorizedTail() ? 1 : 0;
+        const bool hasMotor2 = getMotorCount() > 1;
 
-        const float mainGearRatio = getMainGearRatio();
-        const float tailGearRatio = getTailGearRatio();
+        const int motor1Index = 0;
+        const int motor2Index = hasMotor2 ? 1 : 0;
 
-        // Main motor fundamental used if not direct-drive
-        const bool enable10 = mainGearRatio != 1.0f;
+        const float motor1GearRatio = getMotor1GearRatio();
+        const float motor2GearRatio = getMotor2GearRatio();
 
-        // Tail motor fundamental used if geared motorised tail and RPM available
-        const bool enable20 = tailGearRatio != 1.0f && mixerMotorizedTail() && isMotorFastRpmSourceActive(tailMotorIndex);
+        // Motor 1 fundamental used if not direct-drive
+        const bool enable10 = motor1GearRatio != 1.0f;
 
-        // Tail harmonics are not used if tail motor RPM unavailable
-        const bool enable2x = !mixerMotorizedTail() || isMotorFastRpmSourceActive(tailMotorIndex);
+        // Motor 2 fundamental used if a second motor is configured, geared, and RPM is available
+        const bool enable20 = motor2GearRatio != 1.0f && hasMotor2 && isMotorFastRpmSourceActive(motor2Index);
+
+        // Motor 2 harmonics are not used if motor 2 RPM is unavailable
+        const bool enable2x = !hasMotor2 || isMotorFastRpmSourceActive(motor2Index);
 
         notchMaxHz = 0.45f * gyro.filterRateHz;
         notchMinHz = constrain(config->min_hz, 10, 0.5f * notchMaxHz);
@@ -213,39 +216,39 @@ INIT_CODE void rpmFilterInit(void)
                     // Q value
                     const float notchQ = constrainf(notch->notch_q[axis][bank], 10, 250) / 10;
 
-                    // Main Motor (M1)
+                    // Motor 1 (M1)
                     if (source == 10) {
                         if (enable10) {
-                            CHECK_SOURCE(mainMotorIndex);
-                            filter->motor  = mainMotorIndex;
+                            CHECK_SOURCE(motor1Index);
+                            filter->motor  = motor1Index;
                             filter->ratio  = ratio;
                             filter->notchQ = notchQ;
                         }
                     }
-                    // Main Rotor harmonics
+                    // Motor 1 harmonics
                     else if (source >= 11 && source <= 18) {
-                        CHECK_SOURCE(mainMotorIndex);
+                        CHECK_SOURCE(motor1Index);
                         const int harmonic = source - 10;
-                        filter->motor  = mainMotorIndex;
-                        filter->ratio  = mainGearRatio * harmonic * ratio;
+                        filter->motor  = motor1Index;
+                        filter->ratio  = motor1GearRatio * harmonic * ratio;
                         filter->notchQ = notchQ;
                     }
-                    // Tail Motor (M2)
+                    // Motor 2 (M2)
                     else if (source == 20) {
                         if (enable20) {
-                            CHECK_SOURCE(tailMotorIndex);
-                            filter->motor  = tailMotorIndex;
+                            CHECK_SOURCE(motor2Index);
+                            filter->motor  = motor2Index;
                             filter->ratio  = ratio;
                             filter->notchQ = notchQ;
                         }
                     }
-                    // Tail Rotor harmonics
+                    // Motor 2 harmonics
                     else if (source >= 21 && source <= 28) {
                         if (enable2x) {
-                            CHECK_SOURCE(tailMotorIndex);
+                            CHECK_SOURCE(motor2Index);
                             const int harmonic = source - 20;
-                            filter->motor  = tailMotorIndex;
-                            filter->ratio  = tailGearRatio * harmonic * ratio;
+                            filter->motor  = motor2Index;
+                            filter->ratio  = motor2GearRatio * harmonic * ratio;
                             filter->notchQ = notchQ;
                         }
                     }

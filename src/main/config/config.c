@@ -766,6 +766,11 @@ void writeUnmodifiedConfigToEEPROM(void)
     eepromWriteInProgress = false;
     resumeRxSignal();
     configIsDirty = false;
+
+    // The servo mid points just written to flash become the new baseline that
+    // the SERVO_TRIM_* adjustments are allowed to move +-200us away from.
+    servoTrimCommit();
+    resyncServoTrimAdjustments();
 }
 
 void writeEEPROM(void)

@@ -104,8 +104,8 @@ typedef enum
     TELEM_ALTITUDE                      = 58,
     TELEM_VARIOMETER                    = 59,
 
-    TELEM_HEADSPEED                     = 60,
-    TELEM_TAILSPEED                     = 61,
+    TELEM_MOTOR1SPEED                     = 60,
+    TELEM_MOTOR2SPEED                     = 61,
     TELEM_MOTOR_RPM                     = 62,
     TELEM_TRANS_RPM                     = 63,
 

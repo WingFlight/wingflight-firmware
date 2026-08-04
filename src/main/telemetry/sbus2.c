@@ -85,7 +85,7 @@ void handleSbus2Telemetry(timeUs_t currentTimeUs)
     float current =  getBatteryCurrent() * 0.01f;
     float capacity = getBatteryCapacityUsed();
     float temperature =  getCoreTemperatureCelsius();
-    uint32_t rpm = getHeadSpeed();
+    uint32_t rpm = getMotor1Speed();
 
     // 2 slots
     send_voltagef(1, voltage, cellVoltage);

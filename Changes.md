@@ -29,6 +29,62 @@ as aliases for compatibility with existing dumps. MSP byte layout is unchanged.
 Added `cross_axis_relax_strength`, `cross_axis_relax_pitch_strength`,
 `cross_axis_relax_level`, and `cross_axis_relax_cutoff` PID profile settings.
 
+Fixed-wing throttle PID attenuation (`fw_tpa_breakpoint` / `fw_tpa_rate`) is
+replaced by `fw_tpa_gain` and `fw_tpa_curve`, mirroring `master_gain` /
+`gain_curve`: `fw_tpa_gain` is a baseline percent scale (100 = unscaled), and
+`fw_tpa_curve` is an optional index (0=off, 1..`GAIN_CURVE_COUNT`) into the
+same shared gain-curve pool used by per-axis `gain_curve`, further scaling
+`fw_tpa_gain` by throttle instead of |stick deflection|. This allows a
+non-linear attenuation shape instead of the previous fixed linear ramp.
+Existing PID profiles are reset to defaults on upgrade.
+
+Added `model_type` to `mixerConfig_t` (`REGULAR_AIRPLANE` / `FLYING_WING` /
+`V_TAIL_AIRPLANE` / `DELTA_WING` / `RUDDER_ELEVATOR_TRAINER` / `CUSTOM`).
+This is descriptive metadata only -- the firmware does not read it or change
+mixer behavior based on it. It exists so the configurator can show a
+simplified mixer view for named airframes and reserve the full raw rule
+editor for `CUSTOM`. Defaults to `REGULAR_AIRPLANE` on upgrade, matching the
+default mixer rule set.
+
+Removed `tail_rotor_mode` (and the `TAIL_MODE_VARIABLE` / `TAIL_MODE_MOTORIZED`
+/ `TAIL_MODE_BIDIRECTIONAL` enum) from `mixerConfig_t`. This was a legacy
+helicopter tail-rotor setting with no meaning for wingflight's fixed-wing
+mixer. The RPM filter and motor code that used to key off it (selecting the
+"tail motor" for RPM-based notch filtering, and deriving a synthetic tail
+frequency from the main motor via a gear ratio when there was no separate
+tail motor) now just checks whether a second motor is configured
+(`getMotorCount() > 1`), so genuine dual-motor airframes keep independent
+per-motor RPM notch filtering without a manual mode switch. Because removing
+the field shifts `model_type` into `tail_rotor_mode`'s old byte offset,
+`mixerConfig` PG version is bumped (1 -> 2) this time, so `model_type` resets
+to its default on upgrade instead of being overlaid with the old
+`tail_rotor_mode` byte.
+
+Renamed the "main/tail" (main rotor / tail rotor) naming leftover from this
+firmware's helicopter origins to "motor1/motor2" throughout, since it's
+generic per-motor RPM/gear-ratio handling now, not heli-specific:
+
+- CLI: `main_rotor_gear_ratio` -> `motor1_gear_ratio`,
+  `tail_rotor_gear_ratio` -> `motor2_gear_ratio`. MSP wire layout (2x U16
+  pairs in `MSP_MOTOR_CONFIG`/`MSP_SET_MOTOR_CONFIG`) is unchanged, only the
+  field names changed -- not a breaking wire change.
+- Internal: `getMainGearRatio()`/`getTailGearRatio()` ->
+  `getMotor1GearRatio()`/`getMotor2GearRatio()`; `getHeadSpeed()`/
+  `getHeadSpeedf()`/`getTailSpeed()`/`getTailSpeedf()` ->
+  `getMotor1Speed()`/`getMotor1Speedf()`/`getMotor2Speed()`/
+  `getMotor2Speedf()`.
+- Telemetry sensor identifiers: `TELEM_HEADSPEED`/`TELEM_TAILSPEED` ->
+  `TELEM_MOTOR1SPEED`/`TELEM_MOTOR2SPEED` (numeric sensor IDs 60/61
+  unchanged). CRSF and S.Port app IDs (`0x10C0`/`0x10C1`,
+  `0x0500`/`0x0501`) are unchanged, so radio-side sensor names for those
+  protocols are unaffected here -- they're defined by the receiving
+  Lua/radio scripts, not transmitted by the firmware. Jeti EX Bus *does*
+  send its sensor name as text: `"Headspeed"`/`"Tailspeed"` ->
+  `"Motor1Speed"`/`"Motor2Speed"`, so Jeti radios will show the new name.
+- Blackbox log fields: `headspeed`/`tailspeed` -> `motor1speed`/
+  `motor2speed`. This changes the log field/column names, so blackbox log
+  tooling needs to follow.
+
 
 ## MSP Changes
 
@@ -37,6 +93,8 @@ Added `cross_axis_relax_strength`, `cross_axis_relax_pitch_strength`,
 - appended `cross_axis_relax_strength`, `cross_axis_relax_level`,
   `cross_axis_relax_cutoff`, and `cross_axis_relax_pitch_strength`.
 - `error_rotation` parameter is unused (#294)
+- `fw_tpa_breakpoint` and `fw_tpa_rate` are replaced by `fw_tpa_gain` (U8,
+  baseline percent scale) and `fw_tpa_curve` (U8, gain-curve index).
 
 ### MSP_SET_PID_PROFILE
 
@@ -44,6 +102,8 @@ Added `cross_axis_relax_strength`, `cross_axis_relax_pitch_strength`,
   `cross_axis_relax_level`, `cross_axis_relax_cutoff`, and
   `cross_axis_relax_pitch_strength`.
 - `error_rotation` parameter is unused (#294)
+- `fw_tpa_breakpoint` and `fw_tpa_rate` are replaced by `fw_tpa_gain` (U8,
+  baseline percent scale) and `fw_tpa_curve` (U8, gain-curve index).
 
 ### MSP_PILOT_CONFIG
 
@@ -79,6 +139,18 @@ Multiple changes (#314) (#353).
 ### MSP_GOVERNOR_CONFIG
 
 Multiple changes (#314) (#353).
+
+### MSP_MIXER_CONFIG
+
+- `tail_rotor_mode` (U8) is removed. Payload is now just `model_type` (U8,
+  descriptive-only airframe type, see Configuration Changes). This is a
+  breaking wire change -- older configurator builds that expect the old
+  2-byte payload will misread `model_type` as `tail_rotor_mode`.
+
+### MSP_SET_MIXER_CONFIG
+
+- `tail_rotor_mode` (U8) is removed. Payload is now just `model_type` (U8).
+  Breaking wire change, same as `MSP_MIXER_CONFIG` above.
 
 ### MSP_BUS_SERVO_CONFIG
 

@@ -76,7 +76,9 @@ void initBoardAlignment(const boardAlignment_t *boardAlignment)
 
 static inline void alignBoard(float *vec)
 {
-    applyMatrixRotation(vec, &boardRotation);
+    if (!standardBoardAlignment) {
+        applyMatrixRotation(vec, &boardRotation);
+    }
 
     if (!standardMountTrim) {
         applyMatrixRotation(vec, &mountTrimRotation);

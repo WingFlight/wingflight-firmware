@@ -1382,6 +1382,32 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, governorConfig()->governor_rpm_max);
         break;
 
+    case MSP2_WING_EFFECTIVE_PID_GAINS: {
+        pidRuntimeGains_t runtimeGains;
+        pidGetRuntimeGains(&runtimeGains);
+
+        sbufWriteU8(dst, 2); // payload version
+        sbufWriteU8(dst, currentPidProfile->pid_mode);
+        sbufWriteU32(dst, runtimeGains.fwTpa);
+
+        for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+            sbufWriteU16(dst, runtimeGains.raw[axis].P);
+            sbufWriteU16(dst, runtimeGains.raw[axis].I);
+            sbufWriteU16(dst, runtimeGains.raw[axis].D);
+            sbufWriteU16(dst, runtimeGains.raw[axis].F);
+            sbufWriteU16(dst, runtimeGains.raw[axis].B);
+            sbufWriteU16(dst, runtimeGains.masterGain[axis]);
+            sbufWriteU32(dst, runtimeGains.gainCurve[axis]);
+            sbufWriteU32(dst, runtimeGains.gainCurvePosition[axis]);
+            sbufWriteU32(dst, runtimeGains.effective[axis].P);
+            sbufWriteU32(dst, runtimeGains.effective[axis].I);
+            sbufWriteU32(dst, runtimeGains.effective[axis].D);
+            sbufWriteU32(dst, runtimeGains.effective[axis].F);
+            sbufWriteU32(dst, runtimeGains.effective[axis].B);
+        }
+        break;
+    }
+
 #ifdef USE_FC_LINK
     case MSP2_WING_FC_LINK_STATUS:
         sbufWriteU8(dst, fcLinkIsEnabled());
@@ -1613,10 +1639,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         for (int i = 0; i < 4; i++)
             sbufWriteU8(dst, motorConfig()->motorRpmLpf[i]);
 
-        sbufWriteU16(dst, motorConfig()->mainRotorGearRatio[0]);
-        sbufWriteU16(dst, motorConfig()->mainRotorGearRatio[1]);
-        sbufWriteU16(dst, motorConfig()->tailRotorGearRatio[0]);
-        sbufWriteU16(dst, motorConfig()->tailRotorGearRatio[1]);
+        sbufWriteU16(dst, motorConfig()->motor1GearRatio[0]);
+        sbufWriteU16(dst, motorConfig()->motor1GearRatio[1]);
+        sbufWriteU16(dst, motorConfig()->motor2GearRatio[0]);
+        sbufWriteU16(dst, motorConfig()->motor2GearRatio[1]);
         break;
 
 #ifdef USE_GPS
@@ -1698,7 +1724,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 #endif
     case MSP_MIXER_CONFIG:
-        sbufWriteU8(dst, mixerConfig()->tail_rotor_mode);
+        sbufWriteU8(dst, mixerConfig()->model_type);
         break;
 
     case MSP_MIXER_INPUTS:
@@ -2062,13 +2088,13 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         /* Inertia precomps */
         sbufWriteU8(dst, 0); // was currentPidProfile->yaw_inertia_precomp_gain
         sbufWriteU8(dst, 0); // was currentPidProfile->yaw_inertia_precomp_cutoff
-        /* Fixed-wing throttle-based gain attenuation */
-        sbufWriteU8(dst, currentPidProfile->fw_tpa_breakpoint);
-        sbufWriteU8(dst, currentPidProfile->fw_tpa_rate);
+        /* Fixed-wing throttle-based gain attenuation (gain + curve index) */
+        sbufWriteU8(dst, currentPidProfile->fw_tpa_gain);
+        sbufWriteU8(dst, currentPidProfile->fw_tpa_curve);
         /* Master gain (per axis) */
-        sbufWriteU8(dst, currentPidProfile->master_gain[PID_ROLL]);
-        sbufWriteU8(dst, currentPidProfile->master_gain[PID_PITCH]);
-        sbufWriteU8(dst, currentPidProfile->master_gain[PID_YAW]);
+        sbufWriteU16(dst, currentPidProfile->master_gain[PID_ROLL]);
+        sbufWriteU16(dst, currentPidProfile->master_gain[PID_PITCH]);
+        sbufWriteU16(dst, currentPidProfile->master_gain[PID_YAW]);
         /* Auto Hover */
         sbufWriteU8(dst, currentPidProfile->autohover.gain);
         sbufWriteU8(dst, currentPidProfile->autohover.max_angle);
@@ -2776,10 +2802,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         for (int i = 0; i < 4; i++)
             motorConfigMutable()->motorRpmLpf[i] = sbufReadU8(src);
 
-        motorConfigMutable()->mainRotorGearRatio[0] = sbufReadU16(src);
-        motorConfigMutable()->mainRotorGearRatio[1] = sbufReadU16(src);
-        motorConfigMutable()->tailRotorGearRatio[0] = sbufReadU16(src);
-        motorConfigMutable()->tailRotorGearRatio[1] = sbufReadU16(src);
+        motorConfigMutable()->motor1GearRatio[0] = sbufReadU16(src);
+        motorConfigMutable()->motor1GearRatio[1] = sbufReadU16(src);
+        motorConfigMutable()->motor2GearRatio[0] = sbufReadU16(src);
+        motorConfigMutable()->motor2GearRatio[1] = sbufReadU16(src);
         break;
 
 #ifdef USE_GPS
@@ -3063,16 +3089,16 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             sbufReadU8(src);
             sbufReadU8(src);
         }
-        /* Fixed-wing throttle-based gain attenuation */
+        /* Fixed-wing throttle-based gain attenuation (gain + curve index) */
         if (sbufBytesRemaining(src) >= 2) {
-            currentPidProfile->fw_tpa_breakpoint = sbufReadU8(src);
-            currentPidProfile->fw_tpa_rate = sbufReadU8(src);
+            currentPidProfile->fw_tpa_gain = sbufReadU8(src);
+            currentPidProfile->fw_tpa_curve = sbufReadU8(src);
         }
         /* Master gain (per axis) */
-        if (sbufBytesRemaining(src) >= 3) {
-            currentPidProfile->master_gain[PID_ROLL] = sbufReadU8(src);
-            currentPidProfile->master_gain[PID_PITCH] = sbufReadU8(src);
-            currentPidProfile->master_gain[PID_YAW] = sbufReadU8(src);
+        if (sbufBytesRemaining(src) >= 6) {
+            currentPidProfile->master_gain[PID_ROLL] = sbufReadU16(src);
+            currentPidProfile->master_gain[PID_PITCH] = sbufReadU16(src);
+            currentPidProfile->master_gain[PID_YAW] = sbufReadU16(src);
         }
         /* Auto Hover */
         if (sbufBytesRemaining(src) >= 4) {
@@ -3503,7 +3529,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP_SET_MIXER_CONFIG:
-        mixerConfigMutable()->tail_rotor_mode = sbufReadU8(src);
+        mixerConfigMutable()->model_type = sbufReadU8(src);
         break;
 
     case MSP_SET_MIXER_INPUT:
@@ -3537,7 +3563,19 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (i >= MIXER_CURVE_COUNT) {
             return MSP_RESULT_ERROR;
         }
-        mixerCurvesMutable(i)->count = sbufReadU8(src);
+        {
+            // count is later used unchecked as an array bound/loop limit by
+            // mixerEvaluateCurve() (points[count-1], points[i+1]) -- reject
+            // anything outside the wire format's actual valid range here,
+            // same as the CLI's own "mixer_curve <i> count <n>" validation
+            // (src/main/cli/cli.c), rather than trusting a raw byte that
+            // could otherwise drive an out-of-bounds read at evaluation time.
+            uint8_t pointCount = sbufReadU8(src);
+            if (pointCount < 2 || pointCount > MIXER_CURVE_POINTS) {
+                return MSP_RESULT_ERROR;
+            }
+            mixerCurvesMutable(i)->count = pointCount;
+        }
         for (int p = 0; p < MIXER_CURVE_POINTS; p++) {
             mixerCurvesMutable(i)->points[p].x = sbufReadU16(src);
             mixerCurvesMutable(i)->points[p].y = sbufReadU16(src);
@@ -3549,7 +3587,15 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (i >= GAIN_CURVE_COUNT) {
             return MSP_RESULT_ERROR;
         }
-        gainCurvesMutable(i)->count = sbufReadU8(src);
+        {
+            // Same out-of-bounds-read concern as MSP_SET_MIXER_CURVE above,
+            // for pidEvaluateGainCurve()'s points[count-1]/points[i+1].
+            uint8_t pointCount = sbufReadU8(src);
+            if (pointCount < 2 || pointCount > GAIN_CURVE_POINTS) {
+                return MSP_RESULT_ERROR;
+            }
+            gainCurvesMutable(i)->count = pointCount;
+        }
         for (int p = 0; p < GAIN_CURVE_POINTS; p++) {
             gainCurvesMutable(i)->points[p].x = sbufReadU16(src);
             gainCurvesMutable(i)->points[p].y = sbufReadU16(src);

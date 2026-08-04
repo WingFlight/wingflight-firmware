@@ -73,7 +73,7 @@ References:
 ### 5) PID Path Reflects Fixed-Wing Dynamics
 
 - PID mode `1` is implemented as fixed-wing rate PID.
-- A throttle-based gain attenuation path (`fw_tpa_*`) is used for control-surface authority management.
+- A throttle-based gain attenuation path (`fw_tpa_gain` / `fw_tpa_curve`) is used for control-surface authority management, mirroring `master_gain`/`gain_curve`: a baseline scale further shaped by an optional curve from the same shared gain-curve pool/evaluator.
 - I-term decay naming and behavior have been adjusted for fixed-wing semantics (`iterm_decay_*`, no cyclic naming).
 
 References:

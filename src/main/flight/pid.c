@@ -433,9 +433,10 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     for (int i = 0; i < PID_AXIS_COUNT; i++)
         pid.gainCurveIndex[i] = pidProfile->gain_curve[i];
 
-    // Fixed-wing throttle-based gain attenuation
-    pid.fwTpaBreakpoint = pidProfile->fw_tpa_breakpoint * 0.01f;
-    pid.fwTpaRate = pidProfile->fw_tpa_rate * 0.01f;
+    // Fixed-wing throttle-based gain attenuation: baseline gain plus an
+    // optional shaping curve, mirroring master_gain + gain_curve
+    pid.fwTpaGain = pidProfile->fw_tpa_gain * 0.01f;
+    pid.fwTpaCurveIndex = pidProfile->fw_tpa_curve;
 
     // Roll axis
     pid.coef[PID_ROLL].Kp = ROLL_P_TERM_SCALE * pidProfile->pid[PID_ROLL].P;
@@ -701,16 +702,17 @@ static void pidApplyMode0(uint8_t axis)
  ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** **/
 
 // Linear interpolation through a curve's (ascending-x) points, evaluated on
-// |stick deflection| (0..1). Mirrors mixerEvaluateCurve()'s algorithm but the
-// domain is unipolar since the caller always passes a magnitude.
-static float pidEvaluateGainCurve(const gainCurve_t *curve, float stickMag)
+// a 0..1 magnitude -- |stick deflection| for per-axis gain curves, throttle
+// for fw_tpa_curve. Mirrors mixerEvaluateCurve()'s algorithm but the domain
+// is unipolar since the caller always passes a magnitude.
+static float pidEvaluateGainCurve(const gainCurve_t *curve, float mag)
 {
     const int n = curve->count;
 
     if (n < 2)
         return 1.0f;
 
-    const float xs = stickMag * 1000.0f;
+    const float xs = mag * 1000.0f;
 
     if (xs <= curve->points[0].x)
         return curve->points[0].y * 0.01f;
@@ -731,20 +733,68 @@ static float pidEvaluateGainCurve(const gainCurve_t *curve, float stickMag)
     return 1.0f;
 }
 
+static float pidAxisGainCurvePosition(uint8_t axis)
+{
+    return fminf(1.0f, fabsf(getRcDeflection(axis)));
+}
+
+static float pidAxisGainCurve(uint8_t axis)
+{
+    const uint8_t curveIdx = pid.gainCurveIndex[axis];
+    return curveIdx > 0
+        ? pidEvaluateGainCurve(gainCurves(curveIdx - 1), pidAxisGainCurvePosition(axis))
+        : 1.0f;
+}
+
 static float pidThrottleAttenuation(void)
 {
     // Throttle is a proxy for prop-wash dynamic pressure over the control
     // surfaces, not airspeed -- on aircraft that hover/harrier at or past
     // stall, surfaces stay authoritative at high throttle regardless of
     // airspeed, so gain is attenuated as throttle rises, not as it falls.
-    const float throttle = getThrottle();
+    // Mirrors masterGain + gain_curve: fwTpaGain is the baseline scale, an
+    // optional curve from the same shared pool further shapes it by
+    // throttle (0..1) instead of |stick deflection|.
+    const float curveMult = pid.fwTpaCurveIndex > 0
+        ? pidEvaluateGainCurve(gainCurves(pid.fwTpaCurveIndex - 1), getThrottle())
+        : 1.0f;
 
-    if (throttle <= pid.fwTpaBreakpoint || pid.fwTpaBreakpoint >= 1.0f)
-        return 1.0f;
+    return pid.fwTpaGain * curveMult;
+}
 
-    const float x = (throttle - pid.fwTpaBreakpoint) / (1.0f - pid.fwTpaBreakpoint);
+static uint32_t pidScaleToCentiPercent(float scale)
+{
+    return lrintf(fmaxf(0.0f, scale) * 10000.0f);
+}
 
-    return 1.0f - x * pid.fwTpaRate;
+static uint32_t pidGainToCenti(float gain)
+{
+    return lrintf(fmaxf(0.0f, gain) * 100.0f);
+}
+
+void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
+{
+    memset(runtimeGains, 0, sizeof(*runtimeGains));
+
+    const float fwTpa = pidThrottleAttenuation();
+    runtimeGains->fwTpa = pidScaleToCentiPercent(fwTpa);
+
+    for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+        const pidf_t *raw = &currentPidProfile->pid[axis];
+        const float gainCurve = pidAxisGainCurve(axis);
+        const float masterGain = pid.masterGain[axis] * gainCurve;
+
+        runtimeGains->raw[axis] = *raw;
+        runtimeGains->masterGain[axis] = currentPidProfile->master_gain[axis];
+        runtimeGains->gainCurve[axis] = pidScaleToCentiPercent(gainCurve);
+        runtimeGains->gainCurvePosition[axis] = pidScaleToCentiPercent(pidAxisGainCurvePosition(axis));
+
+        runtimeGains->effective[axis].P = pidGainToCenti(raw->P * masterGain * fwTpa);
+        runtimeGains->effective[axis].I = pidGainToCenti(raw->I * masterGain);
+        runtimeGains->effective[axis].D = pidGainToCenti(raw->D * masterGain * fwTpa);
+        runtimeGains->effective[axis].F = pidGainToCenti(raw->F * masterGain);
+        runtimeGains->effective[axis].B = pidGainToCenti(raw->B);
+    }
 }
 
 static void pidApplyMode1(uint8_t axis)
@@ -765,10 +815,7 @@ static void pidApplyMode1(uint8_t axis)
     const float crossAxisRelax = getCrossAxisRelaxFactor(axis);
 
     // Optional per-axis curve scaling master gain by |stick deflection|
-    const uint8_t curveIdx = pid.gainCurveIndex[axis];
-    const float curveMult = curveIdx > 0
-        ? pidEvaluateGainCurve(gainCurves(curveIdx - 1), fabsf(getRcDeflection(axis)))
-        : 1.0f;
+    const float curveMult = pidAxisGainCurve(axis);
     const float masterGain = pid.masterGain[axis] * curveMult;
 
 
