@@ -48,6 +48,7 @@
 
 #include "flight/imu.h"
 #include "flight/mixer.h"
+#include "flight/pid.h"
 #include "flight/position.h"
 
 #include "io/displayport_crsf.h"
@@ -504,7 +505,16 @@ static void crsfFlightModeInfo(char *buf)
 
     const char armChar = ARMING_FLAG(ARMED) ? '*' : ' ';
 
-    tfp_sprintf(buf, "%s%c", flightMode, armChar);
+    // Append an oscillation-limiter suffix without overriding the higher-priority
+    // FAILSAFE/GPS-RESCUE text above -- see docs/development/Oscillation Detection.md
+    bool oscActive = false;
+    if (!FLIGHT_MODE(FAILSAFE_MODE) && !FLIGHT_MODE(GPS_RESCUE_MODE)) {
+        for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+            oscActive = oscActive || pidOscLimiterActive(axis);
+        }
+    }
+
+    tfp_sprintf(buf, oscActive ? "%s%c OSC!" : "%s%c", flightMode, armChar);
 }
 
 void crsfFrameFlightMode(sbuf_t *dst)
@@ -798,6 +808,7 @@ static telemetrySensor_t crsfCustomTelemetrySensors[] =
     TLM_SENSOR(FLIGHT_MODE,             0x1201,   200,  3000,    0,     U16),
     TLM_SENSOR(ARMING_FLAGS,            0x1202,   200,  3000,    0,     U8),
     TLM_SENSOR(ARMING_DISABLE_FLAGS,    0x1203,   200,  3000,    0,     U32),
+    TLM_SENSOR(OSC_LIMITER,             0x1204,   200,  3000,    0,     U16),
 
     TLM_SENSOR(PID_PROFILE,             0x1211,   200,  3000,    0,     U8),
     TLM_SENSOR(RATES_PROFILE,           0x1212,   200,  3000,    0,     U8),

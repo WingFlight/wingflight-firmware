@@ -81,6 +81,20 @@ typedef struct {
     uint32_t B;
 } pidfCenti_t;
 
+// Per-axis oscillation limiter state -- see docs/development/Oscillation Detection.md
+typedef struct {
+    biquadFilter_t bandpass;
+    float energy;             // smoothed band-passed error energy (mean square)
+    float score;              // engage/release hysteresis, in loop ticks
+    float gainScale;          // live gain multiplier applied on top of masterGain (1.0 = no cut)
+    float prevSample;         // previous band-passed sample, for zero-crossing detection
+    float prevSetpoint;       // previous setpoint, for the setpoint-slew gate
+    uint16_t crossCount;      // zero crossings counted in the current periodicity window
+    uint16_t windowRemaining; // loop ticks left in the current periodicity window
+    bool periodicOk;          // result of the last completed periodicity window
+    bool active;              // true while this axis's gain is latched down
+} oscLimiterAxis_t;
+
 typedef struct {
     pidf_t raw[PID_AXIS_COUNT];                 // Current adjusted PID gains, before master/curve scaling
     uint16_t masterGain[PID_AXIS_COUNT];        // Current adjusted per-axis master gain, percent
@@ -113,6 +127,15 @@ typedef struct pid_s {
     float itermDecayLimit;
 
     float errorLimit[PID_AXIS_COUNT];
+
+    // Oscillation limiter -- see docs/development/Oscillation Detection.md
+    bool oscLimiterEnabled;
+    float oscLimiterThresholdSq;  // squared energy threshold, avoids a sqrt in the hot loop
+    float oscLimiterFloor;        // 0..1, minimum gain scale the limiter may reach
+    float oscLimiterScoreMax;     // loop ticks of sustained detection needed to fully engage
+    uint16_t oscLimiterWindowTicks; // loop ticks per periodicity window
+    float oscLimiterRampPerLoop;  // max gainScale change per loop (slew limit)
+    oscLimiterAxis_t oscLimiter[PID_AXIS_COUNT];
 
     pidAxisCoef_t coef[PID_ITEM_COUNT];
     pidAxisData_t data[PID_AXIS_COUNT];
@@ -149,6 +172,11 @@ float pidGetOutput(int axis);
 
 const pidAxisData_t * pidGetAxisData(void);
 void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);
+
+// Oscillation limiter read-only accessors -- see docs/development/Oscillation Detection.md.
+// Reporting consumers (blackbox, telemetry) must go through these instead of touching pid_t.
+bool pidOscLimiterActive(int axis);
+uint8_t pidOscLimiterScale(int axis);  // percent, 100 = no cut
 
 ADJFUN_DECLARE(PID_PROFILE)
 ADJFUN_DECLARE(MASTER_GAIN_PITCH)

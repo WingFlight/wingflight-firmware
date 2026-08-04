@@ -171,6 +171,8 @@ typedef enum
     TELEM_FBUS_SENSOR_6                 = 115,
     TELEM_FBUS_SENSOR_7                 = 116,
     TELEM_FBUS_SENSOR_8                 = 117,
+
+    TELEM_OSC_LIMITER                   = 118, // Oscillation limiter status, see docs/development/Oscillation Detection.md
     TELEM_SENSOR_COUNT
 } sensor_id_e;
 

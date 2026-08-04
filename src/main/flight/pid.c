@@ -62,6 +62,16 @@
 
 static FAST_DATA_ZERO_INIT pidData_t pid;
 
+// Oscillation limiter tuning constants -- see docs/development/Oscillation Detection.md.
+// Not exposed via CLI: these shape the detection window/gates, not the enable/sensitivity
+// knobs a pilot needs to tune per-aircraft (those live in pidProfile_t).
+#define OSC_LIMITER_WINDOW_MS               200.0f   // periodicity window length
+#define OSC_LIMITER_MIN_CROSSINGS           6         // >= 3 full cycles required per window
+#define OSC_LIMITER_ENERGY_ALPHA            0.05f     // leaky-integrator energy smoothing
+#define OSC_LIMITER_RAMP_MS                 400.0f    // time to ramp fully to/from the floor
+#define OSC_LIMITER_SETPOINT_GATE_DEGS      300.0f    // freeze while commanding a large rate
+#define OSC_LIMITER_SETPOINT_SLEW_GATE_DEGS 3000.0f    // freeze right after an abrupt stick step
+
 
 //// Access functions
 
@@ -495,6 +505,33 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     pt1FilterUpdate(&pid.crossAxisRelaxFilter, crossAxisRelaxCutoff, pid.freq);
 
 
+    // Oscillation limiter -- see docs/development/Oscillation Detection.md. Reloading always
+    // restores full gain and clears any latch; this is the documented "restore on next
+    // arm/profile reload" behaviour, never a mid-flight auto-restore.
+    pid.oscLimiterEnabled = pidProfile->osc_limiter;
+    const float oscMinHz = MAX(1, pidProfile->osc_limiter_min_hz);
+    const float oscMaxHz = MAX(oscMinHz + 1, pidProfile->osc_limiter_max_hz);
+    const float oscCenterHz = (oscMinHz + oscMaxHz) * 0.5f;
+    const float oscQ = oscCenterHz / (oscMaxHz - oscMinHz);
+    pid.oscLimiterThresholdSq = pidProfile->osc_limiter_threshold * pidProfile->osc_limiter_threshold;
+    pid.oscLimiterFloor = constrainf(pidProfile->osc_limiter_floor * 0.01f, 0.1f, 1.0f);
+    pid.oscLimiterScoreMax = fmaxf(1.0f, pidProfile->osc_limiter_engage_ms * 1e-3f * pid.freq);
+    pid.oscLimiterWindowTicks = fmaxf(1.0f, OSC_LIMITER_WINDOW_MS * 1e-3f * pid.freq);
+    const float oscRampTicks = fmaxf(1.0f, OSC_LIMITER_RAMP_MS * 1e-3f * pid.freq);
+    pid.oscLimiterRampPerLoop = (1.0f - pid.oscLimiterFloor) / oscRampTicks;
+    for (int i = 0; i < PID_AXIS_COUNT; i++) {
+        biquadFilterInit(&pid.oscLimiter[i].bandpass, oscCenterHz, pid.freq, oscQ, BIQUAD_BPF);
+        pid.oscLimiter[i].energy = 0;
+        pid.oscLimiter[i].score = 0;
+        pid.oscLimiter[i].gainScale = 1.0f;
+        pid.oscLimiter[i].prevSample = 0;
+        pid.oscLimiter[i].prevSetpoint = 0;
+        pid.oscLimiter[i].crossCount = 0;
+        pid.oscLimiter[i].windowRemaining = pid.oscLimiterWindowTicks;
+        pid.oscLimiter[i].periodicOk = false;
+        pid.oscLimiter[i].active = false;
+    }
+
     // Initialise sub-profiles
 #ifdef USE_ACC
     levelingInit(pidProfile);
@@ -797,6 +834,72 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
     }
 }
 
+// Oscillation limiter detector -- see docs/development/Oscillation Detection.md.
+// Pure function of read-only per-axis signals; only ever writes pid.oscLimiter[axis].
+// Never touches pidProfile_t, never alters setpoint/gyroRate, and is fully disabled
+// unless osc_limiter is turned on.
+static void updateOscLimiter(uint8_t axis, float setpoint, float errorRate)
+{
+    oscLimiterAxis_t *osc = &pid.oscLimiter[axis];
+
+    if (!pid.oscLimiterEnabled || pid.pidMode != 1 || !isAirborne() || gyroOverflowDetected() ||
+        FLIGHT_MODE(FAILSAFE_MODE) || FLIGHT_MODE(GPS_RESCUE_MODE)) {
+        // Preconditions not met. Track setpoint so the slew gate doesn't see a
+        // stale value next time, but otherwise freeze -- don't reset a latch.
+        osc->prevSetpoint = setpoint;
+        return;
+    }
+
+    // Band-pass the tracking error to isolate the oscillation band
+    const float bp = biquadFilterApply(&osc->bandpass, errorRate);
+
+    // Smoothed energy estimate (mean square, leaky integrator)
+    osc->energy += (bp * bp - osc->energy) * OSC_LIMITER_ENERGY_ALPHA;
+
+    // Zero-crossing based periodicity check over a rolling window
+    if ((bp >= 0) != (osc->prevSample >= 0)) {
+        osc->crossCount++;
+    }
+    osc->prevSample = bp;
+
+    if (osc->windowRemaining <= 1) {
+        osc->periodicOk = (osc->crossCount >= OSC_LIMITER_MIN_CROSSINGS);
+        osc->crossCount = 0;
+        osc->windowRemaining = pid.oscLimiterWindowTicks;
+    } else {
+        osc->windowRemaining--;
+    }
+
+    // Gate out large/abrupt intentional stick inputs so they can't be scored as oscillation
+    const float setpointRate = fabsf(setpoint - osc->prevSetpoint) * pid.freq;
+    const bool gated = (fabsf(setpoint) > OSC_LIMITER_SETPOINT_GATE_DEGS) ||
+                        (setpointRate > OSC_LIMITER_SETPOINT_SLEW_GATE_DEGS);
+    osc->prevSetpoint = setpoint;
+
+    const bool candidate = !gated && osc->periodicOk && (osc->energy > pid.oscLimiterThresholdSq);
+
+    osc->score = constrainf(osc->score + (candidate ? 1.0f : -2.0f), 0.0f, pid.oscLimiterScoreMax);
+    osc->active = (osc->score >= pid.oscLimiterScoreMax);
+
+    // Slew-limited ramp towards the floor (or back to 1.0 once released)
+    const float target = osc->active ? pid.oscLimiterFloor : 1.0f;
+    osc->gainScale += constrainf(target - osc->gainScale, -pid.oscLimiterRampPerLoop, pid.oscLimiterRampPerLoop);
+
+    DEBUG_AXIS(OSC_LIMITER, axis, 0, lrintf(osc->energy));
+    DEBUG_AXIS(OSC_LIMITER, axis, 1, lrintf(osc->score));
+    DEBUG_AXIS(OSC_LIMITER, axis, 2, lrintf(osc->gainScale * 1000));
+}
+
+bool pidOscLimiterActive(int axis)
+{
+    return pid.oscLimiter[axis].active;
+}
+
+uint8_t pidOscLimiterScale(int axis)
+{
+    return lrintf(constrainf(pid.oscLimiter[axis].gainScale, 0.0f, 1.0f) * 100.0f);
+}
+
 static void pidApplyMode1(uint8_t axis)
 {
     // Rate setpoint
@@ -808,6 +911,10 @@ static void pidApplyMode1(uint8_t axis)
     // Calculate error rate
     const float errorRate = setpoint - gyroRate;
 
+    // Detect a sustained gain-induced oscillation on this axis and, if found,
+    // ramp masterGain down (never up) until the next arm/profile reload
+    updateOscLimiter(axis, setpoint, errorRate);
+
     // Throttle-based gain attenuation
     const float atten = pidThrottleAttenuation();
 
@@ -816,7 +923,7 @@ static void pidApplyMode1(uint8_t axis)
 
     // Optional per-axis curve scaling master gain by |stick deflection|
     const float curveMult = pidAxisGainCurve(axis);
-    const float masterGain = pid.masterGain[axis] * curveMult;
+    const float masterGain = pid.masterGain[axis] * curveMult * pid.oscLimiter[axis].gainScale;
 
 
   //// P-term
