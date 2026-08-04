@@ -247,6 +247,7 @@ typedef struct {
 } fdm_packet;
 typedef struct {
     float motor_speed[4];   // normal: [0.0, 1.0], 3D: [-1.0, 1.0]
+    float servo[8];         // wing control-surface outputs S1-S8, in microseconds (e.g. 1000-2000)
 } servo_packet;
 
 void FLASH_Unlock(void);

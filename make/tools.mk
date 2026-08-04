@@ -72,6 +72,65 @@ arm_sdk_clean:
 	$(V1) [ ! -d "$(ARM_SDK_DIR)" ] || $(RM) -r $(ARM_SDK_DIR)
 	$(V1) [ ! -d "$(DL_DIR)" ] || $(RM) -r $(DL_DIR)
 
+##############################
+#
+# Native Windows GCC (MinGW-w64), used to build TARGET=SITL natively on Windows.
+# Not needed on Linux/macOS, where a native gcc is normally already available.
+#
+##############################
+
+# Set up native Windows MinGW-w64 SDK (used only for TARGET=SITL on Windows)
+MINGW_SDK_DIR ?= $(TOOLS_DIR)/mingw64
+
+.PHONY: mingw_sdk_version
+mingw_sdk_version:
+	$(V1) $(MINGW_SDK_DIR)/bin/gcc --version
+
+## mingw_sdk_install : Install native Windows MinGW-w64 GCC (for TARGET=SITL)
+.PHONY: mingw_sdk_install
+
+# source: https://winlibs.com/ (standalone build of GCC and MinGW-w64, no installer, disk-location independent)
+# Note: pinned to a mature GCC/mingw-w64 combo rather than the bleeding-edge
+# release -- GCC 16.1.0 + mingw-w64 14.0.0 (as shipped in winlibs r4 at the
+# time of writing) has a winpthreads header bug (duplicate/incompatible
+# "struct _timespec64" declarations between <time.h> and <pthread.h>) that
+# breaks the build with -Werror.
+MINGW_SDK_URL := https://github.com/brechtsanders/winlibs_mingw/releases/download/13.3.0posix-11.0.1-ucrt-r1/winlibs-x86_64-posix-seh-gcc-13.3.0-mingw-w64ucrt-11.0.1-r1.zip
+
+MINGW_SDK_FILE := $(notdir $(MINGW_SDK_URL))
+
+MINGW_SDK_INSTALL_MARKER := $(MINGW_SDK_DIR)/bin/gcc.exe
+
+ifeq ($(OSFAMILY), windows)
+
+# order-only prereq on directory existance:
+mingw_sdk_install: | $(TOOLS_DIR)
+
+mingw_sdk_install: mingw_sdk_download $(MINGW_SDK_INSTALL_MARKER)
+
+$(MINGW_SDK_INSTALL_MARKER):
+        # winlibs zip already contains a top-level "mingw64" folder, so extract into TOOLS_DIR
+	$(V1) unzip -q -o -d $(TOOLS_DIR) "$(DL_DIR)/$(MINGW_SDK_FILE)"
+
+.PHONY: mingw_sdk_download
+mingw_sdk_download: | $(DL_DIR)
+mingw_sdk_download: $(DL_DIR)/$(MINGW_SDK_FILE)
+$(DL_DIR)/$(MINGW_SDK_FILE):
+        # download the source only if it's newer than what we already have
+	$(V1) curl -L -k -o "$(DL_DIR)/$(MINGW_SDK_FILE)" -z "$(DL_DIR)/$(MINGW_SDK_FILE)" "$(MINGW_SDK_URL)"
+
+else
+
+mingw_sdk_install:
+	@echo "mingw_sdk_install is only needed on Windows -- use your system's native gcc for TARGET=SITL on $(OSFAMILY)"
+
+endif
+
+## mingw_sdk_clean   : Uninstall native Windows MinGW-w64 GCC
+.PHONY: mingw_sdk_clean
+mingw_sdk_clean:
+	$(V1) [ ! -d "$(MINGW_SDK_DIR)" ] || $(RM) -r $(MINGW_SDK_DIR)
+
 .PHONY: openocd_win_install
 
 openocd_win_install: | $(DL_DIR) $(TOOLS_DIR)

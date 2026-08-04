@@ -48,6 +48,7 @@ const timerHardware_t timerHardware[1]; // unused
 
 #include "drivers/accgyro/accgyro_fake.h"
 #include "flight/imu.h"
+#include "flight/servos.h"
 
 #include "config/feature.h"
 #include "config/config.h"
@@ -84,6 +85,25 @@ static pthread_cond_t dyadReadyCond;
 // dyad_update() loop and any other thread calling into dyad (e.g. the main
 // thread via drivers/serial_tcp.c).
 static pthread_mutex_t dyadLock;
+
+// SITL has no real timers/registers, but flight/servos.c (compiled for every
+// target) unconditionally calls this to arm each configured servo channel.
+// drivers/pwm_output.c (the normal home of pwmOutConfig()) is excluded from
+// the SITL build (see make/mcu/SITL.mk), so provide a no-op stand-in here:
+// leave ccr NULL so servos.c's "if (servoChannel[index].ccr)" guards skip the
+// (nonexistent) register write; the actual servo positions are read back via
+// getServoOutput() in pwmCompleteMotorUpdate() below instead.
+void pwmOutConfig(timerChannel_t *channel, const timerHardware_t *timerHardware, uint32_t hz, uint16_t period, uint16_t value, uint8_t inversion)
+{
+    UNUSED(timerHardware);
+    UNUSED(hz);
+    UNUSED(period);
+    UNUSED(value);
+    UNUSED(inversion);
+
+    channel->ccr = NULL;
+    channel->tim = NULL;
+}
 
 void simDyadLock(void) {
     pthread_mutex_lock(&dyadLock);
@@ -538,6 +558,12 @@ static void pwmCompleteMotorUpdate(void)
     pwmPkt.motor_speed[0] = motorsPwm[1] / outScale;
     pwmPkt.motor_speed[1] = motorsPwm[2] / outScale;
     pwmPkt.motor_speed[2] = motorsPwm[3] / outScale;
+
+    // wing control-surface outputs (S1-Sn), in microseconds, for fixed-wing FDMs
+    const uint8_t servoCount = MIN(getServoCount(), (uint8_t)ARRAYLEN(pwmPkt.servo));
+    for (uint8_t i = 0; i < ARRAYLEN(pwmPkt.servo); i++) {
+        pwmPkt.servo[i] = (i < servoCount) ? getServoOutput(i) : 0;
+    }
 
     // get one "fdm_packet" can only send one "servo_packet"!!
     if (pthread_mutex_trylock(&updateLock) != 0) return;

@@ -27,7 +27,20 @@ ifeq ($(OSFAMILY),windows)
 ARCH_FLAGS      := $(ARCH_FLAGS) -mno-ms-bitfields
 endif
 
+# SITL is a native (non-ARM) build, so the ARM cross toolchain doesn't apply here.
+# On Windows, prefer the vendored MinGW-w64 GCC (see 'make mingw_sdk_install') when
+# present under tools/mingw64, so TARGET=SITL doesn't depend on a system-wide
+# compiler; otherwise fall back to whatever "gcc" is on PATH.
+MINGW_SDK_DIR   ?= $(TOOLS_DIR)/mingw64
+ifeq ($(OSFAMILY),windows)
+  ifeq ($(shell [ -x "$(MINGW_SDK_DIR)/bin/gcc.exe" ] && echo "exists"), exists)
+    ARM_SDK_PREFIX := $(MINGW_SDK_DIR)/bin/
+  else
+    ARM_SDK_PREFIX =
+  endif
+else
 ARM_SDK_PREFIX  =
+endif
 
 MCU_EXCLUDES = \
             drivers/adc.c \
@@ -58,11 +71,16 @@ TARGET_MAP  = $(OBJECT_DIR)/$(FORKNAME)_$(TARGET).map
 # separate librt (clock_gettime/nanosleep are provided via winpthreads /
 # msvcrt instead), so -lc/-lrt must be omitted there; they're required on
 # Linux/macOS.
+# -static avoids depending on libwinpthread-1.dll/libgcc_s_seh-1.dll being
+# reachable on PATH at runtime (otherwise the exe fails to start with
+# STATUS_DLL_NOT_FOUND (0xC0000135) unless run from a directory/PATH that
+# includes the toolchain's bin dir).
 ifeq ($(OSFAMILY),windows)
 LD_FLAGS    := \
               -lm \
               -lpthread \
               -lws2_32 \
+              -static \
               $(ARCH_FLAGS) \
               $(LTO_FLAGS) \
               $(DEBUG_FLAGS) \
