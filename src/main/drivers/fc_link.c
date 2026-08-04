@@ -63,6 +63,7 @@
 
 #include "config/config.h"
 #include "config/config_eeprom.h"
+#include "config/feature.h"
 
 #include "pg/fbus_master.h"
 #include "pg/fc_link.h"
@@ -1058,6 +1059,15 @@ void fcLinkUpdate(timeUs_t currentTimeUs)
 
 void fcLinkInit(void)
 {
+    // Experimental: whole subsystem stays off -- port never opened, fcLinkPort
+    // stays NULL, fcLinkIsEnabled() and everything gated on it follow suit --
+    // until FEATURE_FC_LINK is turned on, regardless of any port function
+    // assignment. Mirrors FEATURE_THRUST_VECTOR's role for the TV PID loop.
+    if (!featureIsEnabled(FEATURE_FC_LINK)) {
+        fcLinkPort = NULL;
+        return;
+    }
+
     serialPortFunction_e function = FUNCTION_FC_LINK_MASTER;
     const serialPortConfig_t *portConfig = findSerialPortConfig(function);
 
