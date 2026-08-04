@@ -851,7 +851,7 @@ static void updateOscLimiter(uint8_t axis, float setpoint, float errorRate)
     }
 
     // Band-pass the tracking error to isolate the oscillation band
-    const float bp = biquadFilterApply(&osc->bandpass, errorRate);
+    const float bp = biquadFilterApplyDF1(&osc->bandpass, errorRate);
 
     // Smoothed energy estimate (mean square, leaky integrator)
     osc->energy += (bp * bp - osc->energy) * OSC_LIMITER_ENERGY_ALPHA;
