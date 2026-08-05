@@ -265,7 +265,7 @@ static const char * const featureNames[] = {
     [21] = "",
     [22] = "",
     [23] = "",
-    [24] = "",
+    [24] = "THRUST_VECTOR",
     [25] = "RX_SPI",
     [26] = "",
     [27] = "ESC_SENSOR",
@@ -338,6 +338,9 @@ static const char * const mixerInputNames[] = {
     [MIXER_IN_RC_CHANNEL_16]         = "CH16",
     [MIXER_IN_RC_CHANNEL_17]         = "CH17",
     [MIXER_IN_RC_CHANNEL_18]         = "CH18",
+    [MIXER_IN_STABILIZED_TV_ROLL]    = "TR",
+    [MIXER_IN_STABILIZED_TV_PITCH]   = "TP",
+    [MIXER_IN_STABILIZED_TV_YAW]     = "TY",
 };
 
 #if MAX_SUPPORTED_MOTORS != 4
