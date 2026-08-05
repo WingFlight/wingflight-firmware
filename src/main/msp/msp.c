@@ -3519,6 +3519,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP2_WING_SET_TV_PID_CONFIG:
+        if (dataSize != PID_ITEM_COUNT * 5 * sizeof(uint16_t) + 3 * sizeof(uint16_t) + 3 + PID_AXIS_COUNT * 6) {
+            return MSP_RESULT_ERROR;
+        }
         for (int i = 0; i < PID_ITEM_COUNT; i++) {
             tvPidProfileMutable()->pid[i].P = sbufReadU16(src);
             tvPidProfileMutable()->pid[i].I = sbufReadU16(src);

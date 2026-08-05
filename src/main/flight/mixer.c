@@ -334,6 +334,12 @@ static void mixerUpdateInputs(void)
         // Yaw command is reversed in setpoint.c relative to raw RC (unlike other axes);
         // keep the same reversal here so passthrough yaw direction matches stabilized.
         mixer.input[MIXER_IN_STABILIZED_YAW]   = -mixer.input[MIXER_IN_RC_CHANNEL_YAW];
+        // No raw RC channel is mapped to the independent TV axes, so the only safe
+        // bypass is neutral: zero the TV stabilized inputs rather than leave any
+        // TV-driven actuator still under PID stabilization during a passthrough bailout.
+        mixer.input[MIXER_IN_STABILIZED_TV_ROLL]  = 0;
+        mixer.input[MIXER_IN_STABILIZED_TV_PITCH] = 0;
+        mixer.input[MIXER_IN_STABILIZED_TV_YAW]   = 0;
     }
     // BOXMANUAL mode: replace stabilized inputs with the same rates/expo-shaped setpoint the
     // PID rate loop targets, but skip the gyro-corrected PID output itself - same stick feel as

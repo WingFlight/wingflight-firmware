@@ -878,9 +878,12 @@ static void subTaskPidController(timeUs_t currentTimeUs)
     // BOXTHRUSTVECTOR gates the mix live in flight, on top of the feature
     // being enabled at all; reset (rather than just skip) while switched off
     // so I-term doesn't silently wind up unseen and bump the output on
-    // re-engage -- it ramps back up from zero instead.
+    // re-engage -- it ramps back up from zero instead. Also reset on gyro
+    // overflow, mirroring pidController()'s own pidReset() above -- the TV
+    // loop reads gyro.gyroADCf directly and must not keep integrating on
+    // corrupted samples while the main axes have already zeroed out.
     if (featureIsEnabled(FEATURE_THRUST_VECTOR)) {
-        if (IS_RC_MODE_ACTIVE(BOXTHRUSTVECTOR)) {
+        if (IS_RC_MODE_ACTIVE(BOXTHRUSTVECTOR) && !gyroOverflowDetected()) {
             tvPidController(currentTimeUs);
         } else {
             tvPidReset();
