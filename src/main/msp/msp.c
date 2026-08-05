@@ -87,6 +87,7 @@
 #include "flight/mixer.h"
 #include "flight/logic_condition.h"
 #include "flight/pid.h"
+#include "flight/tv_pid.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
@@ -1465,6 +1466,40 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteS16(dst, boardAlignment()->mountTrim.roll);
         sbufWriteS16(dst, boardAlignment()->mountTrim.pitch);
         sbufWriteS16(dst, boardAlignment()->mountTrim.yaw);
+        break;
+
+    case MSP2_WING_TV_PID_CONFIG:
+        for (int i = 0; i < PID_ITEM_COUNT; i++) {
+            sbufWriteU16(dst, tvPidProfile()->pid[i].P);
+            sbufWriteU16(dst, tvPidProfile()->pid[i].I);
+            sbufWriteU16(dst, tvPidProfile()->pid[i].D);
+            sbufWriteU16(dst, tvPidProfile()->pid[i].F);
+            sbufWriteU16(dst, tvPidProfile()->pid[i].B);
+        }
+        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_ROLL]);
+        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_PITCH]);
+        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_YAW]);
+        sbufWriteU8(dst, tvPidProfile()->iterm_decay_time);
+        sbufWriteU8(dst, tvPidProfile()->iterm_decay_limit);
+        sbufWriteU8(dst, tvPidProfile()->iterm_relax_type);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->iterm_relax_level[i]);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->iterm_relax_cutoff[i]);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->error_limit[i]);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->dterm_cutoff[i]);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->bterm_cutoff[i]);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->gyro_cutoff[i]);
+        }
         break;
 
     case MSP_DEBUG_CONFIG:
@@ -3481,6 +3516,44 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         boardAlignmentMutable()->mountTrim.roll = sbufReadS16(src);
         boardAlignmentMutable()->mountTrim.pitch = sbufReadS16(src);
         boardAlignmentMutable()->mountTrim.yaw = sbufReadS16(src);
+        break;
+
+    case MSP2_WING_SET_TV_PID_CONFIG:
+        if (dataSize != PID_ITEM_COUNT * 5 * sizeof(uint16_t) + 3 * sizeof(uint16_t) + 3 + PID_AXIS_COUNT * 6) {
+            return MSP_RESULT_ERROR;
+        }
+        for (int i = 0; i < PID_ITEM_COUNT; i++) {
+            tvPidProfileMutable()->pid[i].P = sbufReadU16(src);
+            tvPidProfileMutable()->pid[i].I = sbufReadU16(src);
+            tvPidProfileMutable()->pid[i].D = sbufReadU16(src);
+            tvPidProfileMutable()->pid[i].F = sbufReadU16(src);
+            tvPidProfileMutable()->pid[i].B = sbufReadU16(src);
+        }
+        tvPidProfileMutable()->master_gain[PID_ROLL] = sbufReadU16(src);
+        tvPidProfileMutable()->master_gain[PID_PITCH] = sbufReadU16(src);
+        tvPidProfileMutable()->master_gain[PID_YAW] = sbufReadU16(src);
+        tvPidProfileMutable()->iterm_decay_time = sbufReadU8(src);
+        tvPidProfileMutable()->iterm_decay_limit = sbufReadU8(src);
+        tvPidProfileMutable()->iterm_relax_type = sbufReadU8(src);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->iterm_relax_level[i] = sbufReadU8(src);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->iterm_relax_cutoff[i] = sbufReadU8(src);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->error_limit[i] = sbufReadU8(src);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->dterm_cutoff[i] = sbufReadU8(src);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->bterm_cutoff[i] = sbufReadU8(src);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->gyro_cutoff[i] = sbufReadU8(src);
+        }
+        tvPidLoadProfile(tvPidProfile());
         break;
 
     case MSP_SET_MIXER_CONFIG:

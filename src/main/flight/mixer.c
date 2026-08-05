@@ -32,6 +32,7 @@
 
 #include "config/config.h"
 #include "config/config_reset.h"
+#include "config/feature.h"
 
 #include "fc/runtime_config.h"
 #include "fc/rc_controls.h"
@@ -39,6 +40,7 @@
 #include "fc/rc.h"
 
 #include "flight/pid.h"
+#include "flight/tv_pid.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/wiggle.h"
@@ -314,6 +316,15 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_STABILIZED_PITCH, pidGetOutput(PID_PITCH));
     mixerSetInput(MIXER_IN_STABILIZED_YAW, pidGetOutput(PID_YAW));
 
+    // Independent Thrust Vector stabilised inputs. Left at their zero default
+    // when the feature is disabled, so any mixer rule referencing them is a
+    // harmless no-op.
+    if (featureIsEnabled(FEATURE_THRUST_VECTOR)) {
+        mixerSetInput(MIXER_IN_STABILIZED_TV_ROLL, tvPidGetOutput(PID_ROLL));
+        mixerSetInput(MIXER_IN_STABILIZED_TV_PITCH, tvPidGetOutput(PID_PITCH));
+        mixerSetInput(MIXER_IN_STABILIZED_TV_YAW, tvPidGetOutput(PID_YAW));
+    }
+
     // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels, bypassing the
     // rates/expo curve as well as PID - direct radio to surfaces. Takes priority over MANUAL
     // if both happen to be active at once.
@@ -323,6 +334,12 @@ static void mixerUpdateInputs(void)
         // Yaw command is reversed in setpoint.c relative to raw RC (unlike other axes);
         // keep the same reversal here so passthrough yaw direction matches stabilized.
         mixer.input[MIXER_IN_STABILIZED_YAW]   = -mixer.input[MIXER_IN_RC_CHANNEL_YAW];
+        // No raw RC channel is mapped to the independent TV axes, so the only safe
+        // bypass is neutral: zero the TV stabilized inputs rather than leave any
+        // TV-driven actuator still under PID stabilization during a passthrough bailout.
+        mixer.input[MIXER_IN_STABILIZED_TV_ROLL]  = 0;
+        mixer.input[MIXER_IN_STABILIZED_TV_PITCH] = 0;
+        mixer.input[MIXER_IN_STABILIZED_TV_YAW]   = 0;
     }
     // BOXMANUAL mode: replace stabilized inputs with the same rates/expo-shaped setpoint the
     // PID rate loop targets, but skip the gyro-corrected PID output itself - same stick feel as

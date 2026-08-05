@@ -104,6 +104,7 @@
 #include "pg/sdio.h"
 #include "pg/rcdevice.h"
 #include "pg/stats.h"
+#include "pg/tv_pid.h"
 #include "pg/board.h"
 #include "pg/freq.h"
 #include "pg/sbus_output.h"
@@ -1117,6 +1118,47 @@ const clivalue_t valueTable[] = {
     { "atthold_gain",               VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_PID_PROFILE, offsetof(pidProfile_t, atthold.gain) },
     { "atthold_deadband",           VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, atthold.deadband) },
     { "atthold_max_rate",           VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 1800 }, PG_PID_PROFILE, offsetof(pidProfile_t, atthold.max_rate) },
+
+
+// PG_THRUST_VECTOR_PROFILE
+    { "tv_master_gain",             VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = PID_AXIS_COUNT, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, master_gain) },
+
+    { "tv_pitch_p_gain",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_PITCH].P) },
+    { "tv_pitch_i_gain",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_PITCH].I) },
+    { "tv_pitch_d_gain",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_PITCH].D) },
+    { "tv_pitch_f_gain",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_PITCH].F) },
+    { "tv_pitch_b_gain",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_PITCH].B) },
+    { "tv_roll_p_gain",             VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_ROLL].P) },
+    { "tv_roll_i_gain",             VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_ROLL].I) },
+    { "tv_roll_d_gain",             VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_ROLL].D) },
+    { "tv_roll_f_gain",             VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_ROLL].F) },
+    { "tv_roll_b_gain",             VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_ROLL].B) },
+    { "tv_yaw_p_gain",              VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_YAW].P) },
+    { "tv_yaw_i_gain",              VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_YAW].I) },
+    { "tv_yaw_d_gain",              VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_YAW].D) },
+    { "tv_yaw_b_gain",              VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_YAW].B) },
+    { "tv_yaw_f_gain",              VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, pid[PID_YAW].F) },
+
+    { "tv_pitch_d_cutoff",          VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, dterm_cutoff[PID_PITCH]) },
+    { "tv_pitch_b_cutoff",          VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, bterm_cutoff[PID_PITCH]) },
+    { "tv_pitch_gyro_cutoff",       VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, gyro_cutoff[PID_PITCH]) },
+
+    { "tv_roll_d_cutoff",           VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, dterm_cutoff[PID_ROLL]) },
+    { "tv_roll_b_cutoff",           VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, bterm_cutoff[PID_ROLL]) },
+    { "tv_roll_gyro_cutoff",        VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, gyro_cutoff[PID_ROLL]) },
+
+    { "tv_yaw_d_cutoff",            VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, dterm_cutoff[PID_YAW]) },
+    { "tv_yaw_b_cutoff",            VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, bterm_cutoff[PID_YAW]) },
+    { "tv_yaw_gyro_cutoff",         VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, gyro_cutoff[PID_YAW]) },
+
+    { "tv_error_limit",             VAR_UINT8  | MASTER_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, error_limit) },
+
+    { "tv_iterm_decay_time",        VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_decay_time) },
+    { "tv_iterm_decay_limit",       VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_decay_limit) },
+
+    { "tv_iterm_relax_type",        VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_ITERM_RELAX_TYPE }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_type) },
+    { "tv_iterm_relax_level",       VAR_UINT8  | MASTER_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_level) },
+    { "tv_iterm_relax_cutoff",      VAR_UINT8  | MASTER_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_cutoff) },
 
 
 // PG_TELEMETRY_CONFIG

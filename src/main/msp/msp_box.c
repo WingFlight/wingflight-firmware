@@ -110,6 +110,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     BOXITEM(BOXAUTOHOVER, "AUTO HOVER", 58),
     BOXITEM(BOXMANUAL, "MANUAL", 59),
     BOXITEM(BOXAUTOTRIM, "AUTO TRIM", 60),
+    BOXITEM(BOXTHRUSTVECTOR, "THRUST VECTOR", 61),
 };
 
 // mask of enabled IDs, calculated on startup based on enabled features. boxId_e is used as bit index
@@ -239,6 +240,10 @@ void initActiveBoxIds(void)
     BME(BOXMANUAL);
     BME(BOXAUTOTRIM);
     BME(BOXGOVERNOR);
+
+    if (featureIsEnabled(FEATURE_THRUST_VECTOR)) {
+        BME(BOXTHRUSTVECTOR);
+    }
 
 #ifdef USE_TELEMETRY
     if (featureIsEnabled(FEATURE_TELEMETRY)) {

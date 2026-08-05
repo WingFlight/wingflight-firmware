@@ -40,6 +40,7 @@
 #include "fc/rc.h"
 
 #include "flight/pid.h"
+#include "flight/tv_pid.h"
 #include "flight/mixer.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
@@ -213,6 +214,26 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
     ADJ_ENTRY(SERVO_TRIM_ROLL,             -200, 200),
     ADJ_ENTRY(SERVO_TRIM_PITCH,            -200, 200),
     ADJ_ENTRY(SERVO_TRIM_YAW,             -200, 200),
+
+    ADJ_ENTRY(TV_MASTER_GAIN_ROLL,          25, 1000),
+    ADJ_ENTRY(TV_MASTER_GAIN_PITCH,         25, 1000),
+    ADJ_ENTRY(TV_MASTER_GAIN_YAW,           25, 1000),
+
+    ADJ_ENTRY(TV_ROLL_P_GAIN,               0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_ROLL_I_GAIN,               0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_ROLL_D_GAIN,               0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_ROLL_F_GAIN,               0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_ROLL_B_GAIN,               0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_PITCH_P_GAIN,              0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_PITCH_I_GAIN,              0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_PITCH_D_GAIN,              0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_PITCH_F_GAIN,              0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_PITCH_B_GAIN,              0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_YAW_P_GAIN,                0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_YAW_I_GAIN,                0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_YAW_D_GAIN,                0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_YAW_F_GAIN,                0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_YAW_B_GAIN,                0, PID_GAIN_MAX),
 
 };
 
