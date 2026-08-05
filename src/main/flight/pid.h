@@ -85,14 +85,15 @@ typedef struct {
 typedef struct {
     biquadFilter_t bandpass;
     float energy;             // smoothed band-passed error energy (mean square)
-    float score;              // engage/release hysteresis, in loop ticks
+    float score;              // sustained-detection hysteresis, in loop ticks
     float gainScale;          // live gain multiplier applied on top of masterGain (1.0 = no cut)
     float prevSample;         // previous band-passed sample, for zero-crossing detection
     float prevSetpoint;       // previous setpoint, for the setpoint-slew gate
     uint16_t crossCount;      // zero crossings counted in the current periodicity window
     uint16_t windowRemaining; // loop ticks left in the current periodicity window
+    uint16_t telemetryHold;   // loop ticks left before the reported 'active' flag clears
     bool periodicOk;          // result of the last completed periodicity window
-    bool active;              // true while this axis's gain is latched down
+    bool active;              // true while this axis's gain is currently cut (reporting only)
 } oscLimiterAxis_t;
 
 typedef struct {
@@ -134,6 +135,7 @@ typedef struct pid_s {
     float oscLimiterFloor;        // 0..1, minimum gain scale the limiter may reach
     float oscLimiterScoreMax;     // loop ticks of sustained detection needed to fully engage
     uint16_t oscLimiterWindowTicks; // loop ticks per periodicity window
+    uint16_t oscLimiterTelemetryHoldTicks; // loop ticks the reported 'active' flag stays asserted
     float oscLimiterRampPerLoop;  // max gainScale change per loop (slew limit)
     oscLimiterAxis_t oscLimiter[PID_AXIS_COUNT];
 
@@ -177,6 +179,7 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);
 // Reporting consumers (blackbox, telemetry) must go through these instead of touching pid_t.
 bool pidOscLimiterActive(int axis);
 uint8_t pidOscLimiterScale(int axis);  // percent, 100 = no cut
+void pidResetOscLimiter(void);  // clears the cut and telemetry hold for a new flight -- call from tryArm() only
 
 ADJFUN_DECLARE(PID_PROFILE)
 ADJFUN_DECLARE(MASTER_GAIN_PITCH)

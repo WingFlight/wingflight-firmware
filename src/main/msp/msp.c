@@ -2065,6 +2065,13 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->gain_curve[PID_YAW]);
         /* Att Hold max rate */
         sbufWriteU16(dst, currentPidProfile->atthold.max_rate);
+        /* Oscillation limiter */
+        sbufWriteU8(dst, currentPidProfile->osc_limiter);
+        sbufWriteU8(dst, currentPidProfile->osc_limiter_min_hz);
+        sbufWriteU8(dst, currentPidProfile->osc_limiter_max_hz);
+        sbufWriteU8(dst, currentPidProfile->osc_limiter_threshold);
+        sbufWriteU8(dst, currentPidProfile->osc_limiter_floor);
+        sbufWriteU16(dst, currentPidProfile->osc_limiter_engage_ms);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -3079,6 +3086,15 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         /* Att Hold max rate */
         if (sbufBytesRemaining(src) >= 2) {
             currentPidProfile->atthold.max_rate = sbufReadU16(src);
+        }
+        /* Oscillation limiter */
+        if (sbufBytesRemaining(src) >= 7) {
+            currentPidProfile->osc_limiter = sbufReadU8(src);
+            currentPidProfile->osc_limiter_min_hz = sbufReadU8(src);
+            currentPidProfile->osc_limiter_max_hz = sbufReadU8(src);
+            currentPidProfile->osc_limiter_threshold = sbufReadU8(src);
+            currentPidProfile->osc_limiter_floor = sbufReadU8(src);
+            currentPidProfile->osc_limiter_engage_ms = sbufReadU16(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

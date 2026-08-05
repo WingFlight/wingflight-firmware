@@ -561,6 +561,7 @@ void tryArm(void)
         armingEnabledWiggle = WIGGLE_DONE;
 
         resetMotorOverride();
+        pidResetOscLimiter();
 
         if (isModeActivationConditionPresent(BOXPREARM)) {
             ENABLE_ARMING_FLAG(WAS_ARMED_WITH_PREARM);
