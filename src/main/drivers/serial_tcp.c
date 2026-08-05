@@ -27,6 +27,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 
 #include "platform.h"
@@ -38,6 +39,11 @@
 #include "io/serial.h"
 #include "serial_tcp.h"
 
+#if !defined(_WIN32) && !defined(__MINGW32__)
+#include <unistd.h>
+#define closesocket close
+#endif
+
 #define BASE_PORT 5760
 
 static const struct serialPortVTable tcpVTable; // Forward
@@ -47,51 +53,65 @@ static bool tcpStart = false;
 bool tcpIsStart(void) {
     return tcpStart;
 }
-static void onData(dyad_Event *e) {
-    tcpPort_t* s = (tcpPort_t*)(e->udata);
-    tcpDataIn(s, (uint8_t*)e->data, e->size);
-}
-static void onClose(dyad_Event *e) {
-    tcpPort_t* s = (tcpPort_t*)(e->udata);
-    s->clientCount--;
-    s->conn = NULL;
-    fprintf(stderr, "[CLS]UART%u: %d,%d\n", s->id + 1, s->connected, s->clientCount);
-    if (s->clientCount == 0) {
-        s->connected = false;
-    }
-}
-static void onAccept(dyad_Event *e) {
-    tcpPort_t* s = (tcpPort_t*)(e->udata);
-    fprintf(stderr, "New connection on UART%u, %d\n", s->id + 1, s->clientCount);
 
-    s->connected = true;
-    if (s->clientCount > 0) {
-        dyad_close(e->remote);
-        return;
+// Blocking-socket, thread-per-port connection handling, modeled directly on
+// iNav's proven SITL implementation (src/main/drivers/serial_tcp.c there):
+// one dedicated thread per port blocks in accept()/recv() rather than
+// multiplexing all ports through a single non-blocking reactor (previously
+// dyad). See serial_tcp.h for the rationale.
+static void* tcpAcceptThread(void *arg)
+{
+    tcpPort_t *s = (tcpPort_t*)arg;
+
+    for (;;) {
+        struct sockaddr_in clientAddr;
+        socklen_t clientLen = sizeof(clientAddr);
+        tcpSocket_t clientSocket = accept(s->listenSocket, (struct sockaddr*)&clientAddr, &clientLen);
+        if (clientSocket == TCP_INVALID_SOCKET) {
+            // The listening socket itself is gone (shouldn't normally happen
+            // for the lifetime of the process) - stop trying to accept.
+            break;
+        }
+
+        int one = 1;
+        setsockopt(clientSocket, IPPROTO_TCP, TCP_NODELAY, (const char*)&one, sizeof(one));
+
+        // Discard any bytes left over from a previous client's connection so
+        // they don't get prepended to the new client's first read.
+        pthread_mutex_lock(&s->rxLock);
+        s->port.rxBufferHead = 0;
+        s->port.rxBufferTail = 0;
+        pthread_mutex_unlock(&s->rxLock);
+
+        pthread_mutex_lock(&s->connLock);
+        s->clientSocket = clientSocket;
+        s->connected = true;
+        pthread_mutex_unlock(&s->connLock);
+
+        fprintf(stderr, "[NEW]UART%u\n", s->id + 1);
+
+        for (;;) {
+            uint8_t buf[512];
+            int n = recv(clientSocket, (char*)buf, sizeof(buf), 0);
+            if (n <= 0) {
+                break;
+            }
+            tcpDataIn(s, buf, n);
+        }
+
+        fprintf(stderr, "[CLS]UART%u\n", s->id + 1);
+
+        pthread_mutex_lock(&s->connLock);
+        s->connected = false;
+        s->clientSocket = TCP_INVALID_SOCKET;
+        pthread_mutex_unlock(&s->connLock);
+
+        closesocket(clientSocket);
     }
-    s->clientCount++;
-    fprintf(stderr, "[NEW]UART%u: %d,%d\n", s->id + 1, s->connected, s->clientCount);
-    // Discard any bytes left over from a previous client's connection (e.g.
-    // a reply that was still queued in the tx buffer when that client
-    // disconnected). Without this, stale bytes get prepended to the new
-    // client's first read, corrupting the MSP stream.
-    // Note: don't take s->txLock/s->rxLock here. onAccept() runs from within
-    // dyad_update(), which the tcpThread calls with dyadLock already held,
-    // so the lock order here is dyadLock -> txLock. tcpDataOut() acquires
-    // the opposite order (txLock -> dyadLock), so taking txLock in this
-    // function would deadlock against it. Resetting the plain indices is
-    // safe enough here since onAccept() only fires when no client was
-    // previously connected (clientCount was 0).
-    s->port.txBufferHead = 0;
-    s->port.txBufferTail = 0;
-    s->port.rxBufferHead = 0;
-    s->port.rxBufferTail = 0;
-    s->conn = e->remote;
-    dyad_setNoDelay(e->remote, 1);
-    dyad_setTimeout(e->remote, 120);
-    dyad_addListener(e->remote, DYAD_EVENT_DATA, onData, e->udata);
-    dyad_addListener(e->remote, DYAD_EVENT_CLOSE, onClose, e->udata);
+
+    return NULL;
 }
+
 static tcpPort_t* tcpReconfigure(tcpPort_t *s, int id)
 {
     if (tcpPortInitialized[id]) {
@@ -99,35 +119,66 @@ static tcpPort_t* tcpReconfigure(tcpPort_t *s, int id)
         return s;
     }
 
-    if (pthread_mutex_init(&s->txLock, NULL) != 0) {
-        fprintf(stderr, "TX mutex init failed - %d\n", errno);
-        // TODO: clean up & re-init
+    if (pthread_mutex_init(&s->connLock, NULL) != 0) {
+        fprintf(stderr, "conn mutex init failed - %d\n", errno);
         return NULL;
     }
     if (pthread_mutex_init(&s->rxLock, NULL) != 0) {
         fprintf(stderr, "RX mutex init failed - %d\n", errno);
-        // TODO: clean up & re-init
         return NULL;
     }
+
+#if defined(_WIN32) || defined(__MINGW32__)
+    if (!tcpStart) {
+        // WSAStartup()/WSACleanup() are refcounted per-process by Winsock,
+        // but we never call WSACleanup() (see serial_tcp.h) so a single
+        // one-time call here is sufficient for the life of the process.
+        WSADATA wsaData;
+        int err = WSAStartup(MAKEWORD(2, 2), &wsaData);
+        if (err != 0) {
+            fprintf(stderr, "WSAStartup failed (%d)\n", err);
+            return NULL;
+        }
+    }
+#endif
 
     tcpStart = true;
     tcpPortInitialized[id] = true;
 
     s->connected = false;
-    s->clientCount = 0;
     s->id = id;
-    s->conn = NULL;
-    simDyadLock();
-    s->serv = dyad_newStream();
-    dyad_setNoDelay(s->serv, 1);
-    dyad_addListener(s->serv, DYAD_EVENT_ACCEPT, onAccept, s);
+    s->clientSocket = TCP_INVALID_SOCKET;
 
-    if (dyad_listenEx(s->serv, "0.0.0.0", BASE_PORT + id + 1, 10) == 0) {
-        fprintf(stderr, "bind port %u for UART%u\n", (unsigned)BASE_PORT + id + 1, (unsigned)id + 1);
-    } else {
-        fprintf(stderr, "bind port %u for UART%u failed!!\n", (unsigned)BASE_PORT + id + 1, (unsigned)id + 1);
+    s->listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s->listenSocket == TCP_INVALID_SOCKET) {
+        fprintf(stderr, "socket() failed for UART%u\n", (unsigned)id + 1);
+        return NULL;
     }
-    simDyadUnlock();
+
+    int one = 1;
+    setsockopt(s->listenSocket, SOL_SOCKET, SO_REUSEADDR, (const char*)&one, sizeof(one));
+
+    struct sockaddr_in bindAddr;
+    memset(&bindAddr, 0, sizeof(bindAddr));
+    bindAddr.sin_family = AF_INET;
+    bindAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    bindAddr.sin_port = htons(BASE_PORT + id + 1);
+
+    if (bind(s->listenSocket, (struct sockaddr*)&bindAddr, sizeof(bindAddr)) != 0) {
+        fprintf(stderr, "bind port %u for UART%u failed!!\n", (unsigned)BASE_PORT + id + 1, (unsigned)id + 1);
+        return NULL;
+    }
+    if (listen(s->listenSocket, 10) != 0) {
+        fprintf(stderr, "listen port %u for UART%u failed!!\n", (unsigned)BASE_PORT + id + 1, (unsigned)id + 1);
+        return NULL;
+    }
+    fprintf(stderr, "bind port %u for UART%u\n", (unsigned)BASE_PORT + id + 1, (unsigned)id + 1);
+
+    if (pthread_create(&s->acceptThread, NULL, tcpAcceptThread, s) != 0) {
+        fprintf(stderr, "Unable to create accept thread for UART%u\n", (unsigned)id + 1);
+        return NULL;
+    }
+
     return s;
 }
 
@@ -147,11 +198,8 @@ serialPort_t *serTcpOpen(int id, serialReceiveCallbackPtr rxCallback, void *rxCa
 
     // common serial initialisation code should move to serialPort::init()
     s->port.rxBufferHead = s->port.rxBufferTail = 0;
-    s->port.txBufferHead = s->port.txBufferTail = 0;
     s->port.rxBufferSize = RX_BUFFER_SIZE;
-    s->port.txBufferSize = TX_BUFFER_SIZE;
     s->port.rxBuffer = s->rxBuffer;
-    s->port.txBuffer = s->txBuffer;
 
     // callback works for IRQ-based RX ONLY
     s->port.rxCallback = rxCallback;
@@ -178,30 +226,19 @@ uint32_t tcpTotalRxBytesWaiting(const serialPort_t *instance)
     return count;
 }
 
+// Writes are synchronous send() calls (see tcpWriteBuf()), so there is no TX
+// queue to report on - always claim plenty of room / an empty buffer, as
+// iNav's equivalent tcpTotalTxBytesFree()/isTcpTransmitBufferEmpty() do.
 uint32_t tcpTotalTxBytesFree(const serialPort_t *instance)
 {
-    tcpPort_t *s = (tcpPort_t*)instance;
-    uint32_t bytesUsed;
-
-    pthread_mutex_lock(&s->txLock);
-    if (s->port.txBufferHead >= s->port.txBufferTail) {
-        bytesUsed = s->port.txBufferHead - s->port.txBufferTail;
-    } else {
-        bytesUsed = s->port.txBufferSize + s->port.txBufferHead - s->port.txBufferTail;
-    }
-    uint32_t bytesFree = (s->port.txBufferSize - 1) - bytesUsed;
-    pthread_mutex_unlock(&s->txLock);
-
-    return bytesFree;
+    UNUSED(instance);
+    return 0xFFFF;
 }
 
 bool isTcpTransmitBufferEmpty(const serialPort_t *instance)
 {
-    tcpPort_t *s = (tcpPort_t *)instance;
-    pthread_mutex_lock(&s->txLock);
-    bool isEmpty = s->port.txBufferTail == s->port.txBufferHead;
-    pthread_mutex_unlock(&s->txLock);
-    return isEmpty;
+    UNUSED(instance);
+    return true;
 }
 
 uint8_t tcpRead(serialPort_t *instance)
@@ -221,53 +258,28 @@ uint8_t tcpRead(serialPort_t *instance)
     return ch;
 }
 
-void tcpWrite(serialPort_t *instance, uint8_t ch)
+// Sends are direct, blocking send() calls on the current client socket (if
+// any) rather than going through a queue - matches iNav's tcpWritBuf(). The
+// accept thread is the only other thread touching the socket and only ever
+// reads from it, so no lock is needed around send() itself, only around the
+// connLock-guarded fields identifying which socket (if any) is current.
+void tcpWriteBuf(serialPort_t *instance, const void *data, int count)
 {
     tcpPort_t *s = (tcpPort_t *)instance;
-    pthread_mutex_lock(&s->txLock);
-
-    s->port.txBuffer[s->port.txBufferHead] = ch;
-    if (s->port.txBufferHead + 1 >= s->port.txBufferSize) {
-        s->port.txBufferHead = 0;
-    } else {
-        s->port.txBufferHead++;
+    if (count <= 0) {
+        return;
     }
-    pthread_mutex_unlock(&s->txLock);
 
-    tcpDataOut(s);
+    pthread_mutex_lock(&s->connLock);
+    if (s->connected) {
+        send(s->clientSocket, (const char*)data, count, 0);
+    }
+    pthread_mutex_unlock(&s->connLock);
 }
 
-void tcpDataOut(tcpPort_t *instance)
+void tcpWrite(serialPort_t *instance, uint8_t ch)
 {
-    tcpPort_t *s = (tcpPort_t *)instance;
-    // Fast unlocked pre-check to avoid taking locks in the common case where
-    // the connection is already known to be closed.
-    if (s->conn == NULL) return;
-    pthread_mutex_lock(&s->txLock);
-
-    simDyadLock();
-    // Re-check s->conn now that dyadLock is held: onClose() (which nulls
-    // s->conn and lets destroyClosedStreams() free the underlying
-    // dyad_Stream) only ever runs from within dyad_update(), which is itself
-    // entirely wrapped by dyadLock. Without this re-check, the connection
-    // could be closed/freed by the tcpThread between the unlocked check
-    // above and the dyad_write() calls below, turning s->conn into a
-    // dangling pointer and causing a use-after-free.
-    if (s->conn != NULL) {
-        if (s->port.txBufferHead < s->port.txBufferTail) {
-            // send data till end of buffer
-            int chunk = s->port.txBufferSize - s->port.txBufferTail;
-            dyad_write(s->conn, (const void *)&s->port.txBuffer[s->port.txBufferTail], chunk);
-            s->port.txBufferTail = 0;
-        }
-        int chunk = s->port.txBufferHead - s->port.txBufferTail;
-        if (chunk)
-            dyad_write(s->conn, (const void*)&s->port.txBuffer[s->port.txBufferTail], chunk);
-        s->port.txBufferTail = s->port.txBufferHead;
-    }
-    simDyadUnlock();
-
-    pthread_mutex_unlock(&s->txLock);
+    tcpWriteBuf(instance, &ch, 1);
 }
 
 void tcpDataIn(tcpPort_t *instance, uint8_t* ch, int size)
@@ -276,7 +288,6 @@ void tcpDataIn(tcpPort_t *instance, uint8_t* ch, int size)
     pthread_mutex_lock(&s->rxLock);
 
     while (size--) {
-//        printf("%c", *ch);
         s->port.rxBuffer[s->port.rxBufferHead] = *(ch++);
         if (s->port.rxBufferHead + 1 >= s->port.rxBufferSize) {
             s->port.rxBufferHead = 0;
@@ -285,7 +296,6 @@ void tcpDataIn(tcpPort_t *instance, uint8_t* ch, int size)
         }
     }
     pthread_mutex_unlock(&s->rxLock);
-//    printf("\n");
 }
 
 static const struct serialPortVTable tcpVTable = {
@@ -298,7 +308,8 @@ static const struct serialPortVTable tcpVTable = {
         .setMode = NULL,
         .setCtrlLineStateCb = NULL,
         .setBaudRateCb = NULL,
-        .writeBuf = NULL,
+        .writeBuf = tcpWriteBuf,
         .beginWrite = NULL,
         .endWrite = NULL,
 };
+

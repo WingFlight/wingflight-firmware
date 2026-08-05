@@ -264,11 +264,3 @@ uint64_t millis64(void);
 
 int lockMainPID(void);
 
-// dyad (lib/main/dyad) is not thread-safe: tcpThread() drives dyad_update()
-// continuously on a background thread while the main thread (via
-// serTcpOpen()/tcpDataOut() in drivers/serial_tcp.c) calls other dyad_*()
-// APIs that mutate the same global stream list/listener vectors. All dyad
-// API calls from outside dyad's own callbacks must be serialized with these.
-void simDyadLock(void);
-void simDyadUnlock(void);
-

@@ -57,24 +57,34 @@
 #undef BAUD_USER
 #else
 #include <netinet/in.h>
+#include <sys/socket.h>
 #endif
 #include <pthread.h>
-#include "dyad.h"
 
 #define RX_BUFFER_SIZE    1400
-#define TX_BUFFER_SIZE    1400
+
+// Blocking-socket, thread-per-port model (mirrors iNav's src/main/drivers/serial_tcp.c),
+// chosen over a non-blocking single-threaded reactor (previously dyad) after the latter
+// was found to suffer from mysterious, highly-reproducible mid-session connection drops
+// on Windows/MinGW loopback sockets that could not be root-caused. See Changes.md.
+#if defined(_WIN32) || defined(__MINGW32__)
+typedef SOCKET tcpSocket_t;
+#define TCP_INVALID_SOCKET INVALID_SOCKET
+#else
+typedef int tcpSocket_t;
+#define TCP_INVALID_SOCKET (-1)
+#endif
 
 typedef struct {
     serialPort_t port;
     uint8_t rxBuffer[RX_BUFFER_SIZE];
-    uint8_t txBuffer[TX_BUFFER_SIZE];
 
-    dyad_Stream *serv;
-    dyad_Stream *conn;
-    pthread_mutex_t txLock;
+    tcpSocket_t listenSocket;
+    tcpSocket_t clientSocket;
+    pthread_t acceptThread;
+    pthread_mutex_t connLock;
     pthread_mutex_t rxLock;
     bool connected;
-    uint16_t clientCount;
     uint8_t id;
 } tcpPort_t;
 
@@ -82,8 +92,8 @@ serialPort_t *serTcpOpen(int id, serialReceiveCallbackPtr rxCallback, void *rxCa
 
 // tcpPort API
 void tcpDataIn(tcpPort_t *instance, uint8_t* ch, int size);
-void tcpDataOut(tcpPort_t *instance);
 
 bool tcpIsStart(void);
 bool* tcpGetUsed(void);
 tcpPort_t* tcpGetPool(void);
+

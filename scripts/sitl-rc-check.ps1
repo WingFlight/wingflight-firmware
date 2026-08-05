@@ -106,8 +106,20 @@ function Resolve-MspPort {
         [int[]]$Candidates
     )
 
+    # SITL's TCP MSP server (dyad-based) only accepts one client connection
+    # at a time. This function probes with short-lived connections
+    # (Test-TcpPort / Test-MspApiPort) that connect and immediately
+    # disconnect; the server needs a brief moment to notice the disconnect
+    # before it will accept a *new* connection (e.g. the caller's own,
+    # persistent one). Without this settle delay, the caller's connection can
+    # arrive while the server still considers the probe connection active,
+    # and gets silently rejected - the client sees a successful TCP connect
+    # but never receives any MSP response.
+    $settleMs = 400
+
     if ($ExplicitPort -gt 0) {
         if (Test-TcpPort -RemoteHost $RemoteHost -ProbePort $ExplicitPort) {
+            Start-Sleep -Milliseconds $settleMs
             return $ExplicitPort
         }
         return 0
@@ -118,12 +130,14 @@ function Resolve-MspPort {
         if (Test-TcpPort -RemoteHost $RemoteHost -ProbePort $p) {
             if ($firstOpen -eq 0) { $firstOpen = $p }
             if (Test-MspApiPort -RemoteHost $RemoteHost -ProbePort $p -TimeoutSeconds 1) {
+                Start-Sleep -Milliseconds $settleMs
                 return $p
             }
         }
     }
 
     if ($firstOpen -gt 0) {
+        Start-Sleep -Milliseconds $settleMs
         return $firstOpen
     }
 
@@ -445,6 +459,47 @@ function Get-MaxDelta {
     return $max
 }
 
+function Reconnect-Msp {
+    param([int]$TimeoutSeconds)
+
+    # The SITL TCP MSP server has been observed to unexpectedly close an
+    # otherwise-healthy, actively-used connection partway through a test run
+    # (root cause not fully understood - possibly a Windows-loopback-TCP
+    # specific quirk rather than a firmware bug). When that happens, the
+    # firmware silently drops any reply it generates for requests received
+    # after the close, so callers see a bare read timeout with no other
+    # symptom. Transparently reconnecting and retrying once is far cheaper
+    # than root-causing the disconnect and keeps the test meaningful.
+    try { if ($null -ne $script:stream) { $script:stream.Dispose() } } catch { }
+    try { if ($null -ne $script:client) { $script:client.Close() } } catch { }
+    $script:stream = $null
+    $script:client = $null
+
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            $newClient = New-Object System.Net.Sockets.TcpClient
+            $connectTask = $newClient.ConnectAsync($MspHost, $script:ResolvedPort)
+            if (-not $connectTask.Wait([TimeSpan]::FromSeconds($TimeoutSeconds))) {
+                $newClient.Close()
+                continue
+            }
+            $newStream = $newClient.GetStream()
+            Send-Msp -Stream $newStream -Command $MSP_API_VERSION
+            $api = Receive-MspMatch -Stream $newStream -ExpectedCommand $MSP_API_VERSION -TimeoutSeconds $TimeoutSeconds
+            if ($null -ne $api -and $api.Length -ge 3) {
+                $script:client = $newClient
+                $script:stream = $newStream
+                Write-Host "[SITL-RC] Reconnected after unexpected disconnect"
+                return $true
+            }
+            $newStream.Dispose()
+            $newClient.Close()
+        } catch { }
+        Start-Sleep -Milliseconds 300
+    }
+    return $false
+}
+
 function Invoke-DriveAndRead {
     param(
         [System.IO.Stream]$Stream,
@@ -463,28 +518,67 @@ function Invoke-DriveAndRead {
     $commandsToRead = if ($ReadCommands.Count -gt 0) { $ReadCommands } else { @($ReadCommand) }
     $last = $null
 
-    # Prevent stale responses from previous phases from masking current RC changes.
-    Clear-MspInput -Stream $Stream
+    for ($retry = 0; $retry -le 2; $retry++) {
+        $activeStream = $script:stream
+        if ($retry -eq 0 -and $null -ne $Stream) { $activeStream = $Stream }
 
-    for ($k = 0; $k -lt $Cycles; $k++) {
-        Send-Msp -Stream $Stream -Command $MSP_SET_RAW_RC -Payload $rc
-        Start-Sleep -Milliseconds 12
-    }
+        # A previous call may have exhausted its reconnect attempts and left
+        # no usable connection behind. Reconnect here rather than handing a
+        # null stream to Send-Msp/Clear-MspInput, which would crash the script.
+        if ($null -eq $activeStream) {
+            if (-not (Reconnect-Msp -TimeoutSeconds $TimeoutSeconds)) { break }
+            $activeStream = $script:stream
+        }
 
-    # Allow RX task processing before sampling channel state.
-    Start-Sleep -Milliseconds 35
+        # Prevent stale responses from previous phases from masking current RC changes.
+        Clear-MspInput -Stream $activeStream
 
-    foreach ($cmd in $commandsToRead) {
-        Send-Msp -Stream $Stream -Command $cmd
-        $resp = Receive-MspMatch -Stream $Stream -ExpectedCommand $cmd -TimeoutSeconds $TimeoutSeconds
-        if ($null -ne $resp) {
-            $resp | Add-Member -NotePropertyName ResponseCommand -NotePropertyValue $cmd -Force
-            $last = $resp
+        for ($k = 0; $k -lt $Cycles; $k++) {
+            Send-Msp -Stream $activeStream -Command $MSP_SET_RAW_RC -Payload $rc
+            Start-Sleep -Milliseconds 12
+        }
+
+        # Allow RX task processing before sampling channel state.
+        Start-Sleep -Milliseconds 35
+
+        foreach ($cmd in $commandsToRead) {
+            Send-Msp -Stream $activeStream -Command $cmd
+            $resp = Receive-MspMatch -Stream $activeStream -ExpectedCommand $cmd -TimeoutSeconds $TimeoutSeconds
+            if ($null -ne $resp) {
+                $resp | Add-Member -NotePropertyName ResponseCommand -NotePropertyValue $cmd -Force
+                $last = $resp
+                break
+            }
+        }
+
+        if ($null -ne $last -or $retry -eq 2) {
+            break
+        }
+        if (-not (Reconnect-Msp -TimeoutSeconds $TimeoutSeconds)) {
             break
         }
     }
 
     return $last
+}
+
+function Get-ActiveStream {
+    # Resolves a usable stream for a call site, falling back to the shared
+    # reconnected stream (or reconnecting outright) when the caller's own
+    # reference has gone stale/null after a prior unexpected disconnect.
+    # This avoids crashing the whole script with a null-stream method call.
+    param(
+        [System.IO.Stream]$Stream,
+        [int]$TimeoutSeconds
+    )
+
+    $activeStream = $Stream
+    if ($null -eq $activeStream) { $activeStream = $script:stream }
+    if ($null -eq $activeStream) {
+        if (-not (Reconnect-Msp -TimeoutSeconds $TimeoutSeconds)) { return $null }
+        $activeStream = $script:stream
+    }
+    return $activeStream
 }
 
 function Send-RcWithAck {
@@ -495,22 +589,42 @@ function Send-RcWithAck {
         [int]$Yaw,
         [int]$Collective = 1500,
         [int]$Throttle,
-        [int]$TimeoutSeconds
+        [int]$TimeoutSeconds,
+        [int]$Retries = 2
     )
 
     $rc = New-RcPayload -Roll $Roll -Pitch $Pitch -Yaw $Yaw -Collective $Collective -Throttle $Throttle
-    Clear-MspInput -Stream $Stream
-    Send-Msp -Stream $Stream -Command $MSP_SET_RAW_RC -Payload $rc
-    $ack = Receive-MspMatch -Stream $Stream -ExpectedCommand $MSP_SET_RAW_RC -TimeoutSeconds $TimeoutSeconds
-    return ($null -ne $ack -and -not $ack.IsError)
+    $forceReconnect = $false
+    for ($attempt = 0; $attempt -le $Retries; $attempt++) {
+        # A dead-but-not-yet-null connection (server closed, client object
+        # still referenced) will silently fail every call on it, so once an
+        # attempt fails, force a fresh reconnect before retrying rather than
+        # hammering the same broken stream.
+        if ($forceReconnect) {
+            if (-not (Reconnect-Msp -TimeoutSeconds $TimeoutSeconds)) { return $false }
+        }
+        $activeStream = Get-ActiveStream -Stream $(if ($forceReconnect) { $null } else { $Stream }) -TimeoutSeconds $TimeoutSeconds
+        if ($null -eq $activeStream) { return $false }
+        Clear-MspInput -Stream $activeStream
+        Send-Msp -Stream $activeStream -Command $MSP_SET_RAW_RC -Payload $rc
+        $ack = Receive-MspMatch -Stream $activeStream -ExpectedCommand $MSP_SET_RAW_RC -TimeoutSeconds $TimeoutSeconds
+        if ($null -ne $ack -and -not $ack.IsError) {
+            return $true
+        }
+        $forceReconnect = $true
+    }
+    return $false
 }
 
 function Set-Neutral {
     param([System.IO.Stream]$Stream)
 
+    $activeStream = Get-ActiveStream -Stream $Stream -TimeoutSeconds $TimeoutSeconds
+    if ($null -eq $activeStream) { return }
+
     $neutral = New-RcPayload -Roll 1500 -Pitch 1500 -Yaw 1500 -Collective 1500 -Throttle 1000
     for ($k = 0; $k -lt 10; $k++) {
-        Send-Msp -Stream $Stream -Command $MSP_SET_RAW_RC -Payload $neutral
+        Send-Msp -Stream $activeStream -Command $MSP_SET_RAW_RC -Payload $neutral
         Start-Sleep -Milliseconds 8
     }
 }
@@ -535,21 +649,47 @@ $stream = $null
 try {
     $script:ResolvedPort = Start-SitlIfNeeded -RemoteHost $MspHost -ExplicitPort $Port -Candidates $PortCandidates -DoBuild ([bool]$BuildSitl) -Arguments $SitlArgs
     $result.port = $script:ResolvedPort
-    Write-Host "[SITL-RC] Connecting to $MspHost`:$script:ResolvedPort ..."
 
-    $client = New-Object System.Net.Sockets.TcpClient
-    $connectTask = $client.ConnectAsync($MspHost, $script:ResolvedPort)
-    if (-not $connectTask.Wait([TimeSpan]::FromSeconds($TimeoutSeconds))) {
-        throw "Timed out connecting to $MspHost`:$script:ResolvedPort"
+    # The SITL TCP MSP server (dyad-based) only accepts one client at a time
+    # and needs a brief moment to notice a just-closed connection (see
+    # Resolve-MspPort). A freshly-opened connection can therefore
+    # occasionally be silently rejected even after the settle delay (e.g.
+    # under scheduler jitter). Retry the connect+handshake a couple of times
+    # before giving up, reconnecting fresh each time.
+    $handshakeAttempts = 3
+    $api = $null
+    for ($h = 1; $h -le $handshakeAttempts; $h++) {
+        Write-Host "[SITL-RC] Connecting to $MspHost`:$script:ResolvedPort ... (attempt $h/$handshakeAttempts)"
+
+        $client = New-Object System.Net.Sockets.TcpClient
+        $connectTask = $client.ConnectAsync($MspHost, $script:ResolvedPort)
+        if (-not $connectTask.Wait([TimeSpan]::FromSeconds($TimeoutSeconds))) {
+            $client.Close()
+            $client = $null
+            throw "Timed out connecting to $MspHost`:$script:ResolvedPort"
+        }
+        $stream = $client.GetStream()
+
+        Send-Msp -Stream $stream -Command $MSP_API_VERSION
+        $api = Receive-MspMatch -Stream $stream -ExpectedCommand $MSP_API_VERSION -TimeoutSeconds $TimeoutSeconds
+        if ($null -ne $api -and $api.Length -ge 3) {
+            break
+        }
+
+        $stream.Dispose()
+        $stream = $null
+        $client.Close()
+        $client = $null
+        $api = $null
+        if ($h -lt $handshakeAttempts) {
+            Start-Sleep -Milliseconds 400
+        }
     }
-    $stream = $client.GetStream()
-    $result.connected = $true
 
-    Send-Msp -Stream $stream -Command $MSP_API_VERSION
-    $api = Receive-MspMatch -Stream $stream -ExpectedCommand $MSP_API_VERSION -TimeoutSeconds $TimeoutSeconds
-    if ($null -eq $api -or $api.Length -lt 3) {
+    if ($null -eq $api) {
         throw "No MSP_API_VERSION response"
     }
+    $result.connected = $true
     $result.apiOk = $true
     Write-Host ("[SITL-RC] MSP API version: {0}.{1}" -f $api.Payload[1], $api.Payload[2])
 

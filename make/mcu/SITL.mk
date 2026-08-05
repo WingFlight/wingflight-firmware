@@ -1,13 +1,11 @@
 
-INCLUDE_DIRS    := $(INCLUDE_DIRS) \
-                   $(ROOT)/lib/main/dyad
+INCLUDE_DIRS    := $(INCLUDE_DIRS)
 
 # build/atomic.c provides the emulated atomic_BASEPRI storage used by
 # ATOMIC_BLOCK() under UNIT_TEST/SIMULATOR_BUILD; it's not part of the
 # common source list since real hardware targets use inline BASEPRI asm
 # instead and never reference the variable.
-MCU_COMMON_SRC  := $(ROOT)/lib/main/dyad/dyad.c \
-                   $(ROOT)/src/main/build/atomic.c
+MCU_COMMON_SRC  := $(ROOT)/src/main/build/atomic.c
 
 #Flags
 ARCH_FLAGS      =

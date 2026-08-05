@@ -59,7 +59,6 @@ const timerHardware_t timerHardware[1]; // unused
 
 #include "rx/rx.h"
 
-#include "dyad.h"
 #include "target/SITL/udplink.h"
 
 uint32_t SystemCoreClock;
@@ -69,22 +68,11 @@ static servo_packet pwmPkt;
 
 static struct timespec start_time;
 static double simRate = 1.0;
-static pthread_t tcpWorker, udpWorker;
+static pthread_t udpWorker;
 static bool workerRunning = true;
 static udpLink_t stateLink, pwmLink;
 static pthread_mutex_t updateLock;
 static pthread_mutex_t mainLoopLock;
-
-// Guards startup ordering between tcpThread()'s dyad_init() and any other
-// thread (e.g. main, via serTcpOpen()) that touches dyad's internal state.
-static bool dyadReady = false;
-static pthread_mutex_t dyadReadyLock;
-static pthread_cond_t dyadReadyCond;
-
-// dyad is not thread-safe: serializes all dyad_*() calls between tcpThread's
-// dyad_update() loop and any other thread calling into dyad (e.g. the main
-// thread via drivers/serial_tcp.c).
-static pthread_mutex_t dyadLock;
 
 // SITL has no real timers/registers, but flight/servos.c (compiled for every
 // target) unconditionally calls this to arm each configured servo channel.
@@ -103,14 +91,6 @@ void pwmOutConfig(timerChannel_t *channel, const timerHardware_t *timerHardware,
 
     channel->ccr = NULL;
     channel->tim = NULL;
-}
-
-void simDyadLock(void) {
-    pthread_mutex_lock(&dyadLock);
-}
-
-void simDyadUnlock(void) {
-    pthread_mutex_unlock(&dyadLock);
 }
 
 int timeval_sub(struct timespec *result, struct timespec *x, struct timespec *y);
@@ -233,40 +213,6 @@ static void* udpThread(void* data) {
     return NULL;
 }
 
-static void* tcpThread(void* data) {
-    UNUSED(data);
-
-    dyad_init();
-    dyad_setTickInterval(0.2f);
-    // Keep this short: dyad_update() below blocks internally (select()) for up
-    // to this long while holding dyadLock, so a large value here starves any
-    // other thread (e.g. the main thread writing an MSP reply via
-    // drivers/serial_tcp.c's tcpDataOut()) of the lock for that whole window,
-    // multiplied by however many bytes it needs to send - previously 0.5s,
-    // which was enough to make MSP over TCP appear to hang indefinitely.
-    dyad_setUpdateTimeout(0.01f);
-
-    // Signal that dyad's internal state is ready. Other threads (e.g. the
-    // main thread, via serTcpOpen()/mspSerialAllocatePorts()) call into
-    // dyad_newStream()/dyad_addListener() and must not do so before
-    // dyad_init() has completed here, otherwise dyad's uninitialized/garbage
-    // internal state gets used, corrupting the heap.
-    pthread_mutex_lock(&dyadReadyLock);
-    dyadReady = true;
-    pthread_cond_signal(&dyadReadyCond);
-    pthread_mutex_unlock(&dyadReadyLock);
-
-    while (workerRunning) {
-        simDyadLock();
-        dyad_update();
-        simDyadUnlock();
-    }
-
-    dyad_shutdown();
-    printf("tcpThread end!!\n");
-    return NULL;
-}
-
 // system
 void systemInit(void) {
     int ret;
@@ -285,37 +231,6 @@ void systemInit(void) {
         printf("Create mainLoopLock error!\n");
         exit(1);
     }
-
-    if (pthread_mutex_init(&dyadReadyLock, NULL) != 0) {
-        printf("Create dyadReadyLock error!\n");
-        exit(1);
-    }
-
-    if (pthread_cond_init(&dyadReadyCond, NULL) != 0) {
-        printf("Create dyadReadyCond error!\n");
-        exit(1);
-    }
-
-    if (pthread_mutex_init(&dyadLock, NULL) != 0) {
-        printf("Create dyadLock error!\n");
-        exit(1);
-    }
-
-    ret = pthread_create(&tcpWorker, NULL, tcpThread, NULL);
-    if (ret != 0) {
-        printf("Create tcpWorker error!\n");
-        exit(1);
-    }
-
-    // Wait until tcpThread() has finished calling dyad_init() before
-    // returning, since other code (e.g. serTcpOpen(), called from the main
-    // thread later during init()) calls into dyad_newStream()/
-    // dyad_addListener() and must not race with dyad's own initialization.
-    pthread_mutex_lock(&dyadReadyLock);
-    while (!dyadReady) {
-        pthread_cond_wait(&dyadReadyCond, &dyadReadyLock);
-    }
-    pthread_mutex_unlock(&dyadReadyLock);
 
     ret = udpInit(&pwmLink, "127.0.0.1", 9002, false);
     printf("init PwmOut UDP link...%d\n", ret);
@@ -340,7 +255,10 @@ void systemInit(void) {
 void systemResetHard(void){
     printf("[system]Reset!\n");
     workerRunning = false;
-    pthread_join(tcpWorker, NULL);
+    // The per-port TCP accept threads (see drivers/serial_tcp.c) block
+    // indefinitely in accept()/recv() and have no way to be woken up short of
+    // closing their sockets, which isn't worth doing here since exit() below
+    // tears down the whole process (and all its threads) regardless.
     pthread_join(udpWorker, NULL);
     exit(0);
 }
