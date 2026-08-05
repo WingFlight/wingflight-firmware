@@ -1349,10 +1349,6 @@ extern "C" {
 
     void serialWrite(serialPort_t *, uint8_t) {}
 
-    bool cmsDisplayPortRegister(displayPort_t *) {
-        return false;
-    }
-
     uint16_t getRssi(void) { return rssi; }
 
     uint8_t getRssiPercent(void) { return scaleRange(rssi, 0, RSSI_MAX_VALUE, 0, 100); }

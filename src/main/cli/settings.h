@@ -110,9 +110,6 @@ typedef enum {
 #ifdef USE_OSD
     TABLE_OSD_LOGO_ON_ARMING,
 #endif
-#ifdef USE_OSD
-    TABLE_CMS_BACKGROUND,
-#endif
 #ifdef USE_RX_EXPRESSLRS
     TABLE_FREQ_DOMAIN,
     TABLE_SWITCH_MODE,
@@ -246,5 +243,3 @@ extern const char * const lookupTableOsdDisplayPortDevice[];
 extern const char * const lookupTableFeedforwardAveraging[];
 
 extern const char * const lookupTableOffOn[];
-
-extern const char * const lookupTableCMSMenuBackgroundType[];

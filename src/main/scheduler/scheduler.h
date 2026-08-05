@@ -144,9 +144,6 @@ typedef enum {
 #ifdef USE_ESC_SENSOR
     TASK_ESC_SENSOR,
 #endif
-#ifdef USE_CMS
-    TASK_CMS,
-#endif
 #ifdef USE_VTX_CONTROL
     TASK_VTXCTRL,
 #endif

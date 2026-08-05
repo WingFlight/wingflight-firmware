@@ -28,8 +28,6 @@
 #include "blackbox/blackbox.h"
 #include "blackbox/blackbox_fielddefs.h"
 
-#include "cms/cms.h"
-
 #include "common/utils.h"
 #include "common/time.h"
 
@@ -435,12 +433,6 @@ static const char * const lookupTableOsdLogoOnArming[] = {
 };
 #endif
 
-#ifdef USE_OSD
-const char * const lookupTableCMSMenuBackgroundType[] = {
-    "TRANSPARENT", "BLACK", "GRAY", "LIGHT_GRAY"
-};
-#endif
-
 #ifdef USE_RX_EXPRESSLRS
 static const char* const lookupTableFreqDomain[] = {
 #ifdef USE_RX_SX127X
@@ -587,9 +579,6 @@ const lookupTableEntry_t lookupTables[] = {
 
 #ifdef USE_OSD
     LOOKUP_TABLE_ENTRY(lookupTableOsdLogoOnArming),
-#endif
-#ifdef USE_OSD
-    LOOKUP_TABLE_ENTRY(lookupTableCMSMenuBackgroundType),
 #endif
 #ifdef USE_RX_EXPRESSLRS
     LOOKUP_TABLE_ENTRY(lookupTableFreqDomain),
@@ -1377,7 +1366,6 @@ const clivalue_t valueTable[] = {
     { "osd_camera_frame_height",    VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { OSD_CAMERA_FRAME_MIN_HEIGHT, OSD_CAMERA_FRAME_MAX_HEIGHT }, PG_OSD_CONFIG, offsetof(osdConfig_t, camera_frame_height) },
     { "osd_stat_avg_cell_value",    VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_OSD_CONFIG, offsetof(osdConfig_t, stat_show_cell_value) },
     { "osd_framerate_hz",           VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { OSD_FRAMERATE_MIN_HZ, OSD_FRAMERATE_MAX_HZ }, PG_OSD_CONFIG, offsetof(osdConfig_t, framerate_hz) },
-    { "osd_menu_background",        VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_CMS_BACKGROUND }, PG_OSD_CONFIG, offsetof(osdConfig_t, cms_background_type) },
 #endif // end of #ifdef USE_OSD
 
 // PG_SYSTEM_CONFIG

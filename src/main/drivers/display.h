@@ -84,7 +84,7 @@ typedef struct displayPort_s {
     uint8_t posX;
     uint8_t posY;
 
-    // CMS state
+    // Display grab/overlay state (used by OSD and dashboard)
     bool useFullscreen;
     bool cleared;
     int8_t cursorRow;

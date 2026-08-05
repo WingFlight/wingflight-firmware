@@ -25,7 +25,13 @@
 
 extern void pgResetFn_osdConfig(osdConfig_t *osdConfig);
 
-PG_REGISTER_WITH_RESET_FN(osdConfig_t, osdConfig, PG_OSD_CONFIG, 9);
+// v9: last version before cms_background_type removal. v10: cms_background_type
+// (CMS menu background transparency, only meaningful with the now-removed CMS
+// menu) removed -- it sat mid-struct, so stat_show_cell_value shifts into its
+// old byte offset. PG version IS bumped so pgLoad() resets this struct to
+// defaults on upgrade instead of misreading the shifted byte (same rationale
+// as the mixerConfig_t v1->v2 tail_rotor_mode removal).
+PG_REGISTER_WITH_RESET_FN(osdConfig_t, osdConfig, PG_OSD_CONFIG, 10);
 
 extern void pgResetFn_osdElementConfig(osdElementConfig_t *osdElementConfig);
 
