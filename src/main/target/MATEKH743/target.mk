@@ -14,5 +14,4 @@ TARGET_SRC = \
             drivers/compass/compass_qmc5883l.c \
             drivers/compass/compass_lis3mdl.c \
             drivers/light_ws2811strip.c \
-            drivers/light_ws2811strip_hal.c \
-            drivers/max7456.c
+            drivers/light_ws2811strip_hal.c

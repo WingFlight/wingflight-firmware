@@ -53,7 +53,7 @@ typedef enum {
     BOXBEEPERMUTE,
     BOXLEDLOW,
     BOXCALIB,
-    BOXOSD,
+    BOXOSD,             // reserved (OSD removed) -- kept to avoid renumbering later ids
     BOXTELEMETRY,
     BOXBEEPGPSCOUNT,
     BOXBLACKBOX,

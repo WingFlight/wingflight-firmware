@@ -131,10 +131,11 @@
 #define MSP_SET_BLACKBOX_CONFIG              81
 #define MSP_TRANSPONDER_CONFIG               82
 #define MSP_SET_TRANSPONDER_CONFIG           83
-#define MSP_OSD_CONFIG                       84
-#define MSP_SET_OSD_CONFIG                   85
-#define MSP_OSD_CHAR_READ                    86
-#define MSP_OSD_CHAR_WRITE                   87
+// 84-87 reserved (OSD removed, no longer implemented) -- do not reuse
+// #define MSP_OSD_CONFIG                     84
+// #define MSP_SET_OSD_CONFIG                 85
+// #define MSP_OSD_CHAR_READ                  86
+// #define MSP_OSD_CHAR_WRITE                 87
 #define MSP_VTX_CONFIG                       88
 #define MSP_SET_VTX_CONFIG                   89
 #define MSP_ADVANCED_CONFIG                  90
@@ -221,8 +222,9 @@
 #define MSP_MIXER_CURVES                     177
 #define MSP_SET_MIXER_CURVE                  178
 
-#define MSP_OSD_VIDEO_CONFIG                 180
-#define MSP_SET_OSD_VIDEO_CONFIG             181
+// 180-181 reserved (OSD removed, already unimplemented) -- do not reuse
+// #define MSP_OSD_VIDEO_CONFIG               180
+// #define MSP_SET_OSD_VIDEO_CONFIG           181
 #define MSP_DISPLAYPORT                      182
 #define MSP_COPY_PROFILE                     183
 #define MSP_BEEPER_CONFIG                    184

@@ -51,8 +51,6 @@
 
 #include "drivers/time.h"
 
-#include "osd/osd.h"
-
 #include "pg/rx.h"
 #include "pg/adjustments.h"
 
@@ -144,9 +142,9 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
     ADJ_ENTRY(RATE_PROFILE,                 1, 6),
     ADJ_ENTRY(PID_PROFILE,                  1, 6),
     ADJ_ENTRY(LED_PROFILE,                  1, 4),
-#ifdef USE_OSD_PROFILES
-    ADJ_ENTRY(OSD_PROFILE,                  1, 3),
-#endif
+    // ADJUSTMENT_OSD_PROFILE (4) intentionally has no entry here -- reserved,
+    // see rc_adjustments.h. adjConfig->cfgName == NULL is already checked in
+    // processRcAdjustments() below, so this hole is handled safely.
 
     ADJ_ENTRY(PITCH_SRATE,                  0, CONTROL_RATE_CONFIG_SUPER_RATE_MAX),
     ADJ_ENTRY(ROLL_SRATE,                   0, CONTROL_RATE_CONFIG_SUPER_RATE_MAX),
@@ -265,8 +263,7 @@ static void updateAdjustmentData(int adjFunc, int value)
     if (adjFunc != ADJUSTMENT_NONE &&
         adjFunc != ADJUSTMENT_PID_PROFILE &&
         adjFunc != ADJUSTMENT_RATE_PROFILE &&
-        adjFunc != ADJUSTMENT_LED_PROFILE &&
-        adjFunc != ADJUSTMENT_OSD_PROFILE)
+        adjFunc != ADJUSTMENT_LED_PROFILE)
     {
         adjustmentTime   = now;
         adjustmentName   = adjustmentConfigs[adjFunc].cfgName;

@@ -26,7 +26,6 @@ COMMON_SRC = \
             drivers/bus_spi_pinconfig.c \
             drivers/buttons.c \
             drivers/display.c \
-            drivers/display_canvas.c \
             drivers/dma_common.c \
             drivers/dma_reqmap.c \
             drivers/exti.c \
@@ -157,18 +156,11 @@ COMMON_SRC = \
             drivers/vtx_common.c \
             drivers/vtx_table.c \
             io/dashboard.c \
-            io/displayport_frsky_osd.c \
-            io/displayport_max7456.c \
-            io/displayport_msp.c \
             io/displayport_oled.c \
-            io/frsky_osd.c \
             io/rcdevice_cam.c \
             io/rcdevice.c \
             io/gps.c \
             io/ledstrip.c \
-            osd/osd.c \
-            osd/osd_elements.c \
-            osd/osd_warnings.c \
             sensors/barometer.c \
             sensors/rangefinder.c \
             telemetry/telemetry.c \
@@ -339,9 +331,6 @@ SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
             io/vtx_tramp.c \
             io/vtx_control.c \
             io/spektrum_vtx_control.c \
-            osd/osd.c \
-            osd/osd_elements.c \
-            osd/osd_warnings.c \
             rx/rx_bind.c
 
 # Gyro driver files that only contain initialization and configuration code - not runtime code
@@ -361,7 +350,6 @@ SPEED_OPTIMISED_SRC := $(SPEED_OPTIMISED_SRC) \
             drivers/bus_i2c_hal.c \
             drivers/bus_spi_ll.c \
             rx/frsky_crc.c \
-            drivers/max7456.c \
             drivers/pwm_output_dshot.c \
             drivers/pwm_output_dshot_shared.c \
             drivers/pwm_output_dshot_hal.c

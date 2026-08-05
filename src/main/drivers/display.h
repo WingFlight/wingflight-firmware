@@ -21,13 +21,7 @@
 #pragma once
 
 typedef enum {
-    DISPLAYPORT_DEVICE_TYPE_MAX7456 = 0,
-    DISPLAYPORT_DEVICE_TYPE_OLED,
-    DISPLAYPORT_DEVICE_TYPE_MSP,
-    DISPLAYPORT_DEVICE_TYPE_FRSKYOSD,
-    DISPLAYPORT_DEVICE_TYPE_CRSF,
-    DISPLAYPORT_DEVICE_TYPE_HOTT,
-    DISPLAYPORT_DEVICE_TYPE_SRXL,
+    DISPLAYPORT_DEVICE_TYPE_OLED = 0,
 } displayPortDeviceType_e;
 
 typedef enum {
@@ -52,14 +46,6 @@ typedef enum {
 } displayTransactionOption_e;
 
 typedef enum {
-    DISPLAY_BACKGROUND_TRANSPARENT,
-    DISPLAY_BACKGROUND_BLACK,
-    DISPLAY_BACKGROUND_GRAY,
-    DISPLAY_BACKGROUND_LTGRAY,
-    DISPLAY_BACKGROUND_COUNT    // must be the last entry
-} displayPortBackground_e;
-
-typedef enum {
     // Display drivers that can perform screen clearing in the background, e.g. via DMA, should do so.
     // use `displayCheckReady` function to check if the screen clear has been completed.
     DISPLAY_CLEAR_NONE = 0,
@@ -72,8 +58,6 @@ typedef enum {
     DISPLAY_CLEAR_WAIT = 1 << 0,
 } displayClearOption_e;
 
-struct displayCanvas_s;
-struct osdCharacter_s;
 struct displayPortVTable_s;
 
 typedef struct displayPort_s {
@@ -84,7 +68,7 @@ typedef struct displayPort_s {
     uint8_t posX;
     uint8_t posY;
 
-    // Display grab/overlay state (used by OSD and dashboard)
+    // Display grab/overlay state (used by dashboard)
     bool useFullscreen;
     bool cleared;
     int8_t cursorRow;
@@ -113,12 +97,9 @@ typedef struct displayPortVTable_s {
     bool (*layerSupported)(displayPort_t *displayPort, displayPortLayer_e layer);
     bool (*layerSelect)(displayPort_t *displayPort, displayPortLayer_e layer);
     bool (*layerCopy)(displayPort_t *displayPort, displayPortLayer_e destLayer, displayPortLayer_e sourceLayer);
-    bool (*writeFontCharacter)(displayPort_t *instance, uint16_t addr, const struct osdCharacter_s *chr);
     bool (*checkReady)(displayPort_t *displayPort, bool rescan);
     void (*beginTransaction)(displayPort_t *displayPort, displayTransactionOption_e opts);
     void (*commitTransaction)(displayPort_t *displayPort);
-    bool (*getCanvas)(struct displayCanvas_s *canvas, const displayPort_t *displayPort);
-    void (*setBackgroundType)(displayPort_t *displayPort, displayPortBackground_e backgroundType);
 } displayPortVTable_t;
 
 void displayGrab(displayPort_t *instance);
@@ -136,14 +117,10 @@ bool displayHeartbeat(displayPort_t *instance);
 void displayRedraw(displayPort_t *instance);
 bool displayIsSynced(const displayPort_t *instance);
 uint16_t displayTxBytesFree(const displayPort_t *instance);
-bool displayWriteFontCharacter(displayPort_t *instance, uint16_t addr, const struct osdCharacter_s *chr);
 bool displayCheckReady(displayPort_t *instance, bool rescan);
 void displayBeginTransaction(displayPort_t *instance, displayTransactionOption_e opts);
 void displayCommitTransaction(displayPort_t *instance);
-bool displayGetCanvas(struct displayCanvas_s *canvas, const displayPort_t *instance);
 void displayInit(displayPort_t *instance, const displayPortVTable_t *vTable, displayPortDeviceType_e deviceType);
 bool displayLayerSupported(displayPort_t *instance, displayPortLayer_e layer);
 bool displayLayerSelect(displayPort_t *instance, displayPortLayer_e layer);
 bool displayLayerCopy(displayPort_t *instance, displayPortLayer_e destLayer, displayPortLayer_e sourceLayer);
-void displaySetBackgroundType(displayPort_t *instance, displayPortBackground_e backgroundType);
-bool displaySupportsOsdSymbols(displayPort_t *instance);

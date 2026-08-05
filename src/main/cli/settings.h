@@ -67,9 +67,6 @@ typedef enum {
     TABLE_CAMERA_CONTROL_MODE,
 #endif
     TABLE_BUS_TYPE,
-#ifdef USE_MAX7456
-    TABLE_MAX7456_CLOCK,
-#endif
 #ifdef USE_RX_FRSKY_SPI
     TABLE_RX_FRSKY_SPI_A1_SOURCE,
 #endif
@@ -88,9 +85,6 @@ typedef enum {
 #ifdef USE_MULTI_GYRO
     TABLE_GYRO,
 #endif
-#if defined(USE_MAX7456) || defined(USE_FRSKYOSD)
-    TABLE_VIDEO_SYSTEM,
-#endif
 #ifdef USE_VTX_COMMON
     TABLE_VTX_LOW_POWER_DISARM,
 #endif
@@ -106,10 +100,6 @@ typedef enum {
     TABLE_OFF_ON_AUTO,
     TABLE_FEEDFORWARD_AVERAGING,
     TABLE_DSHOT_BITBANGED_TIMER,
-    TABLE_OSD_DISPLAYPORT_DEVICE,
-#ifdef USE_OSD
-    TABLE_OSD_LOGO_ON_ARMING,
-#endif
 #ifdef USE_RX_EXPRESSLRS
     TABLE_FREQ_DOMAIN,
     TABLE_SWITCH_MODE,
@@ -237,8 +227,6 @@ extern const char * const lookupTableRangefinderHardware[];
 extern const char * const lookupTableLedstripColors[];
 
 extern const char * const lookupTableRescueAltitudeMode[];
-
-extern const char * const lookupTableOsdDisplayPortDevice[];
 
 extern const char * const lookupTableFeedforwardAveraging[];
 

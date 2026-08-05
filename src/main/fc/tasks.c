@@ -74,8 +74,6 @@
 #include "msp/msp.h"
 #include "msp/msp_serial.h"
 
-#include "osd/osd.h"
-
 #include "pg/rx.h"
 #include "pg/motor.h"
 #include "pg/sbus_output.h"
@@ -373,10 +371,6 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_DASHBOARD] = DEFINE_TASK("DASHBOARD", NULL, NULL, dashboardUpdate, TASK_PERIOD_HZ(10), TASK_PRIORITY_LOW),
 #endif
 
-#ifdef USE_OSD
-    [TASK_OSD] = DEFINE_TASK("OSD", NULL, osdUpdateCheck, osdUpdate, TASK_PERIOD_HZ(OSD_FRAMERATE_DEFAULT_HZ), TASK_PRIORITY_LOW),
-#endif
-
 #ifdef USE_TELEMETRY
     [TASK_TELEMETRY] = DEFINE_TASK("TELEMETRY", NULL, NULL, taskTelemetry, TASK_PERIOD_HZ(250), TASK_PRIORITY_LOW),
 #endif
@@ -470,7 +464,7 @@ void tasksInit(void)
 
     const bool useBatteryVoltage = batteryConfig()->voltageMeterSource != VOLTAGE_METER_NONE;
     const bool useBatteryCurrent = batteryConfig()->currentMeterSource != CURRENT_METER_NONE;
-    const bool useBatteryAlerts = batteryConfig()->useVoltageAlerts || batteryConfig()->useConsumptionAlerts || featureIsEnabled(FEATURE_OSD);
+    const bool useBatteryAlerts = batteryConfig()->useVoltageAlerts || batteryConfig()->useConsumptionAlerts;
     setTaskEnabled(TASK_BATTERY_ALERTS, (useBatteryVoltage || useBatteryCurrent) && useBatteryAlerts);
 
 #ifdef USE_STACK_CHECK
@@ -540,11 +534,6 @@ void tasksInit(void)
 
 #ifdef USE_LED_STRIP
     setTaskEnabled(TASK_LEDSTRIP, featureIsEnabled(FEATURE_LED_STRIP));
-#endif
-
-#ifdef USE_OSD
-    rescheduleTask(TASK_OSD, TASK_PERIOD_HZ(osdConfig()->framerate_hz));
-    setTaskEnabled(TASK_OSD, featureIsEnabled(FEATURE_OSD) && osdGetDisplayPort(NULL));
 #endif
 
 #ifdef USE_BST

@@ -49,7 +49,7 @@ typedef enum {
     FEATURE_RSSI_ADC               = BIT(15),
     FEATURE_LED_STRIP              = BIT(16),
     FEATURE_DASHBOARD              = BIT(17),
-    FEATURE_OSD                    = BIT(18),
+    FEATURE_UNUSED_18              = BIT(18), // was FEATURE_OSD (OSD removed)
     FEATURE_UNUSED_19              = BIT(19), // was FEATURE_CMS (CMS menu removed)
     FEATURE_UNUSED_20              = BIT(20),
     FEATURE_UNUSED_21              = BIT(21),

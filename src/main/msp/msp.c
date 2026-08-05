@@ -60,7 +60,6 @@
 #include "drivers/flash.h"
 #include "drivers/io.h"
 #include "drivers/motor.h"
-#include "drivers/osd.h"
 #include "drivers/pwm_output.h"
 #include "drivers/sdcard.h"
 #include "drivers/serial.h"
@@ -110,10 +109,6 @@
 #include "msp/msp_protocol_v2_common.h"
 #include "msp/msp_serial.h"
 
-#include "osd/osd.h"
-#include "osd/osd_elements.h"
-#include "osd/osd_warnings.h"
-
 #include "pg/beeper.h"
 #include "pg/board.h"
 #include "pg/dyn_notch.h"
@@ -124,7 +119,6 @@
 #include "pg/rx_spi.h"
 #include "pg/stats.h"
 #include "pg/usb.h"
-#include "pg/vcd.h"
 #include "pg/vtx_table.h"
 #include "pg/battery.h"
 #include "pg/sbus_output.h"
@@ -647,11 +641,7 @@ static bool mspCommonProcessOutCommand(int16_t cmdMSP, sbuf_t *dst, mspPostProce
 #else
         sbufWriteU16(dst, 0); // No other build targets currently have hardware revision detection.
 #endif
-#if defined(USE_MAX7456)
-        sbufWriteU8(dst, 2);  // 2 == FC with MAX7456
-#else
         sbufWriteU8(dst, 0);  // 0 == FC
-#endif
 
         // Target capabilities (uint8)
 #define TARGET_HAS_VCP 0
@@ -912,116 +902,6 @@ static bool mspCommonProcessOutCommand(int16_t cmdMSP, sbuf_t *dst, mspPostProce
     case MSP_BATTERY_PROFILE:
         sbufWriteU8(dst, batteryConfig()->batteryProfile); // The active battery profile
         break;
-
-    case MSP_OSD_CONFIG: {
-#define OSD_FLAGS_OSD_FEATURE           (1 << 0)
-//#define OSD_FLAGS_OSD_SLAVE             (1 << 1)
-#define OSD_FLAGS_RESERVED_1            (1 << 2)
-#define OSD_FLAGS_OSD_HARDWARE_FRSKYOSD (1 << 3)
-#define OSD_FLAGS_OSD_HARDWARE_MAX_7456 (1 << 4)
-#define OSD_FLAGS_OSD_DEVICE_DETECTED   (1 << 5)
-
-        uint8_t osdFlags = 0;
-#if defined(USE_OSD)
-        osdFlags |= OSD_FLAGS_OSD_FEATURE;
-
-        osdDisplayPortDevice_e deviceType;
-        displayPort_t *osdDisplayPort = osdGetDisplayPort(&deviceType);
-        bool displayIsReady = osdDisplayPort && displayCheckReady(osdDisplayPort, true);
-        switch (deviceType) {
-        case OSD_DISPLAYPORT_DEVICE_MAX7456:
-            osdFlags |= OSD_FLAGS_OSD_HARDWARE_MAX_7456;
-            if (displayIsReady) {
-                osdFlags |= OSD_FLAGS_OSD_DEVICE_DETECTED;
-            }
-
-            break;
-        case OSD_DISPLAYPORT_DEVICE_FRSKYOSD:
-            osdFlags |= OSD_FLAGS_OSD_HARDWARE_FRSKYOSD;
-            if (displayIsReady) {
-                osdFlags |= OSD_FLAGS_OSD_DEVICE_DETECTED;
-            }
-
-            break;
-        default:
-            break;
-        }
-#endif
-        sbufWriteU8(dst, osdFlags);
-
-#ifdef USE_MAX7456
-        // send video system (AUTO/PAL/NTSC)
-        sbufWriteU8(dst, vcdProfile()->video_system);
-#else
-        sbufWriteU8(dst, 0);
-#endif
-
-#ifdef USE_OSD
-        // OSD specific, not applicable to OSD slaves.
-
-        // Configuration
-        sbufWriteU8(dst, osdConfig()->units);
-
-        // Alarms
-        sbufWriteU8(dst, osdConfig()->rssi_alarm);
-        sbufWriteU16(dst, osdConfig()->cap_alarm);
-
-        // Reuse old timer alarm (U16) as OSD_ITEM_COUNT
-        sbufWriteU8(dst, 0);
-        sbufWriteU8(dst, OSD_ITEM_COUNT);
-
-        sbufWriteU16(dst, osdConfig()->alt_alarm);
-
-        // Element position and visibility
-        for (int i = 0; i < OSD_ITEM_COUNT; i++) {
-            sbufWriteU16(dst, osdElementConfig()->item_pos[i]);
-        }
-
-        // Post flight statistics
-        sbufWriteU8(dst, OSD_STAT_COUNT);
-        for (int i = 0; i < OSD_STAT_COUNT; i++ ) {
-            sbufWriteU8(dst, osdStatGetState(i));
-        }
-
-        // Timers
-        sbufWriteU8(dst, OSD_TIMER_COUNT);
-        for (int i = 0; i < OSD_TIMER_COUNT; i++) {
-            sbufWriteU16(dst, osdConfig()->timers[i]);
-        }
-
-        // Enabled warnings
-        // Send low word first for backwards compatibility (API < 1.41)
-        sbufWriteU16(dst, (uint16_t)(osdConfig()->enabledWarnings & 0xFFFF));
-        // API >= 1.41
-        // Send the warnings count and 32bit enabled warnings flags.
-        // Add currently active OSD profile (0 indicates OSD profiles not available).
-        // Add OSD stick overlay mode (0 indicates OSD stick overlay not available).
-        sbufWriteU8(dst, OSD_WARNING_COUNT);
-        sbufWriteU32(dst, osdConfig()->enabledWarnings);
-
-#ifdef USE_OSD_PROFILES
-        sbufWriteU8(dst, OSD_PROFILE_COUNT);            // available profiles
-        sbufWriteU8(dst, osdConfig()->osdProfileIndex); // selected profile
-#else
-        // If the feature is not available there is only 1 profile and it's always selected
-        sbufWriteU8(dst, 1);
-        sbufWriteU8(dst, 1);
-#endif // USE_OSD_PROFILES
-
-#ifdef USE_OSD_STICK_OVERLAY
-        sbufWriteU8(dst, osdConfig()->overlay_radio_mode);
-#else
-        sbufWriteU8(dst, 0);
-#endif // USE_OSD_STICK_OVERLAY
-
-        // API >= 1.43
-        // Add the camera frame element width/height
-        sbufWriteU8(dst, osdConfig()->camera_frame_width);
-        sbufWriteU8(dst, osdConfig()->camera_frame_height);
-
-#endif // USE_OSD
-        break;
-    }
 
     case MSP_EXPERIMENTAL:
         /*
@@ -1335,28 +1215,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             vtxCommonSerializeDeviceStatus(vtxDevice, dst);
         }
         break;
-#endif
-
-#ifdef USE_OSD
-    case MSP2_GET_OSD_WARNINGS:
-        {
-            bool isBlinking;
-            uint8_t displayAttr;
-            char warningsBuffer[OSD_FORMAT_MESSAGE_BUFFER_SIZE];
-
-            renderOsdWarning(warningsBuffer, &isBlinking, &displayAttr);
-            const uint8_t warningsLen = strlen(warningsBuffer);
-
-            if (isBlinking) {
-                displayAttr |= DISPLAYPORT_ATTR_BLINK;
-            }
-            sbufWriteU8(dst, displayAttr);  // see displayPortAttr_e
-            sbufWriteU8(dst, warningsLen);  // length byte followed by the actual characters
-            for (unsigned i = 0; i < warningsLen; i++) {
-                sbufWriteU8(dst, warningsBuffer[i]);
-            }
-            break;
-        }
 #endif
 
 #ifdef USE_SMARTFUEL
@@ -3759,9 +3617,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         for (unsigned int i = 0; i < MIN(MAX_NAME_LENGTH, dataSize); i++) {
             pilotConfigMutable()->name[i] = sbufReadU8(src);
         }
-#ifdef USE_OSD
-        osdAnalyzeActiveElements();
-#endif
         break;
 
     case MSP_SET_PILOT_CONFIG:
@@ -3966,140 +3821,6 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
             }
         }
         break;
-
-#if defined(USE_OSD)
-    case MSP_SET_OSD_CONFIG:
-        {
-            const uint8_t addr = sbufReadU8(src);
-
-            if ((int8_t)addr == -1) {
-                /* Set general OSD settings */
-#ifdef USE_MAX7456
-                vcdProfileMutable()->video_system = sbufReadU8(src);
-#else
-                sbufReadU8(src); // Skip video system
-#endif
-#if defined(USE_OSD)
-                osdConfigMutable()->units = sbufReadU8(src);
-
-                // Alarms
-                osdConfigMutable()->rssi_alarm = sbufReadU8(src);
-                osdConfigMutable()->cap_alarm = sbufReadU16(src);
-                sbufReadU16(src); // Skip unused (previously fly timer)
-                osdConfigMutable()->alt_alarm = sbufReadU16(src);
-
-                if (sbufBytesRemaining(src) >= 2) {
-                    /* Enabled warnings */
-                    // API < 1.41 supports only the low 16 bits
-                    osdConfigMutable()->enabledWarnings = sbufReadU16(src);
-                }
-
-                if (sbufBytesRemaining(src) >= 4) {
-                    // 32bit version of enabled warnings (API >= 1.41)
-                    osdConfigMutable()->enabledWarnings = sbufReadU32(src);
-                }
-
-                if (sbufBytesRemaining(src) >= 1) {
-                    // API >= 1.41
-                    // selected OSD profile
-#ifdef USE_OSD_PROFILES
-                    changeOsdProfileIndex(sbufReadU8(src));
-#else
-                    sbufReadU8(src);
-#endif // USE_OSD_PROFILES
-                }
-
-                if (sbufBytesRemaining(src) >= 1) {
-                    // API >= 1.41
-                    // OSD stick overlay mode
-
-#ifdef USE_OSD_STICK_OVERLAY
-                    osdConfigMutable()->overlay_radio_mode = sbufReadU8(src);
-#else
-                    sbufReadU8(src);
-#endif // USE_OSD_STICK_OVERLAY
-
-                }
-
-                if (sbufBytesRemaining(src) >= 2) {
-                    // API >= 1.43
-                    // OSD camera frame element width/height
-                    osdConfigMutable()->camera_frame_width = sbufReadU8(src);
-                    osdConfigMutable()->camera_frame_height = sbufReadU8(src);
-                }
-#endif
-            } else if ((int8_t)addr == -2) {
-#if defined(USE_OSD)
-                // Timers
-                uint8_t index = sbufReadU8(src);
-                if (index > OSD_TIMER_COUNT) {
-                  return MSP_RESULT_ERROR;
-                }
-                osdConfigMutable()->timers[index] = sbufReadU16(src);
-#endif
-                return MSP_RESULT_ERROR;
-            } else {
-#if defined(USE_OSD)
-                const uint16_t value = sbufReadU16(src);
-
-                /* Get screen index, 0 is post flight statistics, 1 and above are in flight OSD screens */
-                const uint8_t screen = (sbufBytesRemaining(src) >= 1) ? sbufReadU8(src) : 1;
-
-                if (screen == 0 && addr < OSD_STAT_COUNT) {
-                    /* Set statistic item enable */
-                    osdStatSetState(addr, (value != 0));
-                } else if (addr < OSD_ITEM_COUNT) {
-                    /* Set element positions */
-                    osdElementConfigMutable()->item_pos[addr] = value;
-                    osdAnalyzeActiveElements();
-                } else {
-                  return MSP_RESULT_ERROR;
-                }
-#else
-                return MSP_RESULT_ERROR;
-#endif
-            }
-        }
-        break;
-
-    case MSP_OSD_CHAR_WRITE:
-        {
-            osdCharacter_t chr;
-            size_t osdCharacterBytes;
-            uint16_t addr;
-            if (dataSize >= OSD_CHAR_VISIBLE_BYTES + 2) {
-                if (dataSize >= OSD_CHAR_BYTES + 2) {
-                    // 16 bit address, full char with metadata
-                    addr = sbufReadU16(src);
-                    osdCharacterBytes = OSD_CHAR_BYTES;
-                } else if (dataSize >= OSD_CHAR_BYTES + 1) {
-                    // 8 bit address, full char with metadata
-                    addr = sbufReadU8(src);
-                    osdCharacterBytes = OSD_CHAR_BYTES;
-                } else {
-                    // 16 bit character address, only visible char bytes
-                    addr = sbufReadU16(src);
-                    osdCharacterBytes = OSD_CHAR_VISIBLE_BYTES;
-                }
-            } else {
-                // 8 bit character address, only visible char bytes
-                addr = sbufReadU8(src);
-                osdCharacterBytes = OSD_CHAR_VISIBLE_BYTES;
-            }
-            for (unsigned ii = 0; ii < MIN(osdCharacterBytes, sizeof(chr.data)); ii++) {
-                chr.data[ii] = sbufReadU8(src);
-            }
-            displayPort_t *osdDisplayPort = osdGetDisplayPort(NULL);
-            if (!osdDisplayPort) {
-                return MSP_RESULT_ERROR;
-            }
-
-            if (!displayWriteFontCharacter(osdDisplayPort, addr, &chr)) {
-                return MSP_RESULT_ERROR;
-            }
-        }
-        break;
-#endif // OSD
 
     case MSP_SET_EXPERIMENTAL:
         /*
