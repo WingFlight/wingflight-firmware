@@ -50,3 +50,6 @@ ubuntu*.log
 
 # EEPROM image file (created by SITL)
 eeprom.bin
+
+# user-specific joystick channel mapping (created by scripts/sitl-joystick-rc.py)
+/scripts/sitl-joystick-mapping.json

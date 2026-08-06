@@ -44,7 +44,12 @@
 
 #include "drivers/timer.h"
 #include "drivers/timer_def.h"
-const timerHardware_t timerHardware[1]; // unused
+const timerHardware_t timerHardware[4] = {
+    { .tag = 0x11, .usageFlags = TIM_USE_SERVO },
+    { .tag = 0x12, .usageFlags = TIM_USE_SERVO },
+    { .tag = 0x13, .usageFlags = TIM_USE_SERVO },
+    { .tag = 0x14, .usageFlags = TIM_USE_SERVO },
+}; // EXPERIMENTAL test
 
 #include "drivers/accgyro/accgyro_fake.h"
 #include "flight/imu.h"
@@ -91,6 +96,19 @@ void pwmOutConfig(timerChannel_t *channel, const timerHardware_t *timerHardware,
 
     channel->ccr = NULL;
     channel->tim = NULL;
+}
+
+// SITL has no real timer/clock registers, but flight/servos.c's servoInit()
+// unconditionally calls this (drivers/timer_stm32*.c, the normal home of
+// timerClock(), is excluded from the SITL build - see make/mcu/SITL.mk) to
+// size the update-rate timebase it passes to pwmOutConfig() above. Since
+// pwmOutConfig() is a no-op here (leaves ccr NULL), the exact value doesn't
+// matter functionally - just return a plausible fixed timer clock so the
+// arithmetic in servoInit() stays well-defined.
+uint32_t timerClock(TIM_TypeDef *tim)
+{
+    UNUSED(tim);
+    return 240000000;
 }
 
 int timeval_sub(struct timespec *result, struct timespec *x, struct timespec *y);

@@ -37,6 +37,12 @@ In `configuration` page:
 2. start gazebo: `gazebo --verbose ./iris_arducopter_demo.world`
 4. connect your transmitter and fly/test, I used a app to send `MSP_SET_RAW_RC`, code available [here](https://github.com/cs8425/msp-controller).
 
+### flying with a USB joystick/gamepad (Wingflight)
+For a documented, ready-to-use tool that reads a USB joystick/gamepad and feeds it
+into SITL as RC input (with a GUI for binding axes/buttons to RC channels), see
+[docs/development/SITL Joystick RC Input.md](../../../docs/development/SITL%20Joystick%20RC%20Input.md)
+and [scripts/sitl-joystick-rc.py](../../../scripts/sitl-joystick-rc.py).
+
 ### note
 betaflight	->	gazebo	`udp://127.0.0.1:9002`
 gazebo	->	betaflight	`udp://127.0.0.1:9003`

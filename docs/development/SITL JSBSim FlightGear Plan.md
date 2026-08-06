@@ -224,6 +224,18 @@ user's decision above.
   can run faster/slower than real time; Wingflight's SITL loop currently paces itself
   off packet timestamps from the Gazebo side — this logic needs review once JSBSim is
   the source).
+- **Possible root cause found for the `sitl-rc-check.ps1` sweep-mode Yaw quirk**: the
+  script's `New-RcPayload` sends channels as `Roll, Pitch, Yaw, Collective(=1500),
+  Throttle, Aux1-3`, but SITL's default `rcmap` (`"AETR1234"`, see
+  `parseRcChannels()` in [src/main/rx/rx.c](../../src/main/rx/rx.c)) resolves
+  payload index 2 to **Throttle** and index 3 to **Yaw** — i.e. the script's Yaw
+  and Throttle values land on the wrong firmware channels, and the firmware's Yaw
+  channel is fed the script's constant `Collective` placeholder (always 1500).
+  Not yet fixed in `sitl-rc-check.ps1` (out of scope for the change that found
+  this — see [SITL Joystick RC Input.md](SITL%20Joystick%20RC%20Input.md), which
+  documents and uses the *correct* `Roll, Pitch, Throttle, Yaw, AUX...` order).
+  Follow-up: re-check `sitl-rc-check.ps1`'s sweep-mode Yaw axis test against the
+  corrected channel order before trusting it.
 
 ## 7. Immediate Next Steps
 
@@ -232,6 +244,10 @@ user's decision above.
 2. ~~Confirm/fix the `pwmOutConfig` servo gap (Phase 1).~~ Done.
 3. Run [scripts/sitl-rc-check.ps1](../../scripts/sitl-rc-check.ps1) against the new
    build to confirm MSP/RC injection still works end-to-end with the new toolchain and
-   servo-output changes.
+   servo-output changes. Consider fixing its channel order (see §6) as part of this.
 4. Only then start the JSBSim bridge (Phase 2) — building it against a SITL binary
    that can't yet move a rudder would just hide the real problem.
+5. ~~Manual/interactive RC input for SITL~~ Done — see
+   [scripts/sitl-joystick-rc.py](../../scripts/sitl-joystick-rc.py) and
+   [SITL Joystick RC Input.md](SITL%20Joystick%20RC%20Input.md) (USB joystick/gamepad
+   bridge with a channel-mapping GUI, independent of the JSBSim/FlightGear work).

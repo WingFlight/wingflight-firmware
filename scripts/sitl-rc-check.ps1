@@ -66,6 +66,20 @@ $MSP_MOTOR = 104
 $MSP_RC = 105
 $MSP_RX_CHANNELS = 114
 $MSP_SET_RAW_RC = 200
+$MSP_SET_MIXER_OVERRIDE = 191
+$MSP_MIXER_OVERRIDE = 190
+
+# Mixer input indices (see MIXER_IN_STABILIZED_* in src/main/pg/mixer.h) and
+# override sentinel values (see MIXER_OVERRIDE_* in src/main/flight/mixer.h).
+# Bench-testing roll/pitch/yaw servo response requires either arming (not
+# exercised here) or forcing passthrough override on these inputs, since
+# mixerSetInput() only reflects RC onto disarmed control surfaces when an
+# override is active (see mixer.c).
+$MIXER_IN_STABILIZED_ROLL = 1
+$MIXER_IN_STABILIZED_PITCH = 2
+$MIXER_IN_STABILIZED_YAW = 3
+$MIXER_OVERRIDE_OFF = 2501
+$MIXER_OVERRIDE_PASSTHROUGH = 2502
 
 $script:StartedSitlProcess = $null
 $script:ResolvedPort = 0
@@ -410,6 +424,35 @@ function Test-MspApiPort {
     }
 }
 
+function Set-MixerOverride {
+    param(
+        [System.IO.Stream]$Stream,
+        [int]$Index,
+        [int]$Value,
+        [int]$TimeoutSeconds
+    )
+
+    $payload = [byte[]]@([byte]$Index, [byte]($Value -band 0xFF), [byte](($Value -shr 8) -band 0xFF))
+    Send-Msp -Stream $Stream -Command $MSP_SET_MIXER_OVERRIDE -Payload $payload
+    $null = Receive-MspMatch -Stream $Stream -ExpectedCommand $MSP_SET_MIXER_OVERRIDE -TimeoutSeconds $TimeoutSeconds
+}
+
+function Enable-RpyPassthroughOverride {
+    param([System.IO.Stream]$Stream, [int]$TimeoutSeconds)
+
+    foreach ($idx in @($MIXER_IN_STABILIZED_ROLL, $MIXER_IN_STABILIZED_PITCH, $MIXER_IN_STABILIZED_YAW)) {
+        Set-MixerOverride -Stream $Stream -Index $idx -Value $MIXER_OVERRIDE_PASSTHROUGH -TimeoutSeconds $TimeoutSeconds
+    }
+}
+
+function Disable-RpyPassthroughOverride {
+    param([System.IO.Stream]$Stream, [int]$TimeoutSeconds)
+
+    foreach ($idx in @($MIXER_IN_STABILIZED_ROLL, $MIXER_IN_STABILIZED_PITCH, $MIXER_IN_STABILIZED_YAW)) {
+        Set-MixerOverride -Stream $Stream -Index $idx -Value $MIXER_OVERRIDE_OFF -TimeoutSeconds $TimeoutSeconds
+    }
+}
+
 function New-RcPayload {
     param(
         [int]$Roll,
@@ -422,7 +465,14 @@ function New-RcPayload {
         [int]$Aux3 = 1000
     )
 
-    $channels = @($Roll, $Pitch, $Yaw, $Collective, $Throttle, $Aux1, $Aux2, $Aux3)
+    # Payload index order must match what SITL's default rcmap ("AETR1234",
+    # see parseRcChannels() in src/main/rx/rx.c) resolves to: index0=Roll,
+    # 1=Pitch, 2=Throttle, 3=Yaw, 4+=AUX. "Collective" is a vestigial
+    # heli-only parameter (kept only for call-site compatibility) with no
+    # fixed-wing channel of its own, so it's parked on an unused AUX slot
+    # instead of stomping Yaw/Throttle like the old (Roll,Pitch,Yaw,
+    # Collective,Throttle,...) order used to.
+    $channels = @($Roll, $Pitch, $Throttle, $Yaw, $Aux1, $Aux2, $Aux3, $Collective)
     while ($channels.Count -lt 18) { $channels += 1500 }
 
     $payload = New-Object System.Collections.Generic.List[byte]
@@ -627,6 +677,8 @@ function Set-Neutral {
         Send-Msp -Stream $activeStream -Command $MSP_SET_RAW_RC -Payload $neutral
         Start-Sleep -Milliseconds 8
     }
+
+    Disable-RpyPassthroughOverride -Stream $activeStream -TimeoutSeconds $TimeoutSeconds
 }
 
 $result = [ordered]@{
@@ -718,6 +770,31 @@ try {
         }
     } else {
         Write-Host "[SITL-RC] Feature mask: unavailable"
+    }
+
+    # SITL boots disarmed and stays that way for this script (no arming
+    # switch/stick-arming gesture is exercised here). mixerSetInput() only
+    # reflects RC onto disarmed control surfaces when a passthrough override
+    # is active (see mixer.c), so without this, servo-response checks below
+    # would always read zero delta regardless of RC injection correctness.
+    Write-Host "[SITL-RC] Enabling roll/pitch/yaw mixer passthrough override (bench servo test while disarmed)"
+    Enable-RpyPassthroughOverride -Stream $stream -TimeoutSeconds $TimeoutSeconds
+
+    Send-Msp -Stream $stream -Command $MSP_MIXER_OVERRIDE
+    $ovr = Receive-MspMatch -Stream $stream -ExpectedCommand $MSP_MIXER_OVERRIDE -TimeoutSeconds $TimeoutSeconds
+    if ($null -ne $ovr -and $ovr.Length -ge 8) {
+        $ovrValues = ConvertTo-UInt16Array -Data $ovr.Payload
+        Write-Host ("[SITL-RC] Mixer overrides readback: roll={0} pitch={1} yaw={2}" -f $ovrValues[1], $ovrValues[2], $ovrValues[3])
+    } else {
+        Write-Host "[SITL-RC] Mixer overrides readback: unavailable"
+    }
+
+    Send-Msp -Stream $stream -Command 120
+    $svoCfg = Receive-MspMatch -Stream $stream -ExpectedCommand 120 -TimeoutSeconds $TimeoutSeconds
+    if ($null -ne $svoCfg -and $svoCfg.Payload.Length -ge 1) {
+        Write-Host ("[SITL-RC] getServoCount() = {0}" -f $svoCfg.Payload[0])
+    } else {
+        Write-Host "[SITL-RC] MSP_SERVO_CONFIGURATIONS: unavailable"
     }
 
     $canReadRcTelemetry = $true
@@ -839,7 +916,19 @@ try {
         $result.stressCycles = $total
         $result.stressDropouts = $dropouts
         $result.rcInjectOk = ($dropouts -eq 0)
-        $result.controlResponsive = $true
+
+        # Real servo-response check (previously hardcoded to $true here,
+        # which never actually verified anything).
+        $high = Invoke-DriveAndRead -Stream $stream -Roll 1900 -Pitch 1500 -Yaw 1500 -Collective 1500 -Throttle 1000 -ReadCommand $MSP_SERVO -Cycles $Cycles -TimeoutSeconds $TimeoutSeconds
+        $low = Invoke-DriveAndRead -Stream $stream -Roll 1100 -Pitch 1500 -Yaw 1500 -Collective 1500 -Throttle 1000 -ReadCommand $MSP_SERVO -Cycles $Cycles -TimeoutSeconds $TimeoutSeconds
+        if ($null -ne $high -and $null -ne $low -and $high.Length -ge 2 -and $low.Length -ge 2) {
+            $d = Get-MaxDelta -A (ConvertTo-UInt16Array -Data $high.Payload) -B (ConvertTo-UInt16Array -Data $low.Payload)
+            $result.axisDeltas["roll_servo"] = $d
+            $result.controlResponsive = ($d -ge $ServoDeltaThreshold)
+        } else {
+            $result.axisDeltas["roll_servo"] = -1
+            $result.controlResponsive = $false
+        }
     }
 
     Set-Neutral -Stream $stream
