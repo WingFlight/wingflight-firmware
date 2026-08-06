@@ -110,6 +110,7 @@ typedef enum {
     FLIGHT_LOG_EVENT_DISARM = 15,
     FLIGHT_LOG_EVENT_FLIGHTMODE = 30, // Add new event type for flight mode status.
     FLIGHT_LOG_EVENT_AIRBORNE_STATE = 52,
+    FLIGHT_LOG_EVENT_OSC_LIMITER = 53, // Oscillation limiter engage/release, see docs/development/Oscillation Detection.md
     FLIGHT_LOG_EVENT_CUSTOM_DATA = 100,
     FLIGHT_LOG_EVENT_CUSTOM_STRING = 101,
     FLIGHT_LOG_EVENT_LOG_END = 255
@@ -187,6 +188,12 @@ typedef struct flightLogEvent_airborneState_s {
     uint8_t airborneState;
 } flightLogEvent_airborneState_t;
 
+typedef struct flightLogEvent_oscLimiter_s {
+    uint8_t axis;
+    uint8_t active;
+    uint8_t gainScale; // percent, 100 = no cut
+} flightLogEvent_oscLimiter_t;
+
 typedef struct flightLogEvent_inflightAdjustment_s {
     int32_t newValue;
     float newFloatValue;
@@ -214,6 +221,7 @@ typedef union flightLogEventData_u {
     flightLogEvent_syncBeep_t syncBeep;
     flightLogEvent_flightMode_t flightMode;
     flightLogEvent_airborneState_t airborneState;
+    flightLogEvent_oscLimiter_t oscLimiter;
     flightLogEvent_disarm_t disarm;
     flightLogEvent_inflightAdjustment_t inflightAdjustment;
     flightLogEvent_customData_t data;

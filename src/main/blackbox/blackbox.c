@@ -440,6 +440,7 @@ static bool blackboxStarted = false;
 static uint32_t blackboxLastArmingBeep = 0;
 static uint32_t blackboxLastFlightModeFlags = 0; // New event tracking of flight modes
 static uint8_t  blackboxLastAirborneState = 0;
+static uint8_t  blackboxLastOscLimiterActive = 0; // bitmask of axes currently latched by the oscillation limiter
 
 static struct {
     uint32_t headerIndex;
@@ -1750,6 +1751,11 @@ void blackboxLogEvent(FlightLogEvent event, flightLogEventData_t *data)
     case FLIGHT_LOG_EVENT_AIRBORNE_STATE:
         blackboxWriteUnsignedVB(data->airborneState.airborneState);
         break;
+    case FLIGHT_LOG_EVENT_OSC_LIMITER:
+        blackboxWrite(data->oscLimiter.axis);
+        blackboxWrite(data->oscLimiter.active);
+        blackboxWrite(data->oscLimiter.gainScale);
+        break;
     case FLIGHT_LOG_EVENT_DISARM:
         blackboxWriteUnsignedVB(data->disarm.reason);
         break;
@@ -1836,6 +1842,25 @@ static void blackboxCheckAndLogFlightMode(void)
     }
 }
 
+/* monitor the oscillation limiter per axis and trigger an event record on engage/release */
+static void blackboxCheckAndLogOscLimiter(void)
+{
+    for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+        const uint8_t mask = 1 << axis;
+        const bool active = pidOscLimiterActive(axis);
+
+        if (active != ((blackboxLastOscLimiterActive & mask) != 0)) {
+            blackboxLastOscLimiterActive = active ? (blackboxLastOscLimiterActive | mask) : (blackboxLastOscLimiterActive & ~mask);
+
+            flightLogEvent_oscLimiter_t eventData;
+            eventData.axis = axis;
+            eventData.active = active;
+            eventData.gainScale = pidOscLimiterScale(axis);
+            blackboxLogEvent(FLIGHT_LOG_EVENT_OSC_LIMITER, (flightLogEventData_t *)&eventData);
+        }
+    }
+}
+
 static bool blackboxShouldLogFastFrame(void)
 {
     return (blackboxIteration % blackboxPInterval) == 0;
@@ -1901,6 +1926,7 @@ static void blackboxLogIteration(timeUs_t currentTimeUs)
     if (blackboxShouldLogFastFrame()) {
         blackboxCheckAndLogArmingBeep();
         blackboxCheckAndLogFlightMode();
+        blackboxCheckAndLogOscLimiter();
         blackboxCheckAndLogSlowFrame();
 
         loadMainState(currentTimeUs);

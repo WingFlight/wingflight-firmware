@@ -1006,6 +1006,13 @@ const clivalue_t valueTable[] = {
     { "fw_tpa_gain",                VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 25, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_gain) },
     { "fw_tpa_curve",               VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, GAIN_CURVE_COUNT }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_curve) },
 
+    { "osc_limiter",                VAR_UINT8  | PROFILE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_PID_PROFILE, offsetof(pidProfile_t, osc_limiter) },
+    { "osc_limiter_min_hz",         VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 1, 50 }, PG_PID_PROFILE, offsetof(pidProfile_t, osc_limiter_min_hz) },
+    { "osc_limiter_max_hz",         VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 2, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, osc_limiter_max_hz) },
+    { "osc_limiter_threshold",      VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 1, 250 }, PG_PID_PROFILE, offsetof(pidProfile_t, osc_limiter_threshold) },
+    { "osc_limiter_floor",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, osc_limiter_floor) },
+    { "osc_limiter_engage_ms",      VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 50, 2000 }, PG_PID_PROFILE, offsetof(pidProfile_t, osc_limiter_engage_ms) },
+
     { "pitch_p_gain",               VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_PID_PROFILE, offsetof(pidProfile_t, pid[PID_PITCH].P) },
     { "pitch_i_gain",               VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_PID_PROFILE, offsetof(pidProfile_t, pid[PID_PITCH].I) },
     { "pitch_d_gain",               VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_PID_PROFILE, offsetof(pidProfile_t, pid[PID_PITCH].D) },
