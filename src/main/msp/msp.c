@@ -57,6 +57,8 @@
 #include "drivers/display.h"
 #include "drivers/dshot.h"
 #include "drivers/dshot_command.h"
+#include "drivers/fbus_master.h"
+#include "drivers/fbus_xact.h"
 #include "drivers/flash.h"
 #include "drivers/io.h"
 #include "drivers/motor.h"
@@ -2020,6 +2022,43 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 #endif
 
+#ifdef USE_FBUS_MASTER
+    case MSP_XACT_PARAMS:
+        // GET all parameters of the first discovered XACT servo
+        // Response format: phyID, appIdOffset, dataRate, range, direction, pulseType, channel, center, p1, p2, d1, tb, potGap
+        {
+            xactServoParams_t params;
+            bool haveParams = false;
+            if (fbusMasterIsEnabled() && fbusXactGetDiscoveredServoCount() > 0) {
+                const uint8_t phyID = fbusXactGetDiscoveredServoPhyID(0);
+                haveParams = fbusXactGetServoParams(phyID, &params);
+            }
+
+            if (haveParams) {
+                sbufWriteU8(dst, params.physicalId);      // 0x00
+                sbufWriteU8(dst, params.appIdOffset);     // 0x01
+                sbufWriteU16(dst, params.dataRate);       // 0x02
+                sbufWriteU8(dst, params.range);           // 0x04
+                sbufWriteU8(dst, params.direction);       // 0x05
+                sbufWriteU8(dst, params.pulseType);       // 0x06
+                sbufWriteU8(dst, params.channel);         // 0x07
+                sbufWriteU8(dst, params.center);          // 0x08
+                sbufWriteU8(dst, params.p1);              // 0x11
+                sbufWriteU8(dst, params.p2);              // 0x12
+                sbufWriteU8(dst, params.d1);              // 0x13
+                sbufWriteU8(dst, params.tb);              // 0x15
+                sbufWriteU8(dst, params.potGap);          // 0x21
+            } else {
+                // No servo discovered yet, or its parameters aren't cached yet
+                for (int i = 0; i < 14; i++) {
+                    sbufWriteU8(dst, 0);
+                }
+            }
+        }
+
+        break;
+#endif
+
     default:
         unsupportedCommand = true;
     }
@@ -3661,6 +3700,54 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         setRssiMsp(sbufReadU8(src));
 
         break;
+
+#ifdef USE_FBUS_MASTER
+    case MSP_SET_XACT_SCAN:
+        // Start a new sensor discovery phase on the FBUS master link
+        if (!fbusMasterIsEnabled()) {
+            return MSP_RESULT_ERROR;
+        }
+        fbusXactStartSensorDiscovery();
+
+        break;
+
+    case MSP_SET_XACT_PARAMS:
+        // SET all servo parameters - collect from GUI, compare with cache, write only differences
+        // Request format: all 13 parameters (phyID, appIdOffset, dataRate, range, direction,
+        // pulseType, channel, center, p1, p2, d1, tb, potGap)
+        if (fbusMasterIsEnabled() && sbufBytesRemaining(src) >= 14) {
+            const uint8_t phyID = fbusXactGetDiscoveredServoPhyID(0);
+            xactServoParams_t params;
+
+            if (fbusXactGetServoParams(phyID, &params)) {
+                xactServoParams_t newParams;
+                newParams.physicalId = sbufReadU8(src);
+                newParams.appIdOffset = sbufReadU8(src);
+                newParams.dataRate = sbufReadU16(src);
+                newParams.range = sbufReadU8(src);
+                newParams.direction = sbufReadU8(src);
+                newParams.pulseType = sbufReadU8(src);
+                newParams.channel = sbufReadU8(src);
+                newParams.center = sbufReadU8(src);
+                newParams.p1 = sbufReadU8(src);
+                newParams.p2 = sbufReadU8(src);
+                newParams.d1 = sbufReadU8(src);
+                newParams.tb = sbufReadU8(src);
+                newParams.potGap = sbufReadU8(src);
+
+                // Compare with cache and write only differences
+                if (!fbusXactCompareAndWriteParams(phyID, FBUS_SERVO_DATA_BASE + params.appIdOffset, &newParams)) {
+                    return MSP_RESULT_ERROR;
+                }
+            } else {
+                return MSP_RESULT_ERROR;
+            }
+        } else {
+            return MSP_RESULT_ERROR;
+        }
+
+        break;
+#endif
 
 #if defined(USE_BOARD_INFO)
     case MSP_SET_BOARD_INFO:

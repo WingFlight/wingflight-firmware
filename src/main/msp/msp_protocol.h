@@ -208,6 +208,11 @@
 
 #define MSP_UID                              160
 
+// XACT FBUS servo programming (experimental, requires USE_FBUS_MASTER)
+#define MSP_SET_XACT_SCAN                    161
+#define MSP_XACT_PARAMS                      162
+#define MSP_SET_XACT_PARAMS                  163
+
 #define MSP_GPSSVINFO                        164
 #define MSP_GPSSTATISTICS                    166
 #define MSP_GET_ADJUSTMENT_FUNCTION_IDS      167
