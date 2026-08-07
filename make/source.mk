@@ -75,6 +75,7 @@ COMMON_SRC = \
             drivers/camera_control.c \
             drivers/accgyro/gyro_sync.c \
             drivers/castle_telemetry_decode.c \
+            drivers/kingtech_telemetry_decode.c \
             drivers/pwm_output.c \
             drivers/sbus_output.c \
             drivers/fbus_master.c \
@@ -236,6 +237,7 @@ SPEED_OPTIMISED_SRC := $(SPEED_OPTIMISED_SRC) \
             drivers/exti.c \
             drivers/io.c \
             drivers/castle_telemetry_decode.c \
+            drivers/kingtech_telemetry_decode.c \
             drivers/pwm_output.c \
             drivers/rcc.c \
             drivers/serial.c \

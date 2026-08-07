@@ -42,6 +42,7 @@
 #include "common/filter.h"
 
 #include "drivers/castle_telemetry_decode.h"
+#include "drivers/kingtech_telemetry_decode.h"
 #include "drivers/timer.h"
 #include "drivers/motor.h"
 #include "drivers/dshot.h"
@@ -123,6 +124,7 @@ enum {
 #define ESC_SIG_XDFLY             0xA6
 #define ESC_SIG_FLY               0x73
 #define ESC_SIG_GRAUPNER          0xC0
+#define ESC_SIG_KINGTECH          0xC5
 #define ESC_SIG_BLHELI_S          0xC1
 #define ESC_SIG_AM32              0xC2
 #define ESC_SIG_CASTLE            0xCC
@@ -436,6 +438,90 @@ static void updateConsumption(timeUs_t currentTimeUs)
     DEBUG(ESC_SENSOR_DATA, DEBUG_DATA_CAPACITY, totalConsumption);
 
     escSensorData[0].consumption = applyConsumptionCorrection(lrintf(totalConsumption));
+}
+
+/*
+ * KingTech turbine ECU telemetry
+ *
+ * The ECU sends unsolicited 19200-baud 8-N-1 frames. Compact and extended
+ * turbine frames alternate with receiver/control frames. Pump power is kept
+ * in the ESC power field's 0.1% representation; the observed KingTech range
+ * of 0..435 therefore appears as 0.0..43.5%.
+ */
+
+#define KINGTECH_PARTIAL_FRAME_TIMEOUT_US 75000
+
+static kingtechTelemetryParser_t kingtechParser;
+static timeUs_t kingtechLastByteUs;
+
+static void kingtechSensorProcess(timeUs_t currentTimeUs)
+{
+    if (kingtechParser.count && cmpTimeUs(currentTimeUs, kingtechLastByteUs) > KINGTECH_PARTIAL_FRAME_TIMEOUT_US) {
+        kingtechTelemetryParserReset(&kingtechParser);
+        totalSyncErrorCount++;
+    }
+
+    while (serialRxBytesWaiting(escSensorPort)) {
+        const uint8_t byte = serialRead(escSensorPort);
+        kingtechLastByteUs = currentTimeUs;
+        kingtechTelemetryData_t telemetry;
+        totalByteCount++;
+
+        const kingtechDecodeResult_e result = kingtechTelemetryDecodeByte(&kingtechParser, byte, &telemetry);
+        if (result == KINGTECH_DECODE_FRAME) {
+            totalFrameCount++;
+
+            if (telemetry.rpmPresent || telemetry.egtPresent || telemetry.pumpPresent) {
+                escSensorData[0].id = ESC_SIG_KINGTECH;
+                escSensorData[0].age = 0;
+
+                if (telemetry.rpmPresent) {
+                    escSensorData[0].erpm = telemetry.rpm;
+                }
+                if (telemetry.egtPresent) {
+                    escSensorData[0].temperature = MIN(telemetry.egtCelsius, INT16_MAX / 10) * 10;
+                }
+                if (telemetry.pumpPresent) {
+                    escSensorData[0].pwm = MIN(telemetry.pumpPower, 1000);
+                }
+                if (telemetry.throttlePresent) {
+                    escSensorData[0].throttle = constrain(telemetry.throttlePercent, 0, 100) * 10;
+                }
+                if (telemetry.turbineVoltagePresent) {
+                    escSensorData[0].voltage = applyVoltageCorrection(telemetry.turbineVoltageMv);
+                }
+                if (telemetry.ecuVoltagePresent) {
+                    escSensorData[0].bec_voltage = telemetry.ecuVoltageMv;
+                }
+                if (telemetry.statusPresent) {
+                    escSensorData[0].status = telemetry.status;
+                }
+
+                DEBUG(ESC_SENSOR, DEBUG_ESC_1_RPM, escSensorData[0].erpm);
+                DEBUG(ESC_SENSOR, DEBUG_ESC_1_TEMP, escSensorData[0].temperature);
+                DEBUG(ESC_SENSOR, DEBUG_ESC_1_VOLTAGE, escSensorData[0].voltage / 10);
+                DEBUG(ESC_SENSOR, DEBUG_ESC_1_CURRENT, 0);
+
+                DEBUG(ESC_SENSOR_DATA, DEBUG_DATA_RPM, escSensorData[0].erpm);
+                DEBUG(ESC_SENSOR_DATA, DEBUG_DATA_PWM, escSensorData[0].pwm);
+                DEBUG(ESC_SENSOR_DATA, DEBUG_DATA_TEMP, escSensorData[0].temperature);
+                DEBUG(ESC_SENSOR_DATA, DEBUG_DATA_VOLTAGE, escSensorData[0].voltage);
+                DEBUG(ESC_SENSOR_DATA, DEBUG_DATA_CURRENT, 0);
+                DEBUG(ESC_SENSOR_DATA, DEBUG_DATA_EXTRA, escSensorData[0].status);
+                DEBUG(ESC_SENSOR_DATA, DEBUG_DATA_AGE, 0);
+
+                dataUpdateUs = currentTimeUs;
+            }
+        } else if (result == KINGTECH_DECODE_INVALID_CHECKSUM) {
+            totalCrcErrorCount++;
+        } else if (result != KINGTECH_DECODE_NONE) {
+            totalSyncErrorCount++;
+        }
+    }
+
+    // Compact and extended turbine frames are each no more than about 300ms
+    // apart in the captured 48, 82, 48, 12 packet cadence.
+    checkFrameTimeout(currentTimeUs, 500000);
 }
 
 /*
@@ -4288,6 +4374,9 @@ void escSensorProcess(timeUs_t currentTimeUs)
             case ESC_SENSOR_PROTO_RECORD:
                 recordSensorProcess(currentTimeUs);
                 break;
+            case ESC_SENSOR_PROTO_KINGTECH:
+                kingtechSensorProcess(currentTimeUs);
+                break;
         }
 
         DEBUG(ESC_SENSOR_FRAME, DEBUG_FRAME_BYTE_COUNT, totalByteCount);
@@ -4310,6 +4399,9 @@ void INIT_CODE validateAndFixEscSensorConfig(void)
     switch (escSensorConfig()->protocol) {
         case ESC_SENSOR_PROTO_GRAUPNER:
             escSensorConfigMutable()->halfDuplex = true;
+            break;
+        case ESC_SENSOR_PROTO_KINGTECH:
+            escSensorConfigMutable()->halfDuplex = false;
             break;
 #ifdef USE_TELEMETRY_CASTLE
         case ESC_SENSOR_PROTO_NONE:
@@ -4407,6 +4499,10 @@ bool INIT_CODE escSensorInit(void)
             break;
         case ESC_SENSOR_PROTO_RECORD:
             baudrate = baudRates[portConfig->telemetry_baudrateIndex];
+            break;
+        case ESC_SENSOR_PROTO_KINGTECH:
+            kingtechTelemetryParserReset(&kingtechParser);
+            baudrate = 19200;
             break;
     }
 

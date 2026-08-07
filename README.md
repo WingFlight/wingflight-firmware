@@ -24,7 +24,7 @@ Wingflight has many features inherited from Rotorflight and Betaflight:
 
 * Many receiver protocols: CRSF, S.BUS, FBUS, F.Port, SRXL2, IBUS, XBUS, EXBUS, GHOST, CPPM
 * Support for various telemetry protocols: CSRF, S.Port, FBUS, HoTT, etc.
-* ESC telemetry protocols: Hobbywing, Scorpion, Kontronik, Castle, OMP, ZTW, APD, YGE, XDFly, FLYROTOR
+* ESC and turbine telemetry protocols: Hobbywing, Scorpion, Kontronik, Castle, OMP, ZTW, APD, YGE, XDFly, FLYROTOR, KingTech
 * Remote configuration and tuning with the transmitter
   - With knobs / switches assigned to functions
   - With LUA scripts on EdgeTX, OpenTX and Ethos

@@ -126,6 +126,9 @@ blackbox_encoding_unittest_SRC :=  \
 #		$(USER_DIR)/common/maths.c
 
 
+kingtech_telemetry_decode_unittest_SRC := \
+		$(USER_DIR)/drivers/kingtech_telemetry_decode.c
+
 encoding_unittest_SRC := \
 		$(USER_DIR)/common/encoding.c
 

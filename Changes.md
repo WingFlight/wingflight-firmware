@@ -21,6 +21,12 @@ PID Mode 3 is maintained for backward compatibility.
 
 ## Configuration Changes
 
+Added direct KingTech turbine ECU telemetry as the `KINGTECH` option for
+`esc_sensor_protocol`. It receives the ECU stream at 19200-8-N-1 and publishes
+RPM, EGT, turbine voltage, ECU/receiver voltage, pump power, throttle, and
+operating status through Wingflight's existing ESC sensor telemetry path. See
+[docs/KingTechTelemetry.md](docs/KingTechTelemetry.md).
+
 Added airborne re-arm grace settings `rearm_grace_seconds` and
 `rearm_min_armed_seconds`. After the aircraft has been armed for the minimum
 time and has latched in-flight state, an accidental disarm opens a short re-arm
