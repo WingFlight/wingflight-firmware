@@ -88,9 +88,9 @@
 
 //#define HOTT_DEBUG
 
-#define HOTT_MESSAGE_PREPARATION_FREQUENCY_5_HZ ((1000 * 1000) / 5)
+#define HOTT_MESSAGE_PREPARATION_FREQUENCY_10_HZ ((1000 * 1000) / 10)
 #define HOTT_RX_SCHEDULE 4000
-#define HOTT_TX_DELAY_US 3000
+#define HOTT_TX_DELAY_US 1000
 #define MILLISECONDS_IN_A_SECOND 1000
 
 static uint32_t rxSchedule = HOTT_RX_SCHEDULE;
@@ -187,6 +187,13 @@ void hottPrepareGPSResponse(HOTT_GPS_MSG_t *hottGPSMessage)
 {
     hottGPSMessage->gps_satelites = gpsSol.numSat;
 
+    // Report climb rate regardless of GPS fix
+    const int32_t climbrate = getEstimatedVarioCms();
+    const uint16_t encodedClimbrate = (uint16_t)(30000 + climbrate);
+    hottGPSMessage->climbrate_L = (uint8_t)(encodedClimbrate & 0x00FFU);
+    hottGPSMessage->climbrate_H = (uint8_t)(encodedClimbrate >> 8);
+    hottGPSMessage->climbrate3s = (uint8_t)(climbrate / 100 + HOTT_EAM_OFFSET_M3S);
+
     if (!STATE(GPS_FIX)) {
         hottGPSMessage->gps_fix_char = GPS_FIX_CHAR_NONE;
         return;
@@ -215,7 +222,8 @@ void hottPrepareGPSResponse(HOTT_GPS_MSG_t *hottGPSMessage)
     hottGPSMessage->altitude_L = hottGpsAltitude & 0x00FF;
     hottGPSMessage->altitude_H = hottGpsAltitude >> 8;
 
-    hottGPSMessage->home_direction = GPS_directionToHome;
+    hottGPSMessage->home_direction = GPS_directionToHome / 2;
+    hottGPSMessage->flight_direction = gpsSol.groundCourse / 20;
 }
 #endif
 
@@ -284,7 +292,7 @@ static inline void hottEAMUpdateClimbrate(HOTT_EAM_MSG_t *hottEAMMessage)
     const int32_t vario = getEstimatedVarioCms();
     hottEAMMessage->climbrate_L = (30000 + vario) & 0x00FF;
     hottEAMMessage->climbrate_H = (30000 + vario) >> 8;
-    hottEAMMessage->climbrate3s = 120 + (vario / 100);
+    hottEAMMessage->climbrate3s = HOTT_EAM_OFFSET_M3S + (vario / 100);
 }
 #endif
 
@@ -532,7 +540,7 @@ static void hottSendTelemetryData(void) {
 
 static inline bool shouldPrepareHoTTMessages(uint32_t currentMicros)
 {
-    return currentMicros - lastMessagesPreparedAt >= HOTT_MESSAGE_PREPARATION_FREQUENCY_5_HZ;
+    return currentMicros - lastMessagesPreparedAt >= HOTT_MESSAGE_PREPARATION_FREQUENCY_10_HZ;
 }
 
 static inline bool shouldCheckForHoTTRequest(void)
