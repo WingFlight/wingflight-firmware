@@ -369,6 +369,7 @@ extern uint8_t _dmaram_end__;
 #define USE_GPS_NMEA
 #define USE_GPS_UBLOX
 #define USE_GPS_RESCUE
+#define USE_GPS_NAV
 #define USE_GYRO_DLPF_EXPERIMENTAL
 #define USE_MULTI_GYRO
 #define USE_SENSOR_NAMES

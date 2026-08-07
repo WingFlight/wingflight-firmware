@@ -53,6 +53,7 @@
 
 #include "flight/failsafe.h"
 #include "flight/gps_rescue.h"
+#include "flight/gps_nav.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/pid.h"
@@ -349,6 +350,12 @@ const char * const lookupTableRescueAltitudeMode[] = {
 };
 #endif
 
+#ifdef USE_GPS_NAV
+static const char * const lookupTableNavLoiterDirection[] = {
+    "CW", "CCW"
+};
+#endif
+
 #ifdef USE_VTX_COMMON
 static const char * const lookupTableVtxLowPowerDisarm[] = {
     "OFF", "ON", "UNTIL_FIRST_ARM"
@@ -477,6 +484,9 @@ const lookupTableEntry_t lookupTables[] = {
 #ifdef USE_GPS_RESCUE
     LOOKUP_TABLE_ENTRY(lookupTableRescueSanityType),
     LOOKUP_TABLE_ENTRY(lookupTableRescueAltitudeMode),
+#endif
+#ifdef USE_GPS_NAV
+    LOOKUP_TABLE_ENTRY(lookupTableNavLoiterDirection),
 #endif
 #endif
 #ifdef USE_BLACKBOX
@@ -976,6 +986,18 @@ const clivalue_t valueTable[] = {
 #ifdef USE_MAG
     { "gps_rescue_use_mag",         VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_GPS_RESCUE, offsetof(gpsRescueConfig_t, useMag) },
 #endif
+#endif
+
+#ifdef USE_GPS_NAV
+    // PG_GPS_NAV
+    { "nav_loiter_radius",          VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 20, 500 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, loiterRadiusM) },
+    { "nav_loiter_direction",       VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_NAV_LOITER_DIRECTION }, PG_GPS_NAV, offsetof(gpsNavConfig_t, loiterDirection) },
+    { "nav_rth_altitude",           VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 10, 500 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, rthAltitudeM) },
+    { "nav_min_sats",               VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 5, 50 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, minSats) },
+    { "nav_max_bank_angle",         VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 5, 45 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, maxBankAngleDeg) },
+    { "nav_max_pitch_angle",        VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 5, 45 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, maxPitchAngleDeg) },
+    { "nav_bearing_kp",             VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 1000 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, bearingKp) },
+    { "nav_altitude_kp",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 1000 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, altitudeKp) },
 #endif
 #endif
 

@@ -169,6 +169,10 @@ static void ltm_sframe(void)
     uint8_t lt_statemode;
     if (FLIGHT_MODE(GPS_RESCUE_MODE))
         lt_flightmode = 9;
+    else if (FLIGHT_MODE(RTH_MODE))
+        lt_flightmode = 13;
+    else if (FLIGHT_MODE(LOITER_MODE))
+        lt_flightmode = 9;
     else if (FLIGHT_MODE(HORIZON_MODE))
         lt_flightmode = 3;
     else if (FLIGHT_MODE(ANGLE_MODE))

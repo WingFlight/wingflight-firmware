@@ -41,6 +41,8 @@ typedef enum {
     BOXALTHOLD,
     BOXRESCUE,          // reserved (heli rescue removed) -- kept to avoid renumbering later ids
     BOXGPSRESCUE,
+    BOXLOITER,          // GPS LOITER: hold position (and altitude) around the point engaged at
+    BOXRTH,             // GPS RTH: fly to and loiter above the home position. See flight/gps_nav.c
     BOXFAILSAFE,
     BOXPASSTHROUGH,
 

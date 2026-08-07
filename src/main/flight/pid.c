@@ -625,8 +625,8 @@ static float pidApplySetpoint(uint8_t axis)
 
 #ifdef USE_ACC
     // Apply leveling modes
-    if (FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE)) {
-        // Failsafe/GPS rescue take priority over AUTO HOVER/ATT HOLD and force recovery to
+    if (FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE)) {
+        // Failsafe/GPS rescue/GPS nav take priority over AUTO HOVER/ATT HOLD and force recovery to
         // level, even while genuinely hovering or holding an off-level attitude -- a deliberate
         // safety choice.
         setpoint = angleModeApply(axis, setpoint);
