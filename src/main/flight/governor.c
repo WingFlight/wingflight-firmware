@@ -68,16 +68,30 @@
 #define GOVERNOR_RPM_LIMIT_FILTER_HZ 5.0f
 
 // RPM mode's idle-hold loop learns the throttle fraction that steady-state holds governor_rpm, and
-// floors its commanded target there. Without this, a rapid throttle chop crosses the handover while
-// measured RPM is still near cruise speed, the resulting large negative error drives the P term
-// straight to 0% throttle, and the ESC sees a hard cut followed by a sharp recovery once RPM decays
-// back through governor_rpm -- exactly the kind of step that risks desync. Flooring at the learned
-// value means a chop settles near the throttle that was already known to hold the target instead of
-// passing through zero on the way there. GOVERNOR_RPM_HOLD_LEARN_BAND is a fraction of governor_rpm:
-// the estimate only updates while measured RPM is close to target, so the transient itself (or the
-// floor's own influence on target) can't corrupt the learned value.
+// floors its commanded target there for a short window right after the governor engages. Without
+// this, a rapid throttle chop crosses the handover while measured RPM is still near cruise speed,
+// the resulting large negative error drives the P term straight to 0% throttle, and the ESC sees a
+// hard cut followed by a sharp recovery once RPM decays back through governor_rpm -- exactly the
+// kind of step that risks desync. Flooring at the learned value means a chop settles near the
+// throttle that was already known to hold the target instead of passing through zero on the way
+// there.
+//
+// The floor is deliberately time-limited (GOVERNOR_RPM_HOLD_FLOOR_DURATION) rather than applied for
+// the whole time the governor is active: if it stayed on indefinitely, a stale-too-high estimate
+// (from a battery/prop/ESC change, a lowered governor_rpm, etc.) would keep commanding more throttle
+// than actually needed, which holds RPM above target forever -- and since the learn gate below only
+// fires once RPM is close to target, that same stale value would then never be able to relearn
+// downward. Limiting the floor to the initial transient means the unclamped P/I loop always gets the
+// last word once the chop has settled, so it keeps converging on the true target regardless of what
+// the floor guessed.
+//
+// GOVERNOR_RPM_HOLD_LEARN_BAND is a fraction of governor_rpm: the estimate only updates while
+// measured RPM is close to target, so the transient itself can't corrupt it. Learning is done from
+// the loop's own (pre-floor) P/I output, never from the floored value, so the floor can never teach
+// itself back a value it originated.
 #define GOVERNOR_RPM_HOLD_LEARN_TAU 5.0f
 #define GOVERNOR_RPM_HOLD_LEARN_BAND 0.05f
+#define GOVERNOR_RPM_HOLD_FLOOR_DURATION 1.5f
 
 float governorApply(float throttle)
 {
@@ -85,6 +99,7 @@ float governorApply(float throttle)
     static float integrator = 0.0f;
     static float limitIntegrator = 0.0f;
     static float rpmHoldThrottle = 0.0f;
+    static float rpmHoldFloorTimer = 0.0f;
     static pt1Filter_t rpmErrorFilter;
     static pt1Filter_t rpmLimitErrorFilter;
     static bool rangeFaultLatched = false;
@@ -111,6 +126,7 @@ float governorApply(float throttle)
         if (active) {
             limitIntegrator = 0.0f;
             rpmLimitErrorFilter.y1 = 0.0f;
+            rpmHoldFloorTimer += pidGetDT();
 
             const float rpmError = cfg->governor_rpm - getMotorRPMf(0);
             pt1FilterUpdate(&rpmErrorFilter, GOVERNOR_RPM_FILTER_HZ, 1.0f / pidGetDT());
@@ -126,16 +142,19 @@ float governorApply(float throttle)
             integrator += filteredError * (cfg->governor_i_gain * 0.000005f) * pidGetDT();
             integrator = constrainf(integrator, 0.0f, ceilingFrac);
 
-            target = constrainf(pTerm + integrator, 0.0f, ceilingFrac);
+            const float piTarget = constrainf(pTerm + integrator, 0.0f, ceilingFrac);
 
-            // Floor at the learned hold-throttle (see GOVERNOR_RPM_HOLD_LEARN_TAU above) so a rapid
-            // chop settles near it instead of diving to 0% while the pre-chop RPM is still high.
-            target = constrainf(MAX(target, rpmHoldThrottle), 0.0f, ceilingFrac);
+            // Floor at the learned hold-throttle for the initial transient only (see
+            // GOVERNOR_RPM_HOLD_FLOOR_DURATION above) so a rapid chop settles near it instead of
+            // diving to 0% while the pre-chop RPM is still high -- but let the P/I loop's own,
+            // unfloored output win once that window has passed.
+            target = (rpmHoldFloorTimer < GOVERNOR_RPM_HOLD_FLOOR_DURATION) ?
+                constrainf(MAX(piTarget, rpmHoldThrottle), 0.0f, ceilingFrac) : piTarget;
 
-            // Only learn while settled near governor_rpm, so neither a chop's transient nor the
-            // floor above can feed back into the estimate.
+            // Only learn while settled near governor_rpm, from the loop's own pre-floor output, so
+            // neither a chop's transient nor the floor's own influence can feed back into the estimate.
             if (fabsf(filteredError) < cfg->governor_rpm * GOVERNOR_RPM_HOLD_LEARN_BAND) {
-                rpmHoldThrottle += (target - rpmHoldThrottle) *
+                rpmHoldThrottle += (piTarget - rpmHoldThrottle) *
                     MIN(pidGetDT() / GOVERNOR_RPM_HOLD_LEARN_TAU, 1.0f);
             }
         } else if (!belowHandover && ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXGOVERNOR) &&
@@ -212,6 +231,7 @@ float governorApply(float throttle)
         governorOutput = throttle;
         rpmErrorFilter.y1 = 0.0f;
         integrator = 0.0f;
+        rpmHoldFloorTimer = 0.0f;
         // Only reset the max-RPM limiter's own state when the limiter itself isn't engaged this
         // frame -- not merely because no correction was needed. Keeping it live lets the integrator
         // unwind smoothly (via its own positive-error accumulation) instead of hard-resetting every
