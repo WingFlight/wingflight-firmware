@@ -31,9 +31,6 @@
 #include "build/debug.h"
 #include "build/debug_pin.h"
 
-#include "cms/cms.h"
-#include "cms/cms_types.h"
-
 #include "common/axis.h"
 #include "common/color.h"
 #include "common/maths.h"
@@ -107,9 +104,6 @@
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/beeper.h"
 #include "io/dashboard.h"
-#include "io/displayport_frsky_osd.h"
-#include "io/displayport_max7456.h"
-#include "io/displayport_msp.h"
 #include "io/flashfs.h"
 #include "io/gps.h"
 #include "io/ledstrip.h"
@@ -131,8 +125,6 @@
 #include "msp/msp.h"
 #include "msp/msp_serial.h"
 
-#include "osd/osd.h"
-
 #include "pg/adc.h"
 #include "pg/beeper.h"
 #include "pg/beeper_dev.h"
@@ -150,7 +142,6 @@
 #include "pg/rx_pwm.h"
 #include "pg/rx_spi.h"
 #include "pg/sdcard.h"
-#include "pg/vcd.h"
 #include "pg/vtx_io.h"
 #include "pg/freq.h"
 
@@ -880,90 +871,7 @@ void init(void)
     mspInit();
     mspSerialInit();
 
-/*
- * CMS, display devices and OSD
- */
-#ifdef USE_CMS
-    cmsInit();
-#endif
-
-#if defined(USE_OSD)
-    displayPort_t *osdDisplayPort = NULL;
-    osdDisplayPortDevice_e osdDisplayPortDevice = OSD_DISPLAYPORT_DEVICE_NONE;
-#endif
-
-#if defined(USE_OSD)
-    //The OSD need to be initialised after GYRO to avoid GYRO initialisation failure on some targets
-
-    if (featureIsEnabled(FEATURE_OSD)) {
-        osdDisplayPortDevice_e device = osdConfig()->displayPortDevice;
-
-        switch(device) {
-
-        case OSD_DISPLAYPORT_DEVICE_AUTO:
-            FALLTHROUGH;
-
-#if defined(USE_FRSKYOSD)
-        // Test OSD_DISPLAYPORT_DEVICE_FRSKYOSD first, since an FC could
-        // have a builtin MAX7456 but also an FRSKYOSD connected to an
-        // uart.
-        case OSD_DISPLAYPORT_DEVICE_FRSKYOSD:
-            osdDisplayPort = frskyOsdDisplayPortInit(vcdProfile()->video_system);
-            if (osdDisplayPort || device == OSD_DISPLAYPORT_DEVICE_FRSKYOSD) {
-                osdDisplayPortDevice = OSD_DISPLAYPORT_DEVICE_FRSKYOSD;
-                break;
-            }
-            FALLTHROUGH;
-#endif
-
-#if defined(USE_MAX7456)
-        case OSD_DISPLAYPORT_DEVICE_MAX7456:
-            // If there is a max7456 chip for the OSD configured and detected then use it.
-            if (max7456DisplayPortInit(vcdProfile(), &osdDisplayPort) || device == OSD_DISPLAYPORT_DEVICE_MAX7456) {
-                osdDisplayPortDevice = OSD_DISPLAYPORT_DEVICE_MAX7456;
-                break;
-            }
-            FALLTHROUGH;
-#endif
-
-#if defined(USE_CMS) && defined(USE_MSP_DISPLAYPORT) && defined(USE_OSD_OVER_MSP_DISPLAYPORT)
-        case OSD_DISPLAYPORT_DEVICE_MSP:
-            osdDisplayPort = displayPortMspInit();
-            if (osdDisplayPort || device == OSD_DISPLAYPORT_DEVICE_MSP) {
-                osdDisplayPortDevice = OSD_DISPLAYPORT_DEVICE_MSP;
-                break;
-            }
-            FALLTHROUGH;
-#endif
-
-        // Other device cases can be added here
-
-        case OSD_DISPLAYPORT_DEVICE_NONE:
-        default:
-            break;
-        }
-
-        // osdInit will register with CMS by itself.
-        osdInit(osdDisplayPort, osdDisplayPortDevice);
-
-        if (osdDisplayPortDevice == OSD_DISPLAYPORT_DEVICE_NONE) {
-            featureDisableImmediate(FEATURE_OSD);
-        }
-    }
-#endif // USE_OSD
-
-#if defined(USE_CMS) && defined(USE_MSP_DISPLAYPORT)
-    // If BFOSD is not active, then register MSP_DISPLAYPORT as a CMS device.
-#if defined(USE_OSD)
-    if (!osdDisplayPort)
-#endif
-    {
-        cmsDisplayPortRegister(displayPortMspInit());
-    }
-#endif
-
 #ifdef USE_DASHBOARD
-    // Dashbord will register with CMS by itself.
     if (featureIsEnabled(FEATURE_DASHBOARD)) {
         dashboardInit();
 #ifdef USE_OLED_GPS_DEBUG_PAGE_ONLY
@@ -976,7 +884,6 @@ void init(void)
 #endif
 
 #ifdef USE_TELEMETRY
-    // Telemetry will initialise displayport and register with CMS by itself.
     if (featureIsEnabled(FEATURE_TELEMETRY)) {
         telemetryInit();
     }

@@ -54,7 +54,7 @@ typedef enum {
     ARMING_DISABLED_LOAD            = (1 << 11),
     ARMING_DISABLED_CALIBRATING     = (1 << 12),
     ARMING_DISABLED_CLI             = (1 << 13),
-    ARMING_DISABLED_CMS_MENU        = (1 << 14),
+    ARMING_DISABLED_CMS_MENU        = (1 << 14), // reserved (CMS removed) -- never set
     ARMING_DISABLED_BST             = (1 << 15),
     ARMING_DISABLED_MSP             = (1 << 16),
     ARMING_DISABLED_PARALYZE        = (1 << 17),

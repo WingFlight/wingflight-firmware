@@ -32,8 +32,6 @@
 
 #include "cli/cli.h"
 
-#include "cms/cms.h"
-
 #include "common/axis.h"
 #include "common/filter.h"
 #include "common/maths.h"
@@ -91,9 +89,8 @@
 
 #include "msp/msp_serial.h"
 
-#include "osd/osd.h"
-
 #include "pg/governor.h"
+#include "pg/arming.h"
 #include "pg/motor.h"
 #include "pg/pg.h"
 #include "pg/pg_ids.h"
@@ -144,6 +141,9 @@ int16_t magHold;
 static FAST_DATA_ZERO_INIT uint16_t pidUpdateCounter;
 
 static timeUs_t disarmAt;     // Time of automatic disarm when "Don't spin the motors when armed" is enabled and auto_disarm_delay is nonzero
+static timeUs_t armStartedAtUs;
+static timeUs_t airborneRearmUntilUs;
+static bool airborneRearmEligible;
 
 static int lastArmingDisabledReason = 0;
 static timeUs_t lastDisarmTimeUs;
@@ -184,6 +184,50 @@ void resetArmingDisabled(void)
     lastArmingDisabledReason = 0;
 }
 
+static bool airborneRearmGraceActive(timeUs_t currentTimeUs)
+{
+    if (armingConfig()->rearm_grace_seconds == 0 || airborneRearmUntilUs == 0) {
+        return false;
+    }
+
+    if (cmpTimeUs(currentTimeUs, airborneRearmUntilUs) >= 0) {
+        airborneRearmUntilUs = 0;
+        return false;
+    }
+
+    return true;
+}
+
+static void updateAirborneRearmEligibility(timeUs_t currentTimeUs, bool inFlightLatched)
+{
+    if (!ARMING_FLAG(ARMED)) {
+        return;
+    }
+
+    const timeDelta_t armedTimeUs = cmpTimeUs(currentTimeUs, armStartedAtUs);
+    if (inFlightLatched && armedTimeUs >= (timeDelta_t)armingConfig()->rearm_min_armed_seconds * 1000000) {
+        airborneRearmEligible = true;
+    }
+}
+
+static void updateAirborneRearmOnArm(timeUs_t currentTimeUs)
+{
+    armStartedAtUs = currentTimeUs;
+    airborneRearmUntilUs = 0;
+    airborneRearmEligible = false;
+}
+
+static void updateAirborneRearmOnDisarm(timeUs_t currentTimeUs)
+{
+    if (airborneRearmEligible && armingConfig()->rearm_grace_seconds > 0) {
+        airborneRearmUntilUs = currentTimeUs + armingConfig()->rearm_grace_seconds * 1000000;
+    } else {
+        airborneRearmUntilUs = 0;
+    }
+
+    airborneRearmEligible = false;
+}
+
 #ifdef USE_ACC
 static bool accNeedsCalibration(void)
 {
@@ -209,15 +253,6 @@ static bool accNeedsCalibration(void)
             isModeActivationConditionPresent(BOXCALIB)) {
             return true;
         }
-
-#ifdef USE_OSD
-        // Check for any enabled OSD elements that need the ACC
-        if (featureIsEnabled(FEATURE_OSD)) {
-            if (osdNeedsAccelerometer()) {
-                return true;
-            }
-        }
-#endif
 
 #ifdef USE_GPS_RESCUE
         // Check if failsafe will use GPS Rescue
@@ -277,13 +312,15 @@ void updateArmingStatus(void)
             unsetArmingDisabled(ARMING_DISABLED_BOXFAILSAFE);
         }
 
-        if (!isThrottleOff()) {
+        const bool allowAirborneRearm = airborneRearmGraceActive(micros());
+
+        if (!isThrottleOff() && !allowAirborneRearm) {
             setArmingDisabled(ARMING_DISABLED_THROTTLE);
         } else {
             unsetArmingDisabled(ARMING_DISABLED_THROTTLE);
         }
 
-        if (!isUpright()) {
+        if (!isUpright() && !allowAirborneRearm) {
             setArmingDisabled(ARMING_DISABLED_ANGLE);
         } else {
             unsetArmingDisabled(ARMING_DISABLED_ANGLE);
@@ -388,8 +425,7 @@ void updateArmingStatus(void)
                     !(flags & (
                         ARMING_DISABLED_BOOT_GRACE_TIME |
                         ARMING_DISABLED_MSP |
-                        ARMING_DISABLED_CLI |
-                        ARMING_DISABLED_CMS_MENU
+                        ARMING_DISABLED_CLI
                     )))
                 {
                     const timeMs_t now = millis();
@@ -427,9 +463,12 @@ void updateArmingStatus(void)
 void disarm(flightLogDisarmReason_e reason)
 {
     if (ARMING_FLAG(ARMED)) {
+        const timeUs_t currentTimeUs = micros();
+
         ENABLE_ARMING_FLAG(WAS_EVER_ARMED);
         DISABLE_ARMING_FLAG(ARMED);
-        lastDisarmTimeUs = micros();
+        lastDisarmTimeUs = currentTimeUs;
+        updateAirborneRearmOnDisarm(currentTimeUs);
 
         armingDelayed = ARMING_NOT_DELAYED;
         armingWiggle = WIGGLE_NOT_DONE;
@@ -497,11 +536,8 @@ void tryArm(void)
         }
 #endif
 
-#ifdef USE_OSD
-        osdSuppressStats(false);
-#endif
-
         ENABLE_ARMING_FLAG(ARMED);
+        updateAirborneRearmOnArm(currentTimeUs);
 
         armingDelayed = ARMING_NOT_DELAYED;
         armingWiggle = WIGGLE_NOT_DONE;
@@ -635,11 +671,7 @@ void processRxModes(timeUs_t currentTimeUs)
         disarmAt = currentTimeUs + autoDisarmDelayUs;  // extend auto-disarm timer
     }
 
-    if (!(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED))
-#ifdef USE_CMS
-        && !cmsInMenu
-#endif
-        ) {
+    if (!(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED))) {
         processRcStickPositions();
     }
 
@@ -666,9 +698,6 @@ void processRxModes(timeUs_t currentTimeUs)
 #endif // USE_SERVOS
 
     if (!cliMode &&
-#ifdef USE_CMS
-        !cmsInMenu &&
-#endif
         !(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED)))
     {
         processRcAdjustments();
@@ -776,6 +805,8 @@ void processRxModes(timeUs_t currentTimeUs)
                 haveGroundAltitude = false;
             }
         }
+
+        updateAirborneRearmEligibility(currentTimeUs, inFlightLatched);
 
         if (inFlightLatched) {
             ENABLE_FLIGHT_MODE(INFLIGHT_MODE);

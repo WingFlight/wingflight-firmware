@@ -422,7 +422,7 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     // PID algorithm
     pid.pidMode = pidProfile->pid_mode;
 
-    // Live per-axis P/I/D/F scale - applied at the point of use
+    // Live per-axis P/I/D scale - applied at the point of use
     // (pidApplyMode0/1), not baked into pid.coef[], so it stays correct
     // regardless of which gain adjustment (including this one) last touched
     // the coefficients.
@@ -686,7 +686,7 @@ static void pidApplyMode0(uint8_t axis)
   //// F-term
 
     // Calculate feedforward component
-    pid.data[axis].F = pid.coef[axis].Kf * pid.masterGain[axis] * setpoint;
+    pid.data[axis].F = pid.coef[axis].Kf * setpoint;
 
   //// PID Sum
 
@@ -792,7 +792,7 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
         runtimeGains->effective[axis].P = pidGainToCenti(raw->P * masterGain * fwTpa);
         runtimeGains->effective[axis].I = pidGainToCenti(raw->I * masterGain);
         runtimeGains->effective[axis].D = pidGainToCenti(raw->D * masterGain * fwTpa);
-        runtimeGains->effective[axis].F = pidGainToCenti(raw->F * masterGain);
+        runtimeGains->effective[axis].F = pidGainToCenti(raw->F);
         runtimeGains->effective[axis].B = pidGainToCenti(raw->B);
     }
 }
@@ -861,7 +861,7 @@ static void pidApplyMode1(uint8_t axis)
   //// Feedforward
 
     // Calculate F component
-    pid.data[axis].F = pid.coef[axis].Kf * masterGain * setpoint;
+    pid.data[axis].F = pid.coef[axis].Kf * setpoint;
 
 
   //// Feedforward Boost (FF Derivative)

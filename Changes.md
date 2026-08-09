@@ -21,6 +21,12 @@ PID Mode 3 is maintained for backward compatibility.
 
 ## Configuration Changes
 
+Added airborne re-arm grace settings `rearm_grace_seconds` and
+`rearm_min_armed_seconds`. After the aircraft has been armed for the minimum
+time and has latched in-flight state, an accidental disarm opens a short re-arm
+window where only throttle and angle arming checks are ignored; all hard safety
+checks still apply.
+
 The fixed-wing I-term decay settings are renamed from
 `error_decay_time_cyclic` / `error_decay_limit_cyclic` to
 `iterm_decay_time` / `iterm_decay_limit`. The old CLI names remain accepted
@@ -28,6 +34,10 @@ as aliases for compatibility with existing dumps. MSP byte layout is unchanged.
 
 Added `cross_axis_relax_strength`, `cross_axis_relax_pitch_strength`,
 `cross_axis_relax_level`, and `cross_axis_relax_cutoff` PID profile settings.
+
+`master_gain` now scales only the stabilizing P/I/D terms. Feedforward (`F`)
+is no longer scaled by `master_gain`, keeping F as a separate command-response
+tuning parameter while master gain remains focused on loop authority.
 
 Fixed-wing throttle PID attenuation (`fw_tpa_breakpoint` / `fw_tpa_rate`) is
 replaced by `fw_tpa_gain` and `fw_tpa_curve`, mirroring `master_gain` /

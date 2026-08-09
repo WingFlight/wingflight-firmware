@@ -33,7 +33,6 @@ enum {
 
 typedef struct {
     char    name[MAX_NAME_LENGTH + 1];
-    char    displayName[MAX_NAME_LENGTH + 1];
     uint8_t modelId;
     uint8_t modelParam1Type;
     int16_t modelParam1Value;

@@ -97,7 +97,7 @@
 // betaflight specific parameter group ids start at 500
 #define PG_BETAFLIGHT_START         500
 //#define PG_MODE_ACTIVATION_OPERATOR_CONFIG 500 removed
-#define PG_OSD_CONFIG               501
+//#define PG_OSD_CONFIG               501 removed (OSD)
 #define PG_BEEPER_CONFIG            502
 #define PG_BEEPER_DEV_CONFIG        503
 #define PG_PID_CONFIG               504
@@ -108,9 +108,9 @@
 #define PG_SERIAL_PIN_CONFIG        509
 #define PG_ADC_CONFIG               510
 #define PG_SDCARD_CONFIG            511
-#define PG_DISPLAY_PORT_MSP_CONFIG  512
-#define PG_DISPLAY_PORT_MAX7456_CONFIG 513
-#define PG_VCD_CONFIG               514
+//#define PG_DISPLAY_PORT_MSP_CONFIG  512 removed (OSD)
+//#define PG_DISPLAY_PORT_MAX7456_CONFIG 513 removed (OSD)
+//#define PG_VCD_CONFIG               514 removed (OSD)
 #define PG_VTX_CONFIG               515
 #define PG_SONAR_CONFIG             516
 #define PG_ESC_SENSOR_CONFIG        517
@@ -120,7 +120,7 @@
 #define PG_ESCSERIAL_CONFIG         521
 #define PG_CAMERA_CONTROL_CONFIG    522
 #define PG_RX_CC2500_SPI_CONFIG     523
-#define PG_MAX7456_CONFIG           524
+//#define PG_MAX7456_CONFIG           524 removed (OSD)
 #define PG_FLYSKY_CONFIG            525
 #define PG_TIME_CONFIG              526
 #define PG_RANGEFINDER_CONFIG       527 // iNav
@@ -129,7 +129,7 @@
 #define PG_PINIOBOX_CONFIG          530
 #define PG_USB_CONFIG               531
 #define PG_SDIO_CONFIG              532
-#define PG_DISPLAY_PORT_CRSF_CONFIG 533  // no longer required -- never released
+//#define PG_DISPLAY_PORT_CRSF_CONFIG 533 removed (CMS, never released)
 #define PG_TIMER_IO_CONFIG          534 // used to store the index for timer use in timerHardware array in target.c
 #define PG_SPI_PREINIT_IPU_CONFIG   535
 #define PG_SPI_PREINIT_OPU_CONFIG   536
@@ -170,10 +170,10 @@
 #define PG_GAIN_CURVES               1012
 #define PG_THRUST_VECTOR_PROFILE     1013
 
-// OSD configuration (subject to change)
-#define PG_OSD_FONT_CONFIG 2047
-#define PG_OSD_VIDEO_CONFIG 2046
-#define PG_OSD_ELEMENT_CONFIG 2045
+// OSD configuration -- removed (OSD)
+//#define PG_OSD_FONT_CONFIG 2047
+//#define PG_OSD_VIDEO_CONFIG 2046
+//#define PG_OSD_ELEMENT_CONFIG 2045
 
 
 // 4095 is currently the highest number that can be used for a PGN due to the top 4 bits of the 16 bit value being reserved for the version when the PG is stored in an EEPROM.

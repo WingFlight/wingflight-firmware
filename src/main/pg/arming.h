@@ -37,6 +37,8 @@ typedef struct
     uint8_t   auto_disarm_delay;            // allow automatically disarming multicopters after auto_disarm_delay seconds of zero throttle. Disabled when 0
 
     uint8_t   power_on_arming_grace_time;   // in seconds
+    uint8_t   rearm_grace_seconds;          // allow in-flight rearm after accidental disarm. Disabled when 0
+    uint8_t   rearm_min_armed_seconds;      // minimum armed flight time before rearm grace can be used
 
     uint8_t   enable_stick_arming;          // boolean that determines whether stick arming can be used
     uint8_t   enable_stick_commands;        // boolean that determines whether stick commands can be used
@@ -48,4 +50,3 @@ typedef struct
 } armingConfig_t;
 
 PG_DECLARE(armingConfig_t, armingConfig);
-

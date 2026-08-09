@@ -28,8 +28,6 @@
 
 #include "cli/cli.h"
 
-#include "cms/cms.h"
-
 #include "common/color.h"
 #include "common/utils.h"
 
@@ -75,8 +73,6 @@
 
 #include "msp/msp.h"
 #include "msp/msp_serial.h"
-
-#include "osd/osd.h"
 
 #include "pg/rx.h"
 #include "pg/motor.h"
@@ -375,10 +371,6 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_DASHBOARD] = DEFINE_TASK("DASHBOARD", NULL, NULL, dashboardUpdate, TASK_PERIOD_HZ(10), TASK_PRIORITY_LOW),
 #endif
 
-#ifdef USE_OSD
-    [TASK_OSD] = DEFINE_TASK("OSD", NULL, osdUpdateCheck, osdUpdate, TASK_PERIOD_HZ(OSD_FRAMERATE_DEFAULT_HZ), TASK_PRIORITY_LOW),
-#endif
-
 #ifdef USE_TELEMETRY
     [TASK_TELEMETRY] = DEFINE_TASK("TELEMETRY", NULL, NULL, taskTelemetry, TASK_PERIOD_HZ(250), TASK_PRIORITY_LOW),
 #endif
@@ -393,10 +385,6 @@ task_attribute_t task_attributes[TASK_COUNT] = {
 
 #ifdef USE_ESC_SENSOR
     [TASK_ESC_SENSOR] = DEFINE_TASK("ESC_SENSOR", NULL, NULL, escSensorProcess, TASK_PERIOD_HZ(ESC_SENSOR_TASK_FREQ_HZ), TASK_PRIORITY_LOW),
-#endif
-
-#ifdef USE_CMS
-    [TASK_CMS] = DEFINE_TASK("CMS", NULL, NULL, cmsHandler, TASK_PERIOD_HZ(20), TASK_PRIORITY_LOW),
 #endif
 
 #ifdef USE_VTX_CONTROL
@@ -476,7 +464,7 @@ void tasksInit(void)
 
     const bool useBatteryVoltage = batteryConfig()->voltageMeterSource != VOLTAGE_METER_NONE;
     const bool useBatteryCurrent = batteryConfig()->currentMeterSource != CURRENT_METER_NONE;
-    const bool useBatteryAlerts = batteryConfig()->useVoltageAlerts || batteryConfig()->useConsumptionAlerts || featureIsEnabled(FEATURE_OSD);
+    const bool useBatteryAlerts = batteryConfig()->useVoltageAlerts || batteryConfig()->useConsumptionAlerts;
     setTaskEnabled(TASK_BATTERY_ALERTS, (useBatteryVoltage || useBatteryCurrent) && useBatteryAlerts);
 
 #ifdef USE_STACK_CHECK
@@ -548,11 +536,6 @@ void tasksInit(void)
     setTaskEnabled(TASK_LEDSTRIP, featureIsEnabled(FEATURE_LED_STRIP));
 #endif
 
-#ifdef USE_OSD
-    rescheduleTask(TASK_OSD, TASK_PERIOD_HZ(osdConfig()->framerate_hz));
-    setTaskEnabled(TASK_OSD, featureIsEnabled(FEATURE_OSD) && osdGetDisplayPort(NULL));
-#endif
-
 #ifdef USE_BST
     setTaskEnabled(TASK_BST_MASTER_PROCESS, true);
 #endif
@@ -568,10 +551,6 @@ void tasksInit(void)
 
 #ifdef USE_PINIOBOX
     pinioBoxTaskControl();
-#endif
-
-#ifdef USE_CMS
-    setTaskEnabled(TASK_CMS, featureIsEnabled(FEATURE_CMS));
 #endif
 
 #ifdef USE_VTX_CONTROL

@@ -20,10 +20,15 @@
 
 #include "pg/pilot.h"
 
-PG_REGISTER_WITH_RESET_TEMPLATE(pilotConfig_t, pilotConfig, PG_PILOT_CONFIG, 1);
+// v1: last version before displayName removal (OSD-only field -- shown as
+// an alternate OSD craft-name element, no other consumer). Removing it
+// shifts modelId and everything after into its old byte offset, so the PG
+// version IS bumped (matching the mixerConfig_t v1->v2 precedent) to force
+// pgLoad() to reset to defaults on upgrade instead of misreading the
+// shifted bytes.
+PG_REGISTER_WITH_RESET_TEMPLATE(pilotConfig_t, pilotConfig, PG_PILOT_CONFIG, 2);
 
 PG_RESET_TEMPLATE(pilotConfig_t, pilotConfig,
     .name = INIT_ZERO,
-    .displayName = INIT_ZERO,
     .modelId = 0,
 );
