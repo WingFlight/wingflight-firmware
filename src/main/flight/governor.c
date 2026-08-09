@@ -57,6 +57,13 @@
 
 // RPM mode's optional max-RPM limiter is not a full-stick governor. It normally passes the pilot's
 // throttle through unchanged and only pulls throttle down while measured RPM exceeds governor_rpm_max.
+// Its correction is always bounded to [-throttle, 0], so unlike the idle-hold loop above it can never
+// read as an unwanted ESC cut while the pilot holds real stick -- but its integrator/filter state must
+// stay live for the whole time this limiter is engaged (armed, above handover, governor_rpm_max set,
+// RPM source live), not just on frames where a correction is actually being applied. Wiping them on
+// every frame RPM happens to be under the limit would force a cold P-only response each time RPM
+// creeps back over it, instead of the smooth I-term unwind the loop already does on its own via
+// positive error accumulation.
 #define GOVERNOR_RPM_LIMIT_SLEW_RATE 5.0f
 #define GOVERNOR_RPM_LIMIT_FILTER_HZ 5.0f
 
@@ -95,6 +102,7 @@ float governorApply(float throttle)
     bool active = false;
     bool fullRange = false;
     bool rpmLimit = false;
+    bool rpmLimitEngaged = false;
     float target = throttle;
 
     switch (cfg->governor_mode) {
@@ -132,6 +140,7 @@ float governorApply(float throttle)
             }
         } else if (!belowHandover && ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXGOVERNOR) &&
             cfg->governor_rpm_max > 0 && isMotorRpmSourceActive(0)) {
+            rpmLimitEngaged = true;
             rpmErrorFilter.y1 = 0.0f;
             integrator = 0.0f;
 
@@ -202,9 +211,16 @@ float governorApply(float throttle)
     if (!active) {
         governorOutput = throttle;
         rpmErrorFilter.y1 = 0.0f;
-        rpmLimitErrorFilter.y1 = 0.0f;
         integrator = 0.0f;
-        limitIntegrator = 0.0f;
+        // Only reset the max-RPM limiter's own state when the limiter itself isn't engaged this
+        // frame -- not merely because no correction was needed. Keeping it live lets the integrator
+        // unwind smoothly (via its own positive-error accumulation) instead of hard-resetting every
+        // frame RPM sits under governor_rpm_max, which would force a cold P-only response the next
+        // time RPM creeps back over it.
+        if (!rpmLimitEngaged) {
+            rpmLimitErrorFilter.y1 = 0.0f;
+            limitIntegrator = 0.0f;
+        }
         return throttle;
     }
 
