@@ -2310,7 +2310,7 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         sbufWriteU8(dst, rebootMode);
 
 #if defined(USE_USB_MSC)
-        if (rebootMode == MSP_REBOOT_MSC) {
+        if (rebootMode == MSP_REBOOT_MSC || rebootMode == MSP_REBOOT_MSC_UTC) {
             if (mscCheckFilesystemReady()) {
                 sbufWriteU8(dst, 1);
             } else {
