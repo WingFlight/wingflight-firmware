@@ -60,11 +60,24 @@
 #define GOVERNOR_RPM_LIMIT_SLEW_RATE 5.0f
 #define GOVERNOR_RPM_LIMIT_FILTER_HZ 5.0f
 
+// RPM mode's idle-hold loop learns the throttle fraction that steady-state holds governor_rpm, and
+// floors its commanded target there. Without this, a rapid throttle chop crosses the handover while
+// measured RPM is still near cruise speed, the resulting large negative error drives the P term
+// straight to 0% throttle, and the ESC sees a hard cut followed by a sharp recovery once RPM decays
+// back through governor_rpm -- exactly the kind of step that risks desync. Flooring at the learned
+// value means a chop settles near the throttle that was already known to hold the target instead of
+// passing through zero on the way there. GOVERNOR_RPM_HOLD_LEARN_BAND is a fraction of governor_rpm:
+// the estimate only updates while measured RPM is close to target, so the transient itself (or the
+// floor's own influence on target) can't corrupt the learned value.
+#define GOVERNOR_RPM_HOLD_LEARN_TAU 5.0f
+#define GOVERNOR_RPM_HOLD_LEARN_BAND 0.05f
+
 float governorApply(float throttle)
 {
     static float governorOutput = 0.0f;
     static float integrator = 0.0f;
     static float limitIntegrator = 0.0f;
+    static float rpmHoldThrottle = 0.0f;
     static pt1Filter_t rpmErrorFilter;
     static pt1Filter_t rpmLimitErrorFilter;
     static bool rangeFaultLatched = false;
@@ -106,6 +119,17 @@ float governorApply(float throttle)
             integrator = constrainf(integrator, 0.0f, ceilingFrac);
 
             target = constrainf(pTerm + integrator, 0.0f, ceilingFrac);
+
+            // Floor at the learned hold-throttle (see GOVERNOR_RPM_HOLD_LEARN_TAU above) so a rapid
+            // chop settles near it instead of diving to 0% while the pre-chop RPM is still high.
+            target = constrainf(MAX(target, rpmHoldThrottle), 0.0f, ceilingFrac);
+
+            // Only learn while settled near governor_rpm, so neither a chop's transient nor the
+            // floor above can feed back into the estimate.
+            if (fabsf(filteredError) < cfg->governor_rpm * GOVERNOR_RPM_HOLD_LEARN_BAND) {
+                rpmHoldThrottle += (target - rpmHoldThrottle) *
+                    MIN(pidGetDT() / GOVERNOR_RPM_HOLD_LEARN_TAU, 1.0f);
+            }
         } else if (!belowHandover && ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXGOVERNOR) &&
             cfg->governor_rpm_max > 0 && isMotorRpmSourceActive(0)) {
             rpmErrorFilter.y1 = 0.0f;
