@@ -188,12 +188,16 @@ void hottPrepareGPSResponse(HOTT_GPS_MSG_t *hottGPSMessage)
     hottGPSMessage->gps_satelites = gpsSol.numSat;
 
     // Report climb rate regardless of GPS fix
+#ifdef USE_VARIO
     const int32_t climbrate = getEstimatedVarioCms();
-    const uint16_t encodedClimbrate = (uint16_t)(30000 + climbrate);
-    hottGPSMessage->climbrate_L = (uint8_t)(encodedClimbrate & 0x00FFU);
-    hottGPSMessage->climbrate_H = (uint8_t)(encodedClimbrate >> 8);
-    hottGPSMessage->climbrate3s = (uint8_t)(climbrate / 100 + HOTT_EAM_OFFSET_M3S);
-
+    const uint16_t encoded_climbrate = (uint16_t)(30000 + climbrate);
+    hottGPSMessage->climbrate_L = (uint8_t)(encoded_climbrate & 0x00FFU);
+    hottGPSMessage->climbrate_H = (uint8_t)(encoded_climbrate >> 8);
+    uint16_t encoded_climbrate3s = (uint16_t)(3 * climbrate / 100 + HOTT_EAM_OFFSET_M3S);
+    if (encoded_climbrate3s > 255)
+        encoded_climbrate3s = HOTT_EAM_OFFSET_M3S;
+    hottGPSMessage->climbrate3s = (uint8_t)(encoded_climbrate3s);
+#endif
     if (!STATE(GPS_FIX)) {
         hottGPSMessage->gps_fix_char = GPS_FIX_CHAR_NONE;
         return;
@@ -290,9 +294,13 @@ static inline void hottEAMUpdateAltitude(HOTT_EAM_MSG_t *hottEAMMessage)
 static inline void hottEAMUpdateClimbrate(HOTT_EAM_MSG_t *hottEAMMessage)
 {
     const int32_t vario = getEstimatedVarioCms();
-    hottEAMMessage->climbrate_L = (30000 + vario) & 0x00FF;
-    hottEAMMessage->climbrate_H = (30000 + vario) >> 8;
-    hottEAMMessage->climbrate3s = HOTT_EAM_OFFSET_M3S + (vario / 100);
+    const uint16_t encoded_vario = (uint16_t)(30000 + vario);
+    hottEAMMessage->climbrate_L = (uint8_t)(encoded_vario & 0x00FFU);
+    hottEAMMessage->climbrate_H = (uint8_t)(encoded_vario >> 8);
+    uint16_t encoded_climbrate3s = (uint16_t)(3 * vario / 100 + HOTT_EAM_OFFSET_M3S);
+    if (encoded_climbrate3s > 255)
+        encoded_climbrate3s = HOTT_EAM_OFFSET_M3S;
+    hottEAMMessage->climbrate3s = (uint8_t)(encoded_climbrate3s);
 }
 #endif
 
