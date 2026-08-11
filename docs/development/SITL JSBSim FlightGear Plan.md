@@ -1,10 +1,15 @@
 # SITL → JSBSim → FlightGear Integration Plan
 
-Status: **Phase 0 and Phase 1 implemented and validated** (native MinGW-w64 toolchain
-vendored under `tools/mingw64`, `pwmOutConfig`/servo link gap fixed, `make TARGET=SITL`
-builds and the resulting binary runs, and `getServoCount()`/RC-injection/servo output
-are all confirmed working end-to-end via `sitl-rc-check.ps1`). Phases 2-4 (JSBSim
-bridge, FlightGear, docs) are still unimplemented — see §5 for per-phase checklists.
+Status: **Phase 0, Phase 1, and Phase 2 implemented and validated** (native MinGW-w64
+toolchain vendored under `tools/mingw64`, `pwmOutConfig`/servo link gap fixed,
+`make TARGET=SITL` builds and the resulting binary runs, `getServoCount()`/
+RC-injection/servo output confirmed working end-to-end via `sitl-rc-check.ps1`, and
+the JSBSim bridge (`scripts/jsbsim_bridge.py`) drives a live SITL instance end-to-end
+via `MSP_ATTITUDE`). **Phase 3 (FlightGear) is implemented but not yet validated
+against a real FlightGear install** (not present on this dev machine — JSBSim's
+FlightGear-native UDP output was validated with a raw socket listener instead, see
+§5 Phase 3). Phase 4 (final docs/validation) is still unimplemented — see §5 for
+per-phase checklists.
 
 ## 1. Executive Summary
 
@@ -236,8 +241,9 @@ user's decision above.
   in Phase 1 (`servo_packet.servo[8]`); no new packet format was needed for Phase 2.
 
 ### Phase 3 — FlightGear visualization
-- [ ] Document the manual FlightGear install (link + version).
-- [ ] Feed FlightGear from the same JSBSim instance driving the bridge, using either:
+- [x] Document the manual FlightGear install (link + version). **Done** — see
+  §8 below.
+- [x] Feed FlightGear from the same JSBSim instance driving the bridge, using either:
   - JSBSim's own `<output>` UDP directive in FlightGear-native-FDM format (JSBSim can
     emit multiple `<output>` protocols simultaneously — one to our bridge, one
     FlightGear-native to FlightGear directly), launching FlightGear with
@@ -248,8 +254,28 @@ user's decision above.
   - **Note**: JSBSim's changelog shows the FlightGear network protocol version has
     changed and been reverted before (`v24`) — pin exact JSBSim/FlightGear versions
     together and verify compatibility before relying on this path.
-- [ ] Provide a documented one-shot launch sequence: Wingflight SITL → JSBSim bridge →
+
+  **Done, first option chosen**: [scripts/jsbsim_bridge.py](../../scripts/jsbsim_bridge.py)
+  gained a `--flightgear`/`--fg-host`/`--fg-port`/`--fg-rate` option. When enabled, it
+  writes a small JSBSim output-directives XML file (`<output type="FLIGHTGEAR"
+  protocol="UDP" .../>`) and registers it via `FGFDMExec.set_output_directive()`
+  **before** `load_model()` (required — JSBSim ignores it if called after). JSBSim
+  itself then serializes its own native FDM UDP protocol every step, completely
+  independent of the Wingflight `fdm_packet`/`servo_packet` link — no changes to the
+  bridge's Wingflight-facing code were needed.
+  **Validated without a FlightGear install**: bound a raw UDP listener on the
+  configured port and ran the bridge with `--flightgear` — confirmed steady,
+  correctly-rate-limited (30 Hz → 601 datagrams over ~20s) fixed-size (408-byte)
+  binary frames, i.e. JSBSim is genuinely emitting FlightGear's native FDM struct.
+  **Not yet validated against a real FlightGear process** (not installed on this
+  dev machine — see §8 for install instructions and the exact JSBSim/FlightGear
+  versions to pin together before trusting this end-to-end).
+- [x] Provide a documented one-shot launch sequence: Wingflight SITL → JSBSim bridge →
   FlightGear, plus a PowerShell helper script analogous to `sitl-rc-check.ps1`.
+  **Done**: [scripts/sitl-jsbsim-flightgear-launch.ps1](../../scripts/sitl-jsbsim-flightgear-launch.ps1)
+  (see §8 for usage). Smoke-tested (without `-FgfsPath`, since FlightGear isn't
+  installed here): starts SITL, starts the bridge with `--flightgear`, prints the
+  matching `fgfs` command, and stops both cleanly with `-StopOnExit`.
 
 ### Phase 4 — Validation & docs
 - [ ] Extend or add an RC-injection script (building on `sitl-rc-check.ps1`'s
@@ -296,9 +322,69 @@ user's decision above.
    argument). Channel-order fix from §6 was already applied in `New-RcPayload`.
 4. ~~Only then start the JSBSim bridge (Phase 2)~~ Done — see
    [scripts/jsbsim_bridge.py](../../scripts/jsbsim_bridge.py), validated end-to-end
-   against a live `wingflight_SITL.elf` via `MSP_ATTITUDE`. Phase 3 (FlightGear
-   visualization) is next.
-5. ~~Manual/interactive RC input for SITL~~ Done — see
+   against a live `wingflight_SITL.elf` via `MSP_ATTITUDE`.
+5. ~~Add FlightGear visualization (Phase 3)~~ Done (pending real-FlightGear
+   validation) — see [scripts/sitl-jsbsim-flightgear-launch.ps1](../../scripts/sitl-jsbsim-flightgear-launch.ps1)
+   and §8. Phase 4 (final docs/validation pass) is next.
+6. ~~Manual/interactive RC input for SITL~~ Done — see
    [scripts/sitl-joystick-rc.py](../../scripts/sitl-joystick-rc.py) and
    [SITL Joystick RC Input.md](SITL%20Joystick%20RC%20Input.md) (USB joystick/gamepad
    bridge with a channel-mapping GUI, independent of the JSBSim/FlightGear work).
+
+## 8. FlightGear install and launch sequence (Phase 3)
+
+### Install
+
+FlightGear is a large third-party GUI application and is **not** vendored under
+`tools/` (unlike the MinGW-w64 toolchain and the JSBSim venv) — install it manually:
+
+1. Download the Windows installer from the official site:
+   [flightgear.org/download](https://www.flightgear.org/download/).
+2. **Pin a specific version** and record it here once installed. This plan's bridge
+   was built/tested against **JSBSim 1.3.1** (the version pinned in
+   `tools/jsbsim-venv`, confirmed via `pip show jsbsim`) \u2014 pick whichever current
+   stable FlightGear release you install and record the exact pair here. JSBSim's
+   own changelog notes the FlightGear native-FDM wire format has changed (and been
+   reverted) across versions before, so a mismatched pair may silently misrender or
+   disconnect.
+3. No project files depend on the install location; any `fgfs.exe` path works with
+   `-FgfsPath` below.
+
+### One-shot launch
+
+```powershell
+# Build SITL if needed, start SITL + the JSBSim bridge (FlightGear output enabled),
+# and auto-launch FlightGear once you know its fgfs.exe path:
+.\scripts\sitl-jsbsim-flightgear-launch.ps1 -BuildSitl -FlightGear `
+    -FgfsPath "C:\Program Files\FlightGear <version>\bin\fgfs.exe" -StopOnExit
+```
+
+Without `-FgfsPath`, the script starts SITL + the bridge and prints the exact `fgfs`
+command to run manually in another terminal:
+
+```
+fgfs --aircraft=c172p --fdm=null --native-fdm=socket,in,30,,5550,udp --disable-clouds3d
+```
+
+`--fdm=null` tells FlightGear not to run its own physics — it's purely a rendering
+client of JSBSim's state, matching the plan's "visualization-only" approach.
+
+### How it works
+
+[scripts/jsbsim_bridge.py](../../scripts/jsbsim_bridge.py)'s `--flightgear` flag
+registers a JSBSim output-directives file (`<output type="FLIGHTGEAR" protocol="UDP"
+.../>`) via `FGFDMExec.set_output_directive()` **before** `load_model()` runs (required
+— JSBSim silently ignores this call if made afterwards). JSBSim then serializes its
+own native FDM struct to `--fg-host`:`--fg-port` every step at `--fg-rate` Hz,
+completely independent of the `fdm_packet`/`servo_packet` link to Wingflight — the
+same running JSBSim instance drives both Wingflight *and* FlightGear simultaneously.
+
+### Validation status
+
+Validated **without** a real FlightGear install: binding a raw UDP socket on the
+configured port while the bridge ran with `--flightgear` showed steady, correctly
+rate-limited (30 Hz → 601 datagrams over ~20s), fixed-size (408-byte) binary frames —
+consistent with JSBSim genuinely emitting FlightGear's native FDM protocol. **Not yet
+confirmed that a real FlightGear process renders this correctly** — do that once
+FlightGear is installed, and record the exact version pair (JSBSim × FlightGear) that
+works.

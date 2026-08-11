@@ -26,6 +26,7 @@ import os
 import socket
 import struct
 import sys
+import tempfile
 import time
 
 os.environ.setdefault("JSBSIM_DEBUG", "0")  # suppress verbose model-load logging
@@ -152,6 +153,22 @@ def build_fdm_packet(fdm, initial_altitude_ft):
     )
 
 
+def write_flightgear_output_directive(host, port, rate):
+    """Write a JSBSim output-directives file streaming to FlightGear's native
+    FDM UDP protocol (JSBSim serializes FlightGear's net_fdm struct itself --
+    see FGOutputFG in JSBSim). Must be registered via set_output_directive()
+    *before* load_model() (JSBSim ignores it if called after).
+    """
+    xml = (
+        '<?xml version="1.0"?>\n'
+        f'<output name="{host}" type="FLIGHTGEAR" protocol="UDP" port="{port}" rate="{rate}"/>\n'
+    )
+    fd, path = tempfile.mkstemp(prefix="jsbsim_fg_output_", suffix=".xml")
+    with os.fdopen(fd, "w") as f:
+        f.write(xml)
+    return path
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--host", default="127.0.0.1", help="Wingflight SITL host (default: 127.0.0.1)")
@@ -163,12 +180,28 @@ def main():
     parser.add_argument("--airspeed-kts", type=float, default=90.0, help="Initial calibrated airspeed, kts (default: 90)")
     parser.add_argument("--no-realtime", action="store_true", help="Run as fast as possible instead of pacing to wall-clock time")
     parser.add_argument("--status-interval", type=float, default=2.0, help="Seconds between status lines (default: 2)")
+    parser.add_argument("--flightgear", action="store_true", help="Also stream state to FlightGear via JSBSim's native FDM UDP output")
+    parser.add_argument("--fg-host", default="127.0.0.1", help="FlightGear host (default: 127.0.0.1)")
+    parser.add_argument("--fg-port", type=int, default=5550, help="FlightGear --native-fdm UDP port (default: 5550)")
+    parser.add_argument("--fg-rate", type=float, default=30.0, help="FlightGear output rate in Hz (default: 30)")
     args = parser.parse_args()
 
     dt = 1.0 / args.rate
 
     fdm = jsbsim.FGFDMExec(None)
     fdm.set_dt(dt)
+
+    if args.flightgear:
+        directive_path = write_flightgear_output_directive(args.fg_host, args.fg_port, args.fg_rate)
+        fdm.set_output_directive(directive_path)
+        print(
+            f"[jsbsim-bridge] FlightGear output enabled -> {args.fg_host}:{args.fg_port} "
+            f"@ {args.fg_rate}Hz. Launch FlightGear with:\n"
+            f"  fgfs --aircraft={args.aircraft} --fdm=null "
+            f"--native-fdm=socket,in,{int(args.fg_rate)},,{args.fg_port},udp "
+            f"--disable-clouds3d"
+        )
+
     if not fdm.load_model(args.aircraft):
         sys.exit(f"Failed to load JSBSim aircraft model '{args.aircraft}'")
 
