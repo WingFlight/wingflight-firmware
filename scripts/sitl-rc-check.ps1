@@ -181,7 +181,9 @@ function Build-Sitl {
     Push-Location $root
     try {
         Write-Host "[SITL-RC] Building SITL ..."
-        cmd.exe /c "make TARGET=SITL DEBUG=GDB -j 8"
+        # Route through Write-Host (not the success stream) so this output can't leak into
+        # this function's return value and contaminate callers expecting a plain int/string.
+        cmd.exe /c "make TARGET=SITL DEBUG=GDB -j 8" | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -ne 0) {
             throw "SITL build failed"
         }
@@ -209,7 +211,7 @@ function Start-SitlIfNeeded {
     }
 
     if ($DoBuild) {
-        Build-Sitl
+        Build-Sitl | Out-Null
     }
 
     $binary = Get-SitlBinaryCandidates -ExplicitPath $SitlBinaryPath | Where-Object { Test-Path $_ } | Select-Object -First 1

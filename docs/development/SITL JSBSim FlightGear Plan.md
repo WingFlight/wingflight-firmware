@@ -2,8 +2,9 @@
 
 Status: **Phase 0 and Phase 1 implemented and validated** (native MinGW-w64 toolchain
 vendored under `tools/mingw64`, `pwmOutConfig`/servo link gap fixed, `make TARGET=SITL`
-builds and the resulting binary runs). Phases 2-4 (JSBSim bridge, FlightGear, docs) are
-still unimplemented — see §5 for per-phase checklists.
+builds and the resulting binary runs, and `getServoCount()`/RC-injection/servo output
+are all confirmed working end-to-end via `sitl-rc-check.ps1`). Phases 2-4 (JSBSim
+bridge, FlightGear, docs) are still unimplemented — see §5 for per-phase checklists.
 
 ## 1. Executive Summary
 
@@ -95,6 +96,22 @@ surfaces (S1–S4) and throttle (M1) actually connected end-to-end.
     packet size/shape relative to the legacy Gazebo ArduCopterPlugin format (see §2.4).
 - Wingflight's fixed-wing SITL build now links and runs; S1-S4 control-surface values
   are available on the simulator UDP link for Phase 2's JSBSim bridge to consume.
+- **Follow-up fix (confirmed working, 2026-08-11)**: linking and running was not
+  sufficient on its own — `getServoCount()` was still always `0` at runtime because
+  `servoConfig()`'s default `ioTags[]` (computed via `timerioTagGetByUsage()`) resolved
+  to `IO_TAG_NONE` whenever `USABLE_TIMER_CHANNEL_COUNT == 0`, which SITL's `target.h`
+  set by default (no real timer hardware). Fixed with a synthetic
+  `const timerHardware_t timerHardware[4]` table in `target.c` (4 entries tagged
+  `TIM_USE_SERVO`) plus `USABLE_TIMER_CHANNEL_COUNT 4` in `target.h`; SITL doesn't
+  define `USE_TIMER_MGMT` (that's only set for real STM32F4/F7/H7/G4 targets in
+  `common_pre.h`), so `drivers/timer_common.c` resolves `TIMER_HARDWARE`/
+  `TIMER_CHANNEL_COUNT` straight to this array/count. Verified via
+  `scripts/sitl-rc-check.ps1 -Mode smoke|sweep|stress`: `getServoCount()=4`,
+  `controlResponsive: true`, sweep shows real roll/pitch/yaw servo deltas, stress ran
+  259 cycles with 0 dropouts. (Gotcha for future re-verification: a stale `eeprom.bin`
+  saved *before* this fix will keep reporting `servoCount=0` even after rebuilding,
+  since the reset-fn that recomputes `ioTags` only runs on a genuine config reset —
+  delete `eeprom.bin`/use `-FreshEeprom` to re-exercise it.)
 
 ### 2.4 Protocol limitations relative to fixed-wing / JSBSim / FlightGear
 
@@ -159,14 +176,20 @@ user's decision above.
   instead of the (unused, NULL) `ccr` register mechanism.
 - [x] Extend the simulator wire protocol so the S1–S4 servo outputs (not just M1
   motor) reach whatever is on the other end of the UDP link (`servo_packet.servo[8]`).
-- [ ] Re-validate with [scripts/sitl-rc-check.ps1](../../scripts/sitl-rc-check.ps1)
-  (smoke/sweep) now that the new toolchain + fix are in place \u2014 **partially done**: the
-  script now connects, builds/runs SITL, and gets a valid `MSP_API_VERSION`/feature
-  mask response (confirms the toolchain + link fix work end-to-end). However
-  `rcInjectOk`/`controlResponsive` come back `false` \u2014 `MSP_SET_RAW_RC` doesn't appear
-  to get ack'd on a fresh default config. Not yet root-caused; may be a pre-existing
-  RX/MSP config quirk unrelated to the servo fix (untouched by this session's changes).
-  Needs follow-up before relying on RC-injection results.
+- [x] Re-validate with [scripts/sitl-rc-check.ps1](../../scripts/sitl-rc-check.ps1)
+  (smoke/sweep/stress) now that the new toolchain + fix are in place — **done**: the
+  script connects, builds/runs SITL, and gets a valid `MSP_API_VERSION`/feature mask
+  response. `rcInjectOk`/`controlResponsive` now come back `true` after fixing the
+  underlying `getServoCount()==0` bug (see §2.3) and a stale-`eeprom.bin` false
+  negative encountered during verification. Smoke/sweep/stress all pass with 0
+  dropouts.
+- [x] Fixed a `sitl-rc-check.ps1` bug found during this verification pass:
+  `Build-Sitl`'s `cmd.exe /c "make ..."` call left its stdout unsuppressed, so it leaked
+  into `Build-Sitl`'s (and transitively `Start-SitlIfNeeded`'s) return value —
+  `$script:ResolvedPort` ended up as an array of build-log lines plus the port number
+  instead of a plain int, which broke `TcpClient.ConnectAsync`'s overload resolution
+  whenever `-BuildSitl` was combined with `-FreshEeprom`. Fixed by routing the build
+  output through `Write-Host` instead of the success stream.
 
 ### Phase 2 — JSBSim as the FDM
 - [ ] Choose an existing JSBSim fixed-wing aircraft model (or adapt one) whose control
@@ -242,11 +265,14 @@ user's decision above.
 1. ~~Implement Phase 0 (`mingw_sdk_install` target) and get a clean `make TARGET=SITL`
    build.~~ Done.
 2. ~~Confirm/fix the `pwmOutConfig` servo gap (Phase 1).~~ Done.
-3. Run [scripts/sitl-rc-check.ps1](../../scripts/sitl-rc-check.ps1) against the new
+3. ~~Run [scripts/sitl-rc-check.ps1](../../scripts/sitl-rc-check.ps1) against the new
    build to confirm MSP/RC injection still works end-to-end with the new toolchain and
-   servo-output changes. Consider fixing its channel order (see §6) as part of this.
+   servo-output changes.~~ Done — also found and fixed the real `getServoCount()==0`
+   bug (§2.3) and a script bug (`Build-Sitl` output leaking into `ConnectAsync`'s
+   argument). Channel-order fix from §6 was already applied in `New-RcPayload`.
 4. Only then start the JSBSim bridge (Phase 2) — building it against a SITL binary
-   that can't yet move a rudder would just hide the real problem.
+   that can't yet move a rudder would just hide the real problem. **This is now
+   unblocked.**
 5. ~~Manual/interactive RC input for SITL~~ Done — see
    [scripts/sitl-joystick-rc.py](../../scripts/sitl-joystick-rc.py) and
    [SITL Joystick RC Input.md](SITL%20Joystick%20RC%20Input.md) (USB joystick/gamepad
