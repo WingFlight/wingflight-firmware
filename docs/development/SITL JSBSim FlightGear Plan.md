@@ -192,11 +192,13 @@ user's decision above.
   output through `Write-Host` instead of the success stream.
 
 ### Phase 2 — JSBSim as the FDM
-- [ ] Choose an existing JSBSim fixed-wing aircraft model (or adapt one) whose control
+- [x] Choose an existing JSBSim fixed-wing aircraft model (or adapt one) whose control
   surfaces map onto Wingflight's default mixer (S1 left aileron, S2 right aileron
   (opposite sign), S3 elevator, S4 rudder, M1 throttle — see
-  [AGENTS.md](../../AGENTS.md)).
-- [ ] Build a small bridge (a Python script using the official `jsbsim` PyPI package,
+  [AGENTS.md](../../AGENTS.md)). **Done: `c172p`** (bundled with the `jsbsim` PyPI
+  package), which exposes the standard `fcs/aileron-cmd-norm`, `fcs/elevator-cmd-norm`,
+  `fcs/rudder-cmd-norm`, `fcs/throttle-cmd-norm` FCS inputs.
+- [x] Build a small bridge (a Python script using the official `jsbsim` PyPI package,
   `pip install jsbsim`, run inside a local venv under `tools/`) that:
   - receives Wingflight's actuator UDP packets and applies them as JSBSim FCS inputs
     (`fcs/aileron-cmd-norm`, `fcs/elevator-cmd-norm`, `fcs/rudder-cmd-norm`,
@@ -204,12 +206,34 @@ user's decision above.
   - steps the JSBSim simulation, and
   - sends state back to Wingflight in the `fdm_packet` shape (or an extended version
     of it) at a sufficient rate.
-- [ ] Decide packet-format question: extend the existing Gazebo-shaped `fdm_packet`/
+
+  **Done: [scripts/jsbsim_bridge.py](../../scripts/jsbsim_bridge.py)**. Binds a UDP
+  socket on `9002` to receive `servo_packet` (matching `target.c`'s `pwmLink`, which
+  sends there) and sends `fdm_packet` to `9003` (matching `target.c`'s `stateLink`,
+  which binds there). Runs JSBSim at a configurable fixed rate (default 120 Hz),
+  paced to wall-clock time by default (`--no-realtime` to run flat-out). Maps
+  S1/S2 (left/right aileron, averaged/opposite-signed) → `fcs/aileron-cmd-norm`,
+  S3 → `fcs/elevator-cmd-norm`, S4 → `fcs/rudder-cmd-norm`, `motor_speed[0]` →
+  `fcs/throttle-cmd-norm`. Computes the earth-to-body attitude quaternion from
+  JSBSim's Euler angles (standard ZYX conversion) since `target.c`'s default path
+  consumes a quaternion directly (`SET_IMU_FROM_EULER` not defined). Uses JSBSim's
+  `accelerations/n-pilot-*-norm` (load factor, × 9.80665 → m/s²) for linear
+  acceleration and `velocities/{p,q,r}-rad_sec` directly for angular velocity —
+  both already in the standard aerospace body frame `target.c` expects (no extra
+  sign-flipping needed on the bridge side; `target.c` applies its own sign
+  convention when converting to fake accel/gyro readings).
+  **Validated end-to-end**: launched a built `wingflight_SITL.elf` (existing
+  `eeprom.bin`) alongside the bridge and polled `MSP_ATTITUDE` over the MSP TCP
+  port — roll/pitch/yaw tracked JSBSim's evolving (untrimmed, idle-throttle glide)
+  state smoothly over 10+ samples, confirming the full loop (JSBSim → bridge →
+  UDP → `target.c` → IMU → MSP) works.
+- [x] Decide packet-format question: extend the existing Gazebo-shaped `fdm_packet`/
   `servo_packet` (least invasive, keeps `target.c` mostly unchanged) vs. adopting a new
   JSBSim-native packet. **Recommendation: extend the existing structs** — add a servo
   channel array to the actuator-out packet and keep `fdm_packet` as-is (it already has
   everything JSBSim can trivially provide: angular velocity, linear acceleration,
-  orientation quaternion, velocity, position).
+  orientation quaternion, velocity, position). **Done** — this was already implemented
+  in Phase 1 (`servo_packet.servo[8]`); no new packet format was needed for Phase 2.
 
 ### Phase 3 — FlightGear visualization
 - [ ] Document the manual FlightGear install (link + version).
@@ -270,9 +294,10 @@ user's decision above.
    servo-output changes.~~ Done — also found and fixed the real `getServoCount()==0`
    bug (§2.3) and a script bug (`Build-Sitl` output leaking into `ConnectAsync`'s
    argument). Channel-order fix from §6 was already applied in `New-RcPayload`.
-4. Only then start the JSBSim bridge (Phase 2) — building it against a SITL binary
-   that can't yet move a rudder would just hide the real problem. **This is now
-   unblocked.**
+4. ~~Only then start the JSBSim bridge (Phase 2)~~ Done — see
+   [scripts/jsbsim_bridge.py](../../scripts/jsbsim_bridge.py), validated end-to-end
+   against a live `wingflight_SITL.elf` via `MSP_ATTITUDE`. Phase 3 (FlightGear
+   visualization) is next.
 5. ~~Manual/interactive RC input for SITL~~ Done — see
    [scripts/sitl-joystick-rc.py](../../scripts/sitl-joystick-rc.py) and
    [SITL Joystick RC Input.md](SITL%20Joystick%20RC%20Input.md) (USB joystick/gamepad

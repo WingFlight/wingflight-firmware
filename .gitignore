@@ -23,6 +23,9 @@ README.pdf
 /downloads/
 /tools/
 /build/
+__pycache__/
+*.pyc
+
 # local changes only
 make/local.mk
 
