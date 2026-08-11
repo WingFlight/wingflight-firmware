@@ -54,6 +54,7 @@ const timerHardware_t timerHardware[4] = {
 #include "drivers/accgyro/accgyro_fake.h"
 #include "flight/imu.h"
 #include "flight/servos.h"
+#include "pg/servos.h"
 
 #include "config/feature.h"
 #include "config/config.h"
@@ -499,6 +500,15 @@ static void pwmCompleteMotorUpdate(void)
     const uint8_t servoCount = MIN(getServoCount(), (uint8_t)ARRAYLEN(pwmPkt.servo));
     for (uint8_t i = 0; i < ARRAYLEN(pwmPkt.servo); i++) {
         pwmPkt.servo[i] = (i < servoCount) ? getServoOutput(i) : 0;
+    }
+
+    static bool debugPrinted = false;
+    if (!debugPrinted) {
+        debugPrinted = true;
+        fprintf(stderr, "DEBUG getServoCount()=%d ioTags=%d,%d,%d,%d\n",
+            getServoCount(), servoConfig()->ioTags[0], servoConfig()->ioTags[1],
+            servoConfig()->ioTags[2], servoConfig()->ioTags[3]);
+        fflush(stderr);
     }
 
     // get one "fdm_packet" can only send one "servo_packet"!!
