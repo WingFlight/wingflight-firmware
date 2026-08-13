@@ -11,6 +11,12 @@
     - smoke: fast sanity check (single-axis)
     - sweep: roll/pitch/yaw control-surface sweep
     - stress: sustained injection/read loop with dropout tracking
+    - jsbsim: end-to-end check through the JSBSim bridge (scripts/jsbsim_bridge.py)
+      - starts the bridge, drives roll/pitch RC to each extreme in turn, and
+        confirms MSP_ATTITUDE actually changes accordingly. Unlike the other
+        modes (which only check Wingflight's own servo output), this proves
+        the full loop: RC -> mixer -> servo_packet -> bridge -> JSBSim FCS ->
+        physics -> fdm_packet -> fake IMU -> MSP_ATTITUDE.
 
 .PARAMETER Port
     Explicit MSP port. If omitted or 0, the script auto-detects from
@@ -26,7 +32,18 @@
     Build SITL before auto-start.
 
 .PARAMETER Mode
-    smoke | sweep | stress
+    smoke | sweep | stress | jsbsim
+
+.PARAMETER BridgeAircraft
+    JSBSim aircraft model for -Mode jsbsim (default: c172p).
+
+.PARAMETER JsbsimSettleMs
+    How long to hold each RC extreme before reading MSP_ATTITUDE, in
+    milliseconds, for -Mode jsbsim (default: 1500).
+
+.PARAMETER JsbsimAttitudeThresholdDeg
+    Minimum roll/pitch attitude delta (degrees) between high/low RC extremes
+    to count as "responsive" for -Mode jsbsim (default: 3.0).
 
 .EXAMPLE
     .\scripts\sitl-rc-check.ps1 -Mode smoke
@@ -36,6 +53,9 @@
 
 .EXAMPLE
     .\scripts\sitl-rc-check.ps1 -Mode stress -StressSeconds 90
+
+.EXAMPLE
+    .\scripts\sitl-rc-check.ps1 -Mode jsbsim -AutoStartSitl -BuildSitl -StopSitlOnExit
 #>
 param(
     [string]$MspHost = "127.0.0.1",
@@ -44,11 +64,14 @@ param(
     [int]$TimeoutSeconds = 3,
     [int]$Cycles = 20,
     [int]$ServoDeltaThreshold = 40,
-    [ValidateSet("smoke", "sweep", "stress")]
+    [ValidateSet("smoke", "sweep", "stress", "jsbsim")]
     [string]$Mode = "smoke",
     [int]$StressSeconds = 60,
     [string]$SitlBinaryPath = "",
     [string]$SitlArgs = "",
+    [string]$BridgeAircraft = "c172p",
+    [int]$JsbsimSettleMs = 1500,
+    [double]$JsbsimAttitudeThresholdDeg = 3.0,
     [switch]$EnableRxMspIfMissing,
     [switch]$AutoStartSitl,
     [switch]$BuildSitl,
@@ -65,6 +88,7 @@ $MSP_SERVO = 103
 $MSP_MOTOR = 104
 $MSP_RC = 105
 $MSP_RX_CHANNELS = 114
+$MSP_ATTITUDE = 108
 $MSP_SET_RAW_RC = 200
 $MSP_SET_MIXER_OVERRIDE = 191
 $MSP_MIXER_OVERRIDE = 190
@@ -82,6 +106,7 @@ $MIXER_OVERRIDE_OFF = 2501
 $MIXER_OVERRIDE_PASSTHROUGH = 2502
 
 $script:StartedSitlProcess = $null
+$script:StartedBridgeProcess = $null
 $script:ResolvedPort = 0
 
 function Get-FirmwareRoot {
@@ -683,6 +708,100 @@ function Set-Neutral {
     Disable-RpyPassthroughOverride -Stream $activeStream -TimeoutSeconds $TimeoutSeconds
 }
 
+function Get-AngleDeltaDeg {
+    # Signed shortest-path delta between two angles in degrees, wrapped into
+    # [-180, 180]. Needed for yaw since MSP_ATTITUDE reports yaw as 0-360.
+    param([double]$A, [double]$B)
+    $d = $A - $B
+    while ($d -gt 180) { $d -= 360 }
+    while ($d -lt -180) { $d += 360 }
+    return $d
+}
+
+function Get-Attitude {
+    # Reads MSP_ATTITUDE (roll/pitch in 0.1 deg, yaw in whole deg). Returns
+    # $null on failure/timeout so callers can treat it like any other MSP read.
+    param([System.IO.Stream]$Stream, [int]$TimeoutSeconds)
+
+    $activeStream = Get-ActiveStream -Stream $Stream -TimeoutSeconds $TimeoutSeconds
+    if ($null -eq $activeStream) { return $null }
+
+    Send-Msp -Stream $activeStream -Command $MSP_ATTITUDE
+    $resp = Receive-MspMatch -Stream $activeStream -ExpectedCommand $MSP_ATTITUDE -TimeoutSeconds $TimeoutSeconds
+    if ($null -eq $resp -or $resp.Payload.Length -lt 6) { return $null }
+
+    return [pscustomobject]@{
+        Roll  = [BitConverter]::ToInt16($resp.Payload, 0) / 10.0
+        Pitch = [BitConverter]::ToInt16($resp.Payload, 2) / 10.0
+        Yaw   = [double][BitConverter]::ToInt16($resp.Payload, 4)
+    }
+}
+
+function Hold-RcAndReadAttitude {
+    # Continuously refreshes an RC frame for DurationMs (so RX signal timeout
+    # / failsafe never kicks in mid-hold) and samples MSP_ATTITUDE at the end,
+    # once JSBSim's physics have had time to settle into the new control
+    # deflection. Returns $null on total failure, otherwise a pscustomobject
+    # with Roll/Pitch/Yaw (deg) plus AckOk (whether every RC frame was acked).
+    param(
+        [System.IO.Stream]$Stream,
+        [int]$Roll,
+        [int]$Pitch,
+        [int]$Yaw,
+        [int]$Throttle = 1000,
+        [int]$DurationMs,
+        [int]$TimeoutSeconds
+    )
+
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($DurationMs)
+    $allAcked = $true
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $ok = Send-RcWithAck -Stream $Stream -Roll $Roll -Pitch $Pitch -Yaw $Yaw -Collective 1500 -Throttle $Throttle -TimeoutSeconds $TimeoutSeconds -Retries 1
+        if (-not $ok) { $allAcked = $false }
+        Start-Sleep -Milliseconds 15
+    }
+
+    $att = Get-Attitude -Stream $Stream -TimeoutSeconds $TimeoutSeconds
+    if ($null -eq $att) { return $null }
+    $att | Add-Member -NotePropertyName AckOk -NotePropertyValue $allAcked -Force
+    return $att
+}
+
+function Start-JsbsimBridge {
+    # Launches scripts/jsbsim_bridge.py under the project's JSBSim venv so
+    # -Mode jsbsim can validate the full RC -> mixer -> servo -> bridge ->
+    # JSBSim -> fdm_packet -> fake IMU -> MSP_ATTITUDE loop, not just
+    # Wingflight's own servo output. Returns the started process, or $null if
+    # the venv isn't present (caller should treat that as a hard failure for
+    # this mode, not silently skip the check).
+    param([string]$Aircraft)
+
+    $root = Get-FirmwareRoot
+    $bridgePython = Join-Path $root "tools\jsbsim-venv\Scripts\python.exe"
+    $bridgeScript = Join-Path $root "scripts\jsbsim_bridge.py"
+
+    if (-not (Test-Path $bridgePython) -or -not (Test-Path $bridgeScript)) {
+        Write-Host "[SITL-RC] JSBSim bridge venv/script not found (expected $bridgePython) - see docs/development/SITL JSBSim FlightGear Plan.md"
+        return $null
+    }
+
+    $logDir = Join-Path $root "obj\main"
+    if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+
+    Write-Host "[SITL-RC] Starting JSBSim bridge (aircraft=$Aircraft) ..."
+    $p = Start-Process -FilePath $bridgePython `
+        -ArgumentList @($bridgeScript, "--aircraft", $Aircraft) `
+        -WorkingDirectory $root `
+        -PassThru -NoNewWindow `
+        -RedirectStandardOutput (Join-Path $logDir "jsbsim_bridge_check_stdout.log") `
+        -RedirectStandardError (Join-Path $logDir "jsbsim_bridge_check_stderr.log")
+
+    # Give JSBSim time to parse the aircraft model and open its sockets
+    # before we start relying on attitude responses.
+    Start-Sleep -Seconds 2
+    return $p
+}
+
 $result = [ordered]@{
     mode = $Mode
     connected = $false
@@ -703,6 +822,15 @@ $stream = $null
 try {
     $script:ResolvedPort = Start-SitlIfNeeded -RemoteHost $MspHost -ExplicitPort $Port -Candidates $PortCandidates -DoBuild ([bool]$BuildSitl) -Arguments $SitlArgs
     $result.port = $script:ResolvedPort
+
+    if ($Mode -eq "jsbsim") {
+        # Started early so JSBSim has time to finish loading the aircraft
+        # model while the MSP handshake below runs concurrently.
+        $script:StartedBridgeProcess = Start-JsbsimBridge -Aircraft $BridgeAircraft
+        if ($null -eq $script:StartedBridgeProcess) {
+            throw "Could not start JSBSim bridge (required for -Mode jsbsim)"
+        }
+    }
 
     # The SITL TCP MSP server (dyad-based) only accepts one client at a time
     # and needs a brief moment to notice a just-closed connection (see
@@ -933,11 +1061,86 @@ try {
         }
     }
 
+    if ($Mode -eq "jsbsim") {
+        # Unlike smoke/sweep/stress (which only ever prove Wingflight's own
+        # mixer->servo pipeline reacts to RC), this proves the *entire*
+        # simulation loop is alive: RC -> mixer -> servo_packet (UDP 9002) ->
+        # jsbsim_bridge.py -> JSBSim FCS -> physics step -> fdm_packet (UDP
+        # 9003) -> Wingflight's fake IMU -> MSP_ATTITUDE. Attitude can only
+        # change this way if JSBSim is genuinely running and receiving our
+        # control inputs.
+        #
+        # Scoped to roll/pitch only: both are fast, robust, and directly
+        # aerodynamic (no arming/throttle required), whereas yaw response on
+        # this airframe is slower/subtler over a short hold, and throttle
+        # response can't be tested at all while disarmed (motor output is
+        # forced to motor-stop). Yaw is still measured and reported for
+        # visibility but does not gate pass/fail.
+        Write-Host "[SITL-RC] Settling at neutral before driving JSBSim through control extremes ..."
+        $neutral = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1500 -Yaw 1500 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
+
+        Write-Host "[SITL-RC] Driving roll extremes through JSBSim ..."
+        $rollHigh = Hold-RcAndReadAttitude -Stream $stream -Roll 1900 -Pitch 1500 -Yaw 1500 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
+        $rollLow  = Hold-RcAndReadAttitude -Stream $stream -Roll 1100 -Pitch 1500 -Yaw 1500 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
+        $null = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1500 -Yaw 1500 -DurationMs ([int]($JsbsimSettleMs / 2)) -TimeoutSeconds $TimeoutSeconds
+
+        Write-Host "[SITL-RC] Driving pitch extremes through JSBSim ..."
+        $pitchHigh = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1900 -Yaw 1500 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
+        $pitchLow  = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1100 -Yaw 1500 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
+        $null = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1500 -Yaw 1500 -DurationMs ([int]($JsbsimSettleMs / 2)) -TimeoutSeconds $TimeoutSeconds
+
+        Write-Host "[SITL-RC] Driving yaw extremes through JSBSim (informational only) ..."
+        $yawHigh = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1500 -Yaw 1900 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
+        $yawLow  = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1500 -Yaw 1100 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
+
+        $rollDelta = 0.0
+        if ($null -ne $rollHigh -and $null -ne $rollLow) {
+            $rollDelta = [math]::Abs($rollHigh.Roll - $rollLow.Roll)
+            $result.axisDeltas["jsbsim_roll_deg"] = [math]::Round($rollDelta, 1)
+        } else {
+            $result.axisDeltas["jsbsim_roll_deg"] = -1
+        }
+
+        $pitchDelta = 0.0
+        if ($null -ne $pitchHigh -and $null -ne $pitchLow) {
+            $pitchDelta = [math]::Abs($pitchHigh.Pitch - $pitchLow.Pitch)
+            $result.axisDeltas["jsbsim_pitch_deg"] = [math]::Round($pitchDelta, 1)
+        } else {
+            $result.axisDeltas["jsbsim_pitch_deg"] = -1
+        }
+
+        if ($null -ne $yawHigh -and $null -ne $yawLow) {
+            $yawDelta = [math]::Abs((Get-AngleDeltaDeg -A $yawHigh.Yaw -B $yawLow.Yaw))
+            $result.axisDeltas["jsbsim_yaw_deg"] = [math]::Round($yawDelta, 1)
+        } else {
+            $result.axisDeltas["jsbsim_yaw_deg"] = -1
+        }
+
+        Write-Host ("[SITL-RC] JSBSim attitude response: roll={0}deg pitch={1}deg yaw={2}deg (threshold {3}deg, roll/pitch gate pass/fail)" -f `
+            $result.axisDeltas["jsbsim_roll_deg"], $result.axisDeltas["jsbsim_pitch_deg"], $result.axisDeltas["jsbsim_yaw_deg"], $JsbsimAttitudeThresholdDeg)
+
+        $allAcked = $true
+        foreach ($sample in @($neutral, $rollHigh, $rollLow, $pitchHigh, $pitchLow, $yawHigh, $yawLow)) {
+            if ($null -eq $sample -or -not $sample.AckOk) { $allAcked = $false }
+        }
+        $result.rcInjectOk = $allAcked
+        $result.controlResponsive = ($rollDelta -ge $JsbsimAttitudeThresholdDeg -and $pitchDelta -ge $JsbsimAttitudeThresholdDeg)
+    }
+
     Set-Neutral -Stream $stream
 }
 finally {
     if ($null -ne $stream) { $stream.Dispose() }
     if ($null -ne $client) { $client.Close() }
+
+    if ($null -ne $script:StartedBridgeProcess) {
+        try {
+            if (-not $script:StartedBridgeProcess.HasExited) {
+                Stop-Process -Id $script:StartedBridgeProcess.Id -Force -ErrorAction SilentlyContinue
+                Write-Host "[SITL-RC] Stopped JSBSim bridge PID $($script:StartedBridgeProcess.Id)"
+            }
+        } catch { }
+    }
 
     if ($StopSitlOnExit -and $null -ne $script:StartedSitlProcess) {
         try {

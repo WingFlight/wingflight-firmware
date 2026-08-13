@@ -1,6 +1,6 @@
 # SITL → JSBSim → FlightGear Integration Plan
 
-Status: **Phase 0, Phase 1, and Phase 2 implemented and validated** (native MinGW-w64
+Status: **Phase 0 through Phase 4 implemented and validated** (native MinGW-w64
 toolchain vendored under `tools/mingw64`, `pwmOutConfig`/servo link gap fixed,
 `make TARGET=SITL` builds and the resulting binary runs, `getServoCount()`/
 RC-injection/servo output confirmed working end-to-end via `sitl-rc-check.ps1`, and
@@ -8,8 +8,12 @@ the JSBSim bridge (`scripts/jsbsim_bridge.py`) drives a live SITL instance end-t
 via `MSP_ATTITUDE`). **Phase 3 (FlightGear) is implemented but not yet validated
 against a real FlightGear install** (not present on this dev machine — JSBSim's
 FlightGear-native UDP output was validated with a raw socket listener instead, see
-§5 Phase 3). Phase 4 (final docs/validation) is still unimplemented — see §5 for
-per-phase checklists.
+§5 Phase 3). **Phase 4 (final docs/validation) is done**: `sitl-rc-check.ps1` gained
+a `-Mode jsbsim` that proves the full RC → mixer → JSBSim → attitude loop end-to-end
+(not just Wingflight's own servo output), the SITL README documents the new
+JSBSim/FlightGear workflow alongside the legacy Gazebo path, and exact working
+toolchain/simulator versions are recorded (see §9). FlightGear itself remains
+unvalidated against a real install, as noted above.
 
 ## 1. Executive Summary
 
@@ -278,14 +282,41 @@ user's decision above.
   matching `fgfs` command, and stops both cleanly with `-StopOnExit`.
 
 ### Phase 4 — Validation & docs
-- [ ] Extend or add an RC-injection script (building on `sitl-rc-check.ps1`'s
+- [x] Extend or add an RC-injection script (building on `sitl-rc-check.ps1`'s
   patterns) that drives RC through MSP and confirms aileron/elevator/rudder/throttle
   move as expected end-to-end through JSBSim.
-- [ ] Update [src/main/target/SITL/README.md](../../src/main/target/SITL/README.md)
+  **Done**: added a new `-Mode jsbsim` to
+  [scripts/sitl-rc-check.ps1](../../scripts/sitl-rc-check.ps1), reusing all of its
+  existing MSP helper infrastructure (connect/handshake, `Enable-RpyPassthroughOverride`,
+  `Send-RcWithAck`, etc.) plus new pieces:
+  - `Start-JsbsimBridge` launches `scripts/jsbsim_bridge.py` under
+    `tools/jsbsim-venv` alongside SITL (and stops it in the `finally` cleanup).
+  - `Get-Attitude` reads `MSP_ATTITUDE` (roll/pitch in 0.1°, yaw in whole °).
+  - `Hold-RcAndReadAttitude` continuously refreshes an RC frame for a settle window
+    (so RX signal timeout/failsafe never kicks in) and samples attitude at the end,
+    once JSBSim's physics have had time to respond.
+  - The mode drives roll then pitch to each extreme (1900/1100 µs) via the same
+    `MIXER_OVERRIDE_PASSTHROUGH` mechanism the other modes already use while
+    disarmed, and asserts the resulting `MSP_ATTITUDE` delta exceeds a threshold
+    (default 3°) in both directions. Yaw is also measured and reported but does not
+    gate pass/fail (slower/subtler response over a short hold on this airframe).
+    Throttle/motor response through JSBSim is out of scope — disarmed motor output
+    is forced to motor-stop regardless of RC, so it can't be exercised this way.
+  - This closes the gap the other three modes have: `smoke`/`sweep`/`stress` only
+    ever prove Wingflight's own mixer→servo pipeline reacts to RC. `jsbsim` proves
+    the *entire* loop is alive: RC → mixer → `servo_packet` (UDP 9002) →
+    `jsbsim_bridge.py` → JSBSim FCS → physics step → `fdm_packet` (UDP 9003) →
+    Wingflight's fake IMU → `MSP_ATTITUDE`. Attitude can only change this way if
+    JSBSim is genuinely running and reacting to our control inputs.
+  - **Validated** against a live `wingflight_SITL.elf` + bridge (aircraft `c172p`):
+    `.\scripts\sitl-rc-check.ps1 -Mode jsbsim -AutoStartSitl -StopSitlOnExit` passed
+    with roll Δ68.1°, pitch Δ36°, yaw Δ28° (all far above the 3° threshold), exit
+    code 0.
+- [x] Update [src/main/target/SITL/README.md](../../src/main/target/SITL/README.md)
   with the new JSBSim/FlightGear workflow (keep the Gazebo section as a legacy
-  alternative).
-- [ ] Record the final, working versions of JSBSim/FlightGear/MinGW-w64 used, since
-  none of these are pinned by a lockfile today.
+  alternative). **Done**.
+- [x] Record the final, working versions of JSBSim/FlightGear/MinGW-w64 used, since
+  none of these are pinned by a lockfile today. **Done** — see §9.
 
 ## 6. Open Questions / Risks
 
@@ -325,11 +356,17 @@ user's decision above.
    against a live `wingflight_SITL.elf` via `MSP_ATTITUDE`.
 5. ~~Add FlightGear visualization (Phase 3)~~ Done (pending real-FlightGear
    validation) — see [scripts/sitl-jsbsim-flightgear-launch.ps1](../../scripts/sitl-jsbsim-flightgear-launch.ps1)
-   and §8. Phase 4 (final docs/validation pass) is next.
+   and §8.
 6. ~~Manual/interactive RC input for SITL~~ Done — see
    [scripts/sitl-joystick-rc.py](../../scripts/sitl-joystick-rc.py) and
    [SITL Joystick RC Input.md](SITL%20Joystick%20RC%20Input.md) (USB joystick/gamepad
    bridge with a channel-mapping GUI, independent of the JSBSim/FlightGear work).
+7. ~~Phase 4 (final docs/validation pass)~~ Done — `sitl-rc-check.ps1 -Mode jsbsim`
+   validates the full RC→JSBSim→attitude loop end-to-end (see Phase 4 checklist
+   above), [src/main/target/SITL/README.md](../../src/main/target/SITL/README.md) documents
+   the JSBSim/FlightGear workflow, and §9 records the exact pinned versions used.
+   Remaining open item: validating against a real FlightGear install (not present on
+   this dev machine).
 
 ## 8. FlightGear install and launch sequence (Phase 3)
 
@@ -388,3 +425,22 @@ consistent with JSBSim genuinely emitting FlightGear's native FDM protocol. **No
 confirmed that a real FlightGear process renders this correctly** — do that once
 FlightGear is installed, and record the exact version pair (JSBSim × FlightGear) that
 works.
+
+## 9. Pinned toolchain/simulator versions (Phase 4)
+
+None of the following are pinned by a lockfile today (no `requirements.txt`/version
+manifest exists for the vendored `tools/` directory) — this section is the source of
+truth for "what actually worked" as of this validation pass. Update it whenever any of
+these are intentionally upgraded.
+
+| Component | Version | Notes |
+|---|---|---|
+| MinGW-w64 (native Windows toolchain) | WinLibs GCC **13.3.0**, MinGW-W64 x86_64-ucrt-posix-seh (built by Brecht Sanders, r1), mingw-w64 **11.0.1** UCRT | Vendored under `tools/mingw64/`. Confirmed via `tools/mingw64/bin/gcc.exe --version`. |
+| JSBSim (Python package) | **1.3.1** | Installed in `tools/jsbsim-venv/` (gitignored). Confirmed via `pip show jsbsim`. |
+| Python (JSBSim bridge venv) | **3.14.5** | `tools/jsbsim-venv/Scripts/python.exe --version`. |
+| Aircraft model | **c172p** (Cessna 172P), bundled with JSBSim | Used for all Phase 2–4 validation. |
+| FlightGear | **not installed / not pinned** | Manual install only (not vendored — see §8 Install). JSBSim's FlightGear-native UDP output was validated with a raw socket listener, not a real FlightGear process. Record the exact FlightGear version here once it's installed and validated against JSBSim 1.3.1. |
+
+When upgrading JSBSim or MinGW-w64, re-run
+`.\scripts\sitl-rc-check.ps1 -Mode jsbsim -BuildSitl -AutoStartSitl -StopSitlOnExit`
+to confirm the end-to-end loop still works before trusting the new versions.

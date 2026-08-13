@@ -1,4 +1,51 @@
-## SITL in gazebo 8 with ArduCopterPlugin
+## SITL with JSBSim + FlightGear (Wingflight, recommended)
+
+This is the current, actively-maintained way to fly Wingflight's `SITL` target with
+real flight dynamics: [JSBSim](https://jsbsim.sourceforge.net/) computes the physics
+(fixed-wing aircraft models, e.g. the bundled `c172p`), and
+[FlightGear](https://www.flightgear.org/) optionally renders it. The legacy Gazebo 8
+workflow below still exists as an alternative, but is unmaintained/untested against
+current Wingflight.
+
+For full details (toolchain install, protocol design, gotchas, and version pinning),
+see [docs/development/SITL JSBSim FlightGear Plan.md](../../../docs/development/SITL%20JSBSim%20FlightGear%20Plan.md).
+
+### Quick start
+
+```powershell
+# Build SITL, start it, start the JSBSim bridge (c172p by default), and validate the
+# full RC -> mixer -> JSBSim -> attitude loop end-to-end:
+.\scripts\sitl-rc-check.ps1 -Mode jsbsim -BuildSitl -AutoStartSitl -StopSitlOnExit
+
+# For interactive flying/visualization instead of a one-shot validation run, use the
+# JSBSim + FlightGear launcher (FlightGear is optional and not vendored - install it
+# manually, see the plan doc's install instructions):
+.\scripts\sitl-jsbsim-flightgear-launch.ps1 -BuildSitl -FlightGear `
+    -FgfsPath "C:\Program Files\FlightGear <version>\bin\fgfs.exe" -StopOnExit
+```
+
+Key pieces:
+- [scripts/jsbsim_bridge.py](../../../scripts/jsbsim_bridge.py) — Python bridge:
+  receives Wingflight's `servo_packet` (control surfaces + motor speed) over UDP,
+  drives the corresponding JSBSim FCS properties, steps the simulation, and sends
+  JSBSim's resulting state back as an `fdm_packet` (same wire format the legacy
+  Gazebo path used, see the note below). Optional `--flightgear` flag additionally
+  makes JSBSim emit its own native FlightGear UDP FDM stream for visualization.
+- [scripts/sitl-jsbsim-flightgear-launch.ps1](../../../scripts/sitl-jsbsim-flightgear-launch.ps1) —
+  one-shot launcher for SITL + the bridge + (optionally) FlightGear.
+- [scripts/sitl-rc-check.ps1](../../../scripts/sitl-rc-check.ps1) `-Mode jsbsim` —
+  drives roll/pitch RC to each extreme through the disarmed mixer-passthrough
+  override and asserts JSBSim's resulting `MSP_ATTITUDE` actually changes, proving
+  the entire simulation loop (RC → mixer → bridge → JSBSim physics → fake IMU → MSP)
+  is alive, not just Wingflight's own servo output.
+- For manual/interactive control (USB joystick/gamepad instead of the automated RC
+  checks above), see the joystick section further down — it works the same way
+  regardless of which physics backend (Gazebo or JSBSim) is driving the simulation.
+
+Pinned versions that are known to work together (JSBSim, MinGW-w64, Python venv) are
+recorded in the plan doc's §9 — update them there if you upgrade any component.
+
+## Legacy: SITL in gazebo 8 with ArduCopterPlugin
 SITL (software in the loop) simulator allows you to run betaflight/cleanflight without any hardware.
 Currently only tested on Ubuntu 16.04, x86_64, gcc (Ubuntu 5.4.0-6ubuntu1~16.04.4) 5.4.0 20160609.
 
@@ -44,8 +91,13 @@ into SITL as RC input (with a GUI for binding axes/buttons to RC channels), see
 and [scripts/sitl-joystick-rc.py](../../../scripts/sitl-joystick-rc.py).
 
 ### note
-betaflight	->	gazebo	`udp://127.0.0.1:9002`
-gazebo	->	betaflight	`udp://127.0.0.1:9003`
+Wingflight	->	sim (gazebo or the JSBSim bridge)	`udp://127.0.0.1:9002`
+sim (gazebo or the JSBSim bridge)	->	Wingflight	`udp://127.0.0.1:9003`
+
+The wire format on these two ports (`servo_packet` out / `fdm_packet` in) is shared
+by both physics backends — [scripts/jsbsim_bridge.py](../../../scripts/jsbsim_bridge.py)
+speaks the exact same protocol Gazebo's `ArduCopterPlugin` did, so nothing in
+`target.c`/`udplink.c` needed to change to add JSBSim support.
 
 UARTx will bind on `tcp://127.0.0.1:576x` when port been open.
 
