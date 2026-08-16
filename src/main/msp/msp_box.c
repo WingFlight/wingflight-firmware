@@ -96,6 +96,8 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
 //    BOXITEM(BOXPIDAUDIO, "PID AUDIO", 44),
     BOXITEM(BOXPARALYZE, "PARALYZE", 45),
     BOXITEM(BOXGPSRESCUE, "GPS RESCUE", 46),
+    // permanentId 61/62 also reserved below, near BOXTHRUSTVECTOR -- kept out of numeric order here
+    // since these predate the AUTOHOVER/MANUAL/AUTOTRIM/THRUSTVECTOR cluster; see the matching note there
     BOXITEM(BOXLOITER, "GPS LOITER", 61),
     BOXITEM(BOXRTH, "GPS RTH", 62),
     BOXITEM(BOXTRAINER, "TRAINER", 47),
@@ -112,7 +114,9 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     BOXITEM(BOXAUTOHOVER, "AUTO HOVER", 58),
     BOXITEM(BOXMANUAL, "MANUAL", 59),
     BOXITEM(BOXAUTOTRIM, "AUTO TRIM", 60),
-    BOXITEM(BOXTHRUSTVECTOR, "THRUST VECTOR", 61),
+    // permanentId 61 is BOXLOITER "GPS LOITER" (see above, near BOXGPSRESCUE) -- do not reuse
+    // permanentId 62 is BOXRTH "GPS RTH" (see above, near BOXGPSRESCUE) -- do not reuse
+    BOXITEM(BOXTHRUSTVECTOR, "THRUST VECTOR", 63),
 };
 
 // mask of enabled IDs, calculated on startup based on enabled features. boxId_e is used as bit index
