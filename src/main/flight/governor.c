@@ -31,6 +31,7 @@
 #include "fc/runtime_config.h"
 #include "fc/rc_modes.h"
 
+#include "flight/failsafe.h"
 #include "flight/motors.h"
 #include "flight/pid.h"
 #include "flight/governor.h"
@@ -71,11 +72,21 @@ float governorApply(float throttle)
 
     const governorConfig_t *cfg = governorConfig();
 
-    if (!IS_RC_MODE_ACTIVE(BOXGOVERNOR)) {
+    // RX-loss / switch-induced stage 2 failsafe must be able to cut power outright. The BOXGOVERNOR
+    // aux channel defaults to holding its last value through signal loss (RX_FAILSAFE_MODE_HOLD), so
+    // a governor switch left engaged before the link dropped would otherwise stay "on" throughout
+    // failsafe. Without this check every governor mode would then keep forcing throttle back up to
+    // its idle floor (or, for RPM_RANGE, toward governor_rpm_min) regardless of the failsafe-forced
+    // low/off throttle input, silently overriding the failsafe throttle cut. Bypass the governor
+    // entirely while failsafe is active so the (near-zero) failsafe throttle passes straight through,
+    // same as every other flight mode.
+    const bool failsafeActive = failsafeIsActive();
+
+    if (!IS_RC_MODE_ACTIVE(BOXGOVERNOR) || failsafeActive) {
         rangeFaultLatched = false;
     }
 
-    const bool belowHandover = ARMING_FLAG(ARMED) &&
+    const bool belowHandover = !failsafeActive && ARMING_FLAG(ARMED) &&
         IS_RC_MODE_ACTIVE(BOXGOVERNOR) &&
         throttle < (cfg->governor_handover / 100.0f);
 
@@ -84,7 +95,7 @@ float governorApply(float throttle)
     bool rpmLimit = false;
     float target = throttle;
 
-    switch (cfg->governor_mode) {
+    switch (failsafeActive ? GOVERNOR_MODE_OFF : cfg->governor_mode) {
     case GOVERNOR_MODE_RPM:
         active = belowHandover && cfg->governor_rpm > 0 && isMotorRpmSourceActive(0);
         if (active) {
