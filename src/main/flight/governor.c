@@ -36,6 +36,8 @@
 #include "flight/pid.h"
 #include "flight/governor.h"
 
+#include "rx/rx.h"
+
 // Max rate of change of the governor's own throttle output, in throttle-fraction per second, for
 // the idle-hold modes below. Prevents a step in motor output when the pilot engages/disengages
 // BOXGOVERNOR or crosses the handover threshold.
@@ -80,7 +82,15 @@ float governorApply(float throttle)
     // low/off throttle input, silently overriding the failsafe throttle cut. Bypass the governor
     // entirely while failsafe is active so the (near-zero) failsafe throttle passes straight through,
     // same as every other flight mode.
-    const bool failsafeActive = failsafeIsActive();
+    //
+    // failsafeIsActive() alone is not enough to catch this on a real dropped link: it only reflects
+    // failsafeUpdateState()'s phase machine, which is gated behind failsafeIsMonitoring() --
+    // currently permanently false because failsafeStartMonitoring() is a stub (see failsafe.c).
+    // rxIsReceivingSignal() is driven straight from rx.c's per-cycle channel validity check
+    // (detectAndApplySignalLossBehaviour), independent of that stub, and goes false immediately for
+    // both a real signal loss and a BOXFAILSAFE switch -- so it's checked first here. failsafeIsActive()
+    // is kept as a second, belt-and-suspenders trigger so this still works once monitoring is restored.
+    const bool failsafeActive = !rxIsReceivingSignal() || failsafeIsActive();
 
     if (!IS_RC_MODE_ACTIVE(BOXGOVERNOR) || failsafeActive) {
         rangeFaultLatched = false;
