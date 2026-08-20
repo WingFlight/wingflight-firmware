@@ -44,6 +44,7 @@
 #include "flight/position.h"
 #include "flight/mixer.h"
 #include "flight/imu.h"
+#include "flight/pid.h"
 
 #include "io/gps.h"
 #include "io/ledstrip.h"
@@ -388,6 +389,22 @@ int telemetrySensorValue(sensor_id_e id)
         case TELEM_FBUS_SENSOR_8:
             return getFbusSensorValue(7);
 #endif
+        case TELEM_OSC_LIMITER: {
+            // Bits 0-2: which axes are currently latched down. Bits 8-15: the lowest
+            // (most cut) gain scale percent across all axes, 100 = no cut.
+            uint32_t activeMask = 0;
+            uint32_t minScale = 100;
+            for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+                if (pidOscLimiterActive(axis)) {
+                    activeMask |= (1 << axis);
+                }
+                const uint32_t scale = pidOscLimiterScale(axis);
+                if (scale < minScale) {
+                    minScale = scale;
+                }
+            }
+            return (activeMask & 0x07) | (minScale << 8);
+        }
         default:
             return 0;
     }
@@ -575,6 +592,9 @@ bool telemetrySensorActive(sensor_id_e id)
         case TELEM_FBUS_SENSOR_8:
             return CHECK_FBUS_SPORT_MASTER_ENABLED() && (fbusMasterConfig()->forwardedSensors[7] <= FBUS_MAX_PHYS_ID);
 #endif
+
+        case TELEM_OSC_LIMITER:
+            return true;
 
         default:
             return false;

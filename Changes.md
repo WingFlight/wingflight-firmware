@@ -95,6 +95,37 @@ generic per-motor RPM/gear-ratio handling now, not heli-specific:
   `motor2speed`. This changes the log field/column names, so blackbox log
   tooling needs to follow.
 
+Added an oscillation limiter to fixed-wing rate mode (PID Mode 1). It
+watches the tracking error on each axis for a sustained, periodic
+oscillation in a configurable frequency band and, once confirmed, eases
+`master_gain` down (never up) for that axis only, one small step at a
+time for as long as the oscillation is still present -- stopping wherever
+that is, down to a configurable floor at most. It never eases back up
+mid-flight: once the oscillation clears, the reduced gain holds, and if
+it recurs later in the same flight the axis backs off further from
+there. A new arm or profile reload is the only way authority is
+restored. It is disabled by default and has no effect on setpoint, gyro
+rate, or `pidProfile_t` at runtime. See
+[docs/development/Oscillation Detection.md](docs/development/Oscillation%20Detection.md)
+for the full design.
+
+New PID profile settings (`pidProfile_t` version 9 -> 10, existing profiles
+reset to defaults on upgrade): `osc_limiter` (off by default), `osc_limiter_min_hz`
+/ `osc_limiter_max_hz` (detection band), `osc_limiter_threshold` (error energy
+threshold, deg/s), `osc_limiter_floor` (minimum gain scale, percent), and
+`osc_limiter_engage_ms` (sustained-detection time to fully engage).
+
+Engage/release transitions are logged as a new blackbox event
+(`FLIGHT_LOG_EVENT_OSC_LIMITER`, numeric ID 53) carrying axis, active state,
+and the resulting gain scale percent; a new `DEBUG_OSC_LIMITER` debug mode
+continuously logs energy/score/gain-scale for the debug axis. A new
+protocol-agnostic telemetry sensor `TELEM_OSC_LIMITER` (numeric ID 118)
+reports a per-axis active bitmask and the worst-case gain scale, exposed on
+both CRSF (custom sensor `0x1204`) and FrSky S.Port/FBUS (`0x5124`). CRSF's
+flight-mode text also gets an `OSC!` suffix while any axis is reported active,
+without overriding FAILSAFE/GPS-RESCUE mode text. OSD warnings and beeper
+alerts are intentionally out of scope for now.
+
 
 ## MSP Changes
 
