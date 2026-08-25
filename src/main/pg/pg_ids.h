@@ -170,6 +170,7 @@
 #define PG_GOVERNOR_CONFIG           1011
 #define PG_GAIN_CURVES               1012
 #define PG_THRUST_VECTOR_PROFILE     1013
+#define PG_SRXL2_ESC_CONFIG          1014
 
 // OSD configuration -- removed (OSD)
 //#define PG_OSD_FONT_CONFIG 2047
