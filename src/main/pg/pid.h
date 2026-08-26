@@ -119,6 +119,16 @@ typedef struct pidProfile_s {
     uint8_t             fw_tpa_gain;                  // Baseline throttle attenuation scale, percent (100 = unscaled) - mirrors master_gain
     uint8_t             fw_tpa_curve;                 // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1), further scales fw_tpa_gain by throttle - mirrors gain_curve
 
+    // Oscillation limiter: detects a sustained gain-induced oscillation per axis and eases
+    // master_gain down (never up) further each time, holding (never recovering) once it
+    // subsides; cleared only on arm/profile reload. See docs/development/Oscillation Detection.md.
+    uint8_t             osc_limiter;                  // 0=off (default), 1=on
+    uint8_t             osc_limiter_min_hz;            // band-pass low edge
+    uint8_t             osc_limiter_max_hz;            // band-pass high edge
+    uint8_t             osc_limiter_threshold;         // error energy threshold, deg/s
+    uint8_t             osc_limiter_floor;             // percent, minimum gain scale it may reach
+    uint16_t            osc_limiter_engage_ms;         // sustained detection time to fully engage
+
     uint8_t             iterm_decay_time;
     uint8_t             iterm_decay_limit;
 
