@@ -69,7 +69,8 @@
 #define USE_BARO
 #define USE_FAKE_BARO
 
-#define USABLE_TIMER_CHANNEL_COUNT 4
+// Must match the synthetic timerHardware[] table in target.c (4 motor + 4 servo).
+#define USABLE_TIMER_CHANNEL_COUNT 8
 
 #define USE_UART1
 #define USE_UART2
@@ -105,6 +106,7 @@
 #undef USE_SERIALRX_IBUS2
 #undef USE_SERIALRX_SBUS
 #undef USE_SERIALRX_SPEKTRUM
+#undef USE_SERIALRX_SRXL2
 #undef USE_SERIALRX_SUMD
 #undef USE_SERIALRX_SUMH
 #undef USE_SERIALRX_XBUS
@@ -133,6 +135,14 @@
 
 #undef USE_I2C
 #undef USE_SPI
+
+// No DMA controller and no real gyro registers exist here, and the drivers that
+// would back them (drivers/dma.c, drivers/accgyro/accgyro_mpu.c) are not part of
+// the SITL build - see MCU_EXCLUDES in make/mcu/SITL.mk. Leaving these defined
+// makes drivers/dma_common.c and sensors/gyro_init.c's gyroReadRegister() link
+// against symbols that don't exist in this target.
+#undef USE_DMA
+#undef USE_GYRO_REGISTER_DUMP
 
 #define TARGET_FLASH_SIZE 2048
 

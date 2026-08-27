@@ -13,16 +13,26 @@ see [docs/development/SITL JSBSim FlightGear Plan.md](../../../docs/development/
 ### Quick start
 
 ```powershell
+# One-time, on a fresh clone (tools/ is gitignored, so nothing is there yet):
+make mingw_sdk_install                                        # native C toolchain
+.\scripts\sitl-jsbsim-flightgear-launch.ps1 -SetupVenv         # JSBSim/pygame venv
+
 # Build SITL, start it, start the JSBSim bridge (c172p by default), and validate the
 # full RC -> mixer -> JSBSim -> attitude loop end-to-end:
 .\scripts\sitl-rc-check.ps1 -Mode jsbsim -BuildSitl -AutoStartSitl -StopSitlOnExit
 
 # For interactive flying/visualization instead of a one-shot validation run, use the
-# JSBSim + FlightGear launcher (FlightGear is optional and not vendored - install it
-# manually, see the plan doc's install instructions):
-.\scripts\sitl-jsbsim-flightgear-launch.ps1 -BuildSitl -FlightGear `
+# JSBSim + FlightGear launcher (-Joystick needs a USB joystick; without an RC source
+# the mixer just sits at failsafe. FlightGear is optional and not vendored - install
+# it manually, see the plan doc's install instructions):
+.\scripts\sitl-jsbsim-flightgear-launch.ps1 -BuildSitl -Trim -Joystick -FlightGear `
     -FgfsPath "C:\Program Files\FlightGear <version>\bin\fgfs.exe" -StopOnExit
 ```
+
+If a run looks dead (`packets_rx=0` in the bridge output), check that no leftover
+process still holds the simulator's UDP ports: `Get-NetUDPEndpoint -LocalPort 9002`.
+And delete any old `obj/main/wingflight_SITL.exe` - `make` builds
+`wingflight_SITL.elf`, and a stale `.exe` beside it is a well-worn trap.
 
 Key pieces:
 - [scripts/jsbsim_bridge.py](../../../scripts/jsbsim_bridge.py) — Python bridge:

@@ -1,0 +1,5 @@
+# Optional dependency for scripts/sitl-joystick-rc.py (USB joystick -> MSP RC).
+# Installed into the same tools/jsbsim-venv by
+# scripts/sitl-jsbsim-flightgear-launch.ps1 -SetupVenv.
+# See docs/development/SITL Joystick RC Input.md.
+pygame>=2.5

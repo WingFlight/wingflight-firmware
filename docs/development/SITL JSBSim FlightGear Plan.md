@@ -1,19 +1,27 @@
 # SITL → JSBSim → FlightGear Integration Plan
 
-Status: **Phase 0 through Phase 4 implemented and validated** (native MinGW-w64
-toolchain vendored under `tools/mingw64`, `pwmOutConfig`/servo link gap fixed,
-`make TARGET=SITL` builds and the resulting binary runs, `getServoCount()`/
-RC-injection/servo output confirmed working end-to-end via `sitl-rc-check.ps1`, and
-the JSBSim bridge (`scripts/jsbsim_bridge.py`) drives a live SITL instance end-to-end
-via `MSP_ATTITUDE`). **Phase 3 (FlightGear) is implemented but not yet validated
-against a real FlightGear install** (not present on this dev machine — JSBSim's
-FlightGear-native UDP output was validated with a raw socket listener instead, see
-§5 Phase 3). **Phase 4 (final docs/validation) is done**: `sitl-rc-check.ps1` gained
-a `-Mode jsbsim` that proves the full RC → mixer → JSBSim → attitude loop end-to-end
-(not just Wingflight's own servo output), the SITL README documents the new
-JSBSim/FlightGear workflow alongside the legacy Gazebo path, and exact working
-toolchain/simulator versions are recorded (see §9). FlightGear itself remains
-unvalidated against a real install, as noted above.
+Status: **Phases 0–4 implemented; Phase 5 (gap review, 2026-08-27) applied.**
+The native MinGW-w64 toolchain is vendored under `tools/mingw64`, the
+`pwmOutConfig`/servo link gap is fixed, `make TARGET=SITL` builds and runs, RC
+injection and servo output are confirmed end-to-end via `sitl-rc-check.ps1`, and
+`scripts/jsbsim_bridge.py` drives a live SITL instance through JSBSim
+(`sitl-rc-check.ps1 -Mode jsbsim` proves the whole RC → mixer → JSBSim →
+`MSP_ATTITUDE` loop).
+
+A gap review on 2026-08-27 (see §10) found and fixed several real defects that
+the earlier "validated" runs did not catch. The two that mattered most: **from a
+clean checkout the SITL target did not link at all**, and **throttle could never
+reach JSBSim** (no motor channels existed in SITL's synthetic timer table, the
+bridge read the wrong `motor_speed[]` index, and the JSBSim engine was never
+started). A stale `wingflight_SITL.exe` in `obj/main` shadowing the built `.elf`
+is the likely reason earlier phases recorded passes that do not reproduce.
+
+All of §10's fixes are validated on this machine (§10.14): `make TARGET=SITL
+DEBUG=GDB` links, and `sitl-rc-check.ps1` passes in all four modes -
+`smoke`/`sweep`/`stress` plus `jsbsim` (roll 84.8°, pitch 40.9°, yaw 37.0°
+against a 3° threshold). **FlightGear is still unvalidated against a real
+install** (not present here), and §10.15 lists what else remains open. §11 is the
+step-by-step "how to build, run and test this from a fresh clone".
 
 ## 1. Executive Summary
 
@@ -320,26 +328,32 @@ user's decision above.
 
 ## 6. Open Questions / Risks
 
-- **§2.3 is a hypothesis, not yet confirmed** — must build first (Phase 0) to verify.
+- ~~**§2.3 is a hypothesis, not yet confirmed**~~ — confirmed and fixed (see §2.3).
 - FlightGear/JSBSim wire-protocol compatibility has shifted across versions upstream;
-  needs pinning and a smoke test, not just documentation.
+  needs pinning and a smoke test, not just documentation. **Still open** — no
+  FlightGear install exists on this dev machine, so only JSBSim's side of the wire
+  has been observed (see §8 "Validation status").
 - No unit tests will be added for any of this (per standing project preference).
-- This plan does not yet address realtime-pacing/timing behavior under JSBSim (JSBSim
-  can run faster/slower than real time; Wingflight's SITL loop currently paces itself
-  off packet timestamps from the Gazebo side — this logic needs review once JSBSim is
-  the source).
-- **Possible root cause found for the `sitl-rc-check.ps1` sweep-mode Yaw quirk**: the
-  script's `New-RcPayload` sends channels as `Roll, Pitch, Yaw, Collective(=1500),
-  Throttle, Aux1-3`, but SITL's default `rcmap` (`"AETR1234"`, see
-  `parseRcChannels()` in [src/main/rx/rx.c](../../src/main/rx/rx.c)) resolves
-  payload index 2 to **Throttle** and index 3 to **Yaw** — i.e. the script's Yaw
-  and Throttle values land on the wrong firmware channels, and the firmware's Yaw
-  channel is fed the script's constant `Collective` placeholder (always 1500).
-  Not yet fixed in `sitl-rc-check.ps1` (out of scope for the change that found
-  this — see [SITL Joystick RC Input.md](SITL%20Joystick%20RC%20Input.md), which
-  documents and uses the *correct* `Roll, Pitch, Throttle, Yaw, AUX...` order).
-  Follow-up: re-check `sitl-rc-check.ps1`'s sweep-mode Yaw axis test against the
-  corrected channel order before trusting it.
+- **Realtime pacing.** JSBSim can run faster or slower than real time, and
+  `target.c`'s `updateState()` derives `simRate` from consecutive `fdm_packet`
+  timestamps, which scales `micros64()` (and therefore the whole scheduler's notion
+  of time). The bridge paces itself to wall-clock at `--rate` Hz by default, which
+  keeps `simRate ≈ 1.0`; `--no-realtime` deliberately breaks that and makes
+  Wingflight's clock run at whatever multiple of real time the host can sustain.
+  Two related sharp edges, unchanged and worth knowing about:
+  - `updateState()` only recomputes `simRate` when `0 < deltaSim < 0.02`, i.e. the
+    FDM must send at **> 50 Hz** or the FC clock silently keeps its last scale
+    factor. Don't run the bridge below `--rate 60`.
+  - If the bridge stops, no more `fdm_packet`s arrive, so `updateState()` stops
+    running, `simRate` freezes and (after the 500 ms timeout branch) the FC keeps
+    running on its last time scale. Symptom: SITL appears alive over MSP but
+    attitude is frozen. Check the bridge process first.
+- ~~**`sitl-rc-check.ps1` sweep-mode Yaw quirk**~~ — fixed. `New-RcPayload` now
+  sends `Roll, Pitch, Throttle, Yaw, AUX1-3, Collective`, matching what SITL's
+  default `rcmap` (`"AETR1234"`, see `parseRcChannels()` in
+  [src/main/rx/rx.c](../../src/main/rx/rx.c)) resolves those payload indices to, and
+  parks the vestigial heli-only `Collective` placeholder on an unused AUX slot.
+  Same order as [SITL Joystick RC Input.md](SITL%20Joystick%20RC%20Input.md).
 
 ## 7. Immediate Next Steps
 
@@ -444,3 +458,309 @@ these are intentionally upgraded.
 When upgrading JSBSim or MinGW-w64, re-run
 `.\scripts\sitl-rc-check.ps1 -Mode jsbsim -BuildSitl -AutoStartSitl -StopSitlOnExit`
 to confirm the end-to-end loop still works before trusting the new versions.
+
+The Python versions are pinned by
+[scripts/requirements-jsbsim.txt](../../scripts/requirements-jsbsim.txt) and
+[scripts/requirements-joystick.txt](../../scripts/requirements-joystick.txt) as of
+the Phase 5 review (see §10.11); this table and those files must be kept in sync.
+Re-validated 2026-08-27 on Python 3.13 (whatever `python -m venv` produces on the
+machine) rather than the 3.14.5 recorded above - both work.
+
+## 10. Phase 5 - Gap review (2026-08-27)
+
+A fresh-clone review of everything Phases 0-4 claimed to have finished. Every item
+below was reproduced on this machine before being fixed, and the fix is in the
+tree. Ordered by how badly it broke the loop.
+
+The headline: **from a clean checkout the SITL target did not even link, and once
+it did, throttle could never reach JSBSim.** The earlier "validated" runs did not
+catch either, for reasons worth understanding - see 10.1, 10.2 and 10.6.
+
+### 10.1 SITL did not link from a clean tree (BLOCKER, fixed)
+
+`make TARGET=SITL` failed at the link step on a clean `obj/`, with the vendored
+`tools/mingw64` GCC 13.3.0 and with a system MinGW alike:
+
+```
+sensors/gyro_init.c:678: undefined reference to `mpuGyroReadRegister'
+drivers/dma_common.c:     undefined reference to `dmaDescriptors'
+rx/srxl2.c:291,313:       undefined reference to `microsISR'
+```
+
+All three come from feature macros that `common_pre.h` defines globally and
+SITL's `target.h` never turned off, while `make/mcu/SITL.mk` excludes the drivers
+that would define the symbols (`drivers/dma.c`, `drivers/accgyro/accgyro_mpu.c`,
+`drivers/system.c`). An `-Ofast` build hid two of the three (LTO + `-gc-sections`
+pruned the unreferenced code); a `DEBUG=GDB` build - the one every script under
+`scripts/` actually uses - failed on all three.
+
+Fixed in [target.h](../../src/main/target/SITL/target.h) by extending the existing
+`#undef` block, exactly how every other unsupported feature is handled there:
+`#undef USE_DMA`, `#undef USE_GYRO_REGISTER_DUMP`, `#undef USE_SERIALRX_SRXL2`
+(the last was simply missed - every other `USE_SERIALRX_*` was already undef'd).
+
+### 10.2 No motor channels existed, so throttle was structurally impossible (fixed)
+
+The synthetic `timerHardware[]` table added in Phase 1 only declared four
+`TIM_USE_SERVO` channels. `motorConfig()`'s reset function builds its `ioTags`
+from `timerioTagGetByUsage(TIM_USE_MOTOR, ...)`, so every motor ioTag resolved to
+`IO_TAG_NONE`, `motorInit()` counted `motorCount = 0`, and `motorsPwm[0]` (M1,
+the wing's throttle) was never written by anything, ever.
+
+Fixed by extending the table to four `TIM_USE_MOTOR` + four `TIM_USE_SERVO`
+entries (`USABLE_TIMER_CHANNEL_COUNT` 8 to match). Four motors rather than one
+keeps the legacy Gazebo quad path working; `motorPwmDevInit()` rejects more.
+
+### 10.3 The bridge read the wrong motor channel (fixed)
+
+`scripts/jsbsim_bridge.py` read `motor_speed[0]` as throttle. But
+`pwmCompleteMotorUpdate()` in [target.c](../../src/main/target/SITL/target.c)
+applies the legacy Gazebo ArduCopterPlugin motor remap:
+
+```c
+pwmPkt.motor_speed[3] = motorsPwm[0] / outScale;   // M1 - the wing's throttle
+pwmPkt.motor_speed[0] = motorsPwm[1] / outScale;   // M2 - unused on a 1-motor wing
+```
+
+so even after 10.2 the bridge would have been reading a channel a fixed-wing
+build never populates. The bridge now defaults to `motor_speed[3]`, with
+`--throttle-motor-index` to override. `target.c` keeps the remap so the legacy
+Gazebo path is unaffected.
+
+### 10.4 The JSBSim engine was never started (fixed)
+
+Even with 10.2 and 10.3 fixed, `fcs/throttle-cmd-norm` produced no thrust: JSBSim
+piston models (`c172p` included) initialise with the engine cold and stopped. The
+bridge now sets `propulsion/set-running = -1` after `run_ic()`
+(`--no-engine-start` opts out). This also unblocked trimming, which previously
+failed with "Sorry, udot doesn't appear to be trimmable" - there was no thrust to
+trim against.
+
+### 10.5 Nothing reached the simulator while the motor device was disabled (fixed)
+
+`pwmCompleteMotorUpdate()` was the only place a `servo_packet` was ever sent, and
+it is reached only through `motorWriteAll()`, which short-circuits on
+`motorDevice->enabled`. While that flag is false the FDM receives nothing at all -
+not even the control-surface channels, which do move while disarmed and which
+every `sitl-rc-check.ps1` mode depends on. `updateState()` now refreshes and sends
+the packet itself whenever `motorIsEnabled()` is false (motor channels zeroed,
+matching the real disarmed output), through a shared `refreshPwmPacket()` helper.
+
+### 10.6 A stale binary was shadowing every test run (fixed)
+
+`sitl-rc-check.ps1` probed `obj/main/wingflight_SITL.exe` **before**
+`obj/main/wingflight_SITL.elf`. `make TARGET=SITL` produces the `.elf`; a
+month-old hand-built `.exe` sitting in `obj/main` therefore silently won every
+run, so the script was testing month-old firmware while reporting on the current
+tree. This is very likely why earlier phases recorded passes that do not
+reproduce. The candidate list now puts `.elf` first and warns when an older
+`.exe` is being ignored.
+
+### 10.7 A leftover process on UDP 9002 silently swallowed the link (mitigated)
+
+A stray `jsbsim_bridge.py` from an earlier session still bound to
+`127.0.0.1:9002` made every later run look identical to "SITL sends nothing":
+`sendto()` returned success, `packets_rx` stayed at 0. Both scripts now surface
+this - the launcher warns when 9002/9003 are already held, the bridge exits with
+an explicit message instead of a traceback when its bind fails, and its status
+line calls out `packets_rx=0`. **If a run looks dead, check
+`Get-NetUDPEndpoint -LocalPort 9002` first.**
+
+### 10.8 No initial position - FlightGear would have rendered an empty ocean (fixed)
+
+The bridge set only altitude and airspeed, leaving JSBSim's default lat/lon of
+0/0 - a point in the Gulf of Guinea with no FlightGear scenery. The raw-socket
+validation in section 8 could not have caught this (the bytes on the wire look
+correct). The bridge now takes `--lat-deg`/`--lon-deg`/`--heading-deg`, defaulting
+to KSFO (37.6136 / -122.3572) which the FlightGear base package ships scenery for,
+and the launcher passes the same position to `fgfs` via `--lat/--lon/--altitude`
+so FlightGear preloads scenery in the right place.
+
+### 10.9 The aircraft started untrimmed (fixed)
+
+Phase 2 validated attitude tracking during an "untrimmed, idle-throttle glide" -
+the airframe was decelerating out of its envelope the whole time, which is a poor
+baseline for judging control response (and a source of attitude change unrelated
+to the control inputs). `--trim` (with `--trim-mode`, default 1 = full trim) now
+trims at the initial conditions; a failed trim warns and continues rather than
+aborting. `sitl-rc-check.ps1 -Mode jsbsim` passes `--trim`. Observed effect:
+altitude holds ~3000 ft and IAS stays near the 90 kt IC instead of decaying.
+
+### 10.10 A crash streamed NaNs into Wingflight's IMU (fixed)
+
+Nothing stopped JSBSim integrating past ground impact or into non-finite state,
+and those values went straight into `fdm_packet` and out through
+`fakeAccSet()`/`fakeGyroSet()`/`imuSetAttitudeQuat()`. The bridge now checks the
+state each step and re-runs the initial conditions on a crash or non-finite value
+(`--min-agl-ft`, `--no-auto-reset`).
+
+### 10.11 Fresh-machine setup was undocumented and unpinned (fixed)
+
+`tools/` is gitignored in full, so a fresh clone has neither `tools/mingw64` nor
+`tools/jsbsim-venv`, and the launcher failed with a "create it yourself" error.
+There was also no requirements manifest anywhere - section 9's table was the only
+record. Added [scripts/requirements-jsbsim.txt](../../scripts/requirements-jsbsim.txt)
+(pins `jsbsim==1.3.1`) and
+[scripts/requirements-joystick.txt](../../scripts/requirements-joystick.txt)
+(`pygame`), plus `-SetupVenv` on the launcher, which creates the venv and installs
+both. See section 11.
+
+### 10.12 The barometer was never fed (fixed)
+
+`target.h` enables `USE_FAKE_BARO`, but nothing ever called `fakeBaroSet()`, so
+the firmware saw a constant 101325 Pa - 0 m MSL - no matter what the simulator
+did. `updateState()` now derives ISA pressure and temperature from the FDM's
+altitude. Note that altitude is *relative to the simulator's initial condition*,
+because `fdm_packet.position_xyz` is NED metres from the sim origin; absolute MSL
+altitude would need a new packet field.
+
+The fake **compass** is deliberately *not* fed, and that is now commented in
+`target.c`: SITL undefines `USE_IMU_CALC`, so attitude and heading come straight
+from the simulator's quaternion and the mag is never consulted. Feed it only if
+`USE_IMU_CALC` is ever turned on to test the AHRS itself.
+
+### 10.13 Smaller launcher/bridge fixes
+
+- The launcher started no RC source at all. SITL's RX is `FEATURE_RX_MSP`, so
+  without one the mixer sits at failsafe and nothing flies. Added `-Joystick`
+  (runs [scripts/sitl-joystick-rc.py](../../scripts/sitl-joystick-rc.py)) and an
+  explicit note when no RC source is running.
+- The launcher only watched the SITL process, so a bridge that died (bad model
+  name, port in use) left it looping forever. It now watches bridge and
+  FlightGear too.
+- Bridge stdout was block-buffered, so the launcher's redirected log stayed empty
+  until the process exited. Now line-buffered.
+- The bridge's temporary FlightGear output-directive XML was never deleted, and
+  `Stop-Process` (SIGTERM) skipped cleanup. Both handled.
+- Servo pulse to surface scaling hardcoded 1000/1500/2000 us; added
+  `--servo-min/--servo-mid/--servo-max` and `--invert-aileron/-elevator/-rudder`
+  for airframes (or model conventions) where a control direction comes out
+  reversed.
+- `-Mode jsbsim` now launches the bridge with `--trim`.
+
+### 10.14 Validation after the fixes
+
+Run on this machine, 2026-08-27, vendored MinGW-w64 13.3.0 + JSBSim 1.3.1:
+
+```
+make TARGET=SITL DEBUG=GDB -j 8                  -> links, obj/main/wingflight_SITL.elf
+sitl-rc-check.ps1 -Mode jsbsim ... -FreshEeprom  -> PASS
+    getServoCount() = 4
+    roll 84.8 deg, pitch 40.9 deg, yaw 37.0 deg (threshold 3 deg), exit 0
+sitl-rc-check.ps1 -Mode smoke                    -> PASS  pitch_servo delta 938 us
+sitl-rc-check.ps1 -Mode sweep                    -> PASS  roll/pitch/yaw 938 us each
+sitl-rc-check.ps1 -Mode stress                   -> PASS  536 cycles, 0 dropouts
+jsbsim_bridge.py + SITL, no RC                   -> packets_rx ~120/s, trim holds ~3000 ft
+sitl-jsbsim-flightgear-launch.ps1 -Trim -FlightGear
+                                                 -> SITL + bridge start and stop cleanly
+```
+
+### 10.15 Still open
+
+- **FlightGear has never been run against this.** Everything in section 8 is
+  still inferred from the bytes JSBSim puts on the wire. 10.8 removes the most
+  likely cause of a "connects but shows nothing" result, but the version-pairing
+  risk in section 6 stands.
+- **`-Mode jsbsim` does not isolate control-induced motion from free dynamics.**
+  It asserts that attitude changes by more than a threshold while a control is
+  held at an extreme. A trimmed aircraft drifts far less than the untrimmed one
+  Phase 2 measured, but the test still cannot distinguish "the elevator worked"
+  from "the aircraft was diverging anyway". A stronger version would compare
+  against a control-neutral run of the same duration. Treat the current check as
+  a liveness test for the loop, not a correctness test for the mixer.
+- **No automated throttle check.** A disarmed FC forces motor output to
+  motor-stop, so the disarmed passthrough trick cannot exercise throttle. With
+  10.2/10.3/10.4 fixed it should now work; verify it by hand per section 11.4.
+- **Control-surface sign conventions are unverified.** Nothing has confirmed that
+  a right-roll stick input produces a right roll in JSBSim rather than a left one;
+  the check only looks at magnitude. Use `--invert-*` if a direction is wrong.
+- **GPS/position is not fed to the firmware.** `fdm_packet` carries velocity and
+  position but `updateState()` ignores both apart from the new baro derivation, so
+  anything GPS-dependent is untestable in SITL today.
+
+## 11. How to run it (fresh machine)
+
+### 11.1 One-time setup
+
+```powershell
+# 1. Native C toolchain for TARGET=SITL: downloads a ~130 MB WinLibs zip into
+#    downloads/ and unpacks it to tools/mingw64. No admin rights, no PATH changes.
+#    Needs curl + unzip on PATH - Git Bash has both, plain PowerShell may not.
+make mingw_sdk_install
+
+# 2. Python venv for the JSBSim bridge (creates tools/jsbsim-venv, installs the
+#    pinned requirements). Needs a system python3 on PATH.
+.\scripts\sitl-jsbsim-flightgear-launch.ps1 -SetupVenv
+
+# 3. (optional) FlightGear - manual installer, see section 8.
+```
+
+### 11.2 Build
+
+```powershell
+make TARGET=SITL DEBUG=GDB -j 8      # -> obj/main/wingflight_SITL.elf
+```
+
+`DEBUG=GDB` is what every script under `scripts/` uses; build it that way unless
+you have a reason not to. If `obj/main/wingflight_SITL.exe` exists from an older
+build, delete it (see 10.6).
+
+### 11.3 Automated end-to-end check (start here)
+
+```powershell
+.\scripts\sitl-rc-check.ps1 -Mode jsbsim -AutoStartSitl -StopSitlOnExit -FreshEeprom
+```
+
+Drives roll and pitch to both extremes through the disarmed
+`MIXER_OVERRIDE_PASSTHROUGH` path and asserts `MSP_ATTITUDE` moves, which
+requires the whole loop to be alive: RC to mixer to `servo_packet` (UDP 9002) to
+`jsbsim_bridge.py` to JSBSim FCS to physics to `fdm_packet` (UDP 9003) to the
+fake IMU to MSP. Expect `getServoCount() = 4`, roll/pitch deltas far above the
+3 deg threshold, exit code 0. Bridge output goes to
+`obj/main/jsbsim_bridge_check_stdout.log`; `packets_rx=0` there means the UDP
+link is dead (see 10.7).
+
+Then the three modes that exercise Wingflight's own servo path without JSBSim:
+
+```powershell
+.\scripts\sitl-rc-check.ps1 -Mode smoke  -AutoStartSitl -StopSitlOnExit
+.\scripts\sitl-rc-check.ps1 -Mode sweep  -AutoStartSitl -StopSitlOnExit
+.\scripts\sitl-rc-check.ps1 -Mode stress -AutoStartSitl -StopSitlOnExit
+```
+
+### 11.4 Interactive flying, and verifying throttle
+
+```powershell
+.\scripts\sitl-jsbsim-flightgear-launch.ps1 -Trim -Joystick -StopOnExit
+```
+
+The bridge's status line shows what JSBSim actually receives:
+
+```
+[jsbsim-bridge] t=  12.02s alt= 2998.8ft ias= 88.2kts thr=0.00 ail=+0.00 ele=+0.00 rud=+0.00 packets_rx=1440
+```
+
+**This is how to verify the 10.2/10.3/10.4 throttle chain**: arm the aircraft,
+raise the throttle stick, and confirm `thr=` follows it and IAS climbs. If a
+control axis moves the wrong way, add `--invert-aileron` (or `-elevator` /
+`-rudder`) rather than editing the mixer.
+
+### 11.5 Adding FlightGear
+
+```powershell
+.\scripts\sitl-jsbsim-flightgear-launch.ps1 -Trim -Joystick -FlightGear `
+    -FgfsPath "C:\Program Files\FlightGear <version>\bin\fgfs.exe" -StopOnExit
+```
+
+Without `-FgfsPath` the bridge prints the exact `fgfs` command to run by hand.
+Once this works, record the FlightGear version in section 9 and update the
+validation status in sections 8 and 10.15.
+
+Troubleshooting:
+- Blue void / nothing renders: the aircraft is not where FlightGear loaded
+  scenery. Check `-LatDeg`/`-LonDeg` (default KSFO).
+- FlightGear connects but the aircraft is frozen while the bridge status line
+  keeps advancing: protocol-version mismatch between JSBSim and FlightGear
+  (section 6).
+- `packets_rx=0`: SITL is not running, or another process holds UDP 9002
+  (`Get-NetUDPEndpoint -LocalPort 9002`).

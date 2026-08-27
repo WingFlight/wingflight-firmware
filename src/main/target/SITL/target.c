@@ -45,9 +45,24 @@
 #include "drivers/timer.h"
 #include "drivers/timer_def.h"
 
-// Synthetic timer table so servoConfig()'s default ioTags/timerAllocate() resolve
-// to non-zero servo channels on SITL, which has no real timer hardware.
-const timerHardware_t timerHardware[4] = {
+// Synthetic timer table so motorConfig()/servoConfig()'s default ioTags (built by
+// timerioTagGetByUsage(), see pg/motor.c and pg/servos.c) and timerAllocate()
+// resolve to non-zero channels on SITL, which has no real timer hardware.
+//
+// The TIM_USE_MOTOR entries matter as much as the servo ones: motorInit() sizes
+// motorCount by counting non-zero motorConfig()->dev.ioTags, and a motorCount of
+// 0 means motorDevInit() never wires up the motor device - so
+// pwmCompleteMotorUpdate() below, the *only* place a servo_packet is ever sent to
+// the simulator, is never called and JSBSim/Gazebo receive nothing at all.
+// Four motor channels (rather than just M1) keep the legacy Gazebo quad path
+// working; motorPwmDevInit() rejects anything above four.
+#define SITL_TIMER_MOTOR_COUNT 4
+#define SITL_TIMER_SERVO_COUNT 4
+const timerHardware_t timerHardware[SITL_TIMER_MOTOR_COUNT + SITL_TIMER_SERVO_COUNT] = {
+    { .tag = 0x01, .usageFlags = TIM_USE_MOTOR },
+    { .tag = 0x02, .usageFlags = TIM_USE_MOTOR },
+    { .tag = 0x03, .usageFlags = TIM_USE_MOTOR },
+    { .tag = 0x04, .usageFlags = TIM_USE_MOTOR },
     { .tag = 0x11, .usageFlags = TIM_USE_SERVO },
     { .tag = 0x12, .usageFlags = TIM_USE_SERVO },
     { .tag = 0x13, .usageFlags = TIM_USE_SERVO },
@@ -55,6 +70,7 @@ const timerHardware_t timerHardware[4] = {
 };
 
 #include "drivers/accgyro/accgyro_fake.h"
+#include "drivers/barometer/barometer_fake.h"
 #include "flight/imu.h"
 #include "flight/servos.h"
 
@@ -126,6 +142,42 @@ int lockMainPID(void) {
 void sendMotorUpdate(void) {
     udpSend(&pwmLink, &pwmPkt, sizeof(servo_packet));
 }
+
+// Refresh the outgoing servo_packet from the current mixer outputs. Defined
+// alongside the motor device further down; declared here because updateState()
+// (below, on the UDP thread) needs it too - see the comment at its call site.
+static void refreshPwmPacket(bool motorsActive);
+
+#if defined(USE_FAKE_BARO)
+// The fake baro driver keeps whatever fakeBaroDetect() seeded (101325 Pa, i.e.
+// a constant 0 m MSL) until something calls fakeBaroSet(), so without this the
+// simulated aircraft's altitude never changes as far as the firmware is
+// concerned. Derive a pressure from the FDM's altitude via the ISA troposphere
+// model, so baro-derived altitude tracks the simulator.
+//
+// Note the altitude is *relative to the simulator's initial condition*:
+// fdm_packet.position_xyz is NED metres from the sim's origin (see
+// scripts/jsbsim_bridge.py), so the firmware sees the IC altitude as 0 m MSL.
+// That's what altitude-hold/vario style consumers care about; absolute MSL
+// altitude would need a new field in fdm_packet.
+static void updateFakeBaroFromFdm(const fdm_packet *pkt)
+{
+    const double altitudeMeters = -pkt->position_xyz[2];
+
+    // ISA: p = p0 * (1 - 2.25577e-5 * h)^5.25588, valid to ~11 km.
+    double factor = 1.0 - 2.25577e-5 * altitudeMeters;
+    if (factor < 0.1) {   // guard the pow() against absurd/negative altitudes
+        factor = 0.1;
+    }
+    const double pressurePa = 101325.0 * pow(factor, 5.25588);
+
+    // ISA temperature lapse: 15 degC at 0 m, -6.5 degC/km, in 0.01 degC units.
+    const double temperatureCentiC = (15.0 - 0.0065 * altitudeMeters) * 100.0;
+
+    fakeBaroSet((int32_t)lrint(pressurePa), (int32_t)lrint(temperatureCentiC));
+}
+#endif
+
 void updateState(const fdm_packet* pkt) {
     static double last_timestamp = 0; // in seconds
     static uint64_t last_realtime = 0; // in uS
@@ -159,6 +211,15 @@ void updateState(const fdm_packet* pkt) {
     z = constrain(-pkt->imu_angular_velocity_rpy[2] * GYRO_SCALE * RAD2DEG, -32767, 32767);
     fakeGyroSet(fakeGyroDev, x, y, z);
 //    printf("[gyr]%lf,%lf,%lf\n", pkt->imu_angular_velocity_rpy[0], pkt->imu_angular_velocity_rpy[1], pkt->imu_angular_velocity_rpy[2]);
+
+#if defined(USE_FAKE_BARO)
+    updateFakeBaroFromFdm(pkt);
+#endif
+// The fake compass is deliberately left at its static "pointing north" detect
+// default: SITL undefines USE_IMU_CALC, so attitude (heading included) is taken
+// straight from the simulator's orientation quaternion below and the mag is
+// never consulted for it. Feed it here if USE_IMU_CALC is ever enabled to test
+// the AHRS itself against the simulator.
 
 #if !defined(USE_IMU_CALC)
 #if defined(SET_IMU_FROM_EULER)
@@ -204,6 +265,19 @@ void updateState(const fdm_packet* pkt) {
         simRate = deltaSim / (out_ts.tv_sec + 1e-9*out_ts.tv_nsec);
     }
 //    printf("simRate = %lf, millis64 = %lu, millis64_real = %lu, deltaSim = %lf\n", simRate, millis64(), millis64_real(), deltaSim*1e6);
+
+    // While disarmed, drivers/motor.c's motorWriteAll() short-circuits on
+    // motorDevice->enabled, so pwmCompleteMotorUpdate() - the only other place
+    // a servo_packet is sent - never runs. The control surfaces still move
+    // while disarmed (bench/passthrough testing, which every
+    // scripts/sitl-rc-check.ps1 mode relies on), so keep the simulator link
+    // alive from here instead; otherwise the FDM receives nothing at all until
+    // the aircraft is armed.
+    if (!motorIsEnabled()) {
+        refreshPwmPacket(false);
+        sendMotorUpdate();
+    }
+
 
     last_timestamp = pkt->timestamp;
     last_realtime = micros64_real();
@@ -486,23 +560,37 @@ bool pwmIsMotorEnabled(uint8_t index) {
     return motors[index].enabled;
 }
 
-static void pwmCompleteMotorUpdate(void)
+static void refreshPwmPacket(bool motorsActive)
 {
-    // send to simulator
-    // for gazebo8 ArduCopterPlugin remap, normal range = [0.0, 1.0], 3D rang = [-1.0, 1.0]
+    // for gazebo8 ArduCopterPlugin remap, normal range = [0.0, 1.0], 3D range = [-1.0, 1.0].
+    // NOTE the remap: motorsPwm[0] (M1, the fixed-wing throttle) lands in
+    // motor_speed[3], not [0]. scripts/jsbsim_bridge.py mirrors this.
+    const double outScale = 1000.0;
 
-    double outScale = 1000.0;
-
-    pwmPkt.motor_speed[3] = motorsPwm[0] / outScale;
-    pwmPkt.motor_speed[0] = motorsPwm[1] / outScale;
-    pwmPkt.motor_speed[1] = motorsPwm[2] / outScale;
-    pwmPkt.motor_speed[2] = motorsPwm[3] / outScale;
+    if (motorsActive) {
+        pwmPkt.motor_speed[3] = motorsPwm[0] / outScale;
+        pwmPkt.motor_speed[0] = motorsPwm[1] / outScale;
+        pwmPkt.motor_speed[1] = motorsPwm[2] / outScale;
+        pwmPkt.motor_speed[2] = motorsPwm[3] / outScale;
+    } else {
+        // Motor device disabled (disarmed): motorsPwm[] is stale, and the real
+        // output is motor-stop regardless of RC.
+        for (uint8_t i = 0; i < ARRAYLEN(pwmPkt.motor_speed); i++) {
+            pwmPkt.motor_speed[i] = 0;
+        }
+    }
 
     // wing control-surface outputs (S1-Sn), in microseconds, for fixed-wing FDMs
     const uint8_t servoCount = MIN(getServoCount(), (uint8_t)ARRAYLEN(pwmPkt.servo));
     for (uint8_t i = 0; i < ARRAYLEN(pwmPkt.servo); i++) {
         pwmPkt.servo[i] = (i < servoCount) ? getServoOutput(i) : 0;
     }
+}
+
+static void pwmCompleteMotorUpdate(void)
+{
+    // send to simulator
+    refreshPwmPacket(true);
 
     // get one "fdm_packet" can only send one "servo_packet"!!
     if (pthread_mutex_trylock(&updateLock) != 0) return;
