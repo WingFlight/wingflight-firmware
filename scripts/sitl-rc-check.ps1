@@ -192,11 +192,22 @@ function Get-SitlBinaryCandidates {
 
     $root = Get-FirmwareRoot
     $workspaceRoot = Get-WorkspaceRoot
+    # .elf FIRST: that is the name `make TARGET=SITL` actually produces (a native
+    # PE despite the extension). A stale hand-built wingflight_SITL.exe left in
+    # obj/main otherwise shadows every fresh build, and the resulting "checks
+    # failed" is impossible to read - it is testing month-old firmware.
+    $elf = Join-Path $root "obj\main\wingflight_SITL.elf"
+    $exe = Join-Path $root "obj\main\wingflight_SITL.exe"
+    if ((Test-Path $elf) -and (Test-Path $exe) -and
+        ((Get-Item $exe).LastWriteTime -lt (Get-Item $elf).LastWriteTime)) {
+        Write-Warning "Ignoring stale $exe (older than the built .elf) - delete it to silence this."
+    }
+
     return @(
-        (Join-Path $root "obj\main\wingflight_SITL.exe"),
-        (Join-Path $root "obj\main\wingflight_SITL.elf"),
-        (Join-Path $root "obj\main\betaflight_SITL.exe"),
+        $elf,
+        $exe,
         (Join-Path $root "obj\main\betaflight_SITL.elf"),
+        (Join-Path $root "obj\main\betaflight_SITL.exe"),
         (Join-Path $workspaceRoot "inav-configurator\resources\public\sitl\windows\inav_SITL.exe")
     )
 }
@@ -790,7 +801,7 @@ function Start-JsbsimBridge {
 
     Write-Host "[SITL-RC] Starting JSBSim bridge (aircraft=$Aircraft) ..."
     $p = Start-Process -FilePath $bridgePython `
-        -ArgumentList @($bridgeScript, "--aircraft", $Aircraft) `
+        -ArgumentList @($bridgeScript, "--aircraft", $Aircraft, "--trim") `
         -WorkingDirectory $root `
         -PassThru -NoNewWindow `
         -RedirectStandardOutput (Join-Path $logDir "jsbsim_bridge_check_stdout.log") `
