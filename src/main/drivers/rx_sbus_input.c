@@ -30,6 +30,7 @@
 
 #include "common/utils.h"
 
+#include "drivers/nvic.h"
 #include "drivers/time.h"
 
 #include "io/serial.h"
@@ -51,6 +52,17 @@
 #define SBUS_INPUT_FRAME_SIZE (SBUS_CHANNEL_DATA_LENGTH + 2)
 #define SBUS_INPUT_TIME_NEEDED_PER_FRAME_US 4000
 
+// Minimum silence before a 0x0F byte is trusted as a real frame start rather than a
+// stray value occurring mid-frame. Only needs to comfortably clear normal back-to-back
+// inter-byte spacing within a frame (~0us at this baud rate, since bytes are sent with
+// no idle time between them) while staying well under the tightest real inter-frame
+// gap this driver needs to support: a 25-byte frame takes ~3ms to transmit at 100000
+// baud, and our own sbus_out_frame_rate goes up to 250Hz (4ms period), leaving only
+// ~1ms of genuine idle gap at that rate - a larger threshold here would reject every
+// real frame boundary and break reception entirely at the high end of a range this
+// same codebase lets you configure.
+#define SBUS_INPUT_INTERFRAME_GAP_US 500
+
 // How long without a decoded frame before the SBUS-in link is considered down.
 // ~3 missed SBUS frames at the fastest common frame rate (~6-14ms/frame).
 #define SBUS_INPUT_STALE_MS 50
@@ -69,6 +81,7 @@ typedef union sbusInputFrameBuf_u {
 typedef struct sbusInputFrameData_s {
     sbusInputFrameBuf_t frame;
     volatile timeUs_t startAtUs;
+    volatile timeUs_t lastByteAtUs;
     volatile uint8_t position;
     volatile bool done;
 } sbusInputFrameData_t;
@@ -76,6 +89,8 @@ typedef struct sbusInputFrameData_s {
 static serialPort_t *sbusInputPort = NULL;
 
 static sbusInputFrameData_t sbusInputFrameData;
+static sbusChannels_t sbusInputPendingChannels;
+static volatile bool sbusInputPendingFrame = false;
 
 static uint16_t sbusInputChannelData[SBUS_INPUT_MAX_CHANNEL];
 static float sbusInputChannel[SBUS_INPUT_MAX_CHANNEL];
@@ -89,10 +104,30 @@ static timeMs_t sbusInputLastValidFrameMs = 0;
 // link were already down at that moment, feeding zeroed channels) before any real
 // frame has ever been seen.
 static bool sbusInputHasValidFrame = false;
+static uint16_t sbusInputFrameErrorCount = 0;
 
 // Minimal rxRuntimeState_t used only to satisfy sbusChannelsDecode()'s interface -
 // only its channelData pointer is touched by that function.
 static rxRuntimeState_t sbusInputRxRuntimeState;
+
+// Note: deliberately does not validate the frame's trailing endByte against known
+// SBUS1/SBUS2 markers, and does not sanity-range-check decoded channel values beyond
+// what sbusChannelsDecode() itself already does. The primary RX path (rx/sbus.c) never
+// rejects a frame for either reason either - it just doesn't recognize an unfamiliar
+// endByte as an SBUS2 telemetry page - and being stricter here than that proven
+// decoder risks discarding real, valid frames from otherwise-fine hardware for no
+// actual gain: the corruption this file was originally hardened against turned out to
+// be on the sender side, not a receive-side decoding gap.
+static void sbusInputResetParser(void)
+{
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        sbusInputFrameData.startAtUs = 0;
+        sbusInputFrameData.lastByteAtUs = 0;
+        sbusInputFrameData.position = 0;
+        sbusInputFrameData.done = false;
+        sbusInputPendingFrame = false;
+    }
+}
 
 static FAST_CODE void sbusInputDataReceive(uint16_t c, void *data)
 {
@@ -100,13 +135,20 @@ static FAST_CODE void sbusInputDataReceive(uint16_t c, void *data)
 
     const timeUs_t nowUs = microsISR();
     const timeDelta_t frameTime = cmpTimeUs(nowUs, sbusInputFrameData.startAtUs);
+    // No prior byte to compare against yet (right after init/reset) - treat that as
+    // "definitely enough silence" rather than "definitely not enough", so the very
+    // next real sync byte isn't unconditionally thrown away.
+    const timeDelta_t byteGap = sbusInputFrameData.lastByteAtUs == 0
+        ? (timeDelta_t)SBUS_INPUT_INTERFRAME_GAP_US
+        : cmpTimeUs(nowUs, sbusInputFrameData.lastByteAtUs);
+    sbusInputFrameData.lastByteAtUs = nowUs;
 
     if (frameTime > (long)(SBUS_INPUT_TIME_NEEDED_PER_FRAME_US + 500)) {
         sbusInputFrameData.position = 0;
     }
 
     if (sbusInputFrameData.position == 0) {
-        if (c != SBUS_INPUT_FRAME_BEGIN_BYTE) {
+        if (c != SBUS_INPUT_FRAME_BEGIN_BYTE || byteGap < SBUS_INPUT_INTERFRAME_GAP_US) {
             return;
         }
         sbusInputFrameData.startAtUs = nowUs;
@@ -114,7 +156,18 @@ static FAST_CODE void sbusInputDataReceive(uint16_t c, void *data)
 
     if (sbusInputFrameData.position < SBUS_INPUT_FRAME_SIZE) {
         sbusInputFrameData.frame.bytes[sbusInputFrameData.position++] = (uint8_t)c;
-        sbusInputFrameData.done = (sbusInputFrameData.position >= SBUS_INPUT_FRAME_SIZE);
+        if (sbusInputFrameData.position >= SBUS_INPUT_FRAME_SIZE) {
+            // Snapshot into a separate holding buffer right here, rather than leaving
+            // the completed frame sitting in sbusInputFrameData for the consumer to
+            // read later - that used to leave a window for the next frame's first byte
+            // (landing back at position 0) to start overwriting the same buffer being
+            // decoded, tearing adjacent 11-bit channel fields across two frames.
+            memcpy(&sbusInputPendingChannels, &sbusInputFrameData.frame.frame.channels, sizeof(sbusInputPendingChannels));
+            sbusInputPendingFrame = true;
+            sbusInputFrameData.done = true;
+        } else {
+            sbusInputFrameData.done = false;
+        }
     }
 }
 
@@ -132,9 +185,9 @@ static void sbusInputUpdate(void)
     bool haveFrame = false;
 
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        if (sbusInputFrameData.done) {
-            memcpy(&channels, &sbusInputFrameData.frame.frame.channels, sizeof(channels));
-            sbusInputFrameData.done = false;
+        if (sbusInputPendingFrame) {
+            memcpy(&channels, &sbusInputPendingChannels, sizeof(channels));
+            sbusInputPendingFrame = false;
             haveFrame = true;
         }
     }
@@ -154,6 +207,8 @@ static void sbusInputUpdate(void)
         // keep reporting the fallback as active and calling failsafeOnValidDataReceived()
         // (rx.c) - suppressing real failsafe in exactly the scenario, both links
         // actually down, that it exists to catch.
+        sbusInputFrameErrorCount++;
+        sbusInputResetParser();
         return;
     }
 
@@ -186,6 +241,12 @@ void sbusInputPoll(void)
     }
 
     sbusInputUpdate();
+
+    if (sbusInputHasValidFrame && (timeMs_t)(millis() - sbusInputLastValidFrameMs) >= SBUS_INPUT_STALE_MS) {
+        sbusInputResetParser();
+        sbusInputHasValidFrame = false;
+        sbusInputFrameErrorCount++;
+    }
 }
 
 bool sbusInputIsActive(void)
@@ -219,10 +280,14 @@ void sbusInputInit(void)
     }
 
     sbusInputRxRuntimeState.channelData = sbusInputChannelData;
+    sbusInputFrameData.startAtUs = 0;
+    sbusInputFrameData.lastByteAtUs = 0;
     sbusInputFrameData.position = 0;
     sbusInputFrameData.done = false;
+    sbusInputPendingFrame = false;
     sbusInputLastValidFrameMs = 0;
     sbusInputHasValidFrame = false;
+    sbusInputFrameErrorCount = 0;
 
     sbusInputPort = openSerialPort(portConfig->identifier,
         FUNCTION_RX_SBUS_INPUT,
