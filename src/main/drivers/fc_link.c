@@ -307,7 +307,6 @@ static bool fcLinkConfigPgnExcluded(uint16_t pgn)
         case PG_FLASH_CONFIG:
         case PG_SDCARD_CONFIG:
         case PG_CAMERA_CONTROL_CONFIG:
-        case PG_MAX7456_CONFIG:
         case PG_USB_CONFIG:
         case PG_DASHBOARD_CONFIG:
         case PG_STATUS_LED_CONFIG:
@@ -416,12 +415,12 @@ static fcLinkSyncCategory_e fcLinkConfigPgnCategory(uint16_t pgn)
         case PG_POSITION:
             return FC_LINK_SYNC_CATEGORY_GPS;
 
-        case PG_OSD_CONFIG:
-        case PG_OSD_ELEMENT_CONFIG:
-        case PG_DISPLAY_PORT_MSP_CONFIG:
-        case PG_DISPLAY_PORT_MAX7456_CONFIG:
-        case PG_VCD_CONFIG:
-            return FC_LINK_SYNC_CATEGORY_OSD;
+        // OSD/CMS/MAX7456 were removed from wingflight-firmware entirely, so
+        // FC_LINK_SYNC_CATEGORY_OSD never actually matches any PG any more --
+        // left in place (rather than removing the category, toggle, and MSP
+        // wire field) since it's an inert no-op, not a wrong behavior, and
+        // removing it would shift the MSP2_WING_FC_LINK_SYNC_CONFIG wire
+        // layout for no functional gain.
 
         case PG_VTX_CONFIG:
         case PG_VTX_SETTINGS_CONFIG:
