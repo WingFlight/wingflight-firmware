@@ -678,6 +678,29 @@ sitl-jsbsim-flightgear-launch.ps1 -Trim -FlightGear
   position but `updateState()` ignores both apart from the new baro derivation, so
   anything GPS-dependent is untestable in SITL today.
 
+### 10.16 The ARM toolchain gate blocked TARGET=SITL from a clean tree (fixed)
+
+Setting up a second machine on 2026-08-27 showed that 11.1 was still incomplete:
+after `make mingw_sdk_install` and the venv, `make TARGET=SITL` died at parse
+time with
+
+```
+make/tools.mk:326: *** **ERROR** arm-none-eabi-gcc not in the PATH.
+```
+
+`make/tools.mk` resolves `ARM_SDK_PREFIX` before `make/mcu/SITL.mk` is included,
+and its `else` branch `$(error)`s whenever `tools/gcc-arm-none-eabi-*` is absent
+and no `*_install` goal was named. `TARGET=SITL` never uses that compiler -
+`make/mcu/SITL.mk` overrides `ARM_SDK_PREFIX` to the native MinGW-w64 - but the
+gate fires first regardless. The earlier validation machine simply happened to
+have the ARM SDK installed for hardware targets, which is why this never showed
+up. Fixed by exempting `TARGET=SITL` from the gate in `make/tools.mk`.
+
+Re-validated on the second machine after the fix, GCC 13.3.0 + JSBSim 1.3.1 +
+Python 3.11.4: build links, and `sitl-rc-check.ps1` passes `jsbsim` (roll 29.2
+deg, pitch 19.3 deg, yaw 16.0 deg vs a 3 deg threshold), `smoke` and `sweep`
+(938 us per axis). FlightGear remains uninstalled and unvalidated.
+
 ## 11. How to run it (fresh machine)
 
 ### 11.1 One-time setup
@@ -697,9 +720,22 @@ make mingw_sdk_install
 
 ### 11.2 Build
 
-```powershell
-make TARGET=SITL DEBUG=GDB -j 8      # -> obj/main/wingflight_SITL.elf
+```bash
+# From Git Bash (or any shell where the vendored toolchain is reachable):
+tools/mingw64/bin/mingw32-make.exe TARGET=SITL DEBUG=GDB -j 8   # -> obj/main/wingflight_SITL.elf
 ```
+
+**Which `make` to use matters** (found 2026-08-27 on a second machine, see 10.16):
+a plain `make` only works if the `make` first on `PATH` is a POSIX-shell-aware
+build. GnuWin32 make 3.81 (a common Windows install) fails two ways here: from
+`cmd.exe` it cannot run `uname`, so `make/system-id.mk` aborts with "failed to
+detect operating system"; from Git Bash it gets far enough to recurse into
+itself and then chokes on the space in `C:/Program Files (x86)/GnuWin32/`.
+`tools/mingw64/bin/mingw32-make.exe`, vendored by `make mingw_sdk_install`, has
+neither problem and is the safe choice. The scripts under `scripts/` invoke
+`cmd.exe /c "make TARGET=SITL DEBUG=GDB -j 8"` for `-BuildSitl`, which inherits
+the same `PATH` caveat - build separately with the command above and drop
+`-BuildSitl` if that is the case on your machine.
 
 `DEBUG=GDB` is what every script under `scripts/` uses; build it that way unless
 you have a reason not to. If `obj/main/wingflight_SITL.exe` exists from an older

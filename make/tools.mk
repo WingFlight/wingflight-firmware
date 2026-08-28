@@ -318,7 +318,11 @@ zip_clean:
 #
 ##############################
 
-ifeq ($(shell [ -d "$(ARM_SDK_DIR)" ] && echo "exists"), exists)
+# TARGET=SITL builds natively (see make/mcu/SITL.mk, which sets its own
+# ARM_SDK_PREFIX), so the ARM cross-compiler is not needed and must not gate it.
+ifeq ($(TARGET),SITL)
+  # ARM_SDK_PREFIX is set by make/mcu/SITL.mk
+else ifeq ($(shell [ -d "$(ARM_SDK_DIR)" ] && echo "exists"), exists)
   ARM_SDK_PREFIX := $(ARM_SDK_DIR)/bin/arm-none-eabi-
 else ifeq (,$(findstring _install,$(MAKECMDGOALS)))
   GCC_VERSION = $(shell arm-none-eabi-gcc -dumpversion)
