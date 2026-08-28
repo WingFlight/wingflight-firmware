@@ -42,8 +42,6 @@ bool cliMode = false;
 
 #include "cli/settings.h"
 
-#include "cms/cms.h"
-
 #include "common/axis.h"
 #include "common/color.h"
 #include "common/maths.h"
@@ -101,6 +99,7 @@ bool cliMode = false;
 #include "drivers/vtx_table.h"
 #include "drivers/freq.h"
 #include "drivers/fbus_sensor.h"
+#include "drivers/srxl2_esc.h"
 
 #include "fc/board_info.h"
 #include "fc/rc_rates.h"
@@ -133,8 +132,6 @@ bool cliMode = false;
 #include "msp/msp_box.h"
 #include "msp/msp_protocol.h"
 
-#include "osd/osd.h"
-
 #include "pg/adc.h"
 #include "pg/beeper.h"
 #include "pg/beeper_dev.h"
@@ -142,7 +139,6 @@ bool cliMode = false;
 #include "pg/bus_i2c.h"
 #include "pg/bus_spi.h"
 #include "pg/gyrodev.h"
-#include "pg/max7456.h"
 #include "pg/mco.h"
 #include "pg/motor.h"
 #include "pg/pinio.h"
@@ -260,13 +256,13 @@ static const char * const featureNames[] = {
     [15] = "RSSI_ADC",
     [16] = "LED_STRIP",
     [17] = "DASHBOARD",
-    [18] = "OSD",
-    [19] = "CMS",
+    [18] = "",
+    [19] = "",
     [20] = "",
     [21] = "",
     [22] = "",
     [23] = "",
-    [24] = "",
+    [24] = "THRUST_VECTOR",
     [25] = "RX_SPI",
     [26] = "",
     [27] = "ESC_SENSOR",
@@ -339,6 +335,9 @@ static const char * const mixerInputNames[] = {
     [MIXER_IN_RC_CHANNEL_16]         = "CH16",
     [MIXER_IN_RC_CHANNEL_17]         = "CH17",
     [MIXER_IN_RC_CHANNEL_18]         = "CH18",
+    [MIXER_IN_STABILIZED_TV_ROLL]    = "TR",
+    [MIXER_IN_STABILIZED_TV_PITCH]   = "TP",
+    [MIXER_IN_STABILIZED_TV_YAW]     = "TY",
 };
 
 #if MAX_SUPPORTED_MOTORS != 4
@@ -5315,13 +5314,6 @@ static void cliStatus(const char *cmdName, char *cmdline)
     cliPrintLinefeed();
 #endif /* USE_SENSOR_NAMES */
 
-#if defined(USE_OSD)
-    osdDisplayPortDevice_e displayPortDeviceType;
-    osdGetDisplayPort(&displayPortDeviceType);
-
-    cliPrintLinef("OSD: %s", lookupTableOsdDisplayPortDevice[displayPortDeviceType]);
-#endif
-
     // Uptime and wall clock
 
     cliPrintf("System Uptime: %d seconds", millis() / 1000);
@@ -5770,9 +5762,6 @@ const cliResourceValue_t resourceTable[] = {
 #endif
 #ifdef USE_FLASH_CHIP
     DEFS( OWNER_FLASH_CS,      PG_FLASH_CONFIG, flashConfig_t, csTag ),
-#endif
-#ifdef USE_MAX7456
-    DEFS( OWNER_OSD_CS,        PG_MAX7456_CONFIG, max7456Config_t, csTag ),
 #endif
 #ifdef USE_RX_SPI
     DEFS( OWNER_RX_SPI_CS,     PG_RX_SPI_CONFIG, rxSpiConfig_t, csnTag ),
@@ -7060,6 +7049,52 @@ typedef struct {
 
 static void cliHelp(const char *cmdName, char *cmdline);
 
+#ifdef USE_SRXL2_ESC
+static void cliSrxl2Esc(const char *cmdName, char *cmdline)
+{
+    if (cmdline) {
+        while (*cmdline == ' ') cmdline++;
+        if (*cmdline) {
+            if (strncasecmp(cmdline, "telem", 5) == 0 &&
+                (cmdline[5] == '\0' || isspace((unsigned char)cmdline[5]))) {
+                char *p = cmdline + 5;
+                while (*p == ' ') p++;
+                if (*p) {
+                    char *end = NULL;
+                    long interval = strtol(p, &end, 10);
+                    if (*end != '\0' || interval < 0 || interval > UINT8_MAX) {
+                        cliPrintErrorLinef(cmdName, "INTERVAL MUST BE BETWEEN 0 AND 255 FRAMES");
+                    } else {
+                        srxl2escSetTelemetryIntervalFrames((uint8_t)interval);
+                        if (interval == 0) {
+                            cliPrintLine("Telemetry polling disabled");
+                        } else {
+                            cliPrintLinef("Telemetry requested every %u frame(s)", (unsigned)interval);
+                        }
+                    }
+                } else {
+                    cliPrintLinef("Telemetry interval: %u frame(s)",
+                        (unsigned)srxl2escGetTelemetryIntervalFrames());
+                }
+                return;
+            }
+            cliShowParseError(cmdName);
+            return;
+        }
+    }
+
+    /* Print concise status: throttle refresh and telemetry rates */
+    {
+        const unsigned int throttleHz = srxl2escGetThrottleRateHz();
+        const unsigned int telemInterval = srxl2escGetTelemetryIntervalFrames();
+        const unsigned int telemHz = (telemInterval > 0) ? (throttleHz / (uint32_t)telemInterval) : 0;
+        cliPrintLinef("SRXL2 ESC driver ready: %s", srxl2escDriverIsReady() ? "YES" : "NO");
+        cliPrintLinef("Throttle refresh: %u Hz", (unsigned)throttleHz);
+        cliPrintLinef("Telemetry interval: %u frame(s) -> %u Hz", (unsigned)telemInterval, (unsigned)telemHz);
+    }
+}
+#endif
+
 // should be sorted a..z for bsearch()
 const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("adjfunc", "configure adjustment functions", "<index> <func> <enable channel> <start> <end> <value channel> <dec start> <dec end> <inc start> <inc end> <step size> <value min> <value max>", cliAdjustmentRange),
@@ -7237,6 +7272,9 @@ const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("set", "change setting", "[<name>=<value>]", cliSet),
 #if defined(USE_SIGNATURE)
     CLI_COMMAND_DEF("signature", "get / set the board type signature", "[signature]", cliSignature),
+#endif
+#ifdef USE_SRXL2_ESC
+    CLI_COMMAND_DEF("srxl2esc", "show SRXL2 ESC status / telemetry interval", "[telem [interval_frames]]", cliSrxl2Esc),
 #endif
     CLI_COMMAND_DEF("status", "show status", NULL, cliStatus),
     CLI_COMMAND_DEF("tasks", "show task stats", NULL, cliTasks),

@@ -24,11 +24,6 @@
 
 #include "platform.h"
 
-#include "common/utils.h"
-
-#include "drivers/display_canvas.h"
-#include "drivers/osd.h"
-
 #include "display.h"
 
 void displayClearScreen(displayPort_t *instance, displayClearOption_e options)
@@ -146,21 +141,6 @@ bool displayLayerCopy(displayPort_t *instance, displayPortLayer_e destLayer, dis
     return false;
 }
 
-bool displayWriteFontCharacter(displayPort_t *instance, uint16_t addr, const osdCharacter_t *chr)
-{
-    if (instance->vTable->writeFontCharacter) {
-        return instance->vTable->writeFontCharacter(instance, addr, chr);
-    }
-    return false;
-}
-
-void displaySetBackgroundType(displayPort_t *instance, displayPortBackground_e backgroundType)
-{
-    if (instance->vTable->setBackgroundType) {
-        instance->vTable->setBackgroundType(instance, backgroundType);
-    }
-}
-
 bool displayCheckReady(displayPort_t *instance, bool rescan)
 {
     if (instance->vTable->checkReady) {
@@ -186,32 +166,6 @@ void displayCommitTransaction(displayPort_t *instance)
     }
 }
 
-bool displayGetCanvas(displayCanvas_t *canvas, const displayPort_t *instance)
-{
-#if defined(USE_CANVAS)
-    if (canvas && instance->vTable->getCanvas && instance->vTable->getCanvas(canvas, instance)) {
-        canvas->gridElementWidth = canvas->width / instance->cols;
-        canvas->gridElementHeight = canvas->height / instance->rows;
-        return true;
-    }
-#else
-    UNUSED(canvas);
-    UNUSED(instance);
-#endif
-    return false;
-}
-
-bool displaySupportsOsdSymbols(displayPort_t *instance)
-{
-    // Assume device types that support OSD display will support the OSD symbols (since the OSD logic will use them)
-    if ((instance->deviceType == DISPLAYPORT_DEVICE_TYPE_MAX7456)
-        || (instance->deviceType == DISPLAYPORT_DEVICE_TYPE_MSP)
-        || (instance->deviceType == DISPLAYPORT_DEVICE_TYPE_FRSKYOSD)) {
-        return true;
-    } else {
-        return false;
-    }
-}
 
 void displayInit(displayPort_t *instance, const displayPortVTable_t *vTable, displayPortDeviceType_e deviceType)
 {

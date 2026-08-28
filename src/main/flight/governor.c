@@ -31,9 +31,12 @@
 #include "fc/runtime_config.h"
 #include "fc/rc_modes.h"
 
+#include "flight/failsafe.h"
 #include "flight/motors.h"
 #include "flight/pid.h"
 #include "flight/governor.h"
+
+#include "rx/rx.h"
 
 // Max rate of change of the governor's own throttle output, in throttle-fraction per second, for
 // the idle-hold modes below. Prevents a step in motor output when the pilot engages/disengages
@@ -71,11 +74,57 @@ float governorApply(float throttle)
 
     const governorConfig_t *cfg = governorConfig();
 
-    if (!IS_RC_MODE_ACTIVE(BOXGOVERNOR)) {
+    // RX-loss / switch-induced stage 2 failsafe must be able to cut power outright. The BOXGOVERNOR
+    // aux channel defaults to holding its last value through signal loss (RX_FAILSAFE_MODE_HOLD), so
+    // a governor switch left engaged before the link dropped would otherwise stay "on" throughout
+    // failsafe. Without this check every governor mode would then keep forcing throttle back up to
+    // its idle floor (or, for RPM_RANGE, toward governor_rpm_min) regardless of the failsafe-forced
+    // low/off throttle input, silently overriding the failsafe throttle cut. Bypass the governor
+    // entirely while failsafe is active so the (near-zero) failsafe throttle passes straight through,
+    // same as every other flight mode.
+    //
+    // failsafeIsActive() alone is not enough to catch this on a real dropped link: it only reflects
+    // failsafeUpdateState()'s phase machine, which is gated behind failsafeIsMonitoring() --
+    // currently permanently false because failsafeStartMonitoring() is a stub (see failsafe.c).
+    // rxIsReceivingSignal() is driven straight from rx.c's per-cycle channel validity check
+    // (detectAndApplySignalLossBehaviour), independent of that stub, and goes false immediately for
+    // both a real signal loss and a BOXFAILSAFE switch -- so it's checked first here. failsafeIsActive()
+    // is kept as a second, belt-and-suspenders trigger so this still works once monitoring is restored.
+    const bool failsafeActive = !rxIsReceivingSignal() || failsafeIsActive();
+
+    if (!IS_RC_MODE_ACTIVE(BOXGOVERNOR) || failsafeActive) {
         rangeFaultLatched = false;
     }
 
-    const bool belowHandover = ARMING_FLAG(ARMED) &&
+    // Whenever the governor/idle-up feature is configured *and* a switch is actually assigned to
+    // BOXGOVERNOR, that switch is a hard motor interlock, not just something that refines the
+    // bottom of the throttle curve: the stick gets no authority at all until it's engaged. Without
+    // this, a configured-but-disengaged governor left the stick free to drive the motor straight to
+    // full power outside the (tiny, handover-bounded) idle-hold region below -- defeating the point
+    // of a dedicated idle-up switch for safe ground arming/starting.
+    //
+    // The isModeActivationConditionPresent() check (same guard used for BOXTELEMETRY/BOXGPSRESCUE/
+    // BOXPREARM elsewhere) is what keeps this from being a footgun: governor_mode is a global gain/
+    // curve setup and can legitimately be left at RPM/THROTTLE/RPM_RANGE by someone who never wires
+    // up a governor switch at all (e.g. relying on governor_handover alone with the box permanently
+    // "on" some boards, or just hasn't gotten to it yet). IS_RC_MODE_ACTIVE() for a box with no
+    // assigned range condition is always false, so without this guard those setups would have their
+    // motor hard-cut to 0% forever instead of falling back to plain passthrough. Only once a switch
+    // is actually assigned does "off" start meaning "interlocked".
+    //
+    // Failsafe is left alone here: it computes its own (already safe) throttle and must pass through
+    // unaltered, same as the bypass below.
+    if (!failsafeActive && cfg->governor_mode != GOVERNOR_MODE_OFF &&
+        isModeActivationConditionPresent(BOXGOVERNOR) && !IS_RC_MODE_ACTIVE(BOXGOVERNOR)) {
+        governorOutput = 0.0f;
+        rpmErrorFilter.y1 = 0.0f;
+        rpmLimitErrorFilter.y1 = 0.0f;
+        integrator = 0.0f;
+        limitIntegrator = 0.0f;
+        return 0.0f;
+    }
+
+    const bool belowHandover = !failsafeActive && ARMING_FLAG(ARMED) &&
         IS_RC_MODE_ACTIVE(BOXGOVERNOR) &&
         throttle < (cfg->governor_handover / 100.0f);
 
@@ -84,7 +133,7 @@ float governorApply(float throttle)
     bool rpmLimit = false;
     float target = throttle;
 
-    switch (cfg->governor_mode) {
+    switch (failsafeActive ? GOVERNOR_MODE_OFF : cfg->governor_mode) {
     case GOVERNOR_MODE_RPM:
         active = belowHandover && cfg->governor_rpm > 0 && isMotorRpmSourceActive(0);
         if (active) {
@@ -96,16 +145,18 @@ float governorApply(float throttle)
             const float filteredError = pt1FilterApply(&rpmErrorFilter, rpmError);
 
             const float ceilingFrac = cfg->governor_ceiling / 100.0f;
+            const float idleFloorFrac = constrainf(cfg->governor_throttle / 100.0f, 0.0f, ceilingFrac);
             const float pTerm = filteredError * (cfg->governor_gain * 0.000005f);
 
             // A pure P term always settles with some droop below the target RPM -- the throttle
             // needed to hold speed is rarely exactly "gain * error". The integrator slowly closes
-            // that remaining gap to zero. Clamped (not conditional) anti-windup: simple and
-            // sufficient for this slow, low-stakes loop.
+            // that remaining gap to zero. RPM idle hold starts from governor_throttle as a powered
+            // idle floor, then only adds correction above that floor; this keeps the ESC alive
+            // during a rapid throttle chop instead of allowing an RPM overshoot to command 0%.
             integrator += filteredError * (cfg->governor_i_gain * 0.000005f) * pidGetDT();
-            integrator = constrainf(integrator, 0.0f, ceilingFrac);
+            integrator = constrainf(integrator, 0.0f, ceilingFrac - idleFloorFrac);
 
-            target = constrainf(pTerm + integrator, 0.0f, ceilingFrac);
+            target = constrainf(idleFloorFrac + pTerm + integrator, idleFloorFrac, ceilingFrac);
         } else if (!belowHandover && ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXGOVERNOR) &&
             cfg->governor_rpm_max > 0 && isMotorRpmSourceActive(0)) {
             rpmErrorFilter.y1 = 0.0f;

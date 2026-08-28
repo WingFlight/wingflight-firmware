@@ -21,6 +21,12 @@ PID Mode 3 is maintained for backward compatibility.
 
 ## Configuration Changes
 
+Added airborne re-arm grace settings `rearm_grace_seconds` and
+`rearm_min_armed_seconds`. After the aircraft has been armed for the minimum
+time and has latched in-flight state, an accidental disarm opens a short re-arm
+window where only throttle and angle arming checks are ignored; all hard safety
+checks still apply.
+
 The fixed-wing I-term decay settings are renamed from
 `error_decay_time_cyclic` / `error_decay_limit_cyclic` to
 `iterm_decay_time` / `iterm_decay_limit`. The old CLI names remain accepted
@@ -28,6 +34,10 @@ as aliases for compatibility with existing dumps. MSP byte layout is unchanged.
 
 Added `cross_axis_relax_strength`, `cross_axis_relax_pitch_strength`,
 `cross_axis_relax_level`, and `cross_axis_relax_cutoff` PID profile settings.
+
+`master_gain` now scales only the stabilizing P/I/D terms. Feedforward (`F`)
+is no longer scaled by `master_gain`, keeping F as a separate command-response
+tuning parameter while master gain remains focused on loop authority.
 
 Fixed-wing throttle PID attenuation (`fw_tpa_breakpoint` / `fw_tpa_rate`) is
 replaced by `fw_tpa_gain` and `fw_tpa_curve`, mirroring `master_gain` /
@@ -513,6 +523,21 @@ and the value is always reported as available regardless of whether
 Support for the IBUS2 protocol for control link and basic telemetry using the ibus hub protocol.
 
 ## Bug Fixes
+
+### Servo trim (SERVO_TRIM_*) could snap on a boot-time or reacquired RX link
+
+The mapped/continuous ("Absolute") in-flight adjustment mode had no debounce
+of its own, unlike the stepped mode: it wrote whatever the adjustment channel
+read straight to the servo center on every tick. A single garbage or
+not-yet-settled frame right at boot, or immediately after the RX link was
+reacquired following a brief dropout, could snap a servo's trimmed center
+before the pilot had any control over it.
+
+`SERVO_TRIM_ROLL/PITCH/YAW` adjustments now require the RX link to have been
+continuously valid for 300 ms before they are evaluated at all, and the
+continuous/mapped mode now uses the same +-2 / 100 ms channel-stability
+debounce that stepped mode already had. Other adjustment functions (PID
+gains, rates, etc.) are unaffected.
 
 ### S.PORT telemetry Scaling for attitude sensors
 

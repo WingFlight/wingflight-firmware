@@ -30,12 +30,10 @@
 #include "drivers/system.h"
 
 #include "drivers/flash.h"
-#include "drivers/max7456.h"
 #include "drivers/rx/rx_spi.h"
 #include "drivers/sdcard.h"
 
 #include "pg/flash.h"
-#include "pg/max7456.h"
 #include "pg/rx_spi.h"
 #include "pg/sdcard.h"
 
@@ -93,10 +91,6 @@ void spiPreinit(void)
 
 #if defined(USE_RX_SPI)
     rxSpiDevicePreInit(rxSpiConfig());
-#endif
-
-#ifdef USE_MAX7456
-    max7456PreInit(max7456Config());
 #endif
 
     for (int i = 0; i < spiPreinitCount; i++) {

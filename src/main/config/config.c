@@ -41,6 +41,7 @@
 #include "drivers/fc_link.h"
 #include "drivers/motor.h"
 #include "drivers/system.h"
+#include "drivers/srxl2_esc.h"
 
 #include "fc/rc_rates.h"
 #include "fc/core.h"
@@ -67,12 +68,9 @@
 
 #include "msp/msp_box.h"
 
-#include "osd/osd.h"
-
 #include "pg/adc.h"
 #include "pg/beeper.h"
 #include "pg/beeper_dev.h"
-#include "pg/displayport_profiles.h"
 #include "pg/esc_sensor.h"
 #include "pg/gyrodev.h"
 #include "pg/motor.h"
@@ -331,12 +329,25 @@ static void validateAndFixConfig(void)
         }
     } else
 #endif
-    if (!findSerialPortConfig(FUNCTION_ESC_SENSOR) && !isMotorProtocolCastlePWM()) {
+    /* If there is no dedicated ESC_SENSOR serial port and we're not using
+     * Castle PWM, normally disable the ESC sensor feature. However, allow
+     * the feature to remain configured when SRXL2 ESC is configured or
+     * when a SRXL2 ESC serial port is present (SRXL2 ESC provides telemetry
+     * over its own path).
+     */
+    if (!findSerialPortConfig(FUNCTION_ESC_SENSOR) && !isMotorProtocolCastlePWM()
+        && !findSerialPortConfig(FUNCTION_SRXL2_ESC)) {
         featureDisableImmediate(FEATURE_ESC_SENSOR);
     }
 
     if (featureIsConfigured(FEATURE_ESC_SENSOR)) {
         validateAndFixEscSensorConfig();
+    }
+#endif
+
+#if defined(USE_SRXL2_ESC)
+    if (findSerialPortConfig(FUNCTION_SRXL2_ESC)) {
+        validateAndFixSrxl2escConfig();
     }
 #endif
 
@@ -425,10 +436,6 @@ static void validateAndFixConfig(void)
     featureDisableImmediate(FEATURE_DASHBOARD);
 #endif
 
-#ifndef USE_OSD
-    featureDisableImmediate(FEATURE_OSD);
-#endif
-
 #ifndef USE_RX_SPI
     featureDisableImmediate(FEATURE_RX_SPI);
 #endif
@@ -507,16 +514,6 @@ static void validateAndFixConfig(void)
 #endif // USE_DSHOT_TELEMETRY
 #endif // USE_DSHOT
 
-#if defined(USE_OSD)
-    for (int i = 0; i < OSD_TIMER_COUNT; i++) {
-         const uint16_t t = osdConfig()->timers[i];
-         if (OSD_TIMER_SRC(t) >= OSD_TIMER_SRC_COUNT ||
-                 OSD_TIMER_PRECISION(t) >= OSD_TIMER_PREC_COUNT) {
-             osdConfigMutable()->timers[i] = osdTimerDefault[i];
-         }
-     }
-#endif
-
 #if defined(USE_VTX_COMMON) && defined(USE_VTX_TABLE)
     // reset vtx band, channel, power if outside range specified by vtxtable
     if (vtxSettingsConfig()->channel > vtxTableConfig()->channels) {
@@ -546,20 +543,6 @@ static void validateAndFixConfig(void)
         batteryConfigMutable()->vbatmincellvoltage = VBAT_CELL_VOLTAGE_DEFAULT_MIN;
         batteryConfigMutable()->vbatmaxcellvoltage = VBAT_CELL_VOLTAGE_DEFAULT_MAX;
     }
-
-#ifdef USE_MSP_DISPLAYPORT
-    // validate that displayport_msp_serial is referencing a valid UART that actually has MSP enabled
-    if (displayPortProfileMsp()->displayPortSerial != SERIAL_PORT_NONE) {
-        const serialPortConfig_t *portConfig = serialFindPortConfiguration(displayPortProfileMsp()->displayPortSerial);
-        if (!portConfig || !(portConfig->functionMask & FUNCTION_MSP)
-#ifndef USE_MSP_PUSH_OVER_VCP
-            || (portConfig->identifier == SERIAL_PORT_USB_VCP)
-#endif
-            ) {
-            displayPortProfileMspMutable()->displayPortSerial = SERIAL_PORT_NONE;
-        }
-    }
-#endif
 
 #if defined(TARGET_VALIDATECONFIG)
     // This should be done at the end of the validation

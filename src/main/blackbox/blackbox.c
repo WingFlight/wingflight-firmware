@@ -62,6 +62,7 @@
 #include "flight/failsafe.h"
 #include "flight/mixer.h"
 #include "flight/pid.h"
+#include "flight/tv_pid.h"
 #include "flight/imu.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
@@ -209,6 +210,23 @@ static const blackboxDeltaFieldDefinition_t blackboxMainFields[] =
     {"axisB",       0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(BOOST)},
     {"axisB",       1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(BOOST)},
     {"axisB",       2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(BOOST)},
+
+    /* Thrust Vector's independent PID loop (FEATURE_THRUST_VECTOR) */
+    {"tvAxisP",     0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisP",     1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisP",     2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisI",     0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisI",     1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisI",     2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisD",     0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisD",     1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisD",     2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisF",     0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisF",     1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisF",     2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisB",     0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisB",     1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
+    {"tvAxisB",     2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
 
     /* Attitude Euler angles in 0.1deg steps */
     {"attitude",    0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(ATTITUDE)},
@@ -362,6 +380,12 @@ typedef struct blackboxMainState_s {
     int32_t axisPID_D[XYZ_AXIS_COUNT];
     int32_t axisPID_F[XYZ_AXIS_COUNT];
     int32_t axisPID_B[XYZ_AXIS_COUNT];
+
+    int32_t tvAxisPID_P[XYZ_AXIS_COUNT];
+    int32_t tvAxisPID_I[XYZ_AXIS_COUNT];
+    int32_t tvAxisPID_D[XYZ_AXIS_COUNT];
+    int32_t tvAxisPID_F[XYZ_AXIS_COUNT];
+    int32_t tvAxisPID_B[XYZ_AXIS_COUNT];
 
     int16_t attitude[XYZ_AXIS_COUNT];
     int16_t gyroRAW[XYZ_AXIS_COUNT];
@@ -536,6 +560,9 @@ static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
             (currentPidProfile->pid[PID_PITCH].B > 0 ||
              currentPidProfile->pid[PID_ROLL].B > 0 ||
              currentPidProfile->pid[PID_YAW].B > 0);
+
+    case CONDITION(THRUST_VECTOR):
+        return isFieldEnabled(FIELD_SELECT(PID)) && featureIsEnabled(FEATURE_THRUST_VECTOR);
 
     case CONDITION(ATTITUDE):
         return isFieldEnabled(FIELD_SELECT(ATTITUDE));
@@ -728,6 +755,14 @@ static void writeIntraframe(void)
         blackboxWriteSignedVBArray(blackboxCurrent->axisPID_B, XYZ_AXIS_COUNT);
     }
 
+    if (testBlackboxCondition(CONDITION(THRUST_VECTOR))) {
+        blackboxWriteSignedVBArray(blackboxCurrent->tvAxisPID_P, XYZ_AXIS_COUNT);
+        blackboxWriteSignedVBArray(blackboxCurrent->tvAxisPID_I, XYZ_AXIS_COUNT);
+        blackboxWriteSignedVBArray(blackboxCurrent->tvAxisPID_D, XYZ_AXIS_COUNT);
+        blackboxWriteSignedVBArray(blackboxCurrent->tvAxisPID_F, XYZ_AXIS_COUNT);
+        blackboxWriteSignedVBArray(blackboxCurrent->tvAxisPID_B, XYZ_AXIS_COUNT);
+    }
+
     if (testBlackboxCondition(CONDITION(ATTITUDE))) {
         blackboxWriteSigned16VBArray(blackboxCurrent->attitude, XYZ_AXIS_COUNT);
     }
@@ -912,6 +947,23 @@ static void writeInterframe(void)
 
     if (testBlackboxCondition(CONDITION(BOOST))) {
         CALC_DELTAS(deltas, blackboxCurrent->axisPID_B, blackboxPrev->axisPID_B, XYZ_AXIS_COUNT);
+        blackboxWriteTag2_3S32(deltas);
+    }
+
+    if (testBlackboxCondition(CONDITION(THRUST_VECTOR))) {
+        CALC_DELTAS(deltas, blackboxCurrent->tvAxisPID_P, blackboxPrev->tvAxisPID_P, XYZ_AXIS_COUNT);
+        blackboxWriteTag2_3S32(deltas);
+
+        CALC_DELTAS(deltas, blackboxCurrent->tvAxisPID_I, blackboxPrev->tvAxisPID_I, XYZ_AXIS_COUNT);
+        blackboxWriteTag2_3S32(deltas);
+
+        CALC_DELTAS(deltas, blackboxCurrent->tvAxisPID_D, blackboxPrev->tvAxisPID_D, XYZ_AXIS_COUNT);
+        blackboxWriteTag2_3S32(deltas);
+
+        CALC_DELTAS(deltas, blackboxCurrent->tvAxisPID_F, blackboxPrev->tvAxisPID_F, XYZ_AXIS_COUNT);
+        blackboxWriteTag2_3S32(deltas);
+
+        CALC_DELTAS(deltas, blackboxCurrent->tvAxisPID_B, blackboxPrev->tvAxisPID_B, XYZ_AXIS_COUNT);
         blackboxWriteTag2_3S32(deltas);
     }
 
@@ -1277,6 +1329,16 @@ static void loadMainState(timeUs_t currentTimeUs)
         blackboxCurrent->axisPID_D[i] = lrintf(pidData[i].D * 1000);
         blackboxCurrent->axisPID_F[i] = lrintf(pidData[i].F * 1000);
         blackboxCurrent->axisPID_B[i] = lrintf(pidData[i].B * 1000);
+    }
+
+    const tvPidAxisData_t *tvPidData = tvPidGetAxisData();
+
+    for (int i = 0; i < XYZ_AXIS_COUNT; i++) {
+        blackboxCurrent->tvAxisPID_P[i] = lrintf(tvPidData[i].P * 1000);
+        blackboxCurrent->tvAxisPID_I[i] = lrintf(tvPidData[i].I * 1000);
+        blackboxCurrent->tvAxisPID_D[i] = lrintf(tvPidData[i].D * 1000);
+        blackboxCurrent->tvAxisPID_F[i] = lrintf(tvPidData[i].F * 1000);
+        blackboxCurrent->tvAxisPID_B[i] = lrintf(tvPidData[i].B * 1000);
     }
 
     for (int i = 0; i < XYZ_AXIS_COUNT; i++) {

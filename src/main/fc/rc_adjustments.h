@@ -40,7 +40,7 @@ typedef enum {
     ADJUSTMENT_RATE_PROFILE             = 1,
     ADJUSTMENT_PID_PROFILE              = 2,
     ADJUSTMENT_LED_PROFILE              = 3,
-    ADJUSTMENT_OSD_PROFILE              = 4,
+    ADJUSTMENT_OSD_PROFILE              = 4,  // reserved (OSD removed) -- do not reuse
 
     // Rates
     ADJUSTMENT_PITCH_SRATE              = 5,
@@ -153,7 +153,7 @@ typedef enum {
     ADJUSTMENT_GOV_YAW_FF               = 81,
     ADJUSTMENT_BATTERY_PROFILE          = 82,
 
-    // Live per-axis P/I/D/F scale (percent) - in-flight tuning aid, doesn't alter the underlying gains
+    // Live per-axis P/I/D scale (percent) - in-flight tuning aid, doesn't alter the underlying gains
     ADJUSTMENT_MASTER_GAIN_PITCH         = 84,
     ADJUSTMENT_MASTER_GAIN_ROLL          = 85,
     ADJUSTMENT_MASTER_GAIN_YAW           = 86,
@@ -169,6 +169,26 @@ typedef enum {
     ADJUSTMENT_SERVO_TRIM_PITCH           = 90,
     ADJUSTMENT_SERVO_TRIM_YAW             = 91,
 
+    // Thrust Vector -- independent PID loop (FEATURE_THRUST_VECTOR)
+    ADJUSTMENT_TV_MASTER_GAIN_ROLL         = 92,
+    ADJUSTMENT_TV_MASTER_GAIN_PITCH        = 93,
+    ADJUSTMENT_TV_MASTER_GAIN_YAW          = 94,
+    ADJUSTMENT_TV_ROLL_P_GAIN              = 95,
+    ADJUSTMENT_TV_ROLL_I_GAIN              = 96,
+    ADJUSTMENT_TV_ROLL_D_GAIN              = 97,
+    ADJUSTMENT_TV_ROLL_F_GAIN              = 98,
+    ADJUSTMENT_TV_ROLL_B_GAIN              = 99,
+    ADJUSTMENT_TV_PITCH_P_GAIN             = 100,
+    ADJUSTMENT_TV_PITCH_I_GAIN             = 101,
+    ADJUSTMENT_TV_PITCH_D_GAIN             = 102,
+    ADJUSTMENT_TV_PITCH_F_GAIN             = 103,
+    ADJUSTMENT_TV_PITCH_B_GAIN             = 104,
+    ADJUSTMENT_TV_YAW_P_GAIN               = 105,
+    ADJUSTMENT_TV_YAW_I_GAIN               = 106,
+    ADJUSTMENT_TV_YAW_D_GAIN               = 107,
+    ADJUSTMENT_TV_YAW_F_GAIN               = 108,
+    ADJUSTMENT_TV_YAW_B_GAIN               = 109,
+
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;
 
@@ -182,4 +202,3 @@ void processRcAdjustments(void);
 const char *getAdjustmentsRangeName(void);
 int getAdjustmentsRangeFunc(void);
 int getAdjustmentsRangeValue(void);
-

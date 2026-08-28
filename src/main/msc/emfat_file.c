@@ -27,8 +27,6 @@
 #include "emfat.h"
 #include "emfat_file.h"
 
-#include "build/version.h"
-
 #include "common/printf.h"
 #include "common/strtol.h"
 #include "common/time.h"
@@ -49,6 +47,9 @@
 #define EMFAT_MAX_LOG_ENTRY 100
 
 #define HDR_BUF_SIZE 32
+// EMFAT requires an exact 11-byte FAT volume label.
+#define EMFAT_VOLUME_LABEL "WINGFLIGHT "
+STATIC_ASSERT(sizeof(EMFAT_VOLUME_LABEL) - 1 == 11, emfat_volume_label_length);
 
 #ifdef USE_EMFAT_AUTORUN
 static const char autorun_file[] =
@@ -423,7 +424,7 @@ void emfat_init_files(void)
     }
 #endif // USE_FLASHFS
 
-    emfat_init(&emfat, FC_FIRMWARE_NAME, entries);
+    emfat_init(&emfat, EMFAT_VOLUME_LABEL, entries);
 
     LED0_OFF;
 }

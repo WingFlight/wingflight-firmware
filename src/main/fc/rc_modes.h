@@ -41,6 +41,8 @@ typedef enum {
     BOXALTHOLD,
     BOXRESCUE,          // reserved (heli rescue removed) -- kept to avoid renumbering later ids
     BOXGPSRESCUE,
+    BOXLOITER,          // GPS LOITER: hold position (and altitude) around the point engaged at
+    BOXRTH,             // GPS RTH: fly to and loiter above the home position. See flight/gps_nav.c
     BOXFAILSAFE,
     BOXPASSTHROUGH,
 
@@ -53,7 +55,7 @@ typedef enum {
     BOXBEEPERMUTE,
     BOXLEDLOW,
     BOXCALIB,
-    BOXOSD,
+    BOXOSD,             // reserved (OSD removed) -- kept to avoid renumbering later ids
     BOXTELEMETRY,
     BOXBEEPGPSCOUNT,
     BOXBLACKBOX,
@@ -75,6 +77,9 @@ typedef enum {
     BOXMANUAL,          // MANUAL: same rates/expo curve as stabilised flight, but no gyro correction
     BOXAUTOTRIM,        // AUTO TRIM: while armed, captures actual servo output over a fixed window
                          // and writes it as the new center (see flight/autotrim.c)
+    BOXTHRUSTVECTOR,    // THRUST VECTOR: live on/off for the independent TV mixer output
+                         // (FEATURE_THRUST_VECTOR) -- gates the mix only, not a flight mode
+                         // (see subTaskPidController() in fc/core.c)
 
     CHECKBOX_ITEM_COUNT,
 

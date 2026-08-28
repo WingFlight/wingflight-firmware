@@ -629,7 +629,6 @@ void baroSetGroundLevel(void) {}
 
 void blackboxLogEvent(FlightLogEvent, flightLogEventData_t *) {}
 
-bool cmsInMenu = false;
 uint8_t armingFlags = 0;
 uint16_t flightModeFlags = 0;
 int16_t heading;

@@ -54,7 +54,7 @@ typedef enum {
     ARMING_DISABLED_LOAD            = (1 << 11),
     ARMING_DISABLED_CALIBRATING     = (1 << 12),
     ARMING_DISABLED_CLI             = (1 << 13),
-    ARMING_DISABLED_CMS_MENU        = (1 << 14),
+    ARMING_DISABLED_CMS_MENU        = (1 << 14), // reserved (CMS removed) -- never set
     ARMING_DISABLED_BST             = (1 << 15),
     ARMING_DISABLED_MSP             = (1 << 16),
     ARMING_DISABLED_PARALYZE        = (1 << 17),
@@ -91,6 +91,8 @@ typedef enum {
     AUTOHOVER_MODE_BIT   = 9,
     MANUAL_MODE_BIT      = 10,
     AUTOTRIM_MODE_BIT    = 11,
+    LOITER_MODE_BIT      = 12,
+    RTH_MODE_BIT         = 13,
 } flightModeBits_e;
 
 typedef enum {
@@ -131,6 +133,11 @@ typedef enum {
     // flight/autotrim.c) purely so telemetry/OSD/Lua consumers can see it, the same way every other
     // switch-driven mode is exposed.
     AUTOTRIM_MODE        = BIT(AUTOTRIM_MODE_BIT),
+    // GPS LOITER / GPS RTH: basic fixed-wing position-hold and return-to-home. See flight/gps_nav.c
+    // for the guidance controller; both force ANGLE_MODE-style leveling (like GPS_RESCUE_MODE) and
+    // inject a bank/pitch angle on top of the pilot's stick input, throttle stays manual.
+    LOITER_MODE          = BIT(LOITER_MODE_BIT),
+    RTH_MODE             = BIT(RTH_MODE_BIT),
 } flightModeFlags_e;
 
 extern uint16_t flightModeFlags;
@@ -148,6 +155,8 @@ extern uint16_t flightModeFlags;
    [BOXATTHOLD]     = ATTHOLD_MODE_BIT,                  \
    [BOXALTHOLD]     = ALTHOLD_MODE_BIT,                  \
    [BOXGPSRESCUE]   = GPS_RESCUE_MODE_BIT,               \
+   [BOXLOITER]      = LOITER_MODE_BIT,                   \
+   [BOXRTH]         = RTH_MODE_BIT,                      \
    [BOXFAILSAFE]    = FAILSAFE_MODE_BIT,                 \
    [BOXPASSTHROUGH] = PASSTHROUGH_MODE_BIT,              \
 }                                                        \

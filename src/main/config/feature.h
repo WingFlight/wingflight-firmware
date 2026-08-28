@@ -49,13 +49,13 @@ typedef enum {
     FEATURE_RSSI_ADC               = BIT(15),
     FEATURE_LED_STRIP              = BIT(16),
     FEATURE_DASHBOARD              = BIT(17),
-    FEATURE_OSD                    = BIT(18),
-    FEATURE_CMS                    = BIT(19),
+    FEATURE_UNUSED_18              = BIT(18), // was FEATURE_OSD (OSD removed)
+    FEATURE_UNUSED_19              = BIT(19), // was FEATURE_CMS (CMS menu removed)
     FEATURE_UNUSED_20              = BIT(20),
     FEATURE_UNUSED_21              = BIT(21),
     FEATURE_UNUSED_22              = BIT(22),
     FEATURE_FC_LINK                = BIT(23), // experimental: master/slave redundant-FC link (see drivers/fc_link.c)
-    FEATURE_UNUSED_24              = BIT(24),
+    FEATURE_THRUST_VECTOR          = BIT(24),
     FEATURE_RX_SPI                 = BIT(25),
     FEATURE_UNUSED_26              = BIT(26), // was FEATURE_GOVERNOR (heli governor removed)
     FEATURE_ESC_SENSOR             = BIT(27),
@@ -75,7 +75,6 @@ typedef enum {
     FEATURE_UNUSED_20 | \
     FEATURE_UNUSED_21 | \
     FEATURE_UNUSED_22 | \
-    FEATURE_UNUSED_24 | \
     0)
 
 void featureInit(void);

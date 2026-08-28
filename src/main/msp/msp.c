@@ -42,6 +42,7 @@
 #include "common/color.h"
 #include "common/huffman.h"
 #include "common/maths.h"
+#include "common/printf.h"
 #include "common/streambuf.h"
 #include "common/utils.h"
 
@@ -58,10 +59,12 @@
 #include "drivers/dshot.h"
 #include "drivers/dshot_command.h"
 #include "drivers/fc_link.h"
+#include "drivers/fbus_master.h"
+#include "drivers/fbus_sensor.h"
+#include "drivers/fbus_xact.h"
 #include "drivers/flash.h"
 #include "drivers/io.h"
 #include "drivers/motor.h"
-#include "drivers/osd.h"
 #include "drivers/pwm_output.h"
 #include "drivers/sdcard.h"
 #include "drivers/serial.h"
@@ -88,6 +91,7 @@
 #include "flight/mixer.h"
 #include "flight/logic_condition.h"
 #include "flight/pid.h"
+#include "flight/tv_pid.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
@@ -111,10 +115,6 @@
 #include "msp/msp_protocol_v2_common.h"
 #include "msp/msp_serial.h"
 
-#include "osd/osd.h"
-#include "osd/osd_elements.h"
-#include "osd/osd_warnings.h"
-
 #include "pg/beeper.h"
 #include "pg/board.h"
 #include "pg/dyn_notch.h"
@@ -126,7 +126,6 @@
 #include "pg/rx_spi.h"
 #include "pg/stats.h"
 #include "pg/usb.h"
-#include "pg/vcd.h"
 #include "pg/vtx_table.h"
 #include "pg/battery.h"
 #include "pg/sbus_output.h"
@@ -649,11 +648,7 @@ static bool mspCommonProcessOutCommand(int16_t cmdMSP, sbuf_t *dst, mspPostProce
 #else
         sbufWriteU16(dst, 0); // No other build targets currently have hardware revision detection.
 #endif
-#if defined(USE_MAX7456)
-        sbufWriteU8(dst, 2);  // 2 == FC with MAX7456
-#else
         sbufWriteU8(dst, 0);  // 0 == FC
-#endif
 
         // Target capabilities (uint8)
 #define TARGET_HAS_VCP 0
@@ -914,116 +909,6 @@ static bool mspCommonProcessOutCommand(int16_t cmdMSP, sbuf_t *dst, mspPostProce
     case MSP_BATTERY_PROFILE:
         sbufWriteU8(dst, batteryConfig()->batteryProfile); // The active battery profile
         break;
-
-    case MSP_OSD_CONFIG: {
-#define OSD_FLAGS_OSD_FEATURE           (1 << 0)
-//#define OSD_FLAGS_OSD_SLAVE             (1 << 1)
-#define OSD_FLAGS_RESERVED_1            (1 << 2)
-#define OSD_FLAGS_OSD_HARDWARE_FRSKYOSD (1 << 3)
-#define OSD_FLAGS_OSD_HARDWARE_MAX_7456 (1 << 4)
-#define OSD_FLAGS_OSD_DEVICE_DETECTED   (1 << 5)
-
-        uint8_t osdFlags = 0;
-#if defined(USE_OSD)
-        osdFlags |= OSD_FLAGS_OSD_FEATURE;
-
-        osdDisplayPortDevice_e deviceType;
-        displayPort_t *osdDisplayPort = osdGetDisplayPort(&deviceType);
-        bool displayIsReady = osdDisplayPort && displayCheckReady(osdDisplayPort, true);
-        switch (deviceType) {
-        case OSD_DISPLAYPORT_DEVICE_MAX7456:
-            osdFlags |= OSD_FLAGS_OSD_HARDWARE_MAX_7456;
-            if (displayIsReady) {
-                osdFlags |= OSD_FLAGS_OSD_DEVICE_DETECTED;
-            }
-
-            break;
-        case OSD_DISPLAYPORT_DEVICE_FRSKYOSD:
-            osdFlags |= OSD_FLAGS_OSD_HARDWARE_FRSKYOSD;
-            if (displayIsReady) {
-                osdFlags |= OSD_FLAGS_OSD_DEVICE_DETECTED;
-            }
-
-            break;
-        default:
-            break;
-        }
-#endif
-        sbufWriteU8(dst, osdFlags);
-
-#ifdef USE_MAX7456
-        // send video system (AUTO/PAL/NTSC)
-        sbufWriteU8(dst, vcdProfile()->video_system);
-#else
-        sbufWriteU8(dst, 0);
-#endif
-
-#ifdef USE_OSD
-        // OSD specific, not applicable to OSD slaves.
-
-        // Configuration
-        sbufWriteU8(dst, osdConfig()->units);
-
-        // Alarms
-        sbufWriteU8(dst, osdConfig()->rssi_alarm);
-        sbufWriteU16(dst, osdConfig()->cap_alarm);
-
-        // Reuse old timer alarm (U16) as OSD_ITEM_COUNT
-        sbufWriteU8(dst, 0);
-        sbufWriteU8(dst, OSD_ITEM_COUNT);
-
-        sbufWriteU16(dst, osdConfig()->alt_alarm);
-
-        // Element position and visibility
-        for (int i = 0; i < OSD_ITEM_COUNT; i++) {
-            sbufWriteU16(dst, osdElementConfig()->item_pos[i]);
-        }
-
-        // Post flight statistics
-        sbufWriteU8(dst, OSD_STAT_COUNT);
-        for (int i = 0; i < OSD_STAT_COUNT; i++ ) {
-            sbufWriteU8(dst, osdStatGetState(i));
-        }
-
-        // Timers
-        sbufWriteU8(dst, OSD_TIMER_COUNT);
-        for (int i = 0; i < OSD_TIMER_COUNT; i++) {
-            sbufWriteU16(dst, osdConfig()->timers[i]);
-        }
-
-        // Enabled warnings
-        // Send low word first for backwards compatibility (API < 1.41)
-        sbufWriteU16(dst, (uint16_t)(osdConfig()->enabledWarnings & 0xFFFF));
-        // API >= 1.41
-        // Send the warnings count and 32bit enabled warnings flags.
-        // Add currently active OSD profile (0 indicates OSD profiles not available).
-        // Add OSD stick overlay mode (0 indicates OSD stick overlay not available).
-        sbufWriteU8(dst, OSD_WARNING_COUNT);
-        sbufWriteU32(dst, osdConfig()->enabledWarnings);
-
-#ifdef USE_OSD_PROFILES
-        sbufWriteU8(dst, OSD_PROFILE_COUNT);            // available profiles
-        sbufWriteU8(dst, osdConfig()->osdProfileIndex); // selected profile
-#else
-        // If the feature is not available there is only 1 profile and it's always selected
-        sbufWriteU8(dst, 1);
-        sbufWriteU8(dst, 1);
-#endif // USE_OSD_PROFILES
-
-#ifdef USE_OSD_STICK_OVERLAY
-        sbufWriteU8(dst, osdConfig()->overlay_radio_mode);
-#else
-        sbufWriteU8(dst, 0);
-#endif // USE_OSD_STICK_OVERLAY
-
-        // API >= 1.43
-        // Add the camera frame element width/height
-        sbufWriteU8(dst, osdConfig()->camera_frame_width);
-        sbufWriteU8(dst, osdConfig()->camera_frame_height);
-
-#endif // USE_OSD
-        break;
-    }
 
     case MSP_EXPERIMENTAL:
         /*
@@ -1339,28 +1224,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 #endif
 
-#ifdef USE_OSD
-    case MSP2_GET_OSD_WARNINGS:
-        {
-            bool isBlinking;
-            uint8_t displayAttr;
-            char warningsBuffer[OSD_FORMAT_MESSAGE_BUFFER_SIZE];
-
-            renderOsdWarning(warningsBuffer, &isBlinking, &displayAttr);
-            const uint8_t warningsLen = strlen(warningsBuffer);
-
-            if (isBlinking) {
-                displayAttr |= DISPLAYPORT_ATTR_BLINK;
-            }
-            sbufWriteU8(dst, displayAttr);  // see displayPortAttr_e
-            sbufWriteU8(dst, warningsLen);  // length byte followed by the actual characters
-            for (unsigned i = 0; i < warningsLen; i++) {
-                sbufWriteU8(dst, warningsBuffer[i]);
-            }
-            break;
-        }
-#endif
-
 #ifdef USE_SMARTFUEL
     case MSP2_GET_SMARTFUEL_CONFIG:
         sbufWriteU8(dst, batteryConfig()->smartfuel_mode);
@@ -1451,6 +1314,51 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 #endif
 
+#if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
+    case MSP2_WING_FBUS_SENSORS: {
+        const uint8_t count = fbusSensorGetObservedCount();
+        sbufWriteU8(dst, count);
+
+        for (uint8_t i = 0; i < count; i++) {
+            const fbusObservedSensor_t *sensor = fbusSensorGetObserved(i);
+            if (!sensor) {
+                break;
+            }
+
+            sbufWriteU8(dst, sensor->physicalId);
+            sbufWriteU8(dst, sensor->source);
+            sbufWriteU8(dst, fbusSensorIsForwarded(sensor->physicalId) ? 1 : 0);
+            sbufWriteU32(dst, sensor->packetCount);
+
+            // Mirror the CLI's "ID_XXX" fallback for unnamed physical IDs so
+            // both surfaces show identical sensor names.
+            const char *sensorName = fbusSensorGetName(sensor->physicalId);
+            char nameBuffer[17];
+            if (strcmp(sensorName, "UNKNOWN") == 0) {
+                tfp_sprintf(nameBuffer, "ID_%u", sensor->physicalId);
+                sensorName = nameBuffer;
+            }
+            const uint8_t nameLen = (uint8_t)strlen(sensorName);
+            sbufWriteU8(dst, nameLen);
+            sbufWriteData(dst, sensorName, nameLen);
+
+            sbufWriteU8(dst, sensor->appIdCount);
+            for (uint8_t j = 0; j < sensor->appIdCount; j++) {
+                sbufWriteU16(dst, sensor->appIds[j]);
+            }
+        }
+        break;
+    }
+
+    case MSP2_WING_FBUS_MASTER_CONFIG: {
+        sbufWriteU8(dst, 1); // payload version -- only the forwarding slots so far
+        for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
+            sbufWriteU8(dst, fbusMasterConfig()->forwardedSensors[i]);
+        }
+        break;
+    }
+#endif
+
     case MSP_RC:
         for (int i = 0; i < activeRcChannelCount; i++) {
             sbufWriteU16(dst, (int16_t)rcInput[i]);
@@ -1510,6 +1418,40 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteS16(dst, boardAlignment()->mountTrim.roll);
         sbufWriteS16(dst, boardAlignment()->mountTrim.pitch);
         sbufWriteS16(dst, boardAlignment()->mountTrim.yaw);
+        break;
+
+    case MSP2_WING_TV_PID_CONFIG:
+        for (int i = 0; i < PID_ITEM_COUNT; i++) {
+            sbufWriteU16(dst, tvPidProfile()->pid[i].P);
+            sbufWriteU16(dst, tvPidProfile()->pid[i].I);
+            sbufWriteU16(dst, tvPidProfile()->pid[i].D);
+            sbufWriteU16(dst, tvPidProfile()->pid[i].F);
+            sbufWriteU16(dst, tvPidProfile()->pid[i].B);
+        }
+        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_ROLL]);
+        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_PITCH]);
+        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_YAW]);
+        sbufWriteU8(dst, tvPidProfile()->iterm_decay_time);
+        sbufWriteU8(dst, tvPidProfile()->iterm_decay_limit);
+        sbufWriteU8(dst, tvPidProfile()->iterm_relax_type);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->iterm_relax_level[i]);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->iterm_relax_cutoff[i]);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->error_limit[i]);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->dterm_cutoff[i]);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->bterm_cutoff[i]);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, tvPidProfile()->gyro_cutoff[i]);
+        }
         break;
 
     case MSP_DEBUG_CONFIG:
@@ -2207,6 +2149,42 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 #endif
 
+#ifdef USE_FBUS_MASTER
+    case MSP_XACT_SERVO_LIST:
+        // List every XACT servo discovered since the last MSP_SET_XACT_SCAN. The firmware
+        // reads every discovered servo's parameters in the background (not just whichever one
+        // gets selected -- see fbusXactTrackServo()/xactAdvanceReadField() in fbus_xact.c), so
+        // Channel is usually already available here without the GUI needing to select a servo
+        // first.
+        // Response format: count, then count * (phyID, appIdOffset, conflict, duplicateAppId,
+        //                  ready, channel)
+        // appIdOffset/channel read as 0 until ready is 1 -- see
+        // fbusXactRequestParamsRead()/fbusXactIsServoParamsReady() in fbus_xact.h.
+        // conflict is 1 if this Physical ID has answered with more than one App ID, meaning
+        // two servos most likely share it and are colliding on the bus (see fbus_xact.h).
+        // duplicateAppId is 1 if another discovered servo (a different Physical ID) shares
+        // this one's App ID -- writes to either are refused until this is resolved, see
+        // fbusXactHasDuplicateAppId() in fbus_xact.h.
+        {
+            const uint8_t count = fbusMasterIsEnabled() ? fbusXactGetDiscoveredServoCount() : 0;
+            sbufWriteU8(dst, count);
+            for (uint8_t i = 0; i < count; i++) {
+                const uint8_t phyID = fbusXactGetDiscoveredServoPhyID(i);
+                xactServoParams_t params;
+                memset(&params, 0, sizeof(params));
+                fbusXactGetServoParams(phyID, &params);
+                sbufWriteU8(dst, phyID);
+                sbufWriteU8(dst, params.appIdOffset);
+                sbufWriteU8(dst, fbusXactHasServoConflict(phyID) ? 1 : 0);
+                sbufWriteU8(dst, fbusXactHasDuplicateAppId(phyID) ? 1 : 0);
+                sbufWriteU8(dst, fbusXactIsServoParamsReady(phyID) ? 1 : 0);
+                sbufWriteU8(dst, params.channel);
+            }
+        }
+
+        break;
+#endif
+
     default:
         unsupportedCommand = true;
     }
@@ -2315,6 +2293,61 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             sbufWriteU16(dst, mixerInputs(i)->max);
         }
         break;
+
+#ifdef USE_FBUS_MASTER
+    case MSP_XACT_PARAMS:
+        // GET all parameters of one discovered XACT servo, selected by physical ID -- pick
+        // one from MSP_XACT_SERVO_LIST first. Kicks off a fresh read for it if none has
+        // completed yet, so the caller should keep polling this until "ready" comes back 1.
+        // Field set mirrors FrSky's own "XAct" ETHOS Device Config Lua script.
+        // Request format: phyID
+        // Response format: ready, conflict, duplicateAppId, phyID, appIdOffset, firmwareVersion,
+        //                  dataRate, range, direction, pulseType, channel, center(signed),
+        //                  holdingStrength, operationSmoothing, deadband, hasExtendedParams,
+        //                  workingMode, maxAngle
+        // duplicateAppId is 1 if another discovered servo shares this one's App ID -- see
+        // fbusXactHasDuplicateAppId() in fbus_xact.h. Saving is refused while this is true,
+        // unless the save is itself changing App ID to something now-unique.
+        {
+            xactServoParams_t params;
+            memset(&params, 0, sizeof(params));
+            bool ready = false;
+            bool conflict = false;
+            bool duplicateAppId = false;
+
+            if (fbusMasterIsEnabled() && sbufBytesRemaining(src) >= 1) {
+                const uint8_t phyID = sbufReadU8(src);
+                if (fbusXactGetServoParams(phyID, &params)) {
+                    ready = fbusXactIsServoParamsReady(phyID);
+                    conflict = fbusXactHasServoConflict(phyID);
+                    duplicateAppId = fbusXactHasDuplicateAppId(phyID);
+                    if (!ready) {
+                        fbusXactRequestParamsRead(phyID);
+                    }
+                }
+            }
+
+            sbufWriteU8(dst, ready ? 1 : 0);
+            sbufWriteU8(dst, conflict ? 1 : 0);
+            sbufWriteU8(dst, duplicateAppId ? 1 : 0);
+            sbufWriteU8(dst, params.physicalId);          // 0x00
+            sbufWriteU8(dst, params.appIdOffset);         // 0x01
+            sbufWriteU8(dst, params.firmwareVersion);     // 0xFE, read-only
+            sbufWriteU16(dst, params.dataRate);           // 0x02
+            sbufWriteU8(dst, params.range);               // 0x04
+            sbufWriteU8(dst, params.direction);           // 0x05
+            sbufWriteU8(dst, params.pulseType);           // 0x06
+            sbufWriteU8(dst, params.channel);             // 0x07
+            sbufWriteU8(dst, (uint8_t)params.center);     // 0x08, signed -125..125
+            sbufWriteU8(dst, params.holdingStrength);     // 0x11
+            sbufWriteU8(dst, params.operationSmoothing);  // 0x13
+            sbufWriteU8(dst, params.deadband);            // 0x21
+            sbufWriteU8(dst, params.hasExtendedParams ? 1 : 0);
+            sbufWriteU8(dst, params.workingMode);         // 0x40, only if hasExtendedParams
+            sbufWriteU16(dst, params.maxAngle);           // 0x41, only if hasExtendedParams
+        }
+        break;
+#endif
 #ifdef USE_SERVOS
     case MSP_SET_SERVO_CONFIG:
         {
@@ -2415,7 +2448,7 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         sbufWriteU8(dst, rebootMode);
 
 #if defined(USE_USB_MSC)
-        if (rebootMode == MSP_REBOOT_MSC) {
+        if (rebootMode == MSP_REBOOT_MSC || rebootMode == MSP_REBOOT_MSC_UTC) {
             if (mscCheckFilesystemReady()) {
                 sbufWriteU8(dst, 1);
             } else {
@@ -3528,6 +3561,44 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         boardAlignmentMutable()->mountTrim.yaw = sbufReadS16(src);
         break;
 
+    case MSP2_WING_SET_TV_PID_CONFIG:
+        if (dataSize != PID_ITEM_COUNT * 5 * sizeof(uint16_t) + 3 * sizeof(uint16_t) + 3 + PID_AXIS_COUNT * 6) {
+            return MSP_RESULT_ERROR;
+        }
+        for (int i = 0; i < PID_ITEM_COUNT; i++) {
+            tvPidProfileMutable()->pid[i].P = sbufReadU16(src);
+            tvPidProfileMutable()->pid[i].I = sbufReadU16(src);
+            tvPidProfileMutable()->pid[i].D = sbufReadU16(src);
+            tvPidProfileMutable()->pid[i].F = sbufReadU16(src);
+            tvPidProfileMutable()->pid[i].B = sbufReadU16(src);
+        }
+        tvPidProfileMutable()->master_gain[PID_ROLL] = sbufReadU16(src);
+        tvPidProfileMutable()->master_gain[PID_PITCH] = sbufReadU16(src);
+        tvPidProfileMutable()->master_gain[PID_YAW] = sbufReadU16(src);
+        tvPidProfileMutable()->iterm_decay_time = sbufReadU8(src);
+        tvPidProfileMutable()->iterm_decay_limit = sbufReadU8(src);
+        tvPidProfileMutable()->iterm_relax_type = sbufReadU8(src);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->iterm_relax_level[i] = sbufReadU8(src);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->iterm_relax_cutoff[i] = sbufReadU8(src);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->error_limit[i] = sbufReadU8(src);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->dterm_cutoff[i] = sbufReadU8(src);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->bterm_cutoff[i] = sbufReadU8(src);
+        }
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            tvPidProfileMutable()->gyro_cutoff[i] = sbufReadU8(src);
+        }
+        tvPidLoadProfile(tvPidProfile());
+        break;
+
     case MSP_SET_MIXER_CONFIG:
         mixerConfigMutable()->model_type = sbufReadU8(src);
         break;
@@ -3804,9 +3875,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         for (unsigned int i = 0; i < MIN(MAX_NAME_LENGTH, dataSize); i++) {
             pilotConfigMutable()->name[i] = sbufReadU8(src);
         }
-#ifdef USE_OSD
-        osdAnalyzeActiveElements();
-#endif
         break;
 
     case MSP_SET_PILOT_CONFIG:
@@ -3851,6 +3919,61 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         setRssiMsp(sbufReadU8(src));
 
         break;
+
+#ifdef USE_FBUS_MASTER
+    case MSP_SET_XACT_SCAN:
+        // Start a new sensor discovery phase on the FBUS master link
+        if (!fbusMasterIsEnabled()) {
+            return MSP_RESULT_ERROR;
+        }
+        fbusXactStartSensorDiscovery();
+
+        break;
+
+    case MSP_SET_XACT_PARAMS:
+        // SET all servo parameters for one discovered servo - collect from GUI, compare with
+        // cache, write only differences. Field set mirrors FrSky's own "XAct" ETHOS Device
+        // Config Lua script; workingMode/maxAngle are ignored unless the servo has already
+        // reported (via a prior GET) that it supports them.
+        // Request format: targetPhyID, then physicalId, appIdOffset, dataRate, range, direction,
+        // pulseType, channel, center(signed), holdingStrength, operationSmoothing, deadband,
+        // workingMode, maxAngle. targetPhyID selects which discovered servo to write to; the
+        // "physicalId" value right after it is the new value to write into that servo's own
+        // Physical ID field, and may differ from targetPhyID if the user is deliberately
+        // re-addressing the servo.
+        if (fbusMasterIsEnabled() && sbufBytesRemaining(src) >= 16) {
+            const uint8_t phyID = sbufReadU8(src);
+            xactServoParams_t params;
+
+            if (fbusXactGetServoParams(phyID, &params)) {
+                xactServoParams_t newParams;
+                newParams.physicalId = sbufReadU8(src);
+                newParams.appIdOffset = sbufReadU8(src);
+                newParams.dataRate = sbufReadU16(src);
+                newParams.range = sbufReadU8(src);
+                newParams.direction = sbufReadU8(src);
+                newParams.pulseType = sbufReadU8(src);
+                newParams.channel = sbufReadU8(src);
+                newParams.center = (int8_t)sbufReadU8(src);
+                newParams.holdingStrength = sbufReadU8(src);
+                newParams.operationSmoothing = sbufReadU8(src);
+                newParams.deadband = sbufReadU8(src);
+                newParams.workingMode = sbufReadU8(src);
+                newParams.maxAngle = sbufReadU16(src);
+
+                // Compare with cache and write only differences
+                if (!fbusXactCompareAndWriteParams(phyID, FBUS_SERVO_DATA_BASE + params.appIdOffset, &newParams)) {
+                    return MSP_RESULT_ERROR;
+                }
+            } else {
+                return MSP_RESULT_ERROR;
+            }
+        } else {
+            return MSP_RESULT_ERROR;
+        }
+
+        break;
+#endif
 
 #if defined(USE_BOARD_INFO)
     case MSP_SET_BOARD_INFO:
@@ -4016,6 +4139,21 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         break;
 #endif
 
+#if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
+    case MSP2_WING_CLEAR_FBUS_SENSORS:
+        fbusSensorClearObserved();
+        break;
+
+    case MSP2_WING_SET_FBUS_MASTER_CONFIG:
+        for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
+            fbusMasterConfigMutable()->forwardedSensors[i] = sbufReadU8(src);
+        }
+        // Forwarding buffers are only loaded from config at boot -- reload
+        // them now so the change is live immediately, without a reboot.
+        fbusSensorInitForwarding();
+        break;
+#endif
+
     case MSP_SET_BATTERY_PROFILE:
         {
             uint8_t index = sbufReadU8(src);
@@ -4026,140 +4164,6 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
             }
         }
         break;
-
-#if defined(USE_OSD)
-    case MSP_SET_OSD_CONFIG:
-        {
-            const uint8_t addr = sbufReadU8(src);
-
-            if ((int8_t)addr == -1) {
-                /* Set general OSD settings */
-#ifdef USE_MAX7456
-                vcdProfileMutable()->video_system = sbufReadU8(src);
-#else
-                sbufReadU8(src); // Skip video system
-#endif
-#if defined(USE_OSD)
-                osdConfigMutable()->units = sbufReadU8(src);
-
-                // Alarms
-                osdConfigMutable()->rssi_alarm = sbufReadU8(src);
-                osdConfigMutable()->cap_alarm = sbufReadU16(src);
-                sbufReadU16(src); // Skip unused (previously fly timer)
-                osdConfigMutable()->alt_alarm = sbufReadU16(src);
-
-                if (sbufBytesRemaining(src) >= 2) {
-                    /* Enabled warnings */
-                    // API < 1.41 supports only the low 16 bits
-                    osdConfigMutable()->enabledWarnings = sbufReadU16(src);
-                }
-
-                if (sbufBytesRemaining(src) >= 4) {
-                    // 32bit version of enabled warnings (API >= 1.41)
-                    osdConfigMutable()->enabledWarnings = sbufReadU32(src);
-                }
-
-                if (sbufBytesRemaining(src) >= 1) {
-                    // API >= 1.41
-                    // selected OSD profile
-#ifdef USE_OSD_PROFILES
-                    changeOsdProfileIndex(sbufReadU8(src));
-#else
-                    sbufReadU8(src);
-#endif // USE_OSD_PROFILES
-                }
-
-                if (sbufBytesRemaining(src) >= 1) {
-                    // API >= 1.41
-                    // OSD stick overlay mode
-
-#ifdef USE_OSD_STICK_OVERLAY
-                    osdConfigMutable()->overlay_radio_mode = sbufReadU8(src);
-#else
-                    sbufReadU8(src);
-#endif // USE_OSD_STICK_OVERLAY
-
-                }
-
-                if (sbufBytesRemaining(src) >= 2) {
-                    // API >= 1.43
-                    // OSD camera frame element width/height
-                    osdConfigMutable()->camera_frame_width = sbufReadU8(src);
-                    osdConfigMutable()->camera_frame_height = sbufReadU8(src);
-                }
-#endif
-            } else if ((int8_t)addr == -2) {
-#if defined(USE_OSD)
-                // Timers
-                uint8_t index = sbufReadU8(src);
-                if (index > OSD_TIMER_COUNT) {
-                  return MSP_RESULT_ERROR;
-                }
-                osdConfigMutable()->timers[index] = sbufReadU16(src);
-#endif
-                return MSP_RESULT_ERROR;
-            } else {
-#if defined(USE_OSD)
-                const uint16_t value = sbufReadU16(src);
-
-                /* Get screen index, 0 is post flight statistics, 1 and above are in flight OSD screens */
-                const uint8_t screen = (sbufBytesRemaining(src) >= 1) ? sbufReadU8(src) : 1;
-
-                if (screen == 0 && addr < OSD_STAT_COUNT) {
-                    /* Set statistic item enable */
-                    osdStatSetState(addr, (value != 0));
-                } else if (addr < OSD_ITEM_COUNT) {
-                    /* Set element positions */
-                    osdElementConfigMutable()->item_pos[addr] = value;
-                    osdAnalyzeActiveElements();
-                } else {
-                  return MSP_RESULT_ERROR;
-                }
-#else
-                return MSP_RESULT_ERROR;
-#endif
-            }
-        }
-        break;
-
-    case MSP_OSD_CHAR_WRITE:
-        {
-            osdCharacter_t chr;
-            size_t osdCharacterBytes;
-            uint16_t addr;
-            if (dataSize >= OSD_CHAR_VISIBLE_BYTES + 2) {
-                if (dataSize >= OSD_CHAR_BYTES + 2) {
-                    // 16 bit address, full char with metadata
-                    addr = sbufReadU16(src);
-                    osdCharacterBytes = OSD_CHAR_BYTES;
-                } else if (dataSize >= OSD_CHAR_BYTES + 1) {
-                    // 8 bit address, full char with metadata
-                    addr = sbufReadU8(src);
-                    osdCharacterBytes = OSD_CHAR_BYTES;
-                } else {
-                    // 16 bit character address, only visible char bytes
-                    addr = sbufReadU16(src);
-                    osdCharacterBytes = OSD_CHAR_VISIBLE_BYTES;
-                }
-            } else {
-                // 8 bit character address, only visible char bytes
-                addr = sbufReadU8(src);
-                osdCharacterBytes = OSD_CHAR_VISIBLE_BYTES;
-            }
-            for (unsigned ii = 0; ii < MIN(osdCharacterBytes, sizeof(chr.data)); ii++) {
-                chr.data[ii] = sbufReadU8(src);
-            }
-            displayPort_t *osdDisplayPort = osdGetDisplayPort(NULL);
-            if (!osdDisplayPort) {
-                return MSP_RESULT_ERROR;
-            }
-
-            if (!displayWriteFontCharacter(osdDisplayPort, addr, &chr)) {
-                return MSP_RESULT_ERROR;
-            }
-        }
-        break;
-#endif // OSD
 
     case MSP_SET_EXPERIMENTAL:
         /*

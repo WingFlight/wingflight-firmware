@@ -42,9 +42,6 @@
 #include "io/vtx.h"
 #include "io/vtx_control.h"
 
-#include "osd/osd.h"
-
-
 static uint8_t locked = 0;
 
 

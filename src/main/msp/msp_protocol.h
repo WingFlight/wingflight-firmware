@@ -55,7 +55,7 @@
 #define MSP_PROTOCOL_VERSION                 0
 
 #define API_VERSION_MAJOR                    22
-#define API_VERSION_MINOR                    3
+#define API_VERSION_MINOR                    4
 #define API_VERSION_LENGTH                   2
 
 #define FLIGHT_CONTROLLER_IDENTIFIER_LENGTH  4
@@ -131,10 +131,11 @@
 #define MSP_SET_BLACKBOX_CONFIG              81
 #define MSP_TRANSPONDER_CONFIG               82
 #define MSP_SET_TRANSPONDER_CONFIG           83
-#define MSP_OSD_CONFIG                       84
-#define MSP_SET_OSD_CONFIG                   85
-#define MSP_OSD_CHAR_READ                    86
-#define MSP_OSD_CHAR_WRITE                   87
+// 84-87 reserved (OSD removed, no longer implemented) -- do not reuse
+// #define MSP_OSD_CONFIG                     84
+// #define MSP_SET_OSD_CONFIG                 85
+// #define MSP_OSD_CHAR_READ                  86
+// #define MSP_OSD_CHAR_WRITE                 87
 #define MSP_VTX_CONFIG                       88
 #define MSP_SET_VTX_CONFIG                   89
 #define MSP_ADVANCED_CONFIG                  90
@@ -207,7 +208,14 @@
 
 #define MSP_UID                              160
 
+// XACT FBUS servo programming (experimental, requires USE_FBUS_MASTER)
+#define MSP_SET_XACT_SCAN                    161
+#define MSP_XACT_PARAMS                      162
+#define MSP_SET_XACT_PARAMS                  163
+
 #define MSP_GPSSVINFO                        164
+// XACT FBUS servo programming, continued (experimental, requires USE_FBUS_MASTER)
+#define MSP_XACT_SERVO_LIST                  165
 #define MSP_GPSSTATISTICS                    166
 #define MSP_GET_ADJUSTMENT_FUNCTION_IDS      167
 
@@ -221,8 +229,9 @@
 #define MSP_MIXER_CURVES                     177
 #define MSP_SET_MIXER_CURVE                  178
 
-#define MSP_OSD_VIDEO_CONFIG                 180
-#define MSP_SET_OSD_VIDEO_CONFIG             181
+// 180-181 reserved (OSD removed, already unimplemented) -- do not reuse
+// #define MSP_OSD_VIDEO_CONFIG               180
+// #define MSP_SET_OSD_VIDEO_CONFIG           181
 #define MSP_DISPLAYPORT                      182
 #define MSP_COPY_PROFILE                     183
 #define MSP_BEEPER_CONFIG                    184
@@ -300,8 +309,14 @@
 #define MSP2_WING_SET_BOARD_MOUNT_TRIM       0x5F04
 #define MSP2_WING_BOARD_MOUNT_TRIM_AUTO      0x5F05
 #define MSP2_WING_EFFECTIVE_PID_GAINS        0x5F06
-#define MSP2_WING_FC_LINK_STATUS             0x5F07
-#define MSP2_WING_FC_LINK_SYNC_CONFIG        0x5F08
-#define MSP2_WING_SET_FC_LINK_SYNC_CONFIG    0x5F09
-#define MSP2_WING_TRIGGER_FC_LINK_SYNC       0x5F0A
+#define MSP2_WING_FBUS_SENSORS               0x5F07
+#define MSP2_WING_CLEAR_FBUS_SENSORS         0x5F08
+#define MSP2_WING_FBUS_MASTER_CONFIG         0x5F09
+#define MSP2_WING_SET_FBUS_MASTER_CONFIG     0x5F0A
+#define MSP2_WING_TV_PID_CONFIG              0x5F0B
+#define MSP2_WING_SET_TV_PID_CONFIG          0x5F0C
+#define MSP2_WING_FC_LINK_STATUS             0x5F0D
+#define MSP2_WING_FC_LINK_SYNC_CONFIG        0x5F0E
+#define MSP2_WING_SET_FC_LINK_SYNC_CONFIG    0x5F0F
+#define MSP2_WING_TRIGGER_FC_LINK_SYNC       0x5F10
 #define MSP_V2_FRAME                         255

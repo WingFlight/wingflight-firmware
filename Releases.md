@@ -1,3 +1,44 @@
+# 0.0.16
+
+Add XACT servo programming support: multi-servo discovery over FBUS, per-servo background reads, and a field set aligned to FrSky's own configuration tool.
+Fix XACT parameter reads hanging forever on a field an unsupported servo doesn't answer.
+Fix XACT writes silently reprogramming the wrong servo when two servos share an App ID.
+Fix XACT servo tracking losing a servo after its Physical ID is renamed.
+Fix SRXL2 telemetry seqlock read.
+Make the governor/idle-up switch a hard motor interlock when a governor mode is configured, instead of only refining the bottom of the throttle curve.
+
+# 0.0.15
+
+Add support for Spektrum SRXL2 ESC (throttle and telemetry over a single bidirectional bus).
+Support Spektrum full-size receivers (e.g. AR6610T) by sending an early SRXL2 handshake at boot.
+
+# 0.0.14
+
+Add debounce for servo trim adjustments to prevent snapping on RX link reacquisition.
+
+# 0.0.13
+
+Fix servo trim ignoring mixer-rule-based servo reversal, causing mirrored servos (e.g. dual ailerons) to trim the same direction.
+Fix servo trim also ignoring a negative (Inverted) rate on the driving mixer input, causing trim to apply backwards on models using axis invert.
+
+# 0.0.12
+
+Fix BOXTHRUSTVECTOR/BOXLOITER permanentId collision.
+Fix governor bypassing RX-loss failsafe throttle cut.
+Clamp m/3s telemetry to 0 when out of range.
+Update current sensor FBUS refresh to accept timestamp and adjust capacity calculation.
+
+# 0.0.11
+
+Add basic GPS Loiter and RTH flight modes.
+Add Thrust Vector PID control and blackbox logging.
+Add MSP commands for FBUS/S.Port sensor diagnostics and forwarding.
+Add airborne re-arm grace settings for improved in-flight safety.
+Improve HoTT telemetry responsiveness and GPS accuracy.
+Use governor idle throttle as the RPM idle-hold floor to avoid ESC cut on rapid throttle chop.
+Fix blackbox MSC mass storage startup.
+Remove OSD and CMS.
+
 # 0.0.10
 
 Remove legacy heli tail_rotor_mode; rename main/tail naming to motor1/motor2 throughout (gear ratios, RPM/speed accessors, telemetry sensor IDs, blackbox log fields).

@@ -26,7 +26,6 @@ COMMON_SRC = \
             drivers/bus_spi_pinconfig.c \
             drivers/buttons.c \
             drivers/display.c \
-            drivers/display_canvas.c \
             drivers/dma_common.c \
             drivers/dma_reqmap.c \
             drivers/exti.c \
@@ -43,6 +42,7 @@ COMMON_SRC = \
             drivers/serial_uart.c \
             drivers/serial_uart_pinconfig.c \
             drivers/sound_beeper.c \
+            drivers/srxl2_esc.c \
             drivers/stack_check.c \
             drivers/system.c \
             drivers/timer_common.c \
@@ -81,6 +81,7 @@ COMMON_SRC = \
             drivers/fbus_master.c \
             drivers/fbus_sensor.c \
             drivers/fc_link.c \
+            drivers/fbus_xact.c \
             drivers/rx/rx_spi.c \
             drivers/rx/rx_xn297.c \
             drivers/rx/rx_pwm.c \
@@ -94,11 +95,13 @@ COMMON_SRC = \
             flight/position.c \
             flight/failsafe.c \
             flight/gps_rescue.c \
+            flight/gps_nav.c \
             flight/dyn_notch_filter.c \
             flight/imu.c \
             flight/mixer.c \
             flight/logic_condition.c \
             flight/pid.c \
+            flight/tv_pid.c \
             flight/rpm_filter.c \
             flight/motors.c \
             flight/governor.c \
@@ -150,23 +153,6 @@ COMMON_SRC = \
             blackbox/blackbox.c \
             blackbox/blackbox_encoding.c \
             blackbox/blackbox_io.c \
-            cms/cms.c \
-            cms/cms_menu_blackbox.c \
-            cms/cms_menu_failsafe.c \
-            cms/cms_menu_firmware.c \
-            cms/cms_menu_gps_rescue.c\
-            cms/cms_menu_imu.c \
-            cms/cms_menu_ledstrip.c \
-            cms/cms_menu_main.c \
-            cms/cms_menu_misc.c \
-            cms/cms_menu_osd.c \
-            cms/cms_menu_power.c \
-            cms/cms_menu_saveexit.c \
-            cms/cms_menu_vtx_common.c \
-            cms/cms_menu_vtx_rtc6705.c \
-            cms/cms_menu_vtx_smartaudio.c \
-            cms/cms_menu_vtx_tramp.c \
-            cms/cms_menu_persistent_stats.c \
             drivers/display_ug2864hsweg01.c \
             drivers/light_ws2811strip.c \
             drivers/rangefinder/rangefinder_hcsr04.c \
@@ -175,21 +161,11 @@ COMMON_SRC = \
             drivers/vtx_common.c \
             drivers/vtx_table.c \
             io/dashboard.c \
-            io/displayport_frsky_osd.c \
-            io/displayport_max7456.c \
-            io/displayport_msp.c \
             io/displayport_oled.c \
-            io/displayport_srxl.c \
-            io/displayport_crsf.c \
-            io/displayport_hott.c \
-            io/frsky_osd.c \
             io/rcdevice_cam.c \
             io/rcdevice.c \
             io/gps.c \
             io/ledstrip.c \
-            osd/osd.c \
-            osd/osd_elements.c \
-            osd/osd_warnings.c \
             sensors/barometer.c \
             sensors/rangefinder.c \
             telemetry/telemetry.c \
@@ -281,6 +257,7 @@ SPEED_OPTIMISED_SRC := $(SPEED_OPTIMISED_SRC) \
             flight/mixer.c \
             flight/logic_condition.c \
             flight/pid.c \
+            flight/tv_pid.c \
             flight/rpm_filter.c \
             rx/ibus.c \
             rx/ibus2.c \
@@ -354,32 +331,12 @@ SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
             io/serial_4way_stk500v2.c \
             io/usb_cdc_hid.c \
             msp/msp_serial.c \
-            cms/cms.c \
-            cms/cms_menu_blackbox.c \
-            cms/cms_menu_failsafe.c \
-            cms/cms_menu_firmware.c \
-            cms/cms_menu_gps_rescue.c\
-            cms/cms_menu_imu.c \
-            cms/cms_menu_ledstrip.c \
-            cms/cms_menu_main.c \
-            cms/cms_menu_misc.c \
-            cms/cms_menu_osd.c \
-            cms/cms_menu_power.c \
-            cms/cms_menu_saveexit.c \
-            cms/cms_menu_vtx_common.c \
-            cms/cms_menu_vtx_rtc6705.c \
-            cms/cms_menu_vtx_smartaudio.c \
-            cms/cms_menu_vtx_tramp.c \
-            cms/cms_menu_persistent_stats.c \
             io/vtx.c \
             io/vtx_rtc6705.c \
             io/vtx_smartaudio.c \
             io/vtx_tramp.c \
             io/vtx_control.c \
             io/spektrum_vtx_control.c \
-            osd/osd.c \
-            osd/osd_elements.c \
-            osd/osd_warnings.c \
             rx/rx_bind.c
 
 # Gyro driver files that only contain initialization and configuration code - not runtime code
@@ -399,7 +356,6 @@ SPEED_OPTIMISED_SRC := $(SPEED_OPTIMISED_SRC) \
             drivers/bus_i2c_hal.c \
             drivers/bus_spi_ll.c \
             rx/frsky_crc.c \
-            drivers/max7456.c \
             drivers/pwm_output_dshot.c \
             drivers/pwm_output_dshot_shared.c \
             drivers/pwm_output_dshot_hal.c

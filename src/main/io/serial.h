@@ -49,18 +49,18 @@ typedef enum {
     FUNCTION_VTX_TRAMP           = (1 << 13), // 8192
     FUNCTION_RCDEVICE            = (1 << 14), // 16384
     FUNCTION_LIDAR_TF            = (1 << 15), // 32768
-    FUNCTION_FRSKY_OSD           = (1 << 16), // 65536
     FUNCTION_PRINTF              = (1 << 17), // 131072
     FUNCTION_SBUS_OUT            = (1 << 18), // 262144
     FUNCTION_FBUS_MASTER         = (1 << 19), // 524288
     FUNCTION_SPORT_MASTER        = (1 << 20), // 1048576
+    FUNCTION_SRXL2_ESC           = (1 << 21), // 2097152
     // FC_LINK: which function is assigned to the port IS the role, on
     // purpose. There is no separate "role" setting that could fall out of
     // sync with the port assignment -- MASTER and SLAVE are picked
     // deliberately, one per board, the same way every other serial function
     // is assigned.
-    FUNCTION_FC_LINK_MASTER      = (1 << 21), // 2097152
-    FUNCTION_FC_LINK_SLAVE       = (1 << 22), // 4194304
+    FUNCTION_FC_LINK_MASTER      = (1 << 22), // 4194304
+    FUNCTION_FC_LINK_SLAVE       = (1 << 23), // 8388608
 } serialPortFunction_e;
 
 #define FC_LINK_FUNCTIONS_MASK (FUNCTION_FC_LINK_MASTER | FUNCTION_FC_LINK_SLAVE)
