@@ -20,11 +20,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// A secondary, independent SBUS receiver input used as an instant fallback when the
-// main RX link's signal is lost. See rx/rx.c's detectAndApplySignalLossBehaviour()
-// for where this is consumed. Electrical settings (inversion/pin swap) are its own
-// config, pg/rx_sbus_input.h - independent from the main RX's serialrx_inverted/
-// serialrx_pinswap, since this is a different physical UART.
+// A secondary, independent SBUS receiver input used as a fallback when the main RX
+// link's signal is lost - bypasses the *staged* failsafe machinery entirely, but is
+// bounded by the main RX's own existing ~100ms signal-loss detection window
+// (rxSignalReceived/DELAY_100_MS in rx.c's rxFrameCheck()), not per-missed-frame; see
+// the comment above the takeover branch in rx.c's detectAndApplySignalLossBehaviour()
+// for why that's a deliberate choice over a feature-specific fixed threshold.
+// Electrical settings (inversion/pin swap) are its own config, pg/rx_sbus_input.h -
+// independent from the main RX's serialrx_inverted/serialrx_pinswap, since this is a
+// different physical UART.
 //
 // This intentionally does not reuse rx/sbus.c's sbusInit()/sbusDataReceive() - that
 // module keeps its frame-assembly state in function-local statics tied to the single

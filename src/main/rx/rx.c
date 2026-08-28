@@ -633,8 +633,8 @@ void detectAndApplySignalLossBehaviour(void)
     // the very first frame used at the instant of a real failover).
     sbusInputPoll();
 
-    // Instant SBUS-in failover: the main RX link is down this cycle, but a configured
-    // SBUS-in port is actively decoding valid frames. Take over ALL channels (including
+    // SBUS-in failover: the main RX link is down this cycle, but a configured SBUS-in
+    // port is actively decoding valid frames. Take over ALL channels (including
     // aux/mode switches) from it, exactly as a physical backup satellite receiver would,
     // and tell failsafe this is a valid link so its staged hold/land behaviour does not
     // engage on top of it. A BOXFAILSAFE aux switch still invalidates channels here too,
@@ -642,6 +642,17 @@ void detectAndApplySignalLossBehaviour(void)
     // configured), sbusInputIsActive() is false and this falls through unmodified to the
     // existing staged failsafe logic below - that stays the single backstop for
     // "both links down".
+    //
+    // Bypasses the *staged* failsafe machinery (hold/land/cut) entirely, but is bounded
+    // by rxSignalReceived's own existing detection window, not per-missed-frame: per
+    // rxFrameCheck() above, rxSignalReceived only flips false up to DELAY_100_MS (100ms)
+    // after the main RX's last good frame, for every RX provider, not something specific
+    // to this feature. Reusing that same generic, protocol-agnostic signal is deliberate:
+    // a bit worse latency than "next frame" for genuinely lost signal, but not so tight
+    // that a fixed threshold would false-trigger takeover on a legitimately slower RX
+    // protocol's normal frame spacing. Still far faster than doing nothing here at all -
+    // rxFlightChannelsValid's own stage-1 hold otherwise runs for MAX_INVALID_PULSE_TIME_MS
+    // (300ms) before a channel is even declared failed.
     if (!rxSignalReceived && sbusInputIsActive()) {
         for (int channel = 0; channel < activeRcChannelCount; channel++) {
             rcInput[channel] = constrainf(sbusInputGetChannel(channel), PWM_PULSE_MIN, PWM_PULSE_MAX);

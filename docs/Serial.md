@@ -129,13 +129,17 @@ Other devices can be added starting from id 50.
 Note: values above `FUNCTION_LIDAR_TF` require more than 16 bits. `FUNCTION_SPORT_MASTER` = `(1<<20)` requires 21 bits.
 
 `FUNCTION_RX_SBUS_INPUT` assigns a UART to a secondary, independent SBUS receiver
-("SBUS in"). It is not the main RX link - it exists purely as an instant fallback: if
-the main RX link's signal is lost, the FC immediately takes all RC channels (including
-aux/mode switches) from this port instead, with no failsafe-stage delay, and instantly
-reverts back the moment the main link recovers. If the main link is present, this port's
-data has no effect. See `drivers/rx_sbus_input.c` and `rx/rx.c`'s
-`detectAndApplySignalLossBehaviour()`. Diagnostics are available read-only via
-`MSP2_WING_SBUS_INPUT_STATUS`.
+("SBUS in"). It is not the main RX link - it exists as a fallback: if the main RX
+link's signal is lost, the FC takes all RC channels (including aux/mode switches)
+from this port instead, bypassing the staged failsafe machinery (hold/land/cut)
+entirely, and reverts back automatically once the main link recovers. If the main
+link is present, this port's data has no effect. Takeover/revert is bounded by the
+main RX's own existing ~100ms signal-loss detection window (`rxSignalReceived`,
+`DELAY_100_MS` in `rx.c`'s `rxFrameCheck()`), not per-missed-frame - see the comment
+above the takeover branch in `detectAndApplySignalLossBehaviour()` for why a feature-
+specific fixed threshold isn't used instead. See `drivers/rx_sbus_input.c` and
+`rx/rx.c`'s `detectAndApplySignalLossBehaviour()`. Diagnostics are available
+read-only via `MSP2_WING_SBUS_INPUT_STATUS`.
 
 Electrical settings for this port are independent of the main RX's own
 `serialrx_inverted`/`serialrx_pinswap` (different physical UART):

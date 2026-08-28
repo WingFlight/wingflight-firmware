@@ -17,6 +17,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "platform.h"
 
@@ -24,6 +25,7 @@
 
 #include "drivers/rx_sbus_input.h"
 
+#include "build/atomic.h"
 #include "build/build_config.h"
 
 #include "common/utils.h"
@@ -79,6 +81,15 @@ static uint16_t sbusInputChannelData[SBUS_INPUT_MAX_CHANNEL];
 static float sbusInputChannel[SBUS_INPUT_MAX_CHANNEL];
 static timeMs_t sbusInputLastValidFrameMs = 0;
 
+// False until the first genuinely valid (non-dropped, non-failsafe) frame has been
+// decoded. Without this, sbusInputIsActive() would read as "active" for up to
+// SBUS_INPUT_STALE_MS right after boot/config-change purely because
+// sbusInputLastValidFrameMs's zero-init happens to be within that window of
+// millis()'s own startup value - reporting fallback available (and, if the main
+// link were already down at that moment, feeding zeroed channels) before any real
+// frame has ever been seen.
+static bool sbusInputHasValidFrame = false;
+
 // Minimal rxRuntimeState_t used only to satisfy sbusChannelsDecode()'s interface -
 // only its channelData pointer is touched by that function.
 static rxRuntimeState_t sbusInputRxRuntimeState;
@@ -110,14 +121,39 @@ static FAST_CODE void sbusInputDataReceive(uint16_t c, void *data)
 // Called from the RX task (rx/rx.c), not an ISR - safe to do the heavier decode/convert work here.
 static void sbusInputUpdate(void)
 {
-    if (!sbusInputFrameData.done) {
+    // Snapshot the completed frame into a local copy under a brief interrupt mask,
+    // rather than decoding directly out of sbusInputFrameData - which the receive
+    // ISR owns and can start overwriting (a new frame's first byte landing at
+    // position 0) at any point after `done` is observed true but before the decode
+    // below finishes reading it. That window used to be able to produce a torn read
+    // mixing bytes from two different frames, corrupting adjacent 11-bit channel
+    // fields (e.g. one channel's movement bleeding into its neighbour).
+    sbusChannels_t channels;
+    bool haveFrame = false;
+
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        if (sbusInputFrameData.done) {
+            memcpy(&channels, &sbusInputFrameData.frame.frame.channels, sizeof(channels));
+            sbusInputFrameData.done = false;
+            haveFrame = true;
+        }
+    }
+
+    if (!haveFrame) {
         return;
     }
-    sbusInputFrameData.done = false;
 
-    const uint8_t frameStatus = sbusChannelsDecode(&sbusInputRxRuntimeState, &sbusInputFrameData.frame.frame.channels);
-    if (frameStatus & RX_FRAME_DROPPED) {
-        // Repeated/stale data from the satellite itself - don't treat as a fresh valid frame.
+    const uint8_t frameStatus = sbusChannelsDecode(&sbusInputRxRuntimeState, &channels);
+    if (frameStatus & (RX_FRAME_DROPPED | RX_FRAME_FAILSAFE)) {
+        // RX_FRAME_DROPPED: repeated/stale data from the satellite itself.
+        // RX_FRAME_FAILSAFE: the satellite's own internal failsafe is active - it may
+        // still be sending numerically valid-looking (repeated/center) channel data,
+        // but this must not count as a fresh valid frame, same as rxFrameCheck() never
+        // treats a main-RX RX_FRAME_FAILSAFE frame as "signal received" either. Letting
+        // it through here would let a satellite that has itself lost its own uplink
+        // keep reporting the fallback as active and calling failsafeOnValidDataReceived()
+        // (rx.c) - suppressing real failsafe in exactly the scenario, both links
+        // actually down, that it exists to catch.
         return;
     }
 
@@ -125,6 +161,7 @@ static void sbusInputUpdate(void)
         sbusInputChannel[i] = (5.0f * (float)sbusInputChannelData[i] / 8) + 880;
     }
 
+    sbusInputHasValidFrame = true;
     sbusInputLastValidFrameMs = millis();
 }
 
@@ -153,7 +190,7 @@ void sbusInputPoll(void)
 
 bool sbusInputIsActive(void)
 {
-    if (!sbusInputIsEnabled()) {
+    if (!sbusInputIsEnabled() || !sbusInputHasValidFrame) {
         return false;
     }
 
@@ -185,6 +222,7 @@ void sbusInputInit(void)
     sbusInputFrameData.position = 0;
     sbusInputFrameData.done = false;
     sbusInputLastValidFrameMs = 0;
+    sbusInputHasValidFrame = false;
 
     sbusInputPort = openSerialPort(portConfig->identifier,
         FUNCTION_RX_SBUS_INPUT,
