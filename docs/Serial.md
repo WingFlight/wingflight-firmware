@@ -137,6 +137,11 @@ data has no effect. See `drivers/rx_sbus_input.c` and `rx/rx.c`'s
 `detectAndApplySignalLossBehaviour()`. Diagnostics are available read-only via
 `MSP2_WING_SBUS_INPUT_STATUS`.
 
+Electrical settings for this port are independent of the main RX's own
+`serialrx_inverted`/`serialrx_pinswap` (different physical UART):
+`sbus_input_inverted` and `sbus_input_pinswap` (both `OFF`/`ON`, default `OFF`),
+in `pg/rx_sbus_input.h`.
+
 ### 3. MSP Baudrates
 
 | Baudrate |

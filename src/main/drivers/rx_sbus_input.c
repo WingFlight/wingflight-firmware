@@ -32,14 +32,14 @@
 
 #include "io/serial.h"
 
-#include "pg/rx.h"
+#include "pg/rx_sbus_input.h"
 
 #include "rx/rx.h"
 #include "rx/sbus_channels.h"
 
-// Same electrical parameters as the primary SBUS receiver (rx/sbus.c): 100000 baud,
-// 8E2, normally inverted. Only inversion is shared with the primary RX config -
-// SBUS wiring polarity is a board property, not a per-link one.
+// Same fixed baud/framing as the primary SBUS receiver (rx/sbus.c): 100000 baud, 8E2.
+// Inversion/pin-swap are this port's own settings (pg/rx_sbus_input.h), independent
+// of the main RX's serialrx_inverted/serialrx_pinswap - different physical UART.
 #define SBUS_INPUT_BAUDRATE 100000
 #if !defined(SBUS_INPUT_PORT_OPTIONS)
 #define SBUS_INPUT_PORT_OPTIONS (SERIAL_STOPBITS_2 | SERIAL_PARITY_EVEN)
@@ -177,7 +177,8 @@ void sbusInputInit(void)
         SBUS_INPUT_BAUDRATE,
         MODE_RX,
         SBUS_INPUT_PORT_OPTIONS |
-            (rxConfig()->serialrx_inverted ? SERIAL_NOT_INVERTED : SERIAL_INVERTED));
+            (sbusInputConfig()->inverted ? SERIAL_NOT_INVERTED : SERIAL_INVERTED) |
+            (sbusInputConfig()->pinSwap ? SERIAL_PINSWAP : SERIAL_NOSWAP));
 }
 
 #endif // USE_RX_SBUS_INPUT

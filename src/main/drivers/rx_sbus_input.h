@@ -22,7 +22,9 @@
 
 // A secondary, independent SBUS receiver input used as an instant fallback when the
 // main RX link's signal is lost. See rx/rx.c's detectAndApplySignalLossBehaviour()
-// for where this is consumed.
+// for where this is consumed. Electrical settings (inversion/pin swap) are its own
+// config, pg/rx_sbus_input.h - independent from the main RX's serialrx_inverted/
+// serialrx_pinswap, since this is a different physical UART.
 //
 // This intentionally does not reuse rx/sbus.c's sbusInit()/sbusDataReceive() - that
 // module keeps its frame-assembly state in function-local statics tied to the single
