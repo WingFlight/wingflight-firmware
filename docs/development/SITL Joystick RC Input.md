@@ -20,15 +20,21 @@ persistent TCP connection to that port and streams the joystick state as an
 ## Requirements
 
 - Python 3.
-- [pygame](https://www.pygame.org/) for joystick input (SDL2) and the mapping GUI:
+- [pygame](https://www.pygame.org/) for joystick input (SDL2) and the mapping GUI.
+  The standard way to get it is the shared JSBSim venv —
+  `scripts/sitl-jsbsim-flightgear-launch.ps1 -SetupVenv` creates
+  `tools/jsbsim-venv` and installs
+  [scripts/requirements-joystick.txt](../../scripts/requirements-joystick.txt)
+  (pygame) alongside the JSBSim requirements; the launcher's `-Joystick` switch
+  runs this script from that same venv. A separate venv works too:
 
   ```powershell
   python -m venv tools\pyenv
-  tools\pyenv\Scripts\pip install pygame
+  tools\pyenv\Scripts\pip install -r scripts\requirements-joystick.txt
   ```
 
-  (`tools/` is gitignored, matching how the MinGW SDK and any future JSBSim venv
-  are vendored — see [SITL JSBSim FlightGear Plan.md](SITL%20JSBSim%20FlightGear%20Plan.md).)
+  (`tools/` is gitignored, matching how the MinGW SDK and the JSBSim venv are
+  vendored — see [SITL JSBSim FlightGear Plan.md](SITL%20JSBSim%20FlightGear%20Plan.md).)
 - A SITL build (`make TARGET=SITL`) and a USB joystick/gamepad plugged in.
 
 ## Usage
@@ -38,8 +44,11 @@ persistent TCP connection to that port and streams the joystick state as an
 2. Run the bridge:
 
    ```powershell
-   tools\pyenv\Scripts\python scripts\sitl-joystick-rc.py
+   tools\jsbsim-venv\Scripts\python scripts\sitl-joystick-rc.py
    ```
+
+   (or `tools\pyenv\Scripts\python` if you made a separate venv, or let
+   `sitl-jsbsim-flightgear-launch.ps1 -Joystick` start it for you.)
 
 3. In the GUI, click **bind** next to a channel row, then move the axis / press the
    button / tap the hat you want assigned to that channel — it binds automatically

@@ -17,6 +17,27 @@
         modes (which only check Wingflight's own servo output), this proves
         the full loop: RC -> mixer -> servo_packet -> bridge -> JSBSim FCS ->
         physics -> fdm_packet -> fake IMU -> MSP_ATTITUDE.
+      - The response is gated SIGNED against a control-neutral drift baseline
+        measured over the same hold duration: roll-right (1900) minus
+        roll-left (1100) must be POSITIVE (right stick = right roll) and
+        exceed max(threshold, drift * margin); same for pitch (stick back =
+        nose up). This distinguishes "the control worked, in the right
+        direction" from "the aircraft was diverging anyway", and catches
+        inverted control-surface sign conventions (fix those with the
+        bridge's --invert-aileron/--invert-elevator, not the mixer).
+    - throttle: end-to-end ARMED throttle check through the JSBSim bridge.
+      Configures an ARM switch on AUX1 via MSP_SET_MODE_RANGE, arms (no mixer
+      override active - overrides block arming), raises throttle, and
+      confirms (a) MSP_MOTOR follows and (b) JSBSim actually receives the
+      throttle (thr= in the bridge log) and responds (IAS). This exercises
+      the one path -Mode jsbsim structurally cannot: disarmed motor output is
+      forced to motor-stop regardless of RC.
+    - gps: end-to-end GPS check through the JSBSim bridge's --msp-gps feed.
+      The bridge pushes JSBSim's position/velocity to SITL's second MSP port
+      (TCP 5762, UART2) as MSP_SET_RAW_GPS; this mode asserts the firmware
+      reports a fix near the initial position that MOVES with the simulated
+      aircraft (MSP_RAW_GPS). Needs SITL's config defaults (GPS provider MSP
+      + UART2 MSP port) - on an older eeprom.bin run with -FreshEeprom.
 
 .PARAMETER Port
     Explicit MSP port. If omitted or 0, the script auto-detects from
@@ -64,7 +85,7 @@ param(
     [int]$TimeoutSeconds = 3,
     [int]$Cycles = 20,
     [int]$ServoDeltaThreshold = 40,
-    [ValidateSet("smoke", "sweep", "stress", "jsbsim")]
+    [ValidateSet("smoke", "sweep", "stress", "jsbsim", "throttle", "gps")]
     [string]$Mode = "smoke",
     [int]$StressSeconds = 60,
     [string]$SitlBinaryPath = "",
@@ -72,6 +93,9 @@ param(
     [string]$BridgeAircraft = "c172p",
     [int]$JsbsimSettleMs = 1500,
     [double]$JsbsimAttitudeThresholdDeg = 3.0,
+    [double]$JsbsimDriftMarginFactor = 2.0,
+    [int]$ThrottleTestUs = 1800,
+    [int]$ThrottleHoldMs = 6000,
     [switch]$EnableRxMspIfMissing,
     [switch]$AutoStartSitl,
     [switch]$BuildSitl,
@@ -82,11 +106,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 $MSP_API_VERSION = 1
+$MSP_SET_MODE_RANGE = 35
 $MSP_FEATURE_CONFIG = 36
 $MSP_SET_FEATURE_CONFIG = 37
+$MSP_STATUS = 101
 $MSP_SERVO = 103
 $MSP_MOTOR = 104
 $MSP_RC = 105
+$MSP_RAW_GPS = 106
 $MSP_RX_CHANNELS = 114
 $MSP_ATTITUDE = 108
 $MSP_SET_RAW_RC = 200
@@ -260,19 +287,28 @@ function Start-SitlIfNeeded {
     try { Remove-Item -Force $logPath -ErrorAction SilentlyContinue } catch { }
 
     $launchArgs = $Arguments
-    if ($FreshEeprom) {
-        $freshPath = Join-Path $root "obj\main\sitl-rc-check-eeprom.bin"
-        try { Remove-Item -Force $freshPath -ErrorAction SilentlyContinue } catch { }
-        if ([string]::IsNullOrWhiteSpace($launchArgs)) {
-            $launchArgs = "--path=$freshPath"
-        } else {
-            $launchArgs = "$launchArgs --path=$freshPath"
-        }
-    }
 
     $binaryDir = Split-Path $binary -Parent
     if ([string]::IsNullOrWhiteSpace($binaryDir) -or -not (Test-Path $binaryDir)) {
         $binaryDir = $root
+    }
+
+    if ($FreshEeprom) {
+        # SITL parses NO command-line arguments (target.c opens the hardcoded
+        # EEPROM_FILENAME "eeprom.bin" in its working directory), so the old
+        # "--path=..." approach was silently ignored and -FreshEeprom never
+        # actually freshened anything. Move the real file aside instead; the
+        # first boot then writes defaults and exits, which the 2-attempt
+        # start loop below already handles.
+        $eepromPath = Join-Path $binaryDir "eeprom.bin"
+        if (Test-Path $eepromPath) {
+            Write-Host "[SITL-RC] -FreshEeprom: moving $eepromPath aside (-> eeprom.bin.bak)"
+            try {
+                Move-Item -Force $eepromPath "$eepromPath.bak"
+            } catch {
+                Write-Warning "[SITL-RC] Could not move eeprom.bin aside ($_) - continuing with the existing config"
+            }
+        }
     }
 
     $attemptErrors = @()
@@ -677,11 +713,12 @@ function Send-RcWithAck {
         [int]$Yaw,
         [int]$Collective = 1500,
         [int]$Throttle,
+        [int]$Aux1 = 1000,
         [int]$TimeoutSeconds,
         [int]$Retries = 2
     )
 
-    $rc = New-RcPayload -Roll $Roll -Pitch $Pitch -Yaw $Yaw -Collective $Collective -Throttle $Throttle
+    $rc = New-RcPayload -Roll $Roll -Pitch $Pitch -Yaw $Yaw -Collective $Collective -Throttle $Throttle -Aux1 $Aux1
     $forceReconnect = $false
     for ($attempt = 0; $attempt -le $Retries; $attempt++) {
         # A dead-but-not-yet-null connection (server closed, client object
@@ -785,7 +822,7 @@ function Start-JsbsimBridge {
     # Wingflight's own servo output. Returns the started process, or $null if
     # the venv isn't present (caller should treat that as a hard failure for
     # this mode, not silently skip the check).
-    param([string]$Aircraft)
+    param([string]$Aircraft, [switch]$MspGps)
 
     $root = Get-FirmwareRoot
     $bridgePython = Join-Path $root "tools\jsbsim-venv\Scripts\python.exe"
@@ -799,9 +836,12 @@ function Start-JsbsimBridge {
     $logDir = Join-Path $root "obj\main"
     if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
 
+    $bridgeArgs = @($bridgeScript, "--aircraft", $Aircraft, "--trim")
+    if ($MspGps) { $bridgeArgs += "--msp-gps" }
+
     Write-Host "[SITL-RC] Starting JSBSim bridge (aircraft=$Aircraft) ..."
     $p = Start-Process -FilePath $bridgePython `
-        -ArgumentList @($bridgeScript, "--aircraft", $Aircraft, "--trim") `
+        -ArgumentList $bridgeArgs `
         -WorkingDirectory $root `
         -PassThru -NoNewWindow `
         -RedirectStandardOutput (Join-Path $logDir "jsbsim_bridge_check_stdout.log") `
@@ -811,6 +851,139 @@ function Start-JsbsimBridge {
     # before we start relying on attitude responses.
     Start-Sleep -Seconds 2
     return $p
+}
+
+function Get-ArmingStatus {
+    # Reads MSP_STATUS and extracts what the throttle mode needs: whether the
+    # FC is armed (flight-mode flags bit 0 = BOXARM) and the arming-disable
+    # flag mask (see runtime_config.h). Returns $null on failure.
+    # MSP_STATUS payload offsets (see msp.c): [0]U16 pid dt, [2]U16 gyro dt,
+    # [4]U16 sensors, [6]U32 flight mode flags, [10]U8 profile, [11]U16 max
+    # load, [13]U16 avg load, [15]U8 extra-flags count (0), [16]U8 arming
+    # disable flag count, [17]U32 arming disable flags.
+    param([System.IO.Stream]$Stream, [int]$TimeoutSeconds)
+
+    $activeStream = Get-ActiveStream -Stream $Stream -TimeoutSeconds $TimeoutSeconds
+    if ($null -eq $activeStream) { return $null }
+
+    Send-Msp -Stream $activeStream -Command $MSP_STATUS
+    $resp = Receive-MspMatch -Stream $activeStream -ExpectedCommand $MSP_STATUS -TimeoutSeconds $TimeoutSeconds
+    if ($null -eq $resp -or $resp.Payload.Length -lt 21) { return $null }
+
+    return [pscustomobject]@{
+        Armed              = (([BitConverter]::ToUInt32($resp.Payload, 6) -band 1) -ne 0)
+        ArmingDisableFlags = [BitConverter]::ToUInt32($resp.Payload, 17)
+    }
+}
+
+# Arming-disable flag names, bit position = array index (runtime_config.h).
+$ArmingDisableFlagNames = @(
+    "NO_GYRO", "FAILSAFE", "RX_FAILSAFE", "BAD_RX_RECOVERY", "BOXFAILSAFE",
+    "GOVERNOR", "RPM_SIGNAL", "THROTTLE", "ANGLE", "BOOT_GRACE_TIME",
+    "NOPREARM", "LOAD", "CALIBRATING", "CLI", "CMS_MENU", "BST", "MSP",
+    "PARALYZE", "GPS", "RESC", "RPMFILTER", "REBOOT_REQUIRED",
+    "DSHOT_BITBANG", "ACC_CALIBRATION", "MOTOR_PROTOCOL", "OVERRIDE",
+    "ARM_SWITCH")
+
+function Format-ArmingDisableFlags {
+    param([uint32]$Flags)
+    $names = @()
+    for ($b = 0; $b -lt $ArmingDisableFlagNames.Count; $b++) {
+        if (($Flags -band (1 -shl $b)) -ne 0) { $names += $ArmingDisableFlagNames[$b] }
+    }
+    if ($names.Count -eq 0) { return "(none)" }
+    return $names -join "|"
+}
+
+function Get-ArmingStatusWithRc {
+    # Like Get-ArmingStatus, but pipelines an RC frame immediately before the
+    # MSP_STATUS request. SITL's MSP-RX signal timeout is short enough that a
+    # bare status round-trip (no RC frames going out while waiting) can drop
+    # RX - and an RX drop that recovers while the ARM switch is high latches
+    # ARMING_DISABLED_BAD_RX_RECOVERY until the switch goes low again, making
+    # a naive poll loop sabotage the very arming it is checking.
+    param(
+        [System.IO.Stream]$Stream,
+        [int]$Throttle = 1000,
+        [int]$Aux1 = 1000,
+        [int]$TimeoutSeconds
+    )
+
+    $activeStream = Get-ActiveStream -Stream $Stream -TimeoutSeconds $TimeoutSeconds
+    if ($null -eq $activeStream) { return $null }
+
+    Clear-MspInput -Stream $activeStream
+    $rc = New-RcPayload -Roll 1500 -Pitch 1500 -Yaw 1500 -Collective 1500 -Throttle $Throttle -Aux1 $Aux1
+    Send-Msp -Stream $activeStream -Command $MSP_SET_RAW_RC -Payload $rc
+    Send-Msp -Stream $activeStream -Command $MSP_STATUS
+    $resp = Receive-MspMatch -Stream $activeStream -ExpectedCommand $MSP_STATUS -TimeoutSeconds $TimeoutSeconds
+    if ($null -eq $resp -or $resp.Payload.Length -lt 21) { return $null }
+
+    return [pscustomobject]@{
+        Armed              = (([BitConverter]::ToUInt32($resp.Payload, 6) -band 1) -ne 0)
+        ArmingDisableFlags = [BitConverter]::ToUInt32($resp.Payload, 17)
+    }
+}
+
+function Hold-RcFrames {
+    # Streams a fixed RC frame (including AUX1, so an ARM switch can be held)
+    # for DurationMs, FIRE-AND-FORGET: no per-frame ack wait. PowerShell's
+    # overhead on an ack round trip can spike past SITL's 100ms MSP-RX signal
+    # timeout (rxFrameCheck), which made every ack-checked hold drop RX
+    # mid-stream - and an RX drop that recovers while the ARM switch is high
+    # latches ARMING_DISABLED_BAD_RX_RECOVERY, sabotaging the arming this
+    # mode is trying to test. Replies are drained periodically so the TCP
+    # buffer never fills. Returns $true if a usable stream existed.
+    param(
+        [System.IO.Stream]$Stream,
+        [int]$Roll = 1500,
+        [int]$Pitch = 1500,
+        [int]$Yaw = 1500,
+        [int]$Throttle = 1000,
+        [int]$Aux1 = 1000,
+        [int]$DurationMs,
+        [int]$TimeoutSeconds
+    )
+
+    $activeStream = Get-ActiveStream -Stream $Stream -TimeoutSeconds $TimeoutSeconds
+    if ($null -eq $activeStream) { return $false }
+
+    $rc = New-RcPayload -Roll $Roll -Pitch $Pitch -Yaw $Yaw -Collective 1500 -Throttle $Throttle -Aux1 $Aux1
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($DurationMs)
+    $n = 0
+    while ([DateTime]::UtcNow -lt $deadline) {
+        Send-Msp -Stream $activeStream -Command $MSP_SET_RAW_RC -Payload $rc
+        if (((++$n) % 8) -eq 0) { Clear-MspInput -Stream $activeStream }
+        Start-Sleep -Milliseconds 10
+    }
+    Clear-MspInput -Stream $activeStream
+    return $true
+}
+
+function Get-BridgeStatusSamples {
+    # Parses the JSBSim bridge's status lines from its redirected stdout log,
+    # returning the numeric fields of the last -Tail lines as objects:
+    # T (sim s), Alt (ft), Ias (kts), Thr/Ail/Ele/Rud (norm), PacketsRx.
+    param([int]$Tail = 50)
+
+    $root = Get-FirmwareRoot
+    $log = Join-Path $root "obj\main\jsbsim_bridge_check_stdout.log"
+    if (-not (Test-Path $log)) { return @() }
+
+    $samples = @()
+    # -ReadCount 0 + a shared read handle: the bridge holds the file open, so
+    # read defensively and tolerate a partially-written last line.
+    try { $lines = Get-Content $log -Tail $Tail -ErrorAction Stop } catch { return @() }
+    foreach ($line in $lines) {
+        if ($line -match 't=\s*([\d.]+)s\s+alt=\s*(-?[\d.]+)ft\s+ias=\s*([\d.]+)kts\s+thr=([\d.]+)\s+ail=([+\-][\d.]+)\s+ele=([+\-][\d.]+)\s+rud=([+\-][\d.]+)\s+packets_rx=(\d+)') {
+            $samples += [pscustomobject]@{
+                T = [double]$Matches[1]; Alt = [double]$Matches[2]; Ias = [double]$Matches[3]
+                Thr = [double]$Matches[4]; Ail = [double]$Matches[5]; Ele = [double]$Matches[6]
+                Rud = [double]$Matches[7]; PacketsRx = [int]$Matches[8]
+            }
+        }
+    }
+    return $samples
 }
 
 $result = [ordered]@{
@@ -834,12 +1007,17 @@ try {
     $script:ResolvedPort = Start-SitlIfNeeded -RemoteHost $MspHost -ExplicitPort $Port -Candidates $PortCandidates -DoBuild ([bool]$BuildSitl) -Arguments $SitlArgs
     $result.port = $script:ResolvedPort
 
-    if ($Mode -eq "jsbsim") {
+    if ($Mode -in @("jsbsim", "throttle", "gps")) {
         # Started early so JSBSim has time to finish loading the aircraft
-        # model while the MSP handshake below runs concurrently.
-        $script:StartedBridgeProcess = Start-JsbsimBridge -Aircraft $BridgeAircraft
+        # model while the MSP handshake below runs concurrently. For -Mode
+        # throttle the bridge is a hard prerequisite of arming, not just of
+        # the measurement: the fake acc/gyro report no samples at all until
+        # the bridge feeds them (accgyro_fake.c dataReady), so acc
+        # calibration and the ANGLE arming check can only make progress with
+        # live FDM data flowing.
+        $script:StartedBridgeProcess = Start-JsbsimBridge -Aircraft $BridgeAircraft -MspGps:($Mode -eq "gps")
         if ($null -eq $script:StartedBridgeProcess) {
-            throw "Could not start JSBSim bridge (required for -Mode jsbsim)"
+            throw "Could not start JSBSim bridge (required for -Mode $Mode)"
         }
     }
 
@@ -913,21 +1091,30 @@ try {
         Write-Host "[SITL-RC] Feature mask: unavailable"
     }
 
-    # SITL boots disarmed and stays that way for this script (no arming
-    # switch/stick-arming gesture is exercised here). mixerSetInput() only
-    # reflects RC onto disarmed control surfaces when a passthrough override
-    # is active (see mixer.c), so without this, servo-response checks below
-    # would always read zero delta regardless of RC injection correctness.
-    Write-Host "[SITL-RC] Enabling roll/pitch/yaw mixer passthrough override (bench servo test while disarmed)"
-    Enable-RpyPassthroughOverride -Stream $stream -TimeoutSeconds $TimeoutSeconds
+    if ($Mode -ne "throttle") {
+        # SITL boots disarmed and stays that way for these modes (no arming
+        # switch/stick-arming gesture is exercised). mixerSetInput() only
+        # reflects RC onto disarmed control surfaces when a passthrough
+        # override is active (see mixer.c), so without this, servo-response
+        # checks below would always read zero delta regardless of RC
+        # injection correctness.
+        Write-Host "[SITL-RC] Enabling roll/pitch/yaw mixer passthrough override (bench servo test while disarmed)"
+        Enable-RpyPassthroughOverride -Stream $stream -TimeoutSeconds $TimeoutSeconds
 
-    Send-Msp -Stream $stream -Command $MSP_MIXER_OVERRIDE
-    $ovr = Receive-MspMatch -Stream $stream -ExpectedCommand $MSP_MIXER_OVERRIDE -TimeoutSeconds $TimeoutSeconds
-    if ($null -ne $ovr -and $ovr.Length -ge 8) {
-        $ovrValues = ConvertTo-UInt16Array -Data $ovr.Payload
-        Write-Host ("[SITL-RC] Mixer overrides readback: roll={0} pitch={1} yaw={2}" -f $ovrValues[1], $ovrValues[2], $ovrValues[3])
+        Send-Msp -Stream $stream -Command $MSP_MIXER_OVERRIDE
+        $ovr = Receive-MspMatch -Stream $stream -ExpectedCommand $MSP_MIXER_OVERRIDE -TimeoutSeconds $TimeoutSeconds
+        if ($null -ne $ovr -and $ovr.Length -ge 8) {
+            $ovrValues = ConvertTo-UInt16Array -Data $ovr.Payload
+            Write-Host ("[SITL-RC] Mixer overrides readback: roll={0} pitch={1} yaw={2}" -f $ovrValues[1], $ovrValues[2], $ovrValues[3])
+        } else {
+            Write-Host "[SITL-RC] Mixer overrides readback: unavailable"
+        }
     } else {
-        Write-Host "[SITL-RC] Mixer overrides readback: unavailable"
+        # -Mode throttle ARMS the FC, and an active mixer override sets
+        # ARMING_DISABLED_OVERRIDE (see core.c) - so no passthrough here.
+        # Make sure none is left over from an earlier run either.
+        Write-Host "[SITL-RC] Skipping mixer passthrough override (-Mode throttle arms; overrides block arming)"
+        Disable-RpyPassthroughOverride -Stream $stream -TimeoutSeconds $TimeoutSeconds
     }
 
     Send-Msp -Stream $stream -Command 120
@@ -1090,6 +1277,27 @@ try {
         Write-Host "[SITL-RC] Settling at neutral before driving JSBSim through control extremes ..."
         $neutral = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1500 -Yaw 1500 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
 
+        # Control-neutral drift baseline: hold neutral for the same duration
+        # as each control hold below and measure how much attitude changes on
+        # its own. The control-response gates then require the commanded
+        # response to exceed this free-dynamics drift by
+        # -JsbsimDriftMarginFactor, so "the elevator worked" can be
+        # distinguished from "the aircraft was diverging anyway".
+        Write-Host "[SITL-RC] Measuring control-neutral drift baseline ..."
+        $neutralB = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1500 -Yaw 1500 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
+
+        $rollDrift = 0.0
+        $pitchDrift = 0.0
+        if ($null -ne $neutral -and $null -ne $neutralB) {
+            $rollDrift = [math]::Abs($neutralB.Roll - $neutral.Roll)
+            $pitchDrift = [math]::Abs($neutralB.Pitch - $neutral.Pitch)
+            $result.axisDeltas["jsbsim_roll_drift_deg"] = [math]::Round($rollDrift, 1)
+            $result.axisDeltas["jsbsim_pitch_drift_deg"] = [math]::Round($pitchDrift, 1)
+            Write-Host ("[SITL-RC] Control-neutral drift over {0}ms: roll={1}deg pitch={2}deg" -f $JsbsimSettleMs, [math]::Round($rollDrift, 1), [math]::Round($pitchDrift, 1))
+        } else {
+            Write-Warning "[SITL-RC] Could not measure drift baseline - falling back to the fixed threshold only."
+        }
+
         Write-Host "[SITL-RC] Driving roll extremes through JSBSim ..."
         $rollHigh = Hold-RcAndReadAttitude -Stream $stream -Roll 1900 -Pitch 1500 -Yaw 1500 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
         $rollLow  = Hold-RcAndReadAttitude -Stream $stream -Roll 1100 -Pitch 1500 -Yaw 1500 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
@@ -1104,38 +1312,274 @@ try {
         $yawHigh = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1500 -Yaw 1900 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
         $yawLow  = Hold-RcAndReadAttitude -Stream $stream -Roll 1500 -Pitch 1500 -Yaw 1100 -DurationMs $JsbsimSettleMs -TimeoutSeconds $TimeoutSeconds
 
-        $rollDelta = 0.0
+        # SIGNED responses. MSP_ATTITUDE conventions (imuUpdateEulerAngles):
+        # roll positive = right wing down, pitch positive = nose up. RC 1900
+        # roll = stick right, RC 1900 pitch = stick back. So a correctly-
+        # signed chain (mixer -> servos -> bridge -> JSBSim surfaces) gives
+        # POSITIVE (high - low) on both axes; a negative value of sufficient
+        # magnitude means the loop works but a control direction is inverted
+        # (fix with the bridge's --invert-aileron/--invert-elevator, not in
+        # the mixer).
+        $rollSigned = 0.0
         if ($null -ne $rollHigh -and $null -ne $rollLow) {
-            $rollDelta = [math]::Abs($rollHigh.Roll - $rollLow.Roll)
-            $result.axisDeltas["jsbsim_roll_deg"] = [math]::Round($rollDelta, 1)
+            $rollSigned = $rollHigh.Roll - $rollLow.Roll
+            $result.axisDeltas["jsbsim_roll_deg"] = [math]::Round($rollSigned, 1)
         } else {
-            $result.axisDeltas["jsbsim_roll_deg"] = -1
+            $result.axisDeltas["jsbsim_roll_deg"] = -999
         }
 
-        $pitchDelta = 0.0
+        $pitchSigned = 0.0
         if ($null -ne $pitchHigh -and $null -ne $pitchLow) {
-            $pitchDelta = [math]::Abs($pitchHigh.Pitch - $pitchLow.Pitch)
-            $result.axisDeltas["jsbsim_pitch_deg"] = [math]::Round($pitchDelta, 1)
+            $pitchSigned = $pitchHigh.Pitch - $pitchLow.Pitch
+            $result.axisDeltas["jsbsim_pitch_deg"] = [math]::Round($pitchSigned, 1)
         } else {
-            $result.axisDeltas["jsbsim_pitch_deg"] = -1
+            $result.axisDeltas["jsbsim_pitch_deg"] = -999
         }
 
         if ($null -ne $yawHigh -and $null -ne $yawLow) {
-            $yawDelta = [math]::Abs((Get-AngleDeltaDeg -A $yawHigh.Yaw -B $yawLow.Yaw))
+            $yawDelta = Get-AngleDeltaDeg -A $yawHigh.Yaw -B $yawLow.Yaw
             $result.axisDeltas["jsbsim_yaw_deg"] = [math]::Round($yawDelta, 1)
         } else {
-            $result.axisDeltas["jsbsim_yaw_deg"] = -1
+            $result.axisDeltas["jsbsim_yaw_deg"] = -999
         }
 
-        Write-Host ("[SITL-RC] JSBSim attitude response: roll={0}deg pitch={1}deg yaw={2}deg (threshold {3}deg, roll/pitch gate pass/fail)" -f `
-            $result.axisDeltas["jsbsim_roll_deg"], $result.axisDeltas["jsbsim_pitch_deg"], $result.axisDeltas["jsbsim_yaw_deg"], $JsbsimAttitudeThresholdDeg)
+        $rollGate = [math]::Max($JsbsimAttitudeThresholdDeg, $rollDrift * $JsbsimDriftMarginFactor)
+        $pitchGate = [math]::Max($JsbsimAttitudeThresholdDeg, $pitchDrift * $JsbsimDriftMarginFactor)
+        $result.axisDeltas["jsbsim_roll_gate_deg"] = [math]::Round($rollGate, 1)
+        $result.axisDeltas["jsbsim_pitch_gate_deg"] = [math]::Round($pitchGate, 1)
+
+        Write-Host ("[SITL-RC] JSBSim signed attitude response (high - low): roll={0}deg (gate +{1}) pitch={2}deg (gate +{3}) yaw={4}deg (informational)" -f `
+            $result.axisDeltas["jsbsim_roll_deg"], $rollGate, $result.axisDeltas["jsbsim_pitch_deg"], $pitchGate, $result.axisDeltas["jsbsim_yaw_deg"])
+
+        foreach ($axis in @(
+            @{ Name = "roll (aileron)"; Signed = $rollSigned; Gate = $rollGate; Fix = "--invert-aileron" },
+            @{ Name = "pitch (elevator)"; Signed = $pitchSigned; Gate = $pitchGate; Fix = "--invert-elevator" })) {
+            if ($axis.Signed -le -$axis.Gate) {
+                Write-Warning ("[SITL-RC] {0} responds strongly but in the WRONG direction ({1}deg) - the loop is alive but the control-surface sign convention is inverted; launch the bridge with {2}." -f $axis.Name, [math]::Round($axis.Signed, 1), $axis.Fix)
+            }
+        }
 
         $allAcked = $true
-        foreach ($sample in @($neutral, $rollHigh, $rollLow, $pitchHigh, $pitchLow, $yawHigh, $yawLow)) {
+        foreach ($sample in @($neutral, $neutralB, $rollHigh, $rollLow, $pitchHigh, $pitchLow, $yawHigh, $yawLow)) {
             if ($null -eq $sample -or -not $sample.AckOk) { $allAcked = $false }
         }
         $result.rcInjectOk = $allAcked
-        $result.controlResponsive = ($rollDelta -ge $JsbsimAttitudeThresholdDeg -and $pitchDelta -ge $JsbsimAttitudeThresholdDeg)
+        $result.controlResponsive = ($rollSigned -ge $rollGate -and $pitchSigned -ge $pitchGate)
+    }
+
+    if ($Mode -eq "throttle") {
+        # A disarmed FC forces motor output to motor-stop regardless of RC
+        # (drivers/motor.c), so unlike roll/pitch this HAS to arm. Chain under
+        # test: RC throttle -> mixer -> motorsPwm[0] -> servo_packet
+        # motor_speed[3] (target.c's Gazebo remap) -> jsbsim_bridge.py ->
+        # fcs/throttle-cmd-norm -> engine thrust (IAS).
+
+        # 1. Put ARM on AUX1 (1700-2100us): MSP_SET_MODE_RANGE payload =
+        # index, box permanentId (ARM=0), aux channel index (0=AUX1), start
+        # step, end step. NOTE this firmware's step encoding is NOT
+        # Betaflight's (900 + 25*step): rc_modes.h defines
+        # STEP_TO_CHANNEL_VALUE(step) = 1500 + 5*step with signed steps
+        # -125..125, so 1700us = step 40 and 2100us = step 120. Runtime-
+        # effective (msp.c calls rcControlsInit()), no EEPROM write needed.
+        Write-Host "[SITL-RC] Configuring ARM mode range on AUX1 (1700-2100us) ..."
+        $macPayload = [byte[]]@(0, 0, 0, 40, 120)
+        Send-Msp -Stream $stream -Command $MSP_SET_MODE_RANGE -Payload $macPayload
+        $ack = Receive-MspMatch -Stream $stream -ExpectedCommand $MSP_SET_MODE_RANGE -TimeoutSeconds $TimeoutSeconds
+        if ($null -eq $ack -or $ack.IsError) {
+            throw "MSP_SET_MODE_RANGE failed - cannot configure an ARM switch"
+        }
+
+        # 2. Wait for the bridge link to be alive first: the fake acc/gyro
+        # deliver no samples until fdm_packets flow, so nothing below (acc
+        # calibration, the ANGLE check) can progress without it.
+        Write-Host "[SITL-RC] Waiting for the bridge to report telemetry ..."
+        $bridgeDeadline = [DateTime]::UtcNow.AddSeconds(30)
+        $bridgeUp = $false
+        while ([DateTime]::UtcNow -lt $bridgeDeadline) {
+            # Keep RC streaming so RX failsafe never trips while we wait.
+            $null = Hold-RcFrames -Stream $stream -Throttle 1000 -Aux1 1000 -DurationMs 500 -TimeoutSeconds $TimeoutSeconds
+            $probe = Get-BridgeStatusSamples -Tail 3
+            if ($probe.Count -gt 0 -and $probe[-1].PacketsRx -gt 0) { $bridgeUp = $true; break }
+        }
+        if (-not $bridgeUp) {
+            throw "JSBSim bridge never reported packets_rx > 0 - the UDP link to SITL is dead (see obj/main/jsbsim_bridge_check_stdout.log)"
+        }
+
+        # 3. Stream disarmed neutral (throttle low, AUX1 low) until the
+        # arming-disable flags clear. This firmware always requires an
+        # explicit acc calibration (accNeedsCalibration() in core.c), so
+        # kick one off via MSP_ACC_CALIBRATION when its flag shows up - it
+        # just averages 400 samples, which trimmed near-steady flight
+        # provides. The result persists in eeprom.bin, so later runs skip it.
+        Write-Host "[SITL-RC] Waiting for arming-disable flags to clear (throttle low, ARM switch off) ..."
+        $armReadyDeadline = [DateTime]::UtcNow.AddSeconds(30)
+        $lastFlags = [uint32]::MaxValue
+        $armReady = $false
+        $accCalRequested = $false
+        $ARMING_DISABLED_ACC_CALIBRATION = [uint32](1 -shl 23)
+        while ([DateTime]::UtcNow -lt $armReadyDeadline) {
+            $null = Hold-RcFrames -Stream $stream -Throttle 1000 -Aux1 1000 -DurationMs 400 -TimeoutSeconds $TimeoutSeconds
+            $st = Get-ArmingStatusWithRc -Stream $stream -Throttle 1000 -Aux1 1000 -TimeoutSeconds $TimeoutSeconds
+            if ($null -eq $st) { continue }
+            if ($st.ArmingDisableFlags -ne $lastFlags) {
+                Write-Host ("[SITL-RC]   arming-disable: {0}" -f (Format-ArmingDisableFlags -Flags $st.ArmingDisableFlags))
+                $lastFlags = $st.ArmingDisableFlags
+            }
+            if (-not $accCalRequested -and (($st.ArmingDisableFlags -band $ARMING_DISABLED_ACC_CALIBRATION) -ne 0)) {
+                Write-Host "[SITL-RC] Requesting acc calibration (MSP_ACC_CALIBRATION) ..."
+                Send-Msp -Stream $stream -Command 205
+                $null = Receive-MspMatch -Stream $stream -ExpectedCommand 205 -TimeoutSeconds $TimeoutSeconds
+                $accCalRequested = $true
+            }
+            if ($st.ArmingDisableFlags -eq 0) { $armReady = $true; break }
+        }
+        if (-not $armReady) {
+            throw ("Arming-disable flags never cleared: {0}" -f (Format-ArmingDisableFlags -Flags $lastFlags))
+        }
+
+        # 4. ARM switch on (throttle still low), confirm the FC reports armed.
+        # If an RX hiccup latches BAD_RX_RECOVERY (only clears with the ARM
+        # switch OFF), toggle the switch low briefly and try again.
+        Write-Host "[SITL-RC] Arming (AUX1 high, throttle low) ..."
+        $ARMING_DISABLED_BAD_RX_RECOVERY = [uint32](1 -shl 3)
+        $armDeadline = [DateTime]::UtcNow.AddSeconds(15)
+        $armed = $false
+        $lastArmFlags = [uint32]0
+        while ([DateTime]::UtcNow -lt $armDeadline) {
+            $null = Hold-RcFrames -Stream $stream -Throttle 1000 -Aux1 2000 -DurationMs 500 -TimeoutSeconds $TimeoutSeconds
+            $st = Get-ArmingStatusWithRc -Stream $stream -Throttle 1000 -Aux1 2000 -TimeoutSeconds $TimeoutSeconds
+            if ($null -eq $st) { continue }
+            if ($st.Armed) { $armed = $true; break }
+            $lastArmFlags = $st.ArmingDisableFlags
+            if (($st.ArmingDisableFlags -band $ARMING_DISABLED_BAD_RX_RECOVERY) -ne 0) {
+                Write-Host "[SITL-RC]   BAD_RX_RECOVERY latched - toggling ARM switch off to clear it ..."
+                $null = Hold-RcFrames -Stream $stream -Throttle 1000 -Aux1 1000 -DurationMs 400 -TimeoutSeconds $TimeoutSeconds
+            }
+        }
+        $result.rcInjectOk = $armed
+        if (-not $armed) {
+            throw ("FC did not arm (arming-disable: {0})" -f (Format-ArmingDisableFlags -Flags $lastArmFlags))
+        }
+        Write-Host "[SITL-RC] Armed."
+
+        try {
+            # 5. Raise throttle and hold; JSBSim's received throttle shows up
+            # in the bridge's status log (thr=), IAS response follows.
+            $iasBefore = $null
+            $pre = Get-BridgeStatusSamples -Tail 5
+            if ($pre.Count -gt 0) { $iasBefore = $pre[-1].Ias }
+
+            Write-Host ("[SITL-RC] Holding throttle at {0}us for {1}ms ..." -f $ThrottleTestUs, $ThrottleHoldMs)
+            $null = Hold-RcFrames -Stream $stream -Throttle $ThrottleTestUs -Aux1 2000 -DurationMs $ThrottleHoldMs -TimeoutSeconds $TimeoutSeconds
+
+            # 6. Evidence, FC side: MSP_MOTOR while the throttle is still held.
+            # RC frame pipelined first - an RX gap while ARMED means real
+            # failsafe, not just a flag.
+            $rcHold = New-RcPayload -Roll 1500 -Pitch 1500 -Yaw 1500 -Collective 1500 -Throttle $ThrottleTestUs -Aux1 2000
+            Send-Msp -Stream $stream -Command $MSP_SET_RAW_RC -Payload $rcHold
+            Send-Msp -Stream $stream -Command $MSP_MOTOR
+            $mot = Receive-MspMatch -Stream $stream -ExpectedCommand $MSP_MOTOR -TimeoutSeconds $TimeoutSeconds
+            $motor0 = -1
+            if ($null -ne $mot -and $mot.Payload.Length -ge 2) {
+                $motor0 = [BitConverter]::ToUInt16($mot.Payload, 0)
+            }
+            $result.axisDeltas["motor0_us"] = $motor0
+
+            # Evidence, JSBSim side: last bridge status line during the hold.
+            $samples = Get-BridgeStatusSamples -Tail 10
+            $bridgeThr = -1.0
+            $iasAfter = $null
+            if ($samples.Count -gt 0) {
+                $bridgeThr = ($samples | ForEach-Object { $_.Thr } | Measure-Object -Maximum).Maximum
+                $iasAfter = $samples[-1].Ias
+            }
+            $result.axisDeltas["jsbsim_throttle_cmd"] = $bridgeThr
+            if ($null -ne $iasBefore -and $null -ne $iasAfter) {
+                $result.axisDeltas["ias_delta_kts"] = [math]::Round($iasAfter - $iasBefore, 1)
+            }
+
+            Write-Host ("[SITL-RC] Throttle evidence: MSP_MOTOR[0]={0}us, JSBSim thr={1}, IAS {2} -> {3} kts" -f `
+                $motor0, $bridgeThr, $iasBefore, $iasAfter)
+
+            # Pass: JSBSim actually received a meaningfully raised throttle.
+            # (RC 1800us maps to roughly 0.7+ after the motor output range
+            # scaling; 0.4 leaves headroom for different min/maxthrottle
+            # configs while still being unreachable by idle/motor-stop.)
+            $result.controlResponsive = ($bridgeThr -ge 0.4)
+        } finally {
+            # 7. Always disarm, even if evidence collection above threw.
+            Write-Host "[SITL-RC] Disarming ..."
+            $null = Hold-RcFrames -Stream $stream -Throttle 1000 -Aux1 1000 -DurationMs 700 -TimeoutSeconds $TimeoutSeconds
+            $st = Get-ArmingStatusWithRc -Stream $stream -Throttle 1000 -Aux1 1000 -TimeoutSeconds $TimeoutSeconds
+            if ($null -ne $st -and $st.Armed) {
+                Write-Warning "[SITL-RC] FC still reports armed after disarm attempt"
+            }
+        }
+    }
+
+    if ($Mode -eq "gps") {
+        # Chain under test: JSBSim position/velocity -> jsbsim_bridge.py
+        # --msp-gps -> MSP_SET_RAW_GPS on SITL's second MSP port (5762) ->
+        # gps.c (provider GPS_MSP) -> gpsSol -> MSP_RAW_GPS on our port.
+        function Read-RawGps {
+            param([System.IO.Stream]$S)
+            # RC frame pipelined first so the read gap can't drop RX.
+            $rcN = New-RcPayload -Roll 1500 -Pitch 1500 -Yaw 1500 -Collective 1500 -Throttle 1000
+            Send-Msp -Stream $S -Command $MSP_SET_RAW_RC -Payload $rcN
+            Send-Msp -Stream $S -Command $MSP_RAW_GPS
+            $resp = Receive-MspMatch -Stream $S -ExpectedCommand $MSP_RAW_GPS -TimeoutSeconds $TimeoutSeconds
+            if ($null -eq $resp -or $resp.Payload.Length -lt 16) { return $null }
+            return [pscustomobject]@{
+                Fix      = $resp.Payload[0]
+                NumSat   = $resp.Payload[1]
+                LatDeg   = [BitConverter]::ToInt32($resp.Payload, 2) / 1e7
+                LonDeg   = [BitConverter]::ToInt32($resp.Payload, 6) / 1e7
+                AltM     = [BitConverter]::ToUInt16($resp.Payload, 10)
+                SpeedCms = [BitConverter]::ToUInt16($resp.Payload, 12)
+            }
+        }
+
+        Write-Host "[SITL-RC] Waiting for a GPS fix via the bridge's MSP feed ..."
+        $fixDeadline = [DateTime]::UtcNow.AddSeconds(45)
+        $gpsA = $null
+        while ([DateTime]::UtcNow -lt $fixDeadline) {
+            $null = Hold-RcFrames -Stream $stream -DurationMs 500 -TimeoutSeconds $TimeoutSeconds
+            $g = Read-RawGps -S $stream
+            if ($null -ne $g -and $g.Fix -ne 0 -and $g.NumSat -ge 5) { $gpsA = $g; break }
+        }
+        if ($null -eq $gpsA) {
+            throw ("No GPS fix reported. Bridge log (obj/main/jsbsim_bridge_check_stdout.log) shows whether its " +
+                   "MSP GPS feed connected to TCP 5762 - an older eeprom.bin has neither the UART2 MSP port nor " +
+                   "the GPS_MSP provider default; re-run with -FreshEeprom.")
+        }
+        Write-Host ("[SITL-RC] Fix: numSat={0} lat={1} lon={2} alt={3}m speed={4}cm/s" -f `
+            $gpsA.NumSat, [math]::Round($gpsA.LatDeg, 5), [math]::Round($gpsA.LonDeg, 5), $gpsA.AltM, $gpsA.SpeedCms)
+
+        # Second sample after a few seconds of (gliding) flight: position must
+        # track the moving aircraft, not just echo a constant.
+        $null = Hold-RcFrames -Stream $stream -DurationMs 4000 -TimeoutSeconds $TimeoutSeconds
+        $gpsB = Read-RawGps -S $stream
+        if ($null -eq $gpsB) { throw "Second MSP_RAW_GPS read failed" }
+
+        $movedM = [math]::Sqrt(
+            [math]::Pow(($gpsB.LatDeg - $gpsA.LatDeg) * 111320.0, 2) +
+            [math]::Pow(($gpsB.LonDeg - $gpsA.LonDeg) * 111320.0 * [math]::Cos($gpsA.LatDeg * [math]::PI / 180.0), 2))
+
+        # Near the KSFO initial conditions (within ~0.5 deg), moving at a
+        # plausible glide speed, and the position actually changes.
+        $nearIc = ([math]::Abs($gpsA.LatDeg - 37.6136) -lt 0.5) -and ([math]::Abs($gpsA.LonDeg - (-122.3572)) -lt 0.5)
+        $moving = ($movedM -ge 50.0) -and ($gpsB.SpeedCms -gt 500)
+
+        $result.axisDeltas["gps_numsat"] = [int]$gpsA.NumSat
+        $result.axisDeltas["gps_lat_deg"] = [math]::Round($gpsA.LatDeg, 5)
+        $result.axisDeltas["gps_lon_deg"] = [math]::Round($gpsA.LonDeg, 5)
+        $result.axisDeltas["gps_speed_cms"] = [int]$gpsB.SpeedCms
+        $result.axisDeltas["gps_moved_m"] = [math]::Round($movedM, 1)
+
+        Write-Host ("[SITL-RC] GPS movement over ~4s: {0}m (nearIC={1}, moving={2})" -f [math]::Round($movedM, 1), $nearIc, $moving)
+
+        $result.rcInjectOk = $true
+        $result.controlResponsive = ($nearIc -and $moving)
     }
 
     Set-Neutral -Stream $stream

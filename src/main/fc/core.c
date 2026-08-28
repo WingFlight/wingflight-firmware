@@ -288,11 +288,17 @@ void updateArmingStatus(void)
             unsetArmingDisabled(ARMING_DISABLED_ANGLE);
         }
 
+#ifndef SIMULATOR_BUILD
+        // Not meaningful under SITL: the scheduler's load percentages are
+        // host/wall-clock artifacts of the simulated (simRate-scaled) time
+        // base and routinely sit above the threshold, which would make
+        // arming in the simulator permanently flaky.
         if (getMaxRealTimeLoad() > 750 || getAverageCPULoad() > 750 || getAverageSystemLoad() > 750) {
             setArmingDisabled(ARMING_DISABLED_LOAD);
         } else {
             unsetArmingDisabled(ARMING_DISABLED_LOAD);
         }
+#endif
 
         if (isCalibrating()) {
             setArmingDisabled(ARMING_DISABLED_CALIBRATING);

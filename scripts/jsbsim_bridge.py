@@ -129,6 +129,104 @@ class ActuatorState:
         self.servo = list(values[4:12])
 
 
+class MspGpsFeeder:
+    """Feeds JSBSim's position/velocity to Wingflight as MSP GPS data.
+
+    Wingflight's `fdm_packet` carries no geodetic position, and target.c
+    ignores what position it does carry (apart from the baro derivation), so
+    GPS-dependent firmware is untestable over the UDP link alone. This feeder
+    closes that gap through the front door instead: it connects to a SITL MSP
+    TCP port and pushes MSP_SET_RAW_GPS frames (fix, numSat, lat/lon, altitude,
+    ground speed), which gps.c consumes when the GPS provider is set to MSP
+    (SITL's config default, see src/main/target/SITL/config.c).
+
+    Needs its OWN MSP port: SITL's per-port TCP MSP server accepts one client
+    at a time, and 5761 (UART1) is usually taken by the RC/telemetry client.
+    SITL's config default opens a second MSP port on 5762 (UART2). Frames are
+    fire-and-forget; responses are drained and discarded. Connection failures
+    retry forever without disturbing the physics loop.
+    """
+
+    MSP_SET_GPS_CONFIG = 223
+    MSP_SET_RAW_GPS = 201
+    GPS_PROVIDER_MSP = 2  # gpsProvider_e in src/main/pg/gps.h
+
+    def __init__(self, host, port, rate_hz, set_provider=True):
+        self.host = host
+        self.port = port
+        self.interval = 1.0 / max(0.1, rate_hz)
+        self.set_provider = set_provider
+        self.sock = None
+        self.next_send = 0.0
+        self.next_connect = 0.0
+        self.warned = False
+
+    @staticmethod
+    def _frame(cmd, payload):
+        frame = bytearray(b"$M<")
+        frame.append(len(payload))
+        frame.append(cmd)
+        ck = len(payload) ^ cmd
+        for b in payload:
+            ck ^= b
+        frame += payload
+        frame.append(ck)
+        return bytes(frame)
+
+    def _connect(self, now):
+        if now < self.next_connect:
+            return
+        self.next_connect = now + 2.0
+        try:
+            self.sock = socket.create_connection((self.host, self.port), timeout=0.5)
+            self.sock.setblocking(False)
+            if self.set_provider:
+                # Runtime-only (not saved to EEPROM): makes the feed work even
+                # against an older eeprom.bin whose provider is not MSP yet.
+                cfg = struct.pack("<BBBB", self.GPS_PROVIDER_MSP, 0, 1, 0)
+                self.sock.sendall(self._frame(self.MSP_SET_GPS_CONFIG, cfg))
+            print(f"[jsbsim-bridge] MSP GPS feed connected to {self.host}:{self.port}")
+            self.warned = False
+        except OSError as exc:
+            self.sock = None
+            if not self.warned:
+                print(f"[jsbsim-bridge] MSP GPS feed: cannot connect to {self.host}:{self.port} ({exc}) - "
+                      "retrying in the background (older eeprom.bin without the UART2 MSP port? "
+                      "delete it / use -FreshEeprom to pick up SITL's config defaults)")
+                self.warned = True
+
+    def update(self, fdm, now):
+        if self.sock is None:
+            self._connect(now)
+            return
+        if now < self.next_send:
+            return
+        self.next_send = now + self.interval
+
+        lat = int(fdm.get_property_value("position/lat-geod-deg") * 1e7)
+        lon = int(fdm.get_property_value("position/long-gc-deg") * 1e7)
+        alt_m = int(max(0.0, min(65535.0, fdm.get_property_value("position/h-sl-ft") * FT_TO_M)))
+        speed_cms = int(max(0.0, min(65535.0, fdm.get_property_value("velocities/vg-fps") * 30.48)))
+        payload = struct.pack("<BBiiHH", 1, 10, lat, lon, alt_m, speed_cms)
+
+        try:
+            self.sock.sendall(self._frame(self.MSP_SET_RAW_GPS, payload))
+            # Drain replies so the TCP buffer never fills.
+            while True:
+                try:
+                    if not self.sock.recv(4096):
+                        raise OSError("connection closed")
+                except BlockingIOError:
+                    break
+        except OSError:
+            try:
+                self.sock.close()
+            except OSError:
+                pass
+            self.sock = None
+            print("[jsbsim-bridge] MSP GPS feed lost - reconnecting ...")
+
+
 def drain_actuator_updates(sock, state):
     """Non-blocking: apply the most recent servo_packet available, if any."""
     received = False
@@ -281,6 +379,15 @@ def parse_args(argv=None):
                         help="Keep streaming after a crash/NaN instead of re-running the initial conditions")
     parser.add_argument("--no-realtime", action="store_true", help="Run as fast as possible instead of pacing to wall-clock time")
     parser.add_argument("--status-interval", type=float, default=2.0, help="Seconds between status lines (default: 2)")
+    parser.add_argument("--msp-gps", action="store_true",
+                        help="Also feed JSBSim's position/velocity to SITL as MSP GPS data (MSP_SET_RAW_GPS) "
+                             "over a second MSP TCP port (see --msp-gps-port)")
+    parser.add_argument("--msp-gps-port", type=int, default=5762,
+                        help="SITL MSP TCP port for the GPS feed (default: 5762 = UART2, SITL's config default; "
+                             "must NOT be the port the RC/telemetry client uses - one client per port)")
+    parser.add_argument("--msp-gps-rate", type=float, default=5.0, help="GPS feed rate in Hz (default: 5)")
+    parser.add_argument("--no-msp-gps-config", action="store_true",
+                        help="Do not set the FC's GPS provider to MSP on connect (runtime-only change, never saved)")
     parser.add_argument("--flightgear", action="store_true", help="Also stream state to FlightGear via JSBSim's native FDM UDP output")
     parser.add_argument("--fg-host", default="127.0.0.1", help="FlightGear host (default: 127.0.0.1)")
     parser.add_argument("--fg-port", type=int, default=5550, help="FlightGear --native-fdm UDP port (default: 5550)")
@@ -348,6 +455,12 @@ def main():
     scale = SurfaceScaler(args.servo_min, args.servo_mid, args.servo_max)
     state = ActuatorState()
 
+    gps_feeder = None
+    if args.msp_gps:
+        gps_feeder = MspGpsFeeder(args.host, args.msp_gps_port, args.msp_gps_rate,
+                                  set_provider=not args.no_msp_gps_config)
+        print(f"[jsbsim-bridge] MSP GPS feed enabled -> {args.host}:{args.msp_gps_port} @ {args.msp_gps_rate}Hz")
+
     print(f"[jsbsim-bridge] aircraft={args.aircraft} rate={args.rate}Hz "
           f"recv={args.host}:{args.recv_port} send={args.host}:{args.send_port} "
           f"throttle=motor_speed[{args.throttle_index}] "
@@ -378,6 +491,8 @@ def main():
             send_sock.sendto(build_fdm_packet(fdm, initial_altitude_ft), send_addr)
 
             now = time.monotonic()
+            if gps_feeder is not None:
+                gps_feeder.update(fdm, now)
             if now >= next_status:
                 print(
                     f"[jsbsim-bridge] t={fdm.get_sim_time():7.2f}s "
@@ -405,6 +520,11 @@ def main():
     finally:
         recv_sock.close()
         send_sock.close()
+        if gps_feeder is not None and gps_feeder.sock is not None:
+            try:
+                gps_feeder.sock.close()
+            except OSError:
+                pass
         print("\n[jsbsim-bridge] stopped")
 
 

@@ -1,6 +1,7 @@
 # SITL → JSBSim → FlightGear Integration Plan
 
-Status: **Phases 0–4 implemented; Phase 5 (gap review, 2026-08-27) applied.**
+Status: **Phases 0–4 implemented; Phase 5 (gap review, 2026-08-27) applied;
+Phase 6 (2026-08-28, §12) closed every remaining §10.15 gap.**
 The native MinGW-w64 toolchain is vendored under `tools/mingw64`, the
 `pwmOutConfig`/servo link gap is fixed, `make TARGET=SITL` builds and runs, RC
 injection and servo output are confirmed end-to-end via `sitl-rc-check.ps1`, and
@@ -19,9 +20,12 @@ is the likely reason earlier phases recorded passes that do not reproduce.
 All of §10's fixes are validated on this machine (§10.14): `make TARGET=SITL
 DEBUG=GDB` links, and `sitl-rc-check.ps1` passes in all four modes -
 `smoke`/`sweep`/`stress` plus `jsbsim` (roll 84.8°, pitch 40.9°, yaw 37.0°
-against a 3° threshold). **FlightGear is still unvalidated against a real
-install** (not present here), and §10.15 lists what else remains open. §11 is the
-step-by-step "how to build, run and test this from a fresh clone".
+against a 3° threshold). **FlightGear is now validated against a
+real install (2026-08-28): FlightGear 2024.1.7 × JSBSim 1.3.1** — see §8
+Validation status. §10.15's open items are all closed as of Phase 6 (§12):
+signed/drift-gated control response, an automated ARMED throttle check, and a
+GPS feed into the firmware. §11 is the step-by-step "how to build, run and
+test this from a fresh clone".
 
 ## 1. Executive Summary
 
@@ -279,15 +283,17 @@ user's decision above.
   configured port and ran the bridge with `--flightgear` — confirmed steady,
   correctly-rate-limited (30 Hz → 601 datagrams over ~20s) fixed-size (408-byte)
   binary frames, i.e. JSBSim is genuinely emitting FlightGear's native FDM struct.
-  **Not yet validated against a real FlightGear process** (not installed on this
-  dev machine — see §8 for install instructions and the exact JSBSim/FlightGear
-  versions to pin together before trusting this end-to-end).
+  **Since validated against a real FlightGear process** (2026-08-28, FlightGear
+  2024.1.7 — see §8 Validation status; §8 Install has the install instructions
+  and the version pair to pin together).
 - [x] Provide a documented one-shot launch sequence: Wingflight SITL → JSBSim bridge →
   FlightGear, plus a PowerShell helper script analogous to `sitl-rc-check.ps1`.
   **Done**: [scripts/sitl-jsbsim-flightgear-launch.ps1](../../scripts/sitl-jsbsim-flightgear-launch.ps1)
-  (see §8 for usage). Smoke-tested (without `-FgfsPath`, since FlightGear isn't
-  installed here): starts SITL, starts the bridge with `--flightgear`, prints the
-  matching `fgfs` command, and stops both cleanly with `-StopOnExit`.
+  (see §8 for usage). Initially smoke-tested without `-FgfsPath` (FlightGear not
+  yet installed): starts SITL, starts the bridge with `--flightgear`, prints the
+  matching `fgfs` command, and stops both cleanly with `-StopOnExit`. Later
+  (2026-08-28) run with `-FgfsPath` against a real FlightGear 2024.1.7 install —
+  see §8 Validation status.
 
 ### Phase 4 — Validation & docs
 - [x] Extend or add an RC-injection script (building on `sitl-rc-check.ps1`'s
@@ -330,9 +336,10 @@ user's decision above.
 
 - ~~**§2.3 is a hypothesis, not yet confirmed**~~ — confirmed and fixed (see §2.3).
 - FlightGear/JSBSim wire-protocol compatibility has shifted across versions upstream;
-  needs pinning and a smoke test, not just documentation. **Still open** — no
-  FlightGear install exists on this dev machine, so only JSBSim's side of the wire
-  has been observed (see §8 "Validation status").
+  needs pinning and a smoke test, not just documentation. **Resolved for the pinned
+  pair** (2026-08-28): JSBSim 1.3.1 × FlightGear 2024.1.7 verified in lockstep over
+  the native-FDM link (see §8 "Validation status"). Any *other* pairing remains
+  unverified — re-run that check after upgrading either side.
 - No unit tests will be added for any of this (per standing project preference).
 - **Realtime pacing.** JSBSim can run faster or slower than real time, and
   `target.c`'s `updateState()` derives `simRate` from consecutive `fdm_packet`
@@ -368,9 +375,9 @@ user's decision above.
 4. ~~Only then start the JSBSim bridge (Phase 2)~~ Done — see
    [scripts/jsbsim_bridge.py](../../scripts/jsbsim_bridge.py), validated end-to-end
    against a live `wingflight_SITL.elf` via `MSP_ATTITUDE`.
-5. ~~Add FlightGear visualization (Phase 3)~~ Done (pending real-FlightGear
-   validation) — see [scripts/sitl-jsbsim-flightgear-launch.ps1](../../scripts/sitl-jsbsim-flightgear-launch.ps1)
-   and §8.
+5. ~~Add FlightGear visualization (Phase 3)~~ Done — see
+   [scripts/sitl-jsbsim-flightgear-launch.ps1](../../scripts/sitl-jsbsim-flightgear-launch.ps1)
+   and §8 (validated against a real FlightGear 2024.1.7 install, 2026-08-28).
 6. ~~Manual/interactive RC input for SITL~~ Done — see
    [scripts/sitl-joystick-rc.py](../../scripts/sitl-joystick-rc.py) and
    [SITL Joystick RC Input.md](SITL%20Joystick%20RC%20Input.md) (USB joystick/gamepad
@@ -379,8 +386,8 @@ user's decision above.
    validates the full RC→JSBSim→attitude loop end-to-end (see Phase 4 checklist
    above), [src/main/target/SITL/README.md](../../src/main/target/SITL/README.md) documents
    the JSBSim/FlightGear workflow, and §9 records the exact pinned versions used.
-   Remaining open item: validating against a real FlightGear install (not present on
-   this dev machine).
+   The last open item — validating against a real FlightGear install — was closed
+   2026-08-28 (§8 Validation status); §10.15 lists what still remains.
 
 ## 8. FlightGear install and launch sequence (Phase 3)
 
@@ -391,14 +398,23 @@ FlightGear is a large third-party GUI application and is **not** vendored under
 
 1. Download the Windows installer from the official site:
    [flightgear.org/download](https://www.flightgear.org/download/).
-2. **Pin a specific version** and record it here once installed. This plan's bridge
-   was built/tested against **JSBSim 1.3.1** (the version pinned in
-   `tools/jsbsim-venv`, confirmed via `pip show jsbsim`) \u2014 pick whichever current
-   stable FlightGear release you install and record the exact pair here. JSBSim's
-   own changelog notes the FlightGear native-FDM wire format has changed (and been
-   reverted) across versions before, so a mismatched pair may silently misrender or
-   disconnect.
-3. No project files depend on the install location; any `fgfs.exe` path works with
+2. **Pin a specific version** and record it in §9. The pair validated on this
+   machine is **JSBSim 1.3.1 × FlightGear 2024.1.7** (see Validation status
+   below). JSBSim's own changelog notes the FlightGear native-FDM wire format has
+   changed (and been reverted) across versions before, so a mismatched pair may
+   silently misrender or disconnect — re-confirm after upgrading either side.
+3. **The base package (`fgdata`) is a separate installer component, and the
+   install is useless without it.** A binaries-only install (here:
+   `C:\Program Files\FlightGear 2024.1\bin`, ~306 MB, no `data\` directory)
+   leaves `fgfs.exe` stalling forever on a "base package not found" dialog. It
+   gives you nothing to diagnose with: `fgfs.exe` is a GUI-subsystem binary, so
+   even `--version` prints nothing to a console — read
+   `%APPDATA%\flightgear.org\fgfs.log` instead, where a missing base package
+   shows up as the log stopping right after the version banner. On this machine
+   the launcher downloaded fgdata 2024.1.7 to
+   `C:\Users\<user>\FlightGear\Downloads\fgdata_2024_1`, which `fgfs` then
+   resolves as the default `FG_ROOT` with no `--fg-root` argument needed.
+4. No project files depend on the install location; any `fgfs.exe` path works with
    `-FgfsPath` below.
 
 ### One-shot launch
@@ -407,15 +423,21 @@ FlightGear is a large third-party GUI application and is **not** vendored under
 # Build SITL if needed, start SITL + the JSBSim bridge (FlightGear output enabled),
 # and auto-launch FlightGear once you know its fgfs.exe path:
 .\scripts\sitl-jsbsim-flightgear-launch.ps1 -BuildSitl -FlightGear `
-    -FgfsPath "C:\Program Files\FlightGear <version>\bin\fgfs.exe" -StopOnExit
+    -FgfsPath "C:\Program Files\FlightGear 2024.1\bin\fgfs.exe" -StopOnExit
 ```
 
 Without `-FgfsPath`, the script starts SITL + the bridge and prints the exact `fgfs`
 command to run manually in another terminal:
 
 ```
-fgfs --aircraft=c172p --fdm=null --native-fdm=socket,in,30,,5550,udp --disable-clouds3d
+fgfs --aircraft=c172p --fdm=null --native-fdm=socket,in,30,,5550,udp \
+    --lat=37.6136 --lon=-122.3572 --altitude=3000.0 \
+    --timeofday=noon --disable-real-weather-fetch --disable-clouds3d
 ```
+
+(The `--lat/--lon/--altitude` pre-position matters — without them FlightGear loads
+scenery at the wrong place and renders the §10.8 blue void until the native-FDM
+stream happens to move it somewhere with loaded tiles.)
 
 `--fdm=null` tells FlightGear not to run its own physics — it's purely a rendering
 client of JSBSim's state, matching the plan's "visualization-only" approach.
@@ -432,13 +454,55 @@ same running JSBSim instance drives both Wingflight *and* FlightGear simultaneou
 
 ### Validation status
 
-Validated **without** a real FlightGear install: binding a raw UDP socket on the
-configured port while the bridge ran with `--flightgear` showed steady, correctly
-rate-limited (30 Hz → 601 datagrams over ~20s), fixed-size (408-byte) binary frames —
-consistent with JSBSim genuinely emitting FlightGear's native FDM protocol. **Not yet
-confirmed that a real FlightGear process renders this correctly** — do that once
-FlightGear is installed, and record the exact version pair (JSBSim × FlightGear) that
-works.
+**Validated against a real FlightGear install on 2026-08-28**, FlightGear
+**2024.1.7** × JSBSim **1.3.1**. Launched with:
+
+```powershell
+.\scripts\sitl-jsbsim-flightgear-launch.ps1 -Trim -FlightGear `
+    -FgfsPath "C:\Program Files\FlightGear 2024.1\bin\fgfs.exe" `
+    -FgExtraArgs "--telnet=5501" -StopOnExit
+```
+
+Passing `--telnet=5501` through `-FgExtraArgs` opens FlightGear's own property
+server, which is what makes this checkable objectively instead of by eye. Querying
+FlightGear's property tree while the bridge ran:
+
+```
+[fg t+00s] lat=37.80908 lon=-122.37195 alt=348.0ft roll=-24.39 pitch=-6.55 hdg=213.9 ias=93.1 aircraft=c172p
+[fg t+05s] lat=37.80602 lon=-122.37346 alt=168.8ft roll=-24.29 pitch=-6.72 hdg=173.6 ias=93.2
+[fg t+10s] lat=37.80291 lon=-122.37215 alt=  4.6ft roll= -5.79 pitch= 2.22 hdg=134.7 ias=83.0
+[fg t+15s] lat=37.80113 lon=-122.36963 alt=  4.5ft roll= -0.13 pitch= 2.63 hdg=122.9 ias=68.6
+```
+
+The bridge status line read `alt=4.4ft` at the same wall-clock, so FlightGear and
+JSBSim are in lockstep — the native-FDM wire format matches for this pair, and the
+version-pairing risk in §6 is retired for it (only for it). TerraSync pulled 78 real
+terrain tiles into `Terrain/w130n30/w123n37` (the SF Bay bucket), so scenery renders
+rather than the §10.8 blue void, and `c172p` loaded from fgdata with full
+instrumentation.
+
+**The descent in that trace is expected, not a failure.** That run had no
+`-Joystick`, so SITL's MSP RX has no source, the mixer holds failsafe, `thr=0.00`
+throughout, and the trimmed C172 glides from 3000 ft into a slow left spiral
+(heading unwinding 214° → 123°, roll pinned near −24°) and settles on the ground
+after ~145 s. The link is alive; the aircraft has no pilot. Use §11.4/§11.5 with
+`-Joystick` to actually fly it.
+
+**Startup-timing gotcha (fixed in Phase 6)**: FlightGear took ~90 s from process
+start to binding UDP 5550 (navcache rebuild plus first-time TerraSync scenery
+download), and the launcher originally did not wait for it, so JSBSim free-flew
+that window away — with no throttle the aircraft had lost most of its altitude
+before FlightGear was listening at all. The launcher now starts FlightGear
+FIRST and only starts the bridge once UDP 5550 is bound (`-FgStartupTimeoutSec`,
+default 300 s; it also warns if a leftover process already holds 5550).
+Re-validated 2026-08-28: with a warm navcache FlightGear was ready in ~30 s and
+the whole flight renders from the initial 3000 ft down.
+
+The earlier no-install evidence still stands underneath this: binding a raw UDP
+socket on the configured port while the bridge ran with `--flightgear` showed
+steady, correctly rate-limited (30 Hz → 601 datagrams over ~20s), fixed-size
+(408-byte) binary frames — JSBSim genuinely emitting FlightGear's native FDM
+protocol.
 
 ## 9. Pinned toolchain/simulator versions (Phase 4)
 
@@ -453,7 +517,7 @@ these are intentionally upgraded.
 | JSBSim (Python package) | **1.3.1** | Installed in `tools/jsbsim-venv/` (gitignored). Confirmed via `pip show jsbsim`. |
 | Python (JSBSim bridge venv) | **3.14.5** | `tools/jsbsim-venv/Scripts/python.exe --version`. |
 | Aircraft model | **c172p** (Cessna 172P), bundled with JSBSim | Used for all Phase 2–4 validation. |
-| FlightGear | **not installed / not pinned** | Manual install only (not vendored — see §8 Install). JSBSim's FlightGear-native UDP output was validated with a raw socket listener, not a real FlightGear process. Record the exact FlightGear version here once it's installed and validated against JSBSim 1.3.1. |
+| FlightGear | **2024.1.7** (Windows x86_64 installer) + base package **fgdata 2024.1.7** | Manual install only (not vendored — see §8 Install). Validated end-to-end against JSBSim 1.3.1 on 2026-08-28: FlightGear's property tree tracks JSBSim in lockstep over the native-FDM UDP link (§8 Validation status). `fgdata` is a separate installer component — on this machine it sits at `C:\Users\<user>\FlightGear\Downloads\fgdata_2024_1` and is picked up automatically as `FG_ROOT`. |
 
 When upgrading JSBSim or MinGW-w64, re-run
 `.\scripts\sitl-rc-check.ps1 -Mode jsbsim -BuildSitl -AutoStartSitl -StopSitlOnExit`
@@ -464,7 +528,8 @@ The Python versions are pinned by
 [scripts/requirements-joystick.txt](../../scripts/requirements-joystick.txt) as of
 the Phase 5 review (see §10.11); this table and those files must be kept in sync.
 Re-validated 2026-08-27 on Python 3.13 (whatever `python -m venv` produces on the
-machine) rather than the 3.14.5 recorded above - both work.
+machine) rather than the 3.14.5 recorded above - both work. The 2026-08-28
+FlightGear validation ran on Python 3.11.4 - that works too.
 
 ## 10. Phase 5 - Gap review (2026-08-27)
 
@@ -657,26 +722,34 @@ sitl-jsbsim-flightgear-launch.ps1 -Trim -FlightGear
 
 ### 10.15 Still open
 
-- **FlightGear has never been run against this.** Everything in section 8 is
-  still inferred from the bytes JSBSim puts on the wire. 10.8 removes the most
-  likely cause of a "connects but shows nothing" result, but the version-pairing
-  risk in section 6 stands.
-- **`-Mode jsbsim` does not isolate control-induced motion from free dynamics.**
-  It asserts that attitude changes by more than a threshold while a control is
-  held at an extreme. A trimmed aircraft drifts far less than the untrimmed one
-  Phase 2 measured, but the test still cannot distinguish "the elevator worked"
-  from "the aircraft was diverging anyway". A stronger version would compare
-  against a control-neutral run of the same duration. Treat the current check as
-  a liveness test for the loop, not a correctness test for the mixer.
-- **No automated throttle check.** A disarmed FC forces motor output to
-  motor-stop, so the disarmed passthrough trick cannot exercise throttle. With
-  10.2/10.3/10.4 fixed it should now work; verify it by hand per section 11.4.
-- **Control-surface sign conventions are unverified.** Nothing has confirmed that
-  a right-roll stick input produces a right roll in JSBSim rather than a left one;
-  the check only looks at magnitude. Use `--invert-*` if a direction is wrong.
-- **GPS/position is not fed to the firmware.** `fdm_packet` carries velocity and
-  position but `updateState()` ignores both apart from the new baro derivation, so
-  anything GPS-dependent is untestable in SITL today.
+- ~~**FlightGear has never been run against this.**~~ **Closed 2026-08-28** -
+  validated against a real install, FlightGear 2024.1.7 x JSBSim 1.3.1; see the
+  Validation status in section 8. The version-pairing risk in section 6 still
+  stands for any *other* pair, and two new install/startup gotchas are recorded
+  there (missing base package, ~90 s before FlightGear binds its UDP port).
+- ~~**`-Mode jsbsim` does not isolate control-induced motion from free
+  dynamics.**~~ **Closed 2026-08-28** (§12.2) - the mode now measures a
+  control-neutral drift baseline over the same hold duration and gates each
+  axis at max(threshold, drift × `-JsbsimDriftMarginFactor`). Measured drift
+  is ~1-2° per hold vs. commanded responses of +30..66°.
+- ~~**No automated throttle check.**~~ **Closed 2026-08-28** (§12.3) -
+  `sitl-rc-check.ps1 -Mode throttle` configures an ARM switch over MSP, arms
+  for real, raises throttle and asserts JSBSim receives it (thr=0.84,
+  MSP_MOTOR 1827us, IAS climbs). Getting there surfaced and fixed two genuine
+  firmware bugs that made SITL unarmable (§12.3).
+- ~~**Control-surface sign conventions are unverified.**~~ **Closed
+  2026-08-28** (§12.2) - `-Mode jsbsim` now gates SIGNED responses: right
+  stick must roll right (+), stick back must pitch up (+), per MSP_ATTITUDE's
+  conventions (imuUpdateEulerAngles). Both verified correct for the default
+  bridge signs with c172p (roll +65..66°, pitch +31..35°); no `--invert-*`
+  needed. A strong wrong-direction response now fails the gate and prints
+  which `--invert-*` flag to use.
+- ~~**GPS/position is not fed to the firmware.**~~ **Closed 2026-08-28**
+  (§12.4) - `fdm_packet` still carries no geodetic position, but the bridge's
+  new `--msp-gps` option feeds JSBSim's position/velocity to the firmware as
+  `MSP_SET_RAW_GPS` frames over a second MSP port (TCP 5762), which gps.c
+  consumes natively with the GPS_MSP provider (now SITL's config default).
+  Validated end-to-end with `sitl-rc-check.ps1 -Mode gps`.
 
 ### 10.16 The ARM toolchain gate blocked TARGET=SITL from a clean tree (fixed)
 
@@ -699,7 +772,9 @@ up. Fixed by exempting `TARGET=SITL` from the gate in `make/tools.mk`.
 Re-validated on the second machine after the fix, GCC 13.3.0 + JSBSim 1.3.1 +
 Python 3.11.4: build links, and `sitl-rc-check.ps1` passes `jsbsim` (roll 29.2
 deg, pitch 19.3 deg, yaw 16.0 deg vs a 3 deg threshold), `smoke` and `sweep`
-(938 us per axis). FlightGear remains uninstalled and unvalidated.
+(938 us per axis). FlightGear was uninstalled and unvalidated at the time of
+that review; it has since been installed and validated on this same machine
+(2026-08-28, see §8 Validation status).
 
 ## 11. How to run it (fresh machine)
 
@@ -756,6 +831,24 @@ fake IMU to MSP. Expect `getServoCount() = 4`, roll/pitch deltas far above the
 `obj/main/jsbsim_bridge_check_stdout.log`; `packets_rx=0` there means the UDP
 link is dead (see 10.7).
 
+Since Phase 6 the response is gated SIGNED (right stick must roll right, stick
+back must pitch up) against a control-neutral drift baseline - see §12.2.
+
+Two more JSBSim-backed modes (Phase 6, §12.3/§12.4) cover what the disarmed
+passthrough structurally cannot:
+
+```powershell
+# ARM for real (MSP-configured ARM switch on AUX1), raise throttle, and verify
+# JSBSim receives it (thr=) and IAS responds:
+.\scripts\sitl-rc-check.ps1 -Mode throttle -AutoStartSitl -StopSitlOnExit
+
+# Verify the GPS feed: bridge --msp-gps -> MSP_SET_RAW_GPS (TCP 5762) ->
+# gps.c -> MSP_RAW_GPS reports a moving fix near the JSBSim initial position.
+# Needs SITL's config defaults (GPS_MSP provider + UART2 MSP port) - use
+# -FreshEeprom on an eeprom.bin predating them:
+.\scripts\sitl-rc-check.ps1 -Mode gps -AutoStartSitl -StopSitlOnExit -FreshEeprom
+```
+
 Then the three modes that exercise Wingflight's own servo path without JSBSim:
 
 ```powershell
@@ -763,6 +856,12 @@ Then the three modes that exercise Wingflight's own servo path without JSBSim:
 .\scripts\sitl-rc-check.ps1 -Mode sweep  -AutoStartSitl -StopSitlOnExit
 .\scripts\sitl-rc-check.ps1 -Mode stress -AutoStartSitl -StopSitlOnExit
 ```
+
+`-FreshEeprom` note: SITL parses no command-line arguments, so the old
+`--path=` approach silently did nothing (§12.5); the switch now moves
+`obj/main/eeprom.bin` aside to `eeprom.bin.bak` and lets the first boot write
+fresh defaults (the script's two-attempt start loop absorbs the
+write-config-and-exit first boot).
 
 ### 11.4 Interactive flying, and verifying throttle
 
@@ -776,21 +875,24 @@ The bridge's status line shows what JSBSim actually receives:
 [jsbsim-bridge] t=  12.02s alt= 2998.8ft ias= 88.2kts thr=0.00 ail=+0.00 ele=+0.00 rud=+0.00 packets_rx=1440
 ```
 
-**This is how to verify the 10.2/10.3/10.4 throttle chain**: arm the aircraft,
-raise the throttle stick, and confirm `thr=` follows it and IAS climbs. If a
-control axis moves the wrong way, add `--invert-aileron` (or `-elevator` /
-`-rudder`) rather than editing the mixer.
+**The 10.2/10.3/10.4 throttle chain is verified automatically by
+`-Mode throttle` (§12.3)**; interactively, the same check is: arm the
+aircraft, raise the throttle stick, and confirm `thr=` follows it and IAS
+climbs. If a control axis moves the wrong way, add `--invert-aileron` (or
+`-elevator` / `-rudder`) rather than editing the mixer - though §12.2 verified
+the default signs are correct for c172p.
 
 ### 11.5 Adding FlightGear
 
 ```powershell
 .\scripts\sitl-jsbsim-flightgear-launch.ps1 -Trim -Joystick -FlightGear `
-    -FgfsPath "C:\Program Files\FlightGear <version>\bin\fgfs.exe" -StopOnExit
+    -FgfsPath "C:\Program Files\FlightGear 2024.1\bin\fgfs.exe" -StopOnExit
 ```
 
 Without `-FgfsPath` the bridge prints the exact `fgfs` command to run by hand.
-Once this works, record the FlightGear version in section 9 and update the
-validation status in sections 8 and 10.15.
+This works as of 2026-08-28 (FlightGear 2024.1.7, recorded in section 9; see
+section 8's Validation status) - if you change either side of the version pair,
+re-verify and update section 9.
 
 Troubleshooting:
 - Blue void / nothing renders: the aircraft is not where FlightGear loaded
@@ -800,3 +902,134 @@ Troubleshooting:
   (section 6).
 - `packets_rx=0`: SITL is not running, or another process holds UDP 9002
   (`Get-NetUDPEndpoint -LocalPort 9002`).
+
+## 12. Phase 6 - Closing the remaining gaps (2026-08-28)
+
+Follow-up session after the FlightGear validation: worked through every open
+item in §10.15. All five `sitl-rc-check.ps1` modes (`smoke`, `sweep`,
+`jsbsim`, `throttle`, `gps`) pass on this machine with the changes below.
+
+### 12.1 Launcher starts FlightGear before the bridge
+
+`sitl-jsbsim-flightgear-launch.ps1` used to start the bridge immediately and
+FlightGear last, so JSBSim free-flew (and, with no RC, glided into the ground)
+during FlightGear's long first-boot window (§8). When `-FgfsPath` is given, the
+launcher now starts FlightGear FIRST and waits for it to bind the native-FDM
+UDP port before starting the bridge (`-FgStartupTimeoutSec`, default 300 s,
+0 = old behavior). It also warns when UDP 5550 is already held by a leftover
+process, like it does for 9002/9003. Validated: warm-navcache FlightGear ready
+in ~30 s, whole flight visible from the initial 3000 ft.
+
+### 12.2 `-Mode jsbsim`: drift baseline + signed gates (sign conventions verified)
+
+Two §10.15 items closed by the same change:
+
+- **Free-dynamics isolation**: the mode now holds neutral for a second window
+  of the same duration as each control hold and measures how much attitude
+  changes on its own. Each axis gates at
+  `max(-JsbsimAttitudeThresholdDeg, drift * -JsbsimDriftMarginFactor)`.
+  Measured: drift 1.1-1.8° per 1.5 s hold vs. commanded +30..66° responses.
+- **Sign conventions**: the gate is now SIGNED. MSP_ATTITUDE reports roll
+  positive = right wing down and pitch positive = nose up
+  (imuUpdateEulerAngles' aerospace conventions), so roll-right-minus-roll-left
+  and pitch-back-minus-pitch-forward must both be POSITIVE. Verified correct
+  with the bridge's default signs on c172p (roll +65..66°, pitch +31..35°) -
+  right stick genuinely rolls right all the way through the mixer, the
+  servo_packet, the bridge's S1/S2 combination and JSBSim's FCS. An inverted
+  axis that still responds strongly now fails the gate and prints which
+  bridge `--invert-*` flag fixes it (never the mixer).
+
+### 12.3 `-Mode throttle`: automated ARMED throttle check
+
+New mode covering the one path disarmed passthrough cannot: arming. It
+configures an ARM switch (AUX1 1700-2100 µs) via `MSP_SET_MODE_RANGE`, waits
+for the arming-disable flags to clear (requesting the mandatory acc
+calibration via `MSP_ACC_CALIBRATION` when its flag shows up - the result
+persists in eeprom.bin), arms, holds throttle at `-ThrottleTestUs` (1800), and
+asserts: `MSP_MOTOR[0]` follows (1827 µs), the bridge log's `thr=` shows
+JSBSim received it (0.84), and IAS climbs. Passes repeatably.
+
+Getting SITL to arm at all surfaced two genuine firmware bugs, now fixed:
+
+- **The fake gyro was permanently "calibrating"** ([gyro.c](../../src/main/sensors/gyro.c)):
+  the fake-gyro path skips calibration by clearing `calibration.running`, but
+  `isGyroSensorCalibrationComplete()` also requires `cycles > 0`, which the
+  skip never set - so `gyroIsCalibrationComplete()` stayed false forever and
+  ARMING_DISABLED_CALIBRATING could never clear. Nobody had ever armed SITL
+  before, so this never showed. Fixed by marking one cycle done in the skip.
+- **The scheduler-load arming gate is meaningless under SITL**
+  ([core.c](../../src/main/fc/core.c)): `getMaxRealTimeLoad()`/CPU-load
+  percentages are wall-clock artifacts of the simRate-scaled time base and
+  routinely sit above the 75 % threshold, leaving ARMING_DISABLED_LOAD set
+  (or flapping). The check is now compiled out under `SIMULATOR_BUILD`.
+
+And three non-bug discoveries worth remembering:
+
+- **The fake acc/gyro deliver no samples until the bridge feeds them**
+  (accgyro_fake.c `dataReady`): on a bare SITL, acc calibration and the
+  attitude-based ANGLE arming check can never make progress. The bridge must
+  be running (and its FDM data flowing) before arming is even theoretically
+  possible.
+- **Mode-range step encoding is NOT Betaflight's**: rc_modes.h defines
+  `STEP_TO_CHANNEL_VALUE(step) = 1500 + 5*step` with signed steps -125..125
+  (BF uses `900 + 25*step`). 1700-2100 µs = steps 40..120, not 32..48. A
+  BF-encoded range decodes to plausible-looking values, which makes the
+  mistake invisible in readbacks - decode with THIS repo's formula.
+- **MSP-RX's 100 ms signal timeout vs. script latency**: PowerShell's
+  per-frame ack round-trip can stall past rxFrameCheck's 100 ms window, and
+  an RX drop that recovers while the ARM switch is high latches
+  ARMING_DISABLED_BAD_RX_RECOVERY (it only clears with the switch off) - the
+  check script was sabotaging its own arming. RC streaming during holds is
+  now fire-and-forget (`Hold-RcFrames`), status reads pipeline an RC frame in
+  the same write (`Get-ArmingStatusWithRc`), and a latched BAD_RX_RECOVERY is
+  recovered by toggling the switch low.
+
+### 12.4 GPS: bridge `--msp-gps` feed + `-Mode gps`
+
+`fdm_packet` carries no geodetic position, so instead of breaking the shared
+Gazebo wire format, GPS goes in through the front door:
+[scripts/jsbsim_bridge.py](../../scripts/jsbsim_bridge.py) `--msp-gps` opens
+its own MSP TCP connection and pushes `MSP_SET_RAW_GPS` frames (fix, 10 sats,
+geodetic lat/lon, altitude, ground speed) at `--msp-gps-rate` (5 Hz default),
+which [io/gps.c](../../src/main/io/gps.c) consumes natively when the provider
+is GPS_MSP - no firmware GPS code was added or changed.
+
+Supporting config, applied as SITL target defaults in the new
+[src/main/target/SITL/config.c](../../src/main/target/SITL/config.c)
+(`USE_TARGET_CONFIG`; config-reset only, so older eeprom.bin files need
+`-FreshEeprom`):
+
+- **GPS provider = MSP** (the bridge also sets it at runtime on connect, so
+  the feed works against older configs - but not the port below).
+- **Second MSP port on UART2 → TCP 5762**: SITL's per-port MSP server takes
+  one client at a time, and 5761 (UART1) belongs to the RC/telemetry client
+  (joystick or check script). Port map: 5761 = RC/MSP client, 5762 = GPS feed.
+
+`sitl-rc-check.ps1 -Mode gps` validates the chain end-to-end: fix with 10
+sats near the KSFO initial conditions, altitude ~914 m, ground speed ~46 m/s,
+and the position MOVES with the simulated aircraft (175.6 m over ~4 s).
+
+### 12.5 `-FreshEeprom` was silently a no-op (fixed)
+
+SITL parses no command-line arguments at all - target.c opens the hardcoded
+`EEPROM_FILENAME` ("eeprom.bin" in the working directory). The script's old
+`--path=<fresh file>` argument was accepted by Start-Process and ignored by
+the binary, so `-FreshEeprom` never actually reset anything (past runs that
+"used" it worked because the eeprom had been deleted manually). It now moves
+`obj/main/eeprom.bin` to `eeprom.bin.bak` and lets the first boot write fresh
+defaults; the existing two-attempt start loop absorbs the
+write-config-and-exit first boot.
+
+### 12.6 Validation summary (2026-08-28, after all fixes)
+
+```
+sitl-rc-check.ps1 -Mode jsbsim    -> PASS  roll +65.3deg pitch +35.0deg (signed), drift 1.2/1.8deg
+sitl-rc-check.ps1 -Mode throttle  -> PASS  armed, MSP_MOTOR 1827us, JSBSim thr=0.84, IAS +8kt
+sitl-rc-check.ps1 -Mode gps       -> PASS  10 sats near KSFO, 175.6m movement over ~4s
+sitl-rc-check.ps1 -Mode smoke     -> PASS  pitch_servo delta 938us
+sitl-rc-check.ps1 -Mode sweep     -> PASS  roll/pitch/yaw 938us each
+sitl-jsbsim-flightgear-launch.ps1 -> FlightGear-first ordering validated; bridge
+                                     starts only after UDP 5550 is bound (~30s
+                                     warm), whole flight renders from 3000 ft
+```
+

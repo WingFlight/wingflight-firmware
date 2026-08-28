@@ -89,6 +89,10 @@
 #define DEFAULT_RX_FEATURE      FEATURE_RX_MSP
 #define DEFAULT_FEATURES        (FEATURE_GPS | FEATURE_TELEMETRY)
 
+// SITL-specific config defaults (GPS provider = MSP, second MSP port on
+// UART2/TCP 5762 for the JSBSim bridge's --msp-gps feed) - see config.c.
+#define USE_TARGET_CONFIG
+
 #define USE_PARAMETER_GROUPS
 
 #undef USE_STACK_CHECK // I think SITL don't need this

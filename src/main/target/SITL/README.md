@@ -18,15 +18,21 @@ make mingw_sdk_install                                        # native C toolcha
 .\scripts\sitl-jsbsim-flightgear-launch.ps1 -SetupVenv         # JSBSim/pygame venv
 
 # Build SITL, start it, start the JSBSim bridge (c172p by default), and validate the
-# full RC -> mixer -> JSBSim -> attitude loop end-to-end:
+# full RC -> mixer -> JSBSim -> attitude loop end-to-end (signed response vs. a
+# control-neutral drift baseline):
 .\scripts\sitl-rc-check.ps1 -Mode jsbsim -BuildSitl -AutoStartSitl -StopSitlOnExit
+
+# Same, for the two paths the disarmed check can't cover: a real ARMED throttle
+# run, and the GPS feed (bridge --msp-gps -> MSP on TCP 5762 -> gps.c):
+.\scripts\sitl-rc-check.ps1 -Mode throttle -AutoStartSitl -StopSitlOnExit
+.\scripts\sitl-rc-check.ps1 -Mode gps -AutoStartSitl -StopSitlOnExit -FreshEeprom
 
 # For interactive flying/visualization instead of a one-shot validation run, use the
 # JSBSim + FlightGear launcher (-Joystick needs a USB joystick; without an RC source
 # the mixer just sits at failsafe. FlightGear is optional and not vendored - install
 # it manually, see the plan doc's install instructions):
 .\scripts\sitl-jsbsim-flightgear-launch.ps1 -BuildSitl -Trim -Joystick -FlightGear `
-    -FgfsPath "C:\Program Files\FlightGear <version>\bin\fgfs.exe" -StopOnExit
+    -FgfsPath "C:\Program Files\FlightGear 2024.1\bin\fgfs.exe" -StopOnExit
 ```
 
 If a run looks dead (`packets_rx=0` in the bridge output), check that no leftover
@@ -111,5 +117,10 @@ speaks the exact same protocol Gazebo's `ArduCopterPlugin` did, so nothing in
 
 UARTx will bind on `tcp://127.0.0.1:576x` when port been open.
 
-`eeprom.bin`, size 8192 Byte, is for config saving.
-size can be changed in `src/main/target/SITL/pg.ld` >> `__FLASH_CONFIG_Size`
+`eeprom.bin` (in the working directory SITL is started from) holds the saved
+config. Its size is `EEPROM_SIZE` (32768 bytes) in
+[src/main/target/SITL/target.h](target.h). Note: on a fresh/missing `eeprom.bin`,
+SITL's first launch writes the default config and exits - run it again. A stale
+`eeprom.bin` saved by an older build can also mask config-default fixes (e.g.
+report `servoCount=0` forever); delete it or use `sitl-rc-check.ps1 -FreshEeprom`
+to re-exercise the defaults.

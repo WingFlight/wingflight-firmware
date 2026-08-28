@@ -54,6 +54,14 @@
 .PARAMETER FgExtraArgs
     Extra arguments appended verbatim to the fgfs command line.
 
+.PARAMETER FgStartupTimeoutSec
+    How long to wait (seconds) for an auto-launched FlightGear to bind its
+    native-FDM UDP port before starting the JSBSim bridge anyway (default 300).
+    FlightGear can take ~90s+ on a first run (navcache rebuild, TerraSync
+    scenery download); starting the bridge only after FlightGear is listening
+    means the aircraft doesn't free-fly (and, with no RC, descend) unwatched
+    during that window. Set 0 to skip waiting (old behavior).
+
 .PARAMETER Joystick
     Also start scripts/sitl-joystick-rc.py so a USB joystick/gamepad drives RC
     over MSP. Requires pygame in the venv (-SetupVenv installs it).
@@ -84,6 +92,7 @@ param(
     [int]$FgPort = 5550,
     [double]$FgRate = 30.0,
     [string[]]$FgExtraArgs = @(),
+    [int]$FgStartupTimeoutSec = 300,
     [switch]$Joystick,
     [switch]$StopOnExit
 )
@@ -159,12 +168,69 @@ foreach ($p in @(9002, 9003)) {
         Write-Warning "UDP port $p is already in use - another SITL/bridge instance is probably still running. Expect 'no packets' symptoms."
     }
 }
+if ($FlightGear -and (Test-UdpPortInUse -Port $FgPort)) {
+    Write-Warning "UDP port $FgPort is already in use - a leftover FlightGear (or another native-FDM consumer) is probably still running."
+}
 
 Write-Host "[launch] Starting SITL ($sitlExe) ..."
 $sitlProcess = Start-Process -FilePath $sitlExe -WorkingDirectory $objMain -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $objMain "sitl_launch_stdout.log") `
     -RedirectStandardError (Join-Path $objMain "sitl_launch_stderr.log")
 Start-Sleep -Seconds 1
+
+# FlightGear is launched BEFORE the JSBSim bridge: a first run can take ~90s+
+# to bind its native-FDM UDP port (navcache rebuild, TerraSync scenery
+# download), and the bridge free-runs the physics from the moment it starts -
+# with no RC source the aircraft would burn most of its altitude before
+# FlightGear ever renders a frame. Starting the bridge only once FlightGear is
+# listening means the whole flight is visible.
+$fgProcess = $null
+if ($FlightGear -and -not [string]::IsNullOrWhiteSpace($FgfsPath)) {
+    if (Test-Path $FgfsPath) {
+        Write-Host "[launch] Starting FlightGear ($FgfsPath) ..."
+        # --fdm=null: FlightGear runs no physics of its own, it only renders the
+        # state JSBSim streams in. --lat/--lon/--altitude only pre-position the
+        # camera/scenery load; the incoming native-FDM packets take over
+        # immediately, but without them FlightGear loads scenery in the wrong
+        # place (or none at all).
+        $fgArgs = @(
+            "--aircraft=$Aircraft",
+            "--fdm=null",
+            "--native-fdm=socket,in,$([int]$FgRate),,$FgPort,udp",
+            "--lat=$LatDeg",
+            "--lon=$LonDeg",
+            "--altitude=$AltitudeFt",
+            "--heading=$HeadingDeg",
+            "--timeofday=noon",
+            "--disable-real-weather-fetch",
+            "--disable-clouds3d"
+        ) + $FgExtraArgs
+        $fgProcess = Start-Process -FilePath $FgfsPath -ArgumentList $fgArgs -PassThru
+
+        if ($FgStartupTimeoutSec -gt 0) {
+            Write-Host "[launch] Waiting for FlightGear to bind UDP $FgPort (up to ${FgStartupTimeoutSec}s; first run rebuilds navcache/downloads scenery) ..."
+            $fgDeadline = [DateTime]::UtcNow.AddSeconds($FgStartupTimeoutSec)
+            $fgReady = $false
+            while ([DateTime]::UtcNow -lt $fgDeadline) {
+                if ($fgProcess.HasExited) {
+                    Write-Warning "FlightGear exited during startup (exit code $($fgProcess.ExitCode)) - check %APPDATA%\flightgear.org\fgfs.log. Continuing without it."
+                    break
+                }
+                if (Test-UdpPortInUse -Port $FgPort) { $fgReady = $true; break }
+                Start-Sleep -Seconds 2
+            }
+            if ($fgReady) {
+                Write-Host "[launch] FlightGear is listening on UDP $FgPort."
+            } elseif (-not $fgProcess.HasExited) {
+                Write-Warning "FlightGear did not bind UDP $FgPort within ${FgStartupTimeoutSec}s - starting the bridge anyway (the aircraft will free-fly until FlightGear catches up)."
+            }
+        }
+    } else {
+        Write-Warning "FgfsPath '$FgfsPath' not found - skipping automatic FlightGear launch (start it manually with the command the bridge prints below)."
+    }
+} elseif ($FlightGear) {
+    Write-Host "[launch] -FlightGear set but no -FgfsPath given - launch FlightGear manually with the command the bridge prints below (the aircraft free-flies until it connects)."
+}
 
 $bridgeArgs = @(
     $bridgeScript,
@@ -195,35 +261,6 @@ if ($Joystick) {
     }
 } else {
     Write-Host "[launch] No RC source started (-Joystick not set). SITL's RX is MSP-only, so without one the mixer stays at failsafe."
-}
-
-$fgProcess = $null
-if ($FlightGear -and -not [string]::IsNullOrWhiteSpace($FgfsPath)) {
-    if (Test-Path $FgfsPath) {
-        Write-Host "[launch] Starting FlightGear ($FgfsPath) ..."
-        # --fdm=null: FlightGear runs no physics of its own, it only renders the
-        # state JSBSim streams in. --lat/--lon/--altitude only pre-position the
-        # camera/scenery load; the incoming native-FDM packets take over
-        # immediately, but without them FlightGear loads scenery in the wrong
-        # place (or none at all).
-        $fgArgs = @(
-            "--aircraft=$Aircraft",
-            "--fdm=null",
-            "--native-fdm=socket,in,$([int]$FgRate),,$FgPort,udp",
-            "--lat=$LatDeg",
-            "--lon=$LonDeg",
-            "--altitude=$AltitudeFt",
-            "--heading=$HeadingDeg",
-            "--timeofday=noon",
-            "--disable-real-weather-fetch",
-            "--disable-clouds3d"
-        ) + $FgExtraArgs
-        $fgProcess = Start-Process -FilePath $FgfsPath -ArgumentList $fgArgs -PassThru
-    } else {
-        Write-Warning "FgfsPath '$FgfsPath' not found - skipping automatic FlightGear launch (start it manually with the command the bridge printed above)."
-    }
-} elseif ($FlightGear) {
-    Write-Host "[launch] -FlightGear set but no -FgfsPath given - launch FlightGear manually with the command printed by the bridge above."
 }
 
 Write-Host "[launch] Running. Press Ctrl+C to stop."
