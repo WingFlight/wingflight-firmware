@@ -1,0 +1,155 @@
+name: Feature Branch Dev Build
+
+# Publishes a rolling GitHub prerelease (tag dev/<branch-slug>) for every push
+# to a feature/** branch, so the matching per-branch configurator page
+# (deployed by wingflight-configurator's deploy-web.yml) can flash it
+# straight from the Firmware Flasher tab's "Development" build type -- no
+# configurator changes needed, it already lists any prerelease on this repo.
+#
+# The release tag is rolling (one entry per branch, replaced on every push)
+# to keep the releases list from filling up with one entry per commit, but
+# each build's own version string embeds the commit's short SHA so the
+# filename is never reused across pushes -- the configurator's firmware
+# cache is keyed purely by filename, so a stable filename across different
+# commits would serve a stale cached .hex instead of the new push.
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+  delete:
+
+concurrency:
+  group: dev-build-${{ github.event.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Install ARM tools
+      run: make arm_sdk_install
+
+    - name: Set build variables
+      run: |
+        BRANCH="${GITHUB_REF#refs/heads/}"
+        SLUG="${BRANCH#feature/}"
+        SLUG="$(echo "$SLUG" | sed -E 's/[^A-Za-z0-9]+/_/g')"
+        SHORT_SHA="${GITHUB_SHA:0:7}"
+
+        echo "BRANCH=${BRANCH}" >> "${GITHUB_ENV}"
+        echo "SLUG=${SLUG}" >> "${GITHUB_ENV}"
+        echo "GIT_PRE=dev_${SLUG}_${SHORT_SHA}" >> "${GITHUB_ENV}"
+        echo "GIT_TAG=dev/${SLUG}" >> "${GITHUB_ENV}"
+        cat "${GITHUB_ENV}"
+
+    - name: Build HEX files for unified targets
+      run: make unified FC_VER_SUFFIX="${{ env.GIT_PRE }}" FLASH_CONFIG_ERASE=yes
+
+    - name: Replace existing dev prerelease for this branch
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if gh release view "${GIT_TAG}" >/dev/null 2>&1; then
+          gh release delete "${GIT_TAG}" --yes --cleanup-tag
+        fi
+
+    - name: Create dev prerelease
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        COMMIT_MSG: ${{ github.event.head_commit.message }}
+      run: |
+        {
+          echo "Automatic development build from \`${BRANCH}\` @ ${GITHUB_SHA}"
+          echo
+          echo "${COMMIT_MSG}"
+          echo
+          echo "Rebuilt on every push to this branch -- this release is replaced, not"
+          echo "accumulated. Not for production use."
+        } > Notes.md
+        gh release create "${GIT_TAG}" --prerelease --notes-file Notes.md \
+          --title "Wingflight Dev Build: ${BRANCH}" obj/*.hex
+
+    - name: Generate wingflight-artifacts App token
+      id: artifacts-app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ secrets.ARTIFACTS_APP_ID }}
+        private-key: ${{ secrets.ARTIFACTS_APP_PRIVATE_KEY }}
+        owner: WingFlight
+        repositories: wingflight-artifacts
+
+    - name: Publish firmware for browser downloads
+      env:
+        ARTIFACTS_REPO_TOKEN: ${{ steps.artifacts-app-token.outputs.token }}
+      run: |
+        git clone --depth 1 "https://x-access-token:${ARTIFACTS_REPO_TOKEN}@github.com/WingFlight/wingflight-artifacts.git" artifacts-repo
+        rm -rf "artifacts-repo/firmware/${GIT_TAG}"
+        mkdir -p "artifacts-repo/firmware/${GIT_TAG}"
+        cp obj/*.hex "artifacts-repo/firmware/${GIT_TAG}/"
+        cd artifacts-repo
+        git config user.name "wingflight-artifacts[bot]"
+        git config user.email "wingflight-artifacts[bot]@users.noreply.github.com"
+        git add "firmware/${GIT_TAG}"
+        git commit -m "firmware: ${GIT_TAG} (${GITHUB_SHA})"
+        git push origin master
+
+  cleanup-deleted-branch:
+    if: github.event_name == 'delete' && github.event.ref_type == 'branch' && startsWith(github.event.ref, 'feature/')
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set build variables
+      run: |
+        BRANCH="${{ github.event.ref }}"
+        SLUG="${BRANCH#feature/}"
+        SLUG="$(echo "$SLUG" | sed -E 's/[^A-Za-z0-9]+/_/g')"
+
+        echo "SLUG=${SLUG}" >> "${GITHUB_ENV}"
+        echo "GIT_TAG=dev/${SLUG}" >> "${GITHUB_ENV}"
+        cat "${GITHUB_ENV}"
+
+    - name: Delete dev prerelease
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if gh release view "${GIT_TAG}" >/dev/null 2>&1; then
+          gh release delete "${GIT_TAG}" --yes --cleanup-tag
+        fi
+
+    - name: Generate wingflight-artifacts App token
+      id: artifacts-app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ secrets.ARTIFACTS_APP_ID }}
+        private-key: ${{ secrets.ARTIFACTS_APP_PRIVATE_KEY }}
+        owner: WingFlight
+        repositories: wingflight-artifacts
+
+    - name: Remove mirrored artifacts
+      env:
+        ARTIFACTS_REPO_TOKEN: ${{ steps.artifacts-app-token.outputs.token }}
+      run: |
+        git clone --depth 1 "https://x-access-token:${ARTIFACTS_REPO_TOKEN}@github.com/WingFlight/wingflight-artifacts.git" artifacts-repo
+        if [ -d "artifacts-repo/firmware/${GIT_TAG}" ]; then
+          cd artifacts-repo
+          git config user.name "wingflight-artifacts[bot]"
+          git config user.email "wingflight-artifacts[bot]@users.noreply.github.com"
+          git rm -r "firmware/${GIT_TAG}"
+          git commit -m "firmware: remove ${GIT_TAG} (branch deleted)"
+          git push origin master
+        fi
