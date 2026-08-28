@@ -558,6 +558,23 @@ void rxFrameCheck(timeUs_t currentTimeUs, timeDelta_t currentDeltaTimeUs)
         }
     }
 
+#ifdef USE_RX_SBUS_INPUT
+    // While a SBUS-in fallback port is configured, calculateRxChannelsAndUpdateFailsafe()
+    // must run every cycle - not just once per 100ms when the main link is idle/absent, as
+    // above - so detectAndApplySignalLossBehaviour()'s sbusInputPoll() decodes each fallback
+    // frame promptly after it completes. Without this, decoding was only attempted roughly
+    // once every 100ms against a fallback stream arriving every ~20ms: besides making
+    // reported link-up state flicker (the elapsed-since-last-frame staleness check drifted
+    // past its threshold between the rare decodes), it left a real window for the decode to
+    // read sbusInputFrameData while the receive ISR was mid-write on a newer frame - a torn
+    // read mixing old and new bits across adjacent 11-bit channel fields, i.e. exactly the
+    // "moving one channel nudges its neighbour" symptom. The primary RX path never has this
+    // exposure because it always decodes within one cycle of a frame completing.
+    if (sbusInputIsEnabled()) {
+        rxDataProcessingRequired = true;
+    }
+#endif
+
     DEBUG_SET(DEBUG_RX_SIGNAL_LOSS, 0, rxSignalReceived);
 }
 
