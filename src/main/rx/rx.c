@@ -39,6 +39,7 @@
 
 #include "drivers/adc.h"
 #include "drivers/rx/rx_pwm.h"
+#include "drivers/rx_sbus_input.h"
 #include "drivers/time.h"
 
 #include "fc/rc_controls.h"
@@ -606,6 +607,34 @@ void detectAndApplySignalLossBehaviour(void)
 {
     const uint32_t currentTimeMs = millis();
     const bool failsafeAuxSwitch = IS_RC_MODE_ACTIVE(BOXFAILSAFE);
+
+#ifdef USE_RX_SBUS_INPUT
+    // Instant SBUS-in failover: the main RX link is down this cycle, but a configured
+    // SBUS-in port is actively decoding valid frames. Take over ALL channels (including
+    // aux/mode switches) from it, exactly as a physical backup satellite receiver would,
+    // and tell failsafe this is a valid link so its staged hold/land behaviour does not
+    // engage on top of it. A BOXFAILSAFE aux switch still invalidates channels here too,
+    // same as the main-RX path below. If the SBUS-in link is also down (or not
+    // configured), sbusInputIsActive() is false and this falls through unmodified to the
+    // existing staged failsafe logic below - that stays the single backstop for
+    // "both links down".
+    if (!rxSignalReceived && sbusInputIsActive()) {
+        for (int channel = 0; channel < activeRcChannelCount; channel++) {
+            rcInput[channel] = constrainf(sbusInputGetChannel(channel), PWM_PULSE_MIN, PWM_PULSE_MAX);
+        }
+
+        rxFlightChannelsValid = !failsafeAuxSwitch;
+
+        if (rxFlightChannelsValid) {
+            failsafeOnValidDataReceived();
+        } else {
+            failsafeOnValidDataFailed();
+        }
+
+        DEBUG_SET(DEBUG_RX_SIGNAL_LOSS, 3, rcInput[THROTTLE]);
+        return;
+    }
+#endif
 
     //  set rxFlightChannelsValid false when a packet is bad or we use a failsafe switch
     rxFlightChannelsValid = rxSignalReceived && !failsafeAuxSwitch;

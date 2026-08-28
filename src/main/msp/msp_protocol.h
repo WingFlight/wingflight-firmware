@@ -55,7 +55,7 @@
 #define MSP_PROTOCOL_VERSION                 0
 
 #define API_VERSION_MAJOR                    22
-#define API_VERSION_MINOR                    2
+#define API_VERSION_MINOR                    3
 #define API_VERSION_LENGTH                   2
 
 #define FLIGHT_CONTROLLER_IDENTIFIER_LENGTH  4
@@ -315,4 +315,5 @@
 #define MSP2_WING_SET_FBUS_MASTER_CONFIG     0x5F0A
 #define MSP2_WING_TV_PID_CONFIG              0x5F0B
 #define MSP2_WING_SET_TV_PID_CONFIG          0x5F0C
+#define MSP2_WING_SBUS_INPUT_STATUS          0x5F0D
 #define MSP_V2_FRAME                         255
