@@ -609,6 +609,13 @@ void detectAndApplySignalLossBehaviour(void)
     const bool failsafeAuxSwitch = IS_RC_MODE_ACTIVE(BOXFAILSAFE);
 
 #ifdef USE_RX_SBUS_INPUT
+    // Keep the SBUS-in decoder fresh every cycle, regardless of main-link state -
+    // this must not be gated behind the failover check below (short-circuiting on
+    // rxSignalReceived would otherwise mean it never decodes anything at all while
+    // the main link is healthy, starving both live diagnostics and the freshness of
+    // the very first frame used at the instant of a real failover).
+    sbusInputPoll();
+
     // Instant SBUS-in failover: the main RX link is down this cycle, but a configured
     // SBUS-in port is actively decoding valid frames. Take over ALL channels (including
     // aux/mode switches) from it, exactly as a physical backup satellite receiver would,

@@ -133,13 +133,29 @@ bool sbusInputIsEnabled(void)
     return sbusInputPort != NULL;
 }
 
+// Decodes any newly-completed frame and updates the channel/freshness state.
+// Must be called every cycle regardless of whether the main RX link is up or
+// the fallback is currently "needed" - it used to be called only as a side
+// effect of sbusInputIsActive(), which rx.c only evaluates once the main
+// link is already down (short-circuiting `!rxSignalReceived && ...`). That
+// starved this of any real-time decoding whenever the main link was healthy,
+// leaving diagnostics/MSP polling as the only thing driving it (once every
+// poll interval instead of every cycle) and meaning the very first fallback
+// frame used at the instant of a real failover could already be stale.
+void sbusInputPoll(void)
+{
+    if (!sbusInputIsEnabled()) {
+        return;
+    }
+
+    sbusInputUpdate();
+}
+
 bool sbusInputIsActive(void)
 {
     if (!sbusInputIsEnabled()) {
         return false;
     }
-
-    sbusInputUpdate();
 
     return (timeMs_t)(millis() - sbusInputLastValidFrameMs) < SBUS_INPUT_STALE_MS;
 }

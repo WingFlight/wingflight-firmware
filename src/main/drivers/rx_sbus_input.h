@@ -36,6 +36,12 @@
 
 void sbusInputInit(void);
 
+// Decodes any newly-completed SBUS frame and refreshes channel/freshness
+// state. Must be called every cycle from the RX task regardless of main-link
+// state - see rx.c's detectAndApplySignalLossBehaviour() for why this can't
+// just be a side effect of sbusInputIsActive() any more.
+void sbusInputPoll(void);
+
 // True once a serial port has been assigned FUNCTION_RX_SBUS_INPUT.
 bool sbusInputIsEnabled(void);
 
