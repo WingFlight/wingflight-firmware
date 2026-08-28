@@ -41,13 +41,28 @@ jobs:
     - name: Set build variables
       run: |
         BRANCH="${GITHUB_REF#refs/heads/}"
-        SLUG="${BRANCH#feature/}"
-        SLUG="$(echo "$SLUG" | sed -E 's/[^A-Za-z0-9]+/_/g')"
+        RAW_SLUG="${BRANCH#feature/}"
+        # SLUG (hyphenated) is only used for the release/tag name, which has
+        # no character restrictions -- kept readable.
+        SLUG="$(echo "$RAW_SLUG" | sed -E 's/[^A-Za-z0-9]+/-/g; s/^-+//; s/-+$//')"
+        # VER_SLUG feeds FC_VER_SUFFIX, which ends up embedded in both the
+        # firmware's semver string AND the .hex filename. Semver prerelease
+        # identifiers only allow [0-9A-Za-z-], while the configurator's
+        # release-parsing filename regex only allows [0-9A-Za-z_] in this
+        # position (see wingflight-configurator's firmware_flasher/util.js
+        # FILENAME_EXPRESSION) -- the only characters satisfying both is
+        # plain alphanumeric, so strip everything else rather than
+        # substituting a separator. A malformed semver string here isn't
+        # just cosmetic: the configurator's semver comparisons run inside an
+        # unguarded forEach over every release, so one invalid version
+        # throws and silently breaks board discovery for every release, on
+        # every branch -- not just this one.
+        VER_SLUG="$(echo "$RAW_SLUG" | sed -E 's/[^A-Za-z0-9]+//g')"
         SHORT_SHA="${GITHUB_SHA:0:7}"
 
         echo "BRANCH=${BRANCH}" >> "${GITHUB_ENV}"
         echo "SLUG=${SLUG}" >> "${GITHUB_ENV}"
-        echo "GIT_PRE=dev_${SLUG}_${SHORT_SHA}" >> "${GITHUB_ENV}"
+        echo "GIT_PRE=dev${VER_SLUG}${SHORT_SHA}" >> "${GITHUB_ENV}"
         echo "GIT_TAG=dev/${SLUG}" >> "${GITHUB_ENV}"
         cat "${GITHUB_ENV}"
 
@@ -116,8 +131,10 @@ jobs:
     - name: Set build variables
       run: |
         BRANCH="${{ github.event.ref }}"
-        SLUG="${BRANCH#feature/}"
-        SLUG="$(echo "$SLUG" | sed -E 's/[^A-Za-z0-9]+/_/g')"
+        RAW_SLUG="${BRANCH#feature/}"
+        # Must match the build job's SLUG (hyphenated) exactly, or this
+        # won't find the tag/artifacts that job actually created.
+        SLUG="$(echo "$RAW_SLUG" | sed -E 's/[^A-Za-z0-9]+/-/g; s/^-+//; s/-+$//')"
 
         echo "SLUG=${SLUG}" >> "${GITHUB_ENV}"
         echo "GIT_TAG=dev/${SLUG}" >> "${GITHUB_ENV}"
