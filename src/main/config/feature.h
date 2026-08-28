@@ -54,7 +54,7 @@ typedef enum {
     FEATURE_UNUSED_20              = BIT(20),
     FEATURE_UNUSED_21              = BIT(21),
     FEATURE_UNUSED_22              = BIT(22),
-    FEATURE_UNUSED_23              = BIT(23),
+    FEATURE_FC_LINK                = BIT(23), // experimental: master/slave redundant-FC link (see drivers/fc_link.c)
     FEATURE_THRUST_VECTOR          = BIT(24),
     FEATURE_RX_SPI                 = BIT(25),
     FEATURE_UNUSED_26              = BIT(26), // was FEATURE_GOVERNOR (heli governor removed)
@@ -75,7 +75,6 @@ typedef enum {
     FEATURE_UNUSED_20 | \
     FEATURE_UNUSED_21 | \
     FEATURE_UNUSED_22 | \
-    FEATURE_UNUSED_23 | \
     0)
 
 void featureInit(void);

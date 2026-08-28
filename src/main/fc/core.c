@@ -50,6 +50,7 @@
 #include "drivers/freq.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fc_link.h"
 
 #include "fc/rc_rates.h"
 #include "fc/rc.h"
@@ -699,6 +700,12 @@ void processRxModes(timeUs_t currentTimeUs)
 #endif // USE_SERVOS
 
     if (!cliMode &&
+#ifdef USE_FC_LINK
+        // While mirroring MASTER's live tuning, don't let our own RX also
+        // adjust it -- both control links are open, so both sets of
+        // adjustment functions would otherwise fight over the same profile.
+        !fcLinkShouldRelay() &&
+#endif
         !(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED)))
     {
         processRcAdjustments();
