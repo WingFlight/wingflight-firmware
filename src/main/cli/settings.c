@@ -1135,6 +1135,10 @@ const clivalue_t valueTable[] = {
     { "tv_iterm_relax_level",       VAR_UINT8  | MASTER_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_level) },
     { "tv_iterm_relax_cutoff",      VAR_UINT8  | MASTER_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_cutoff) },
 
+    { "tv_hold_gain",               VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, hold.gain) },
+    { "tv_hold_deadband",           VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, hold.deadband) },
+    { "tv_hold_max_rate",           VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 1800 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, hold.max_rate) },
+
 
 // PG_TELEMETRY_CONFIG
 #ifdef USE_TELEMETRY

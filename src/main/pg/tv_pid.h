@@ -22,9 +22,17 @@
 
 // Config for the independent Thrust Vector PID loop (FEATURE_THRUST_VECTOR).
 // A deliberately trimmed-down sibling of pidProfile_t: no pid_mode, master_gain/
-// gain_curve, fw_tpa, leveling/trainer/autohover/atthold sub-modes, or cross-axis
-// relax -- those are all main-loop flight-mode concerns that don't apply to a raw
-// vectoring actuator loop. Single config (no multi-profile switching).
+// gain_curve, fw_tpa, trainer, or cross-axis relax -- those are all main-loop
+// flight-mode concerns that don't apply to a raw vectoring actuator loop. Single
+// config (no multi-profile switching).
+//
+// The one exception is `hold`: an independent attitude/heading hold, engaged by
+// its own switch (BOXTVHOLD) rather than the main loop's ANGLE/AUTOHOVER/ATTHOLD
+// chain, so the vectored nozzle can hold heading/attitude while the aerodynamic
+// control surfaces stay in plain rate/acro under the pilot's stick. See
+// flight/tv_hold.c -- it deliberately re-derives atthold.c's quaternion
+// track/freeze algorithm as a second, independent instance rather than sharing
+// state with the main loop's atthold.
 typedef struct {
 
     pidf_t   pid[PID_ITEM_COUNT];
@@ -43,6 +51,12 @@ typedef struct {
     uint8_t  dterm_cutoff[PID_AXIS_COUNT];
     uint8_t  bterm_cutoff[PID_AXIS_COUNT];
     uint8_t  gyro_cutoff[PID_AXIS_COUNT];
+
+    struct {
+        uint8_t  gain;
+        uint8_t  deadband;
+        uint16_t max_rate;
+    } hold;
 
 } tvPidProfile_t;
 

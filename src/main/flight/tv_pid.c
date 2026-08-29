@@ -30,8 +30,11 @@
 
 #include "sensors/gyro.h"
 
+#include "fc/runtime_config.h"
+
 #include "flight/pid.h"
 #include "flight/mixer.h"
+#include "flight/tv_hold.h"
 
 #include "tv_pid.h"
 
@@ -381,7 +384,16 @@ static void tvPidApplyAxis(uint8_t axis)
     // Reuse this tick's final main-loop setpoint (post rates-curve, post any
     // leveling-mode shaping). Only correct because tvPidController() is called
     // after pidController() within the same TASK_PID tick -- see fc/core.c.
-    const float setpoint = pidGetSetpoint(axis);
+    float setpoint = pidGetSetpoint(axis);
+
+    // Independent attitude/heading hold for this loop only (BOXTVHOLD) -- see
+    // tv_hold.c. Skipped while a safety mode is driving the main loop's setpoint
+    // (ANGLE/GPS-rescue/failsafe/loiter/RTH all force it to an already-leveled
+    // value there, same priority pidApplySetpoint() gives them in pid.c) so TV
+    // hold's own stale quaternion target never fights a safety recovery.
+    if (!FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE)) {
+        setpoint = tvHoldApply(axis, setpoint);
+    }
 
     // Gyro rate through the TV loop's own filter, independent of the main loop
     const float gyroRate = filterApply(&tvPid.gyrorFilter[axis], gyro.gyroADCf[axis]);

@@ -99,6 +99,7 @@
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/pid.h"
+#include "flight/tv_hold.h"
 #include "flight/tv_pid.h"
 #include "flight/servos.h"
 #include "flight/rpm_filter.h"
@@ -705,6 +706,7 @@ void init(void)
     // stays valid even if FEATURE_THRUST_VECTOR is toggled without a reboot) -- only
     // its execution is gated by the feature flag, in subTaskPidController().
     tvPidInit(tvPidProfile());
+    tvHoldInit(tvPidProfile());
 
 #ifdef USE_SERVOS
     servoInit();

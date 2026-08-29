@@ -114,4 +114,5 @@ const char * const debugModeNames[DEBUG_COUNT] = {
     DEBUG_NAME(GYRO_CALIBRATION),
     DEBUG_NAME(AUTOHOVER),
     DEBUG_NAME(ATTHOLD),
+    DEBUG_NAME(TVHOLD),
 };

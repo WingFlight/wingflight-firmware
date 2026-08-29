@@ -68,6 +68,7 @@
 #endif
 
 #include "flight/pid.h"
+#include "flight/tv_hold.h"
 #include "flight/tv_pid.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
@@ -950,8 +951,12 @@ static void subTaskPidController(timeUs_t currentTimeUs)
     // corrupted samples while the main axes have already zeroed out.
     if (featureIsEnabled(FEATURE_THRUST_VECTOR)) {
         if (IS_RC_MODE_ACTIVE(BOXTHRUSTVECTOR) && !gyroOverflowDetected()) {
+            // BOXTVHOLD: independent attitude/heading hold for this loop only, decoupled
+            // from the main loop's ANGLE/AUTOHOVER/ATTHOLD chain -- see flight/tv_hold.c.
+            tvHoldSetState(IS_RC_MODE_ACTIVE(BOXTVHOLD));
             tvPidController(currentTimeUs);
         } else {
+            tvHoldSetState(false);
             tvPidReset();
         }
     }

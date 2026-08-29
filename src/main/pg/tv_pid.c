@@ -51,4 +51,7 @@ PG_RESET_TEMPLATE(tvPidProfile_t, tvPidProfile,
     .dterm_cutoff = { 15, 15, 20 },
     .bterm_cutoff = { 15, 15, 20 },
     .gyro_cutoff = { 50, 50, 100 },
+    // Mirrors pidProfile_t's atthold defaults (pg/pid.c) -- same reasonable
+    // bench-tuning starting point, not an inert (all-zero) hold.
+    .hold = { .gain = 40, .deadband = 5, .max_rate = 300 },
 );

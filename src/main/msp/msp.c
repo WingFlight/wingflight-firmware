@@ -91,6 +91,7 @@
 #include "flight/mixer.h"
 #include "flight/logic_condition.h"
 #include "flight/pid.h"
+#include "flight/tv_hold.h"
 #include "flight/tv_pid.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
@@ -1430,6 +1431,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
             sbufWriteU8(dst, tvPidProfile()->gyro_cutoff[i]);
         }
+        sbufWriteU8(dst, tvPidProfile()->hold.gain);
+        sbufWriteU8(dst, tvPidProfile()->hold.deadband);
+        sbufWriteU16(dst, tvPidProfile()->hold.max_rate);
         break;
 
     case MSP_DEBUG_CONFIG:
@@ -3540,7 +3544,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP2_WING_SET_TV_PID_CONFIG:
-        if (dataSize != PID_ITEM_COUNT * 5 * sizeof(uint16_t) + 3 * sizeof(uint16_t) + 3 + PID_AXIS_COUNT * 6) {
+        if (dataSize != PID_ITEM_COUNT * 5 * sizeof(uint16_t) + 3 * sizeof(uint16_t) + 3 + PID_AXIS_COUNT * 6
+                         + 2 * sizeof(uint8_t) + sizeof(uint16_t)) {
             return MSP_RESULT_ERROR;
         }
         for (int i = 0; i < PID_ITEM_COUNT; i++) {
@@ -3574,7 +3579,11 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
             tvPidProfileMutable()->gyro_cutoff[i] = sbufReadU8(src);
         }
+        tvPidProfileMutable()->hold.gain = sbufReadU8(src);
+        tvPidProfileMutable()->hold.deadband = sbufReadU8(src);
+        tvPidProfileMutable()->hold.max_rate = sbufReadU16(src);
         tvPidLoadProfile(tvPidProfile());
+        tvHoldInit(tvPidProfile());
         break;
 
     case MSP_SET_MIXER_CONFIG:
