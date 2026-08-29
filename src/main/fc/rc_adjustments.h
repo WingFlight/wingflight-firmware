@@ -189,6 +189,9 @@ typedef enum {
     ADJUSTMENT_TV_YAW_F_GAIN               = 108,
     ADJUSTMENT_TV_YAW_B_GAIN               = 109,
 
+    // Thrust Vector Attitude Hold -- independent hold engine (flight/tv_hold.c)
+    ADJUSTMENT_TV_HOLD_GAIN                 = 110,
+
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;
 

@@ -80,7 +80,7 @@ typedef enum {
     BOXTHRUSTVECTOR,    // THRUST VECTOR: live on/off for the independent TV mixer output
                          // (FEATURE_THRUST_VECTOR) -- gates the mix only, not a flight mode
                          // (see subTaskPidController() in fc/core.c)
-    BOXTVHOLD,          // TV ATT HOLD: independent quaternion attitude/heading hold for the
+    BOXTVHOLD,          // THRUST VECTOR ATTITUDE HOLD: independent quaternion attitude/heading hold for the
                          // Thrust Vector loop only (flight/tv_hold.c) -- decoupled from the
                          // main loop's ANGLE/AUTOHOVER/ATTHOLD chain, so the vectored nozzle
                          // can hold while control surfaces stay in plain rate/acro. Only

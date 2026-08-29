@@ -117,7 +117,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     // permanentId 61 is BOXLOITER "GPS LOITER" (see above, near BOXGPSRESCUE) -- do not reuse
     // permanentId 62 is BOXRTH "GPS RTH" (see above, near BOXGPSRESCUE) -- do not reuse
     BOXITEM(BOXTHRUSTVECTOR, "THRUST VECTOR", 63),
-    BOXITEM(BOXTVHOLD, "TV ATT HOLD", 64),
+    BOXITEM(BOXTVHOLD, "THRUST VECTOR ATTITUDE HOLD", 64),
 };
 
 // mask of enabled IDs, calculated on startup based on enabled features. boxId_e is used as bit index

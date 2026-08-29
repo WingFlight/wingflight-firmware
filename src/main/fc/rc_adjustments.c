@@ -40,6 +40,7 @@
 #include "fc/rc.h"
 
 #include "flight/pid.h"
+#include "flight/tv_hold.h"
 #include "flight/tv_pid.h"
 #include "flight/mixer.h"
 #include "flight/trainer.h"
@@ -240,6 +241,8 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
     ADJ_ENTRY(TV_YAW_D_GAIN,                0, PID_GAIN_MAX),
     ADJ_ENTRY(TV_YAW_F_GAIN,                0, PID_GAIN_MAX),
     ADJ_ENTRY(TV_YAW_B_GAIN,                0, PID_GAIN_MAX),
+
+    ADJ_ENTRY(TV_HOLD_GAIN,                 0, 250),
 
 };
 

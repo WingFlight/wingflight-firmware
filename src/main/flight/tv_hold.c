@@ -36,11 +36,11 @@
 #include "tv_hold.h"
 
 // Independent quaternion-based attitude/heading hold for the Thrust Vector loop
-// (FEATURE_THRUST_VECTOR) -- engaged by its own switch (BOXTVHOLD), completely
-// decoupled from the main loop's ANGLE/AUTOHOVER/ATTHOLD chain in pid.c. This is
-// what makes it possible to hold heading/attitude on the vectored nozzle while
-// the aerodynamic control surfaces stay in plain rate/acro under the pilot's
-// stick.
+// (FEATURE_THRUST_VECTOR) -- engaged by its own switch (BOXTVHOLD, "THRUST VECTOR
+// ATTITUDE HOLD"), completely decoupled from the main loop's ANGLE/AUTOHOVER/
+// ATTHOLD chain in pid.c. This is what makes it possible to hold heading/attitude
+// on the vectored nozzle while the aerodynamic control surfaces stay in plain
+// rate/acro under the pilot's stick.
 //
 // Deliberately a second, independent instance of atthold.c's track/freeze
 // algorithm rather than shared state or a call into atthold.c -- same "not
@@ -66,6 +66,17 @@ INIT_CODE void tvHoldInit(const tvPidProfile_t *profile)
     tvHold.Gain = profile->hold.gain / 10.0f;
     tvHold.Deadband = profile->hold.deadband / 100.0f;
     tvHold.MaxRate = profile->hold.max_rate;
+}
+
+int get_ADJUSTMENT_TV_HOLD_GAIN(void)
+{
+    return tvPidProfile()->hold.gain;
+}
+
+void set_ADJUSTMENT_TV_HOLD_GAIN(int value)
+{
+    tvPidProfileMutable()->hold.gain = value;
+    tvHold.Gain = value / 10.0f;
 }
 
 // Called once on the rising edge of BOXTVHOLD so a stale target from a

@@ -20,8 +20,11 @@
 #include <stdbool.h>
 
 #include "pg/tv_pid.h"
+#include "pg/adjustments.h"
 
 void  tvHoldInit(const tvPidProfile_t *profile);
 void  tvHoldSetState(bool state);
 
 float tvHoldApply(int axis, float pidSetpoint);
+
+ADJFUN_DECLARE(TV_HOLD_GAIN)
