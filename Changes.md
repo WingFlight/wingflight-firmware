@@ -539,6 +539,23 @@ continuous/mapped mode now uses the same +-2 / 100 ms channel-stability
 debounce that stepped mode already had. Other adjustment functions (PID
 gains, rates, etc.) are unaffected.
 
+### Servo trim (SERVO_TRIM_*) could still snap in continuous/"Absolute" mode
+
+The boot/reacquisition debounce added above narrowed the window but didn't
+close it: continuous ("Absolute") mode maps a channel position straight to
+the servo center with no per-tick increment of its own (unlike stepped
+mode's step size), so once a reading cleared the settle/stability checks it
+could still move the physical servo center by the whole adjustment range in
+a single tick. Reports of the original snap still occurring, specifically
+on channel-mapped (not switch-stepped) trim setups, confirmed this path.
+
+Continuous-mode `SERVO_TRIM_ROLL/PITCH/YAW` now slews toward the mapped
+target instead of jumping straight to it, capped to roughly 200us/sec (the
+full +-200 range takes ~2s to traverse, in line with the auto-trim capture
+window). A trusted reading can now only move the servo center gradually,
+never snap it, regardless of how the settle/stability timing plays out on a
+given receiver. Stepped mode is unaffected -- it already couldn't snap.
+
 ### S.PORT telemetry Scaling for attitude sensors
 
 The attitiude sensors where found to be out by a factor of 10.  The scaling

@@ -76,6 +76,18 @@
 // so they repeat much faster than other stepped adjustments (e.g. PID gains, rates).
 #define TRIM_REPEAT_DELAY 20
 
+// Continuous ("Absolute") SERVO_TRIM_* maps a channel position straight to a servo
+// center with no per-tick increment of its own, unlike stepped mode's adjStep -- so
+// once a reading clears the settle/stability checks above, it would otherwise move
+// the physical servo center by the whole adjustment range in a single tick. Cap how
+// far one applied tick may move it instead. TRIM_REPEAT_DELAY (20ms) is the fastest
+// consecutive applies can land (see the deadTime assignment below), so this yields a
+// worst-case rate of ~200us/sec -- the full +-200 range takes ~2s, matching
+// AUTOTRIM_WINDOW_MS's order of magnitude. Any real tick rate slower than that only
+// makes the effective rate more conservative, never faster. Stepped mode is
+// unaffected: it already can't snap.
+#define SERVO_TRIM_MAX_STEP_PER_TICK 4
+
 // Servo trims move physical control surfaces, so their adjustment channels are
 // treated as untrustworthy until the RX link has been continuously valid for this
 // long. This rides out the garbage/failsafe-hold frames some receivers emit for a
@@ -423,6 +435,14 @@ void processRcAdjustments(void)
                             const int offset = rangeWidth / 2;
                             adjval = adjRange->adjMin + ((chValue - rangeLower) * valueWidth + offset) / rangeWidth;
                         }
+                    }
+
+                    // See SERVO_TRIM_MAX_STEP_PER_TICK -- slew the applied value toward the
+                    // mapped target instead of jumping straight to it, so a single trusted
+                    // frame can no longer snap the servo center outright.
+                    if (isServoTrimAdjustment(adjFunc)) {
+                        adjval = adjState->adjValue + constrain(adjval - adjState->adjValue,
+                            -SERVO_TRIM_MAX_STEP_PER_TICK, SERVO_TRIM_MAX_STEP_PER_TICK);
                     }
                 }
 
