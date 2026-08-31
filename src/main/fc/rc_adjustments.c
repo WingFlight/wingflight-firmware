@@ -78,9 +78,13 @@
 
 // Continuous ("Absolute") SERVO_TRIM_* maps a channel position straight to a servo
 // center with no per-tick increment of its own, unlike stepped mode's adjStep -- so
-// once a reading clears the settle/stability checks above, it would otherwise move
-// the physical servo center by the whole adjustment range in a single tick. Cap how
-// far one applied tick may move it instead. TRIM_REPEAT_DELAY (20ms) is the fastest
+// once the link-settle gate below trusts a reading, it would otherwise move the
+// physical servo center by the whole adjustment range in a single tick. Cap how far
+// one applied tick may move it instead -- this is what actually prevents a snap (the
+// settle gate only decides when a reading is trusted, not how fast it may move the
+// output), and it's what lets continuous mode track the channel live on every tick
+// with no hold-still debounce: a bad reading can only nudge the output a little
+// before the next good one corrects it back. TRIM_REPEAT_DELAY (20ms) is the fastest
 // consecutive applies can land (see the deadTime assignment below), so this yields a
 // worst-case rate of ~200us/sec -- the full +-200 range takes ~2s, matching
 // AUTOTRIM_WINDOW_MS's order of magnitude. Any real tick rate slower than that only
@@ -407,23 +411,14 @@ void processRcAdjustments(void)
                 }
                 // Continuous adjustment
                 else {
-                    // Unlike stepped adjustments above, this branch has no debounce of its
-                    // own: it applies whatever the channel reads on every single tick. For
-                    // SERVO_TRIM_*, reuse the same stability check stepped mode already gets
-                    // (chValue must hold within +-2 for TRIGGER_DELAY) so a single noisy
-                    // frame can no longer snap a servo center -- only a movement the pilot
-                    // actually held can.
-                    if (isServoTrimAdjustment(adjFunc)) {
-                        if (abs(chValue - adjState->chValue) > 2) {
-                            adjState->trigTime = now + TRIGGER_DELAY;
-                            adjState->chValue = chValue;
-                            continue;
-                        }
-                        if (cmp32(now, adjState->trigTime) < 0) {
-                            continue;
-                        }
-                    }
-
+                    // This branch has no debounce of its own: it applies whatever the channel
+                    // reads on every single tick. For SERVO_TRIM_*, that's intentional -- the
+                    // whole point of this mode is to track a pot/channel live. Snap protection
+                    // comes from the settle gate above (don't trust a reading until the link
+                    // has proven stable) and the output-side slew limit below (can't move the
+                    // servo center faster than SERVO_TRIM_MAX_STEP_PER_TICK regardless of what
+                    // the input reports), not from requiring the input to sit still first --
+                    // that would defeat live tracking, which is what continuous mode is for.
                     const int rangeLower = STEP_TO_CHANNEL_VALUE(adjRange->adjRange1.startStep);
                     const int rangeUpper = STEP_TO_CHANNEL_VALUE(adjRange->adjRange1.endStep);
                     const int rangeWidth = rangeUpper - rangeLower;

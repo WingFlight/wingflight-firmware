@@ -539,7 +539,7 @@ continuous/mapped mode now uses the same +-2 / 100 ms channel-stability
 debounce that stepped mode already had. Other adjustment functions (PID
 gains, rates, etc.) are unaffected.
 
-### Servo trim (SERVO_TRIM_*) could still snap in continuous/"Absolute" mode
+### Servo trim (SERVO_TRIM_*) could still snap in continuous/"Absolute" mode, and was sluggish to use
 
 The boot/reacquisition debounce added above narrowed the window but didn't
 close it: continuous ("Absolute") mode maps a channel position straight to
@@ -548,13 +548,21 @@ mode's step size), so once a reading cleared the settle/stability checks it
 could still move the physical servo center by the whole adjustment range in
 a single tick. Reports of the original snap still occurring, specifically
 on channel-mapped (not switch-stepped) trim setups, confirmed this path.
+The same +-2 / 100 ms stability debounce also meant a continuously-moving
+pot/channel never updated at all while it was moving -- it only caught up
+100 ms after the pilot stopped and held still, making live trimming feel
+sluggish and coarse.
 
-Continuous-mode `SERVO_TRIM_ROLL/PITCH/YAW` now slews toward the mapped
-target instead of jumping straight to it, capped to roughly 200us/sec (the
-full +-200 range takes ~2s to traverse, in line with the auto-trim capture
-window). A trusted reading can now only move the servo center gradually,
-never snap it, regardless of how the settle/stability timing plays out on a
-given receiver. Stepped mode is unaffected -- it already couldn't snap.
+Continuous-mode `SERVO_TRIM_ROLL/PITCH/YAW` now tracks the channel live on
+every tick (the stability debounce is gone for this mode), but the applied
+value slews toward the mapped target instead of jumping straight to it,
+capped to roughly 200us/sec (the full +-200 range takes ~2s to traverse, in
+line with the auto-trim capture window). A bad reading can now only nudge
+the servo center a little before the next good one corrects it back --
+never a snap -- while legitimate movement is followed in real time instead
+of waiting for the pilot to stop and hold still. Stepped mode is
+unaffected -- it already couldn't snap and was never subject to the
+stability debounce's live-tracking issue.
 
 ### S.PORT telemetry Scaling for attitude sensors
 
