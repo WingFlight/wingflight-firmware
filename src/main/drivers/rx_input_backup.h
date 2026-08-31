@@ -52,10 +52,17 @@ typedef enum {
 // public API the rest of the firmware uses (that's the plain functions below).
 typedef struct rxInputBackupOps_s {
     uint32_t baudRate;
-    portOptions_e portOptions;  // protocol-fixed framing/direction; electrical
-                                 // inversion/pin-swap are applied on top from
-                                 // the user's own config by rx_input_backup.c,
-                                 // uniformly across every provider.
+    // Protocol-fixed framing (stopbits/parity) PLUS this provider's own
+    // translation of the user's shared inverted/halfDuplex config into the
+    // correct SERIAL_INVERTED/SERIAL_NOT_INVERTED and SERIAL_BIDIR[_PP]
+    // direction/variant for its own protocol - these differ by protocol (SBUS
+    // is natively inverted, FBUS/FPort/FPort2 are not; SBUS uses plain
+    // SERIAL_BIDIR, FBUS/FPort use SERIAL_BIDIR|SERIAL_BIDIR_PP), exactly
+    // mirroring how rx/sbus.c and rx/fbus.c/fport.c each apply the main RX's
+    // own serialrx_inverted/halfDuplex differently for the same reason. Only
+    // pinSwap (protocol-agnostic) is still ORed in generically by
+    // rx_input_backup.c, since every protocol treats it identically.
+    portOptions_e portOptions;
     serialReceiveCallbackPtr isrFn;
     uint8_t channelCount;       // <= RX_INPUT_BACKUP_MAX_CHANNEL
 

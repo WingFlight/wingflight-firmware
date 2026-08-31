@@ -31,7 +31,10 @@
 #include "common/utils.h"
 
 #include "drivers/nvic.h"
+#include "drivers/serial.h"
 #include "drivers/time.h"
+
+#include "pg/rx_input_backup.h"
 
 #include "rx/frsky_crc.h"
 #include "rx/rx.h"
@@ -143,7 +146,16 @@ static FAST_CODE void fbusInputDataReceive(uint16_t c, void *data)
     }
 
     if (fbusInputFrameData.position == 0) {
-        if (c != FBUS_INPUT_CONTROL_FRAME_LENGTH_16CH || byteGap <= FBUS_INPUT_INTERBYTE_TIMEOUT_US) {
+        // Matches rx/fbus.c's own FS_CONTROL_FRAME_START exactly: accept purely
+        // on value match, no silence requirement - the type-byte check just
+        // below plus the checksum in update() reject false positives instead.
+        // (An earlier draft of this file added a byteGap>120us requirement
+        // here too, which isn't present in the real driver at all; that turned
+        // out to be over-strict against real hardware - if the true inter-frame
+        // gap in practice ever drops to <=120us, every frame would be silently
+        // dropped and the link would never come up. Removed to match the
+        // proven implementation instead of guessing at extra robustness.)
+        if (c != FBUS_INPUT_CONTROL_FRAME_LENGTH_16CH) {
             return;
         }
         fbusInputFrameData.startAtUs = nowUs;
@@ -221,8 +233,17 @@ static bool fbusInputInitCommon(rxInputBackupOps_t *ops, uint32_t baudRate)
     fbusInputRxRuntimeState.channelData = fbusInputChannelData;
     fbusInputResetParser();
 
+    // Matches rx/fbus.c's own direction/variant exactly (identical for FBUS and
+    // FPort2 - isFPORT2 only changes baud, confirmed above): FBUS/FPort2's
+    // signal is natively non-inverted, so inverted=OFF (normal wiring) leaves
+    // the UART non-inverted by default - the opposite direction from SBUS's
+    // own provider, which is why this can't be handled generically in
+    // rx_input_backup.c. Half-duplex uses SERIAL_BIDIR|SERIAL_BIDIR_PP (push-
+    // pull), unlike SBUS's plain SERIAL_BIDIR.
     ops->baudRate = baudRate;
-    ops->portOptions = FBUS_INPUT_PORT_OPTIONS;
+    ops->portOptions = FBUS_INPUT_PORT_OPTIONS
+        | (rxInputBackupConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
+        | (rxInputBackupConfig()->halfDuplex ? (SERIAL_BIDIR | SERIAL_BIDIR_PP) : SERIAL_UNIDIR);
     ops->isrFn = fbusInputDataReceive;
     ops->channelCount = RX_INPUT_BACKUP_MAX_CHANNEL;
     ops->update = fbusInputUpdate;

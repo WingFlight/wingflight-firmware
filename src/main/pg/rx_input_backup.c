@@ -29,6 +29,7 @@ void pgResetFn_rxInputBackupConfig(rxInputBackupConfig_t *config)
 {
     config->provider = 0; // RX_INPUT_BACKUP_SBUS
     config->inverted = 0;
+    config->halfDuplex = 0;
     config->pinSwap = 0;
 }
 

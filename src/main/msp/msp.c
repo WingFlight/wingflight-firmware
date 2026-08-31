@@ -130,6 +130,7 @@
 #include "pg/battery.h"
 #include "pg/sbus_output.h"
 #include "pg/fbus_master.h"
+#include "pg/rx_input_backup.h"
 #include "pg/bus_servo.h"
 #include "pg/logic_condition.h"
 
@@ -1344,6 +1345,20 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         for (uint8_t i = 0; i < channelCount; i++) {
             sbufWriteU16(dst, (uint16_t)lrintf(rxInputBackupGetChannel(i)));
         }
+        break;
+    }
+
+    case MSP2_WING_RX_INPUT_BACKUP_CONFIG: {
+        // Read-only from the configurator's point of view except via the SET_
+        // variant below - reboot is required for a changed provider/inverted/
+        // halfDuplex/pinSwap to take effect (rxInputBackupInit() only
+        // (re-)opens the port at boot), same as any other serial-port
+        // function/config change.
+        sbufWriteU8(dst, 1); // payload version
+        sbufWriteU8(dst, rxInputBackupConfig()->provider);
+        sbufWriteU8(dst, rxInputBackupConfig()->inverted);
+        sbufWriteU8(dst, rxInputBackupConfig()->halfDuplex);
+        sbufWriteU8(dst, rxInputBackupConfig()->pinSwap);
         break;
     }
 #endif
@@ -4135,6 +4150,20 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         // Forwarding buffers are only loaded from config at boot -- reload
         // them now so the change is live immediately, without a reboot.
         fbusSensorInitForwarding();
+        break;
+#endif
+
+#ifdef USE_RX_INPUT_BACKUP
+    case MSP2_WING_SET_RX_INPUT_BACKUP_CONFIG:
+        sbufReadU8(src); // payload version, unused for now
+        rxInputBackupConfigMutable()->provider = sbufReadU8(src);
+        rxInputBackupConfigMutable()->inverted = sbufReadU8(src);
+        rxInputBackupConfigMutable()->halfDuplex = sbufReadU8(src);
+        rxInputBackupConfigMutable()->pinSwap = sbufReadU8(src);
+        // Unlike MSP2_WING_SET_FBUS_MASTER_CONFIG above, there's no live-reload
+        // here - rxInputBackupInit() only (re-)opens the port at boot, so this
+        // needs the same save-and-reboot flow every other serial-port function/
+        // config change already goes through.
         break;
 #endif
 

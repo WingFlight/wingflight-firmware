@@ -167,6 +167,9 @@ void rxInputBackupInit(void)
     rxInputBackupLastValidFrameMs = 0;
     rxInputBackupHasValidFrame = false;
 
+    // Only pinSwap is applied generically here - inverted/halfDuplex are
+    // protocol-specific (see rxInputBackupOps_t's own comment) and already
+    // baked into rxInputBackupOps.portOptions by the provider's Init function.
     rxInputBackupPort = openSerialPort(portConfig->identifier,
         FUNCTION_RX_INPUT_BACKUP,
         rxInputBackupOps.isrFn,
@@ -174,7 +177,6 @@ void rxInputBackupInit(void)
         rxInputBackupOps.baudRate,
         MODE_RX,
         rxInputBackupOps.portOptions |
-            (rxInputBackupConfig()->inverted ? SERIAL_NOT_INVERTED : SERIAL_INVERTED) |
             (rxInputBackupConfig()->pinSwap ? SERIAL_PINSWAP : SERIAL_NOSWAP));
 }
 

@@ -31,7 +31,10 @@
 #include "common/utils.h"
 
 #include "drivers/nvic.h"
+#include "drivers/serial.h"
 #include "drivers/time.h"
+
+#include "pg/rx_input_backup.h"
 
 #include "rx/frsky_crc.h"
 #include "rx/rx.h"
@@ -219,8 +222,13 @@ bool rxInputBackupFportInit(rxInputBackupOps_t *ops)
     fportInputRxRuntimeState.channelData = fportInputChannelData;
     fportInputResetParser();
 
+    // Matches rx/fport.c's own direction/variant exactly - identical to FBUS's
+    // (rx_input_backup_fbus.c): natively non-inverted, SERIAL_BIDIR|SERIAL_BIDIR_PP
+    // for half-duplex.
     ops->baudRate = FPORT_INPUT_BAUDRATE;
-    ops->portOptions = FPORT_INPUT_PORT_OPTIONS;
+    ops->portOptions = FPORT_INPUT_PORT_OPTIONS
+        | (rxInputBackupConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
+        | (rxInputBackupConfig()->halfDuplex ? (SERIAL_BIDIR | SERIAL_BIDIR_PP) : SERIAL_UNIDIR);
     ops->isrFn = fportInputDataReceive;
     ops->channelCount = RX_INPUT_BACKUP_MAX_CHANNEL;
     ops->update = fportInputUpdate;

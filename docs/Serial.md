@@ -151,10 +151,22 @@ exists purely to hand over channel data, same as a physical backup satellite
 receiver would.
 
 Electrical settings for this port are independent of the main RX's own
-`serialrx_inverted`/`serialrx_pinswap` (different physical UART), and apply
-uniformly across every provider: `rx_input_backup_inverted` and
-`rx_input_backup_pinswap` (both `OFF`/`ON`, default `OFF`), in
-`pg/rx_input_backup.h`.
+`serialrx_inverted`/`serialrx_halfduplex`/`serialrx_pinswap` (different
+physical UART): `rx_input_backup_inverted`, `rx_input_backup_halfduplex`, and
+`rx_input_backup_pinswap` (all `OFF`/`ON`, default `OFF`), in
+`pg/rx_input_backup.h`. `pinSwap` behaves identically for every protocol, but
+`inverted` and `halfDuplex` do not - each protocol's own native wiring
+convention differs (SBUS is natively inverted, FBUS/FPort/FPort2 are not; SBUS
+uses plain half-duplex, FBUS/FPort/FPort2 use push-pull half-duplex), so
+`OFF` (the default, "normal wiring for whichever protocol is selected") maps
+to a different underlying UART configuration depending on `rx_input_backup_provider`
+- each provider's own driver file handles this translation, exactly mirroring
+how `rx/sbus.c` and `rx/fbus.c`/`rx/fport.c` apply the main RX's own
+`serialrx_inverted`/`serialrx_halfduplex` in opposite directions for the same
+reason. `halfDuplex` is supported even though this link never transmits: the
+UART driver's half-duplex pin setup only depends on this option, not on
+whether transmit is also enabled, so a single-wire (one-signal-pin) satellite
+works correctly in receive-only mode.
 
 ### 3. MSP Baudrates
 

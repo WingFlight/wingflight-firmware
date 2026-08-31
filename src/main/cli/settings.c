@@ -1484,6 +1484,7 @@ const clivalue_t valueTable[] = {
     { "rx_input_backup_provider",      VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_RX_INPUT_BACKUP_PROVIDER}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, provider) },
     { "rx_input_backup_pinswap",       VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, pinSwap) },
     { "rx_input_backup_inverted",      VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, inverted) },
+    { "rx_input_backup_halfduplex",    VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, halfDuplex) },
 #endif
 
 };
