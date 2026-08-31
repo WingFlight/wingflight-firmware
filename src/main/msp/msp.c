@@ -59,7 +59,7 @@
 #include "drivers/dshot.h"
 #include "drivers/dshot_command.h"
 #include "drivers/fbus_master.h"
-#include "drivers/rx_sbus_input.h"
+#include "drivers/rx_input_backup.h"
 #include "drivers/fbus_sensor.h"
 #include "drivers/fbus_xact.h"
 #include "drivers/flash.h"
@@ -1316,23 +1316,33 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     }
 #endif
 
-#ifdef USE_RX_SBUS_INPUT
-    case MSP2_WING_SBUS_INPUT_STATUS: {
-        // Read-only diagnostics for the configurator/Lua suite: is a SBUS-in fallback
-        // port configured, is it currently healthy, and is it the channel source in
-        // use right now (main RX link down, SBUS-in covering for it)?
-        const bool enabled = sbusInputIsEnabled();
-        const bool linkUp = enabled && sbusInputIsActive();
-        const bool sbusInputIsSource = linkUp && !rxIsReceivingSignal();
-        const uint8_t channelCount = sbusInputGetChannelCount();
+#ifdef USE_RX_INPUT_BACKUP
+    case MSP2_WING_RX_INPUT_BACKUP_STATUS: {
+        // Read-only diagnostics for the configurator/Lua suite: is a backup RX
+        // port configured (and with which protocol), is it currently healthy, and
+        // is it the channel source in use right now (main RX link down, backup
+        // covering for it)?
+        //
+        // Payload version 2: adds the `provider` byte (right after `enabled`, since
+        // it's static config known even while disabled) now that this feature is no
+        // longer SBUS-only. Both the configurator's and Lua suite's decoders now
+        // actually branch on this byte (version < 2 => no provider field present,
+        // assume SBUS) rather than reading-and-discarding it as v1's clients did -
+        // that dead-code version check is exactly what let this field get added at
+        // all without also minting a new command id.
+        const bool enabled = rxInputBackupIsEnabled();
+        const bool linkUp = enabled && rxInputBackupIsActive();
+        const bool rxInputBackupIsSource = linkUp && !rxIsReceivingSignal();
+        const uint8_t channelCount = rxInputBackupGetChannelCount();
 
-        sbufWriteU8(dst, 1); // payload version
+        sbufWriteU8(dst, 2); // payload version
         sbufWriteU8(dst, enabled ? 1 : 0);
+        sbufWriteU8(dst, enabled ? rxInputBackupGetProvider() : 0); // 0 = SBUS
         sbufWriteU8(dst, linkUp ? 1 : 0);
-        sbufWriteU8(dst, sbusInputIsSource ? 1 : 0); // 0 = main RX active, 1 = SBUS-in active
+        sbufWriteU8(dst, rxInputBackupIsSource ? 1 : 0); // 0 = main RX active, 1 = backup active
         sbufWriteU8(dst, channelCount);
         for (uint8_t i = 0; i < channelCount; i++) {
-            sbufWriteU16(dst, (uint16_t)lrintf(sbusInputGetChannel(i)));
+            sbufWriteU16(dst, (uint16_t)lrintf(rxInputBackupGetChannel(i)));
         }
         break;
     }

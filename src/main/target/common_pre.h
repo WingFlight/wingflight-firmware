@@ -255,7 +255,8 @@ extern uint8_t _dmaram_end__;
 #define USE_SBUS_OUTPUT         // SBus Output feature
 #define USE_FBUS_MASTER         // FBUS Master feature
 #define USE_SPORT_MASTER        // S.Port master feature
-#define USE_RX_SBUS_INPUT       // Secondary SBUS-in receiver, instant failover when the main RX link is lost
+#define USE_RX_INPUT_BACKUP     // Secondary backup RX input, instant failover when the main RX link is lost
+#define USE_RX_INPUT_BACKUP_SBUS // SBUS provider for USE_RX_INPUT_BACKUP
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
 #define USE_BUS_SERVO
 #endif

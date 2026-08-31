@@ -315,5 +315,5 @@
 #define MSP2_WING_SET_FBUS_MASTER_CONFIG     0x5F0A
 #define MSP2_WING_TV_PID_CONFIG              0x5F0B
 #define MSP2_WING_SET_TV_PID_CONFIG          0x5F0C
-#define MSP2_WING_SBUS_INPUT_STATUS          0x5F0D
+#define MSP2_WING_RX_INPUT_BACKUP_STATUS     0x5F0D
 #define MSP_V2_FRAME                         255

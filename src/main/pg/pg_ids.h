@@ -171,7 +171,7 @@
 #define PG_GAIN_CURVES               1012
 #define PG_THRUST_VECTOR_PROFILE     1013
 #define PG_SRXL2_ESC_CONFIG          1014
-#define PG_DRIVER_RX_SBUS_INPUT_CONFIG 1015
+#define PG_DRIVER_RX_INPUT_BACKUP_CONFIG 1015
 #define PG_BUS_SERVO_CONFIG          1016
 
 // OSD configuration -- removed (OSD)

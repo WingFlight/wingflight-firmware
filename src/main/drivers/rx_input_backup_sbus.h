@@ -15,20 +15,19 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "pg/pg_ids.h"
-#include "platform.h"
+#pragma once
 
-#include "pg/rx_sbus_input.h"
+#include <stdbool.h>
 
-#ifdef USE_RX_SBUS_INPUT
+#include "drivers/rx_input_backup.h"
 
-PG_REGISTER_WITH_RESET_FN(sbusInputConfig_t, sbusInputConfig,
-                          PG_DRIVER_RX_SBUS_INPUT_CONFIG, 0);
+// SBUS provider for the generic backup-RX framework (rx_input_backup.c). Only
+// included/called by that file, guarded by USE_RX_INPUT_BACKUP_SBUS - this is
+// the template a future FBUS/FPort provider (rx_input_backup_fbus.c, etc.)
+// would follow: same *Init(rxInputBackupOps_t *ops) shape, own private frame
+// struct/ISR/decode, no telemetry.
 
-void pgResetFn_sbusInputConfig(sbusInputConfig_t *config)
-{
-    config->inverted = 0;
-    config->pinSwap = 0;
-}
-
-#endif
+// Fills *ops and returns true. (Always succeeds today - only fails to compile
+// in when USE_RX_INPUT_BACKUP_SBUS isn't built, same as the dispatch switch in
+// rx_input_backup.c guards each case.)
+bool rxInputBackupSbusInit(rxInputBackupOps_t *ops);
