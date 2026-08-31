@@ -83,6 +83,8 @@ COMMON_SRC = \
             drivers/fbus_xact.c \
             drivers/rx_input_backup.c \
             drivers/rx_input_backup_sbus.c \
+            drivers/rx_input_backup_fbus.c \
+            drivers/rx_input_backup_fport.c \
             drivers/rx/rx_spi.c \
             drivers/rx/rx_xn297.c \
             drivers/rx/rx_pwm.c \

@@ -34,10 +34,15 @@
 // hand over channel data, same as a physical backup satellite receiver would.
 
 // Keep in sync with cli/settings.c's lookupTableRxInputBackupProvider[] (same
-// order) and pg/rx_input_backup.h's `provider` field width (uint8_t).
+// order) and pg/rx_input_backup.h's `provider` field width (uint8_t). Kept
+// fully populated regardless of which USE_RX_INPUT_BACKUP_xxx flags a given
+// target builds - same convention rx/rx.h's SerialRXType uses - only the
+// dispatch switch in rx_input_backup.c's Init function is #ifdef-guarded.
 typedef enum {
     RX_INPUT_BACKUP_SBUS = 0,
-    // RX_INPUT_BACKUP_FBUS, RX_INPUT_BACKUP_FPORT, ... added here as they land.
+    RX_INPUT_BACKUP_FBUS = 1,
+    RX_INPUT_BACKUP_FPORT = 2,
+    RX_INPUT_BACKUP_FPORT2 = 3,
 } rxInputBackupProvider_e;
 
 #define RX_INPUT_BACKUP_MAX_CHANNEL 18

@@ -141,11 +141,14 @@ specific fixed threshold isn't used instead. See `drivers/rx_input_backup.c` and
 `rx/rx.c`'s `detectAndApplySignalLossBehaviour()`. Diagnostics are available
 read-only via `MSP2_WING_RX_INPUT_BACKUP_STATUS`.
 
-Which protocol this port speaks is selected via `rx_input_backup_provider`
-(currently `SBUS` only - `pg/rx_input_backup.h`'s `provider` field). Adding a
-protocol is a small, additive change (see `drivers/rx_input_backup_sbus.c` for
-the template); there is deliberately no telemetry on this link, ever - it exists
-purely to hand over channel data, same as a physical backup satellite receiver.
+Which protocol this port speaks is selected via `rx_input_backup_provider`:
+`SBUS`, `FBUS`, `FPORT`, or `FPORT2` (`pg/rx_input_backup.h`'s `provider`
+field). FBUS is decoded as 16-channel frames only (its 8ch/24ch variants
+aren't supported yet). Adding another protocol is a small, additive change
+(see `drivers/rx_input_backup_sbus.c`/`_fbus.c`/`_fport.c` for the template);
+there is deliberately no telemetry on this link, ever, for any protocol - it
+exists purely to hand over channel data, same as a physical backup satellite
+receiver would.
 
 Electrical settings for this port are independent of the main RX's own
 `serialrx_inverted`/`serialrx_pinswap` (different physical UART), and apply

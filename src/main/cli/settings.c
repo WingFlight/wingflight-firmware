@@ -241,9 +241,14 @@ static const char * const lookupTableSerialRX[] = {
 #endif
 
 #ifdef USE_RX_INPUT_BACKUP
-// Keep in sync with drivers/rx_input_backup.h's rxInputBackupProvider_e (same order).
+// Keep in sync with drivers/rx_input_backup.h's rxInputBackupProvider_e (same
+// order). Fully populated regardless of which USE_RX_INPUT_BACKUP_xxx flags a
+// given target builds - same convention lookupTableSerialRX above uses.
 static const char * const lookupTableRxInputBackupProvider[] = {
     "SBUS",
+    "FBUS",
+    "FPORT",
+    "FPORT2",
 };
 #endif
 
