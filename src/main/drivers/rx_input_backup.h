@@ -43,6 +43,13 @@ typedef enum {
     RX_INPUT_BACKUP_FBUS = 1,
     RX_INPUT_BACKUP_FPORT = 2,
     RX_INPUT_BACKUP_FPORT2 = 3,
+    // Appended, not inserted at 0 - a port assigned FUNCTION_RX_INPUT_BACKUP
+    // with this provider is reserved but never opened (rxInputBackupInit()
+    // treats it the same as no provider ready). This is also the default for
+    // a freshly reset config (pgResetFn_rxInputBackupConfig), so assigning
+    // the port function alone no longer silently starts decoding SBUS on it
+    // before the user has actually chosen a protocol.
+    RX_INPUT_BACKUP_NONE = 4,
 } rxInputBackupProvider_e;
 
 #define RX_INPUT_BACKUP_MAX_CHANNEL 18

@@ -1331,13 +1331,25 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         // assume SBUS) rather than reading-and-discarding it as v1's clients did -
         // that dead-code version check is exactly what let this field get added at
         // all without also minting a new command id.
+        //
+        // Payload version 3: adds `mainLinkUp` (right after `enabled`) - the main
+        // RX's own live signal-received state, previously only inferable indirectly
+        // via `activeSource` (which only flips to "backup" once the backup is BOTH
+        // linked AND actually needed, so it can't distinguish "main is fine" from
+        // "main is down but backup isn't up either"). This command already computed
+        // rxIsReceivingSignal() internally for that purpose; surfacing it directly
+        // lets the configurator show a genuine main-link status badge, not just a
+        // backup one - unconditional, not gated on `enabled`, since it's meaningful
+        // whether or not a backup port is even configured.
         const bool enabled = rxInputBackupIsEnabled();
+        const bool mainLinkUp = rxIsReceivingSignal();
         const bool linkUp = enabled && rxInputBackupIsActive();
-        const bool rxInputBackupIsSource = linkUp && !rxIsReceivingSignal();
+        const bool rxInputBackupIsSource = linkUp && !mainLinkUp;
         const uint8_t channelCount = rxInputBackupGetChannelCount();
 
-        sbufWriteU8(dst, 2); // payload version
+        sbufWriteU8(dst, 3); // payload version
         sbufWriteU8(dst, enabled ? 1 : 0);
+        sbufWriteU8(dst, mainLinkUp ? 1 : 0);
         sbufWriteU8(dst, enabled ? rxInputBackupGetProvider() : 0); // 0 = SBUS
         sbufWriteU8(dst, linkUp ? 1 : 0);
         sbufWriteU8(dst, rxInputBackupIsSource ? 1 : 0); // 0 = main RX active, 1 = backup active

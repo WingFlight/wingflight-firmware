@@ -155,6 +155,7 @@ void rxInputBackupInit(void)
         providerReady = rxInputBackupFportInit(&rxInputBackupOps);
         break;
 #endif
+    case RX_INPUT_BACKUP_NONE:
     default:
         break;
     }
