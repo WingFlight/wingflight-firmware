@@ -213,13 +213,13 @@ bool rxInputBackupExbusInit(rxInputBackupOps_t *ops)
     exbusInputResetParser();
 
     // Matches rx/jetiexbus.c's own direction: EX Bus's signal is natively
-    // non-inverted (like FBUS/FPort/FPort2/IBUS/SUMD/Spektrum). Half-duplex
-    // is left user-configurable here (plain SERIAL_BIDIR, like SBUS/IBUS/
-    // SUMD/Spektrum) rather than forced on unconditionally the way
-    // rx/jetiexbus.c itself always does - that driver hardcodes it because
-    // the main RX use case may need to reply with telemetry on the same
-    // wire; this receive-only link never does, so a genuinely two-wire
-    // backup wiring (RX only, TX left disconnected) is equally valid here.
+    // non-inverted (like FBUS/FPort/FPort2). Half-duplex is left
+    // user-configurable here (plain SERIAL_BIDIR, like SBUS) rather than
+    // forced on unconditionally the way rx/jetiexbus.c itself always does -
+    // that driver hardcodes it because the main RX use case may need to
+    // reply with telemetry on the same wire; this receive-only link never
+    // does, so a genuinely two-wire backup wiring (RX only, TX left
+    // disconnected) is equally valid here.
     ops->baudRate = EXBUS_INPUT_BAUDRATE;
     ops->portOptions = EXBUS_INPUT_PORT_OPTIONS
         | (rxInputBackupConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)

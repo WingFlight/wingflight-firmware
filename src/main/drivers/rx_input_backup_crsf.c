@@ -296,10 +296,10 @@ bool rxInputBackupCrsfInit(rxInputBackupOps_t *ops)
     // option, is what makes that specific wiring work for the main RX. This
     // backup link never transmits, so it's treated the same as every other
     // non-inverted provider here: natively non-inverted, with half-duplex
-    // left user-configurable (plain SERIAL_BIDIR, matching SBUS/IBUS/SUMD/
-    // Spektrum/EX Bus) for whichever way a given backup port is actually
-    // wired, rather than assuming one specific convention CRSF's own driver
-    // doesn't actually encode as a portOptions bit to copy.
+    // left user-configurable (plain SERIAL_BIDIR, matching SBUS/EX Bus) for
+    // whichever way a given backup port is actually wired, rather than
+    // assuming one specific convention CRSF's own driver doesn't actually
+    // encode as a portOptions bit to copy.
     ops->baudRate = CRSF_INPUT_BAUDRATE;
     ops->portOptions = CRSF_INPUT_PORT_OPTIONS
         | (rxInputBackupConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
