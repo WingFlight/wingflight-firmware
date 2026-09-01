@@ -252,6 +252,8 @@ static const char * const lookupTableRxInputBackupProvider[] = {
     "FPORT2",
     "IBUS",
     "SUMD",
+    "SPEK1024",
+    "SPEK2048",
 };
 #endif
 
