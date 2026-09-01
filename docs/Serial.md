@@ -146,7 +146,7 @@ specific fixed threshold isn't used instead. See `drivers/rx_input_backup.c` and
 read-only via `MSP2_WING_RX_INPUT_BACKUP_STATUS`.
 
 Which protocol this port speaks is selected via `rx_input_backup_provider`:
-`NONE`, `SBUS`, `FBUS`, `FPORT`, `FPORT2`, or `IBUS` (`pg/rx_input_backup.h`'s
+`NONE`, `SBUS`, `FBUS`, `FPORT`, `FPORT2`, `IBUS`, or `SUMD` (`pg/rx_input_backup.h`'s
 `provider` field). `NONE` (value `0`, matching this codebase's usual
 "zero-init means off" convention) is the default for a freshly reset config -
 assigning a port `FUNCTION_RX_INPUT_BACKUP` alone no longer silently starts

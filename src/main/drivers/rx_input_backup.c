@@ -46,6 +46,10 @@
 #include "drivers/rx_input_backup_ibus.h"
 #endif
 
+#ifdef USE_RX_INPUT_BACKUP_SUMD
+#include "drivers/rx_input_backup_sumd.h"
+#endif
+
 // How long without a decoded frame before the backup link is considered down.
 // ~3 missed frames at a typical ~6-14ms/frame rate - same margin the original
 // SBUS-only driver used, kept here since it's a property of "how stale is too
@@ -162,6 +166,11 @@ void rxInputBackupInit(void)
 #ifdef USE_RX_INPUT_BACKUP_IBUS
     case RX_INPUT_BACKUP_IBUS:
         providerReady = rxInputBackupIbusInit(&rxInputBackupOps);
+        break;
+#endif
+#ifdef USE_RX_INPUT_BACKUP_SUMD
+    case RX_INPUT_BACKUP_SUMD:
+        providerReady = rxInputBackupSumdInit(&rxInputBackupOps);
         break;
 #endif
     case RX_INPUT_BACKUP_NONE:
