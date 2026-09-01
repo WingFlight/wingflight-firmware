@@ -259,6 +259,7 @@ extern uint8_t _dmaram_end__;
 #define USE_RX_INPUT_BACKUP_SBUS // SBUS provider for USE_RX_INPUT_BACKUP
 #define USE_RX_INPUT_BACKUP_FBUS // FBUS + FPort2 providers for USE_RX_INPUT_BACKUP
 #define USE_RX_INPUT_BACKUP_FPORT // FPort provider for USE_RX_INPUT_BACKUP
+#define USE_RX_INPUT_BACKUP_IBUS // IBUS provider for USE_RX_INPUT_BACKUP
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
 #define USE_BUS_SERVO
 #endif
