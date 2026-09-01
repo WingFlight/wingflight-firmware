@@ -245,11 +245,11 @@ static const char * const lookupTableSerialRX[] = {
 // order). Fully populated regardless of which USE_RX_INPUT_BACKUP_xxx flags a
 // given target builds - same convention lookupTableSerialRX above uses.
 static const char * const lookupTableRxInputBackupProvider[] = {
+    "NONE",
     "SBUS",
     "FBUS",
     "FPORT",
     "FPORT2",
-    "NONE",
 };
 #endif
 

@@ -27,10 +27,7 @@ PG_REGISTER_WITH_RESET_FN(rxInputBackupConfig_t, rxInputBackupConfig,
 
 void pgResetFn_rxInputBackupConfig(rxInputBackupConfig_t *config)
 {
-    config->provider = 4; // RX_INPUT_BACKUP_NONE - see its own comment: a
-                           // freshly-assigned port shouldn't silently start
-                           // decoding SBUS before the user has actually
-                           // chosen a protocol.
+    config->provider = 0; // RX_INPUT_BACKUP_NONE
     config->inverted = 0;
     config->halfDuplex = 0;
     config->pinSwap = 0;
