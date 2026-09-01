@@ -146,7 +146,7 @@ specific fixed threshold isn't used instead. See `drivers/rx_input_backup.c` and
 read-only via `MSP2_WING_RX_INPUT_BACKUP_STATUS`.
 
 Which protocol this port speaks is selected via `rx_input_backup_provider`:
-`NONE`, `SBUS`, `FBUS`, `FPORT`, `FPORT2`, or `EXBUS`
+`NONE`, `SBUS`, `FBUS`, `FPORT`, `FPORT2`, `EXBUS`, or `CRSF`
 (`pg/rx_input_backup.h`'s
 `provider` field). `NONE` (value `0`, matching this codebase's usual
 "zero-init means off" convention) is the default for a freshly reset config -
@@ -160,9 +160,16 @@ port bidirectionally since a real Jeti receiver may need a telemetry reply -
 this backup link never replies (receive-only, as always), which is expected
 to be fine since the receiver broadcasts channel data on its own schedule
 regardless, but hasn't been hardware-verified specifically for this
-protocol's stricter documented bus-master expectations. Adding another
+protocol's stricter documented bus-master expectations. `CRSF`
+(Crossfire/ELRS) decodes only the `RC_CHANNELS_PACKED` frame type off a
+generic address+length-prefixed byte stream - unlike the other length-
+prefixed providers here, a real CRSF link legitimately interleaves other
+frame types (e.g. `LINK_STATISTICS`, sent unprompted) on the same wire, so
+this provider tracks dynamic frame length the same way `rx/crsf.c` itself
+does rather than assuming one fixed shape, to avoid losing byte sync
+whenever a different frame type arrives. Adding another
 protocol is a small, additive change (see
-`drivers/rx_input_backup_sbus.c`/`_fbus.c`/`_fport.c`/`_exbus.c`
+`drivers/rx_input_backup_sbus.c`/`_fbus.c`/`_fport.c`/`_exbus.c`/`_crsf.c`
 for the template); there
 is deliberately no telemetry on this link, ever, for any protocol - it exists
 purely to hand over channel data, same as a physical backup satellite receiver
