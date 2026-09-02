@@ -322,32 +322,6 @@ static void processReceivedFrame(const crsfSensorsFrame_t *frame, timeUs_t curre
     }
 }
 
-// Accept any first byte that's a real CRSF device/broadcast address, not
-// just CRSF_SYNC_BYTE (== CRSF_ADDRESS_FLIGHT_CONTROLLER) and
-// CRSF_ADDRESS_CRSF_RECEIVER - a third-party accessory can address its
-// telemetry frames to whichever address its own firmware uses. The CRC8
-// check further down rejects anything that isn't actually a valid frame,
-// so being permissive here only costs a wasted resync on a false start.
-static bool isCrsfSensorsFrameStartByte(uint8_t byte)
-{
-    switch (byte) {
-    case CRSF_SYNC_BYTE: // == CRSF_ADDRESS_FLIGHT_CONTROLLER
-    case CRSF_ADDRESS_BROADCAST:
-    case CRSF_ADDRESS_USB:
-    case CRSF_ADDRESS_TBS_CORE_PNP_PRO:
-    case CRSF_ADDRESS_CURRENT_SENSOR:
-    case CRSF_ADDRESS_GPS:
-    case CRSF_ADDRESS_TBS_BLACKBOX:
-    case CRSF_ADDRESS_RACE_TAG:
-    case CRSF_ADDRESS_RADIO_TRANSMITTER:
-    case CRSF_ADDRESS_CRSF_RECEIVER:
-    case CRSF_ADDRESS_CRSF_TRANSMITTER:
-        return true;
-    default:
-        return false;
-    }
-}
-
 static void crsfSensorsDataReceive(uint16_t c, void *data)
 {
     UNUSED(data);
@@ -359,9 +333,13 @@ static void crsfSensorsDataReceive(uint16_t c, void *data)
     debugRawBytesHead = (uint8_t)((debugRawBytesHead + 1) % CRSF_SENSORS_DEBUG_RAW_LEN);
 
     if (rxPosition == 0) {
-        if (!isCrsfSensorsFrameStartByte(byte)) {
-            return;
-        }
+        // Any byte is a candidate frame start: the CRSF device-address space
+        // is nearly the whole byte range (fixed addresses, an ESC block at
+        // 0x90-0x97, and a dynamic NAT range at 0x20-0x7F), so filtering on
+        // a fixed address list is both incomplete and unnecessary - the
+        // length check below and the CRC8 check at frame-end are what
+        // actually validate a frame. A false start here just costs one
+        // wasted resync.
         debugRxSyncCount++;
         rxBuffer[rxPosition++] = byte;
         rxExpectedLength = 0;
