@@ -32,6 +32,7 @@ typedef enum {
     GPS_UBLOX,
     GPS_MSP,
     GPS_FBUS,
+    GPS_CRSF,
 } gpsProvider_e;
 
 typedef enum {

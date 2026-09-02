@@ -203,15 +203,27 @@ static void validateAndFixConfig(void)
 #if defined(USE_GPS)
     const serialPortConfig_t *gpsSerial = findSerialPortConfig(FUNCTION_GPS);
     const bool gpsUsesFbus = gpsUsesFbusTransport();
+    const bool gpsUsesCrsf = gpsUsesCrsfTransport();
+    // A FBUS/SPORT or CRSF sensors port assigned but not yet matched by gps_provider is still
+    // accepted as a valid transport (like a bare FUNCTION_GPS port is). Otherwise the feature
+    // gets disabled before the user can ever reach the GPS tab (which requires the feature to
+    // already be enabled) to pick the matching provider.
+    const bool gpsHasFbusPort =
+        findSerialPortConfig(FUNCTION_FBUS_MASTER) != NULL ||
+        findSerialPortConfig(FUNCTION_SPORT_MASTER) != NULL;
+    const bool gpsHasCrsfPort = findSerialPortConfig(FUNCTION_CRSF_SENSORS) != NULL;
     const bool gpsHasValidTransport =
         gpsConfig()->provider == GPS_MSP ||
         gpsSerial != NULL ||
-        gpsUsesFbus;
+        gpsUsesFbus ||
+        gpsUsesCrsf ||
+        gpsHasFbusPort ||
+        gpsHasCrsfPort;
 
     if (gpsConfig()->provider == GPS_MSP && gpsSerial) {
         serialRemovePort(gpsSerial->identifier);
     }
-    if (gpsUsesFbus && gpsSerial) {
+    if ((gpsUsesFbus || gpsUsesCrsf) && gpsSerial) {
         serialRemovePort(gpsSerial->identifier);
     }
 #endif

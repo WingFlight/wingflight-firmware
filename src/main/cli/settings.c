@@ -42,6 +42,7 @@
 #include "drivers/sdio.h"
 #include "drivers/vtx_common.h"
 #include "drivers/vtx_table.h"
+#include "drivers/crsf_sensors.h"
 
 #include "config/config.h"
 #include "fc/rc_rates.h"
@@ -105,6 +106,7 @@
 #include "pg/fbus_master.h"
 #include "pg/rx_input_backup.h"
 #include "pg/sport_master.h"
+#include "pg/crsf_sensors.h"
 #include "pg/bus_servo.h"
 
 #include "rx/a7105_flysky.h"
@@ -193,7 +195,7 @@ static const char * const lookupTableGyro[] = {
 
 #ifdef USE_GPS
 static const char * const lookupTableGPSProvider[] = {
-    "NMEA", "UBLOX", "MSP", "FBUS"
+    "NMEA", "UBLOX", "MSP", "FBUS", "CRSF"
 };
 
 static const char * const lookupTableGPSSBASMode[] = {
@@ -252,6 +254,15 @@ static const char * const lookupTableRxInputBackupProvider[] = {
     "FPORT2",
     "EXBUS",
     "CRSF",
+};
+#endif
+
+#ifdef USE_CRSF_SENSORS
+// Keep in sync with pg/crsf_sensors.h's crsfSensorsBatterySource_e.
+static const char * const lookupTableCrsfSensorsBatterySource[] = {
+    "AUTO",
+    "CURRENT",
+    "VOLTAGE",
 };
 #endif
 
@@ -512,6 +523,9 @@ const lookupTableEntry_t lookupTables[] = {
 #endif
     LOOKUP_TABLE_ENTRY(batteryCurrentSourceNames),
     LOOKUP_TABLE_ENTRY(batteryVoltageSourceNames),
+#ifdef USE_CRSF_SENSORS
+    LOOKUP_TABLE_ENTRY(lookupTableCrsfSensorsBatterySource),
+#endif
 #ifdef USE_SERIAL_RX
     LOOKUP_TABLE_ENTRY(lookupTableSerialRX),
 #endif
@@ -1481,6 +1495,13 @@ const clivalue_t valueTable[] = {
 #ifdef USE_SPORT_MASTER
     { "sport_master_pinswap",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_SPORT_MASTER_CONFIG, offsetof(sportMasterConfig_t, pinSwap) },
     { "sport_master_inverted",         VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_SPORT_MASTER_CONFIG, offsetof(sportMasterConfig_t, inverted) },
+#endif
+#ifdef USE_CRSF_SENSORS
+    { "crsf_sensors_timeout_ms",       VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { CRSF_SENSORS_TIMEOUT_MS_MIN, CRSF_SENSORS_TIMEOUT_MS_MAX }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, sensorTimeoutMs) },
+    { "crsf_sensors_use_baro",         VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, useBaroAltitude) },
+    { "crsf_sensors_pinswap",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, pinSwap) },
+    { "crsf_sensors_battery_source",   VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_CRSF_SENSORS_BATTERY_SOURCE }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, batterySource) },
+    { "crsf_sensors_use_rpm",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, useRpm) },
 #endif
 
 #ifdef USE_RX_INPUT_BACKUP

@@ -134,6 +134,7 @@ void gpsUpdate(timeUs_t currentTimeUs);
 bool gpsNewFrame(uint8_t c);
 bool gpsIsHealthy(void); // Check for healthy communications
 bool gpsUsesFbusTransport(void);
+bool gpsUsesCrsfTransport(void);
 struct serialPort_s;
 void gpsEnablePassthrough(struct serialPort_s *gpsPassthroughPort);
 void onGpsNewData(void);

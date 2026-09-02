@@ -81,6 +81,7 @@ COMMON_SRC = \
             drivers/fbus_master.c \
             drivers/fbus_sensor.c \
             drivers/fbus_xact.c \
+            drivers/crsf_sensors.c \
             drivers/rx_input_backup.c \
             drivers/rx_input_backup_sbus.c \
             drivers/rx_input_backup_fbus.c \

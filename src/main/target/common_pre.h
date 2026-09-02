@@ -255,6 +255,7 @@ extern uint8_t _dmaram_end__;
 #define USE_SBUS_OUTPUT         // SBus Output feature
 #define USE_FBUS_MASTER         // FBUS Master feature
 #define USE_SPORT_MASTER        // S.Port master feature
+#define USE_CRSF_SENSORS        // CRSF sensor input feature
 #define USE_RX_INPUT_BACKUP     // Secondary backup RX input, instant failover when the main RX link is lost
 #define USE_RX_INPUT_BACKUP_SBUS // SBUS provider for USE_RX_INPUT_BACKUP
 #define USE_RX_INPUT_BACKUP_FBUS // FBUS + FPort2 providers for USE_RX_INPUT_BACKUP
