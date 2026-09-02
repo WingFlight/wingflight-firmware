@@ -257,6 +257,15 @@ static const char * const lookupTableRxInputBackupProvider[] = {
 };
 #endif
 
+#ifdef USE_CRSF_SENSORS
+// Keep in sync with pg/crsf_sensors.h's crsfSensorsBatterySource_e.
+static const char * const lookupTableCrsfSensorsBatterySource[] = {
+    "AUTO",
+    "CURRENT",
+    "VOLTAGE",
+};
+#endif
+
 #ifdef USE_RX_SPI
 // sync with rx_spi_protocol_e
 static const char * const lookupTableRxSpi[] = {
@@ -514,6 +523,9 @@ const lookupTableEntry_t lookupTables[] = {
 #endif
     LOOKUP_TABLE_ENTRY(batteryCurrentSourceNames),
     LOOKUP_TABLE_ENTRY(batteryVoltageSourceNames),
+#ifdef USE_CRSF_SENSORS
+    LOOKUP_TABLE_ENTRY(lookupTableCrsfSensorsBatterySource),
+#endif
 #ifdef USE_SERIAL_RX
     LOOKUP_TABLE_ENTRY(lookupTableSerialRX),
 #endif
@@ -1487,6 +1499,9 @@ const clivalue_t valueTable[] = {
 #ifdef USE_CRSF_SENSORS
     { "crsf_sensors_timeout_ms",       VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { CRSF_SENSORS_TIMEOUT_MS_MIN, CRSF_SENSORS_TIMEOUT_MS_MAX }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, sensorTimeoutMs) },
     { "crsf_sensors_use_baro",         VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, useBaroAltitude) },
+    { "crsf_sensors_pinswap",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, pinSwap) },
+    { "crsf_sensors_battery_source",   VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_CRSF_SENSORS_BATTERY_SOURCE }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, batterySource) },
+    { "crsf_sensors_use_rpm",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, useRpm) },
 #endif
 
 #ifdef USE_RX_INPUT_BACKUP

@@ -53,6 +53,33 @@ typedef struct crsfSensorsBaroData_s {
     timeUs_t lastUpdateUs;
 } crsfSensorsBaroData_t;
 
+// Per-cell voltage telemetry (CRSF_FRAMETYPE_CELLS, 0x0E). Distinct from the
+// aggregate CRSF_FRAMETYPE_BATTERY_SENSOR (0x08) frame - some sensors only
+// send this one. Used as a voltage fallback when no 0x08 frame is present.
+#define CRSF_SENSORS_CELLS_MAX 12
+// Sanity bound, not a real per-cell limit - filters an obviously-faulty
+// channel's noise (e.g. tens of volts on one tap) out of the pack total.
+#define CRSF_SENSORS_CELL_MV_MAX 6000
+typedef struct crsfSensorsCellsData_s {
+    uint8_t cellCount;
+    uint16_t cellVoltageMv[CRSF_SENSORS_CELLS_MAX];
+    uint32_t totalVoltageMv;
+    bool valid;
+    timeUs_t lastUpdateUs;
+} crsfSensorsCellsData_t;
+
+// RPM telemetry (CRSF_FRAMETYPE_RPM, 0x0C) - this firmware's own outbound
+// telemetry/crsf.c encoder for this same frame type sends up to 2 values
+// (motor1/motor2 speed); a third-party sensor accessory could report a
+// different count, so this is sized generously rather than to exactly 2.
+#define CRSF_SENSORS_RPM_MAX 4
+typedef struct crsfSensorsRpmData_s {
+    uint8_t rpmCount;
+    int32_t rpmValues[CRSF_SENSORS_RPM_MAX];
+    bool valid;
+    timeUs_t lastUpdateUs;
+} crsfSensorsRpmData_t;
+
 void crsfSensorsInit(void);
 void crsfSensorsUpdate(timeUs_t currentTimeUs);
 bool crsfSensorsIsEnabled(void);
@@ -66,5 +93,29 @@ bool crsfSensorsHasBatteryData(void);
 bool crsfSensorsGetBaroData(crsfSensorsBaroData_t *data);
 bool crsfSensorsHasBaroData(void);
 
+bool crsfSensorsGetCellsData(crsfSensorsCellsData_t *data);
+bool crsfSensorsHasCellsData(void);
+
+bool crsfSensorsGetRpmData(crsfSensorsRpmData_t *data);
+bool crsfSensorsHasRpmData(void);
+
 void crsfSensorsSetBaroUse(bool enabled);
 bool crsfSensorsGetBaroUse(void);
+
+bool crsfSensorsGetRpmUse(void);
+
+// Link-level rx diagnostics, surfaced to the configurator (MSP2_WING_CRSF_SENSORS_STATUS)
+// as a debug page for troubleshooting sensor wiring/protocol issues - mirrors
+// the FBUS/S.Port Sensors diagnostic tab's role for that bus.
+#define CRSF_SENSORS_DEBUG_RAW_LEN 16
+typedef struct crsfSensorsDebugStats_s {
+    uint32_t rxByteCount;
+    uint32_t rxSyncCount;
+    uint32_t rxCrcOkCount;
+    uint32_t rxCrcFailCount;
+    uint8_t lastFrameType;
+    uint8_t lastFrameLength;
+    uint8_t rawBytes[CRSF_SENSORS_DEBUG_RAW_LEN]; // most recent bytes received, oldest first
+} crsfSensorsDebugStats_t;
+
+void crsfSensorsGetDebugStats(crsfSensorsDebugStats_t *stats);

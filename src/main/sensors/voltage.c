@@ -33,6 +33,7 @@
 #include "drivers/adc.h"
 #include "drivers/fbus_sensor.h"
 #include "drivers/crsf_sensors.h"
+#include "pg/crsf_sensors.h"
 
 #include "sensors/battery.h"
 #include "sensors/esc_sensor.h"
@@ -279,9 +280,49 @@ void voltageSensorCRSFRefresh(void)
 #ifdef USE_CRSF_SENSORS
     voltageSensorState_t *state = &voltageCRSFSensor;
     crsfSensorsBatteryData_t battery;
+    crsfSensorsCellsData_t cells;
+    const uint8_t source = crsfSensorsConfig()->batterySource;
 
-    if (crsfSensorsGetBatteryData(&battery)) {
-        state->sample = battery.voltageMv;
+    // crsf_sensors_battery_source picks which decoded frame feeds this:
+    //   AUTO    - prefer the aggregate Battery Sensor frame (0x08); fall
+    //             back to summed per-cell voltages (0x0E) if it isn't
+    //             present, since some sensors only ever send one or the
+    //             other.
+    //   CURRENT - Battery Sensor frame (0x08) only, no fallback.
+    //   VOLTAGE - summed Cells frame (0x0E) only, even if a Battery Sensor
+    //             frame is also present.
+    bool haveReading = false;
+    uint32_t sampleMv = 0;
+
+    switch (source) {
+        case CRSF_SENSORS_BATTERY_SOURCE_CURRENT:
+            if (crsfSensorsGetBatteryData(&battery)) {
+                sampleMv = battery.voltageMv;
+                haveReading = true;
+            }
+            break;
+
+        case CRSF_SENSORS_BATTERY_SOURCE_VOLTAGE:
+            if (crsfSensorsGetCellsData(&cells)) {
+                sampleMv = cells.totalVoltageMv;
+                haveReading = true;
+            }
+            break;
+
+        case CRSF_SENSORS_BATTERY_SOURCE_AUTO:
+        default:
+            if (crsfSensorsGetBatteryData(&battery)) {
+                sampleMv = battery.voltageMv;
+                haveReading = true;
+            } else if (crsfSensorsGetCellsData(&cells)) {
+                sampleMv = cells.totalVoltageMv;
+                haveReading = true;
+            }
+            break;
+    }
+
+    if (haveReading) {
+        state->sample = sampleMv;
         state->voltage = filterApply(&state->filter, state->sample);
         state->enabled = true;
     } else {

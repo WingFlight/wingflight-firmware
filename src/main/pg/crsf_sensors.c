@@ -29,6 +29,12 @@ void pgResetFn_crsfSensorsConfig(crsfSensorsConfig_t *config)
 {
     config->sensorTimeoutMs = CRSF_SENSORS_TIMEOUT_MS_DEFAULT;
     config->useBaroAltitude = 0;
+    // On, by default: real-world CRSF sensor accessories commonly wire up
+    // the opposite way round from this port's un-swapped default, per the
+    // wiring investigation that added this option.
+    config->pinSwap = 1;
+    config->batterySource = CRSF_SENSORS_BATTERY_SOURCE_AUTO;
+    config->useRpm = 0;
 }
 
 #endif

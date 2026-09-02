@@ -21,9 +21,26 @@
 
 #include "pg/pg.h"
 
+// Which decoded source feeds battery_meter/current_meter = CRSF:
+//   AUTO    - prefer the aggregate Battery Sensor frame (0x08, has voltage,
+//             current, capacity and remaining%); fall back to summed Cells
+//             (0x0E, voltage only) if no 0x08 frame is present.
+//   CURRENT - always use the Battery Sensor frame (0x08) - named for the
+//             one field only it provides, since Cells has no current data.
+//   VOLTAGE - always use summed Cells (0x0E), even if a Battery Sensor
+//             frame is also present.
+typedef enum {
+    CRSF_SENSORS_BATTERY_SOURCE_AUTO = 0,
+    CRSF_SENSORS_BATTERY_SOURCE_CURRENT,
+    CRSF_SENSORS_BATTERY_SOURCE_VOLTAGE,
+} crsfSensorsBatterySource_e;
+
 typedef struct crsfSensorsConfig_s {
     uint16_t sensorTimeoutMs;
     uint8_t useBaroAltitude;
+    uint8_t pinSwap;
+    uint8_t batterySource;
+    uint8_t useRpm;
 } crsfSensorsConfig_t;
 
 PG_DECLARE(crsfSensorsConfig_t, crsfSensorsConfig);

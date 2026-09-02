@@ -50,7 +50,22 @@ static crsfSensorsFrame_t processFrame;
 static crsfSensorsGpsData_t gpsData;
 static crsfSensorsBatteryData_t batteryData;
 static crsfSensorsBaroData_t baroData;
+static crsfSensorsCellsData_t cellsData;
+static uint32_t cellsPopulatedMask; // bit i set => cellVoltageMv[i] has been reported
+static crsfSensorsRpmData_t rpmData;
+static uint32_t rpmPopulatedMask; // bit i set => rpmValues[i] has been reported
 static bool useBaroAltitude;
+static bool useRpm;
+
+// Link-level rx diagnostics - see crsfSensorsGetDebugStats().
+static volatile uint32_t debugRxByteCount;
+static volatile uint32_t debugRxSyncCount;
+static volatile uint32_t debugRxCrcOkCount;
+static volatile uint32_t debugRxCrcFailCount;
+static volatile uint8_t debugLastFrameType;
+static volatile uint8_t debugLastFrameLength;
+static volatile uint8_t debugRawBytes[CRSF_SENSORS_DEBUG_RAW_LEN];
+static volatile uint8_t debugRawBytesHead;
 
 static uint16_t be16Read(const uint8_t *p)
 {
@@ -60,6 +75,15 @@ static uint16_t be16Read(const uint8_t *p)
 static uint32_t be24Read(const uint8_t *p)
 {
     return ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
+}
+
+static int32_t be24ReadSigned(const uint8_t *p)
+{
+    uint32_t raw = be24Read(p);
+    if (raw & 0x800000U) {
+        raw |= 0xFF000000U; // sign-extend 24 -> 32 bits
+    }
+    return (int32_t)raw;
 }
 
 static uint32_t be32Read(const uint8_t *p)
@@ -146,6 +170,106 @@ static void handleBaroFrame(const uint8_t *payload, uint8_t payloadLength, timeU
     baroData.lastUpdateUs = currentTimeUs;
 }
 
+// CRSF_FRAMETYPE_CELLS (0x0E), per the TBS CRSF spec ("Voltages" / "Voltage
+// Group", https://github.com/tbs-fpv/tbs-crsf-spec/blob/main/crsf.md):
+//   byte 0        Voltage_source_id - 0-127: index of the FIRST cell this
+//                 frame reports (not a count); 128-255: a general/non-cell
+//                 voltage source, not a per-cell battery reading.
+//   byte 1..      uint16_t big-endian millivolt values, starting at
+//                 Voltage_source_id, one after another.
+// A sensor may report all cells in one frame, or split a large pack across
+// several frames with different source_ids - merge into a persistent
+// per-index array rather than assuming one frame is the whole pack.
+static void handleCellsFrame(const uint8_t *payload, uint8_t payloadLength, timeUs_t currentTimeUs)
+{
+    if (payloadLength < 3) {
+        return;
+    }
+
+    const uint8_t sourceId = payload[0];
+    if (sourceId >= 128) {
+        // General/non-cell voltage source - not part of the per-cell pack.
+        return;
+    }
+
+    const uint8_t valueCount = (uint8_t)((payloadLength - 1) / 2);
+    for (uint8_t i = 0; i < valueCount; i++) {
+        const uint8_t cellIndex = (uint8_t)(sourceId + i);
+        if (cellIndex >= CRSF_SENSORS_CELLS_MAX) {
+            break;
+        }
+        const uint16_t mv = be16Read(&payload[1 + i * 2]);
+        if (mv > CRSF_SENSORS_CELL_MV_MAX) {
+            // Physically impossible for a single cell of any common
+            // chemistry - almost certainly a bad channel/connection on the
+            // sensor itself, not a real reading. Skip it rather than
+            // letting one faulty channel wreck the pack total.
+            continue;
+        }
+        cellsData.cellVoltageMv[cellIndex] = mv;
+        cellsPopulatedMask |= (1u << cellIndex);
+    }
+
+    if (cellsPopulatedMask == 0) {
+        return;
+    }
+
+    uint8_t cellCount = 0;
+    uint32_t totalMv = 0;
+    for (uint8_t i = 0; i < CRSF_SENSORS_CELLS_MAX; i++) {
+        if (cellsPopulatedMask & (1u << i)) {
+            totalMv += cellsData.cellVoltageMv[i];
+            cellCount = (uint8_t)(i + 1); // highest populated index + 1
+        }
+    }
+
+    cellsData.cellCount = cellCount;
+    cellsData.totalVoltageMv = totalMv;
+    cellsData.valid = true;
+    cellsData.lastUpdateUs = currentTimeUs;
+}
+
+// CRSF_FRAMETYPE_RPM (0x0C) - same shape this firmware's own outbound
+// telemetry/crsf.c uses to send it (crsfFrameRPM()):
+//   byte 0   Source ID - index of the FIRST value this frame reports (not
+//            a count), same source_id-as-offset convention as Cells above.
+//   byte 1.. int24_t big-endian RPM values, starting at Source ID.
+// A sensor may report all values in one frame, or split across several
+// frames with different source_ids - merge into a persistent per-index
+// array rather than assuming one frame is everything.
+static void handleRpmFrame(const uint8_t *payload, uint8_t payloadLength, timeUs_t currentTimeUs)
+{
+    if (payloadLength < 4) {
+        return;
+    }
+
+    const uint8_t sourceId = payload[0];
+    const uint8_t valueCount = (uint8_t)((payloadLength - 1) / 3);
+    for (uint8_t i = 0; i < valueCount; i++) {
+        const uint8_t rpmIndex = (uint8_t)(sourceId + i);
+        if (rpmIndex >= CRSF_SENSORS_RPM_MAX) {
+            break;
+        }
+        rpmData.rpmValues[rpmIndex] = be24ReadSigned(&payload[1 + i * 3]);
+        rpmPopulatedMask |= (1u << rpmIndex);
+    }
+
+    if (rpmPopulatedMask == 0) {
+        return;
+    }
+
+    uint8_t rpmCount = 0;
+    for (uint8_t i = 0; i < CRSF_SENSORS_RPM_MAX; i++) {
+        if (rpmPopulatedMask & (1u << i)) {
+            rpmCount = (uint8_t)(i + 1); // highest populated index + 1
+        }
+    }
+
+    rpmData.rpmCount = rpmCount;
+    rpmData.valid = true;
+    rpmData.lastUpdateUs = currentTimeUs;
+}
+
 static void processReceivedFrame(timeUs_t currentTimeUs)
 {
     if (!processFrame.valid || processFrame.length < 5) {
@@ -171,6 +295,12 @@ static void processReceivedFrame(timeUs_t currentTimeUs)
     case CRSF_FRAMETYPE_ALTITUDE_SENSOR:
         handleBaroFrame(payload, payloadLength, currentTimeUs);
         break;
+    case CRSF_FRAMETYPE_CELLS:
+        handleCellsFrame(payload, payloadLength, currentTimeUs);
+        break;
+    case CRSF_FRAMETYPE_RPM:
+        handleRpmFrame(payload, payloadLength, currentTimeUs);
+        break;
     default:
         break;
     }
@@ -182,10 +312,15 @@ static void crsfSensorsDataReceive(uint16_t c, void *data)
 
     const uint8_t byte = (uint8_t)c;
 
+    debugRxByteCount++;
+    debugRawBytes[debugRawBytesHead] = byte;
+    debugRawBytesHead = (uint8_t)((debugRawBytesHead + 1) % CRSF_SENSORS_DEBUG_RAW_LEN);
+
     if (rxPosition == 0) {
         if (byte != CRSF_SYNC_BYTE && byte != CRSF_ADDRESS_CRSF_RECEIVER) {
             return;
         }
+        debugRxSyncCount++;
         rxBuffer[rxPosition++] = byte;
         rxExpectedLength = 0;
         return;
@@ -211,14 +346,38 @@ static void crsfSensorsDataReceive(uint16_t c, void *data)
 
     if (rxExpectedLength != 0 && rxPosition == rxExpectedLength) {
         const uint8_t crc = crsfSensorsCrc8(&rxBuffer[2], (uint8_t)(rxExpectedLength - 3));
-        if (crc == rxBuffer[rxExpectedLength - 1] && !rxFrameReady) {
-            memcpy((void *)processFrame.data, (const void *)rxBuffer, rxExpectedLength);
-            processFrame.length = rxExpectedLength;
-            processFrame.valid = true;
-            rxFrameReady = true;
+        if (crc == rxBuffer[rxExpectedLength - 1]) {
+            debugRxCrcOkCount++;
+            debugLastFrameType = rxBuffer[2];
+            debugLastFrameLength = rxExpectedLength;
+            if (!rxFrameReady) {
+                memcpy((void *)processFrame.data, (const void *)rxBuffer, rxExpectedLength);
+                processFrame.length = rxExpectedLength;
+                processFrame.valid = true;
+                rxFrameReady = true;
+            }
+        } else {
+            debugRxCrcFailCount++;
         }
         rxPosition = 0;
         rxExpectedLength = 0;
+    }
+}
+
+void crsfSensorsGetDebugStats(crsfSensorsDebugStats_t *stats)
+{
+    stats->rxByteCount = debugRxByteCount;
+    stats->rxSyncCount = debugRxSyncCount;
+    stats->rxCrcOkCount = debugRxCrcOkCount;
+    stats->rxCrcFailCount = debugRxCrcFailCount;
+    stats->lastFrameType = debugLastFrameType;
+    stats->lastFrameLength = debugLastFrameLength;
+
+    // Oldest-first snapshot of the raw byte ring buffer. Not atomic with respect
+    // to the rx ISR, but good enough for a point-in-time debug dump.
+    const uint8_t head = debugRawBytesHead;
+    for (uint8_t i = 0; i < CRSF_SENSORS_DEBUG_RAW_LEN; i++) {
+        stats->rawBytes[i] = debugRawBytes[(head + i) % CRSF_SENSORS_DEBUG_RAW_LEN];
     }
 }
 
@@ -234,7 +393,12 @@ void crsfSensorsInit(void)
     memset(&gpsData, 0, sizeof(gpsData));
     memset(&batteryData, 0, sizeof(batteryData));
     memset(&baroData, 0, sizeof(baroData));
+    memset(&cellsData, 0, sizeof(cellsData));
+    cellsPopulatedMask = 0;
+    memset(&rpmData, 0, sizeof(rpmData));
+    rpmPopulatedMask = 0;
     useBaroAltitude = crsfSensorsConfig()->useBaroAltitude != 0;
+    useRpm = crsfSensorsConfig()->useRpm != 0;
 
     if (!portConfig) {
         return;
@@ -246,13 +410,15 @@ void crsfSensorsInit(void)
         NULL,
         CRSF_BAUDRATE,
         MODE_RX,
-        SERIAL_STOPBITS_1 | SERIAL_PARITY_NO | SERIAL_NOT_INVERTED);
+        SERIAL_STOPBITS_1 | SERIAL_PARITY_NO | SERIAL_NOT_INVERTED |
+            (crsfSensorsConfig()->pinSwap ? SERIAL_PINSWAP : SERIAL_NOSWAP));
 }
 
 void crsfSensorsUpdate(timeUs_t currentTimeUs)
 {
     const timeDelta_t timeoutUs = (timeDelta_t)crsfSensorsConfig()->sensorTimeoutMs * 1000;
     useBaroAltitude = crsfSensorsConfig()->useBaroAltitude != 0;
+    useRpm = crsfSensorsConfig()->useRpm != 0;
 
     if (rxFrameReady) {
         rxFrameReady = false;
@@ -268,6 +434,14 @@ void crsfSensorsUpdate(timeUs_t currentTimeUs)
     }
     if (baroData.valid && cmpTimeUs(currentTimeUs, baroData.lastUpdateUs) > timeoutUs) {
         baroData.valid = false;
+    }
+    if (cellsData.valid && cmpTimeUs(currentTimeUs, cellsData.lastUpdateUs) > timeoutUs) {
+        cellsData.valid = false;
+        cellsPopulatedMask = 0; // start fresh rather than merging with a stale reading
+    }
+    if (rpmData.valid && cmpTimeUs(currentTimeUs, rpmData.lastUpdateUs) > timeoutUs) {
+        rpmData.valid = false;
+        rpmPopulatedMask = 0; // start fresh rather than merging with a stale reading
     }
 }
 
@@ -327,6 +501,40 @@ bool crsfSensorsHasBaroData(void)
     return baroData.valid;
 }
 
+bool crsfSensorsGetCellsData(crsfSensorsCellsData_t *data)
+{
+    if (!cellsData.valid) {
+        return false;
+    }
+
+    if (data) {
+        *data = cellsData;
+    }
+    return true;
+}
+
+bool crsfSensorsHasCellsData(void)
+{
+    return cellsData.valid;
+}
+
+bool crsfSensorsGetRpmData(crsfSensorsRpmData_t *data)
+{
+    if (!rpmData.valid) {
+        return false;
+    }
+
+    if (data) {
+        *data = rpmData;
+    }
+    return true;
+}
+
+bool crsfSensorsHasRpmData(void)
+{
+    return rpmData.valid;
+}
+
 void crsfSensorsSetBaroUse(bool enabled)
 {
     useBaroAltitude = enabled;
@@ -335,6 +543,11 @@ void crsfSensorsSetBaroUse(bool enabled)
 bool crsfSensorsGetBaroUse(void)
 {
     return useBaroAltitude;
+}
+
+bool crsfSensorsGetRpmUse(void)
+{
+    return useRpm;
 }
 
 #endif
