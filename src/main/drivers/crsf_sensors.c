@@ -22,10 +22,12 @@
 #include <math.h>
 #include <string.h>
 
+#include "build/atomic.h"
 #include "build/debug.h"
 #include "common/maths.h"
 #include "common/utils.h"
 #include "drivers/crsf_sensors.h"
+#include "drivers/nvic.h"
 #include "drivers/serial.h"
 #include "drivers/time.h"
 #include "io/serial.h"
@@ -125,7 +127,9 @@ static int16_t decodeVerticalSpeedCmS(int8_t packed)
 
 static void handleGpsFrame(const uint8_t *payload, uint8_t payloadLength, timeUs_t currentTimeUs)
 {
-    if (payloadLength != CRSF_FRAME_GPS_PAYLOAD_SIZE) {
+    // CRSF allows newer fields to be appended to a frame; reject only a
+    // payload too short to hold what we read, not one longer than expected.
+    if (payloadLength < CRSF_FRAME_GPS_PAYLOAD_SIZE) {
         return;
     }
 
@@ -143,7 +147,8 @@ static void handleGpsFrame(const uint8_t *payload, uint8_t payloadLength, timeUs
 
 static void handleBatteryFrame(const uint8_t *payload, uint8_t payloadLength, timeUs_t currentTimeUs)
 {
-    if (payloadLength != CRSF_FRAME_BATTERY_SENSOR_PAYLOAD_SIZE) {
+    // Same forward-compatibility reasoning as handleGpsFrame() above.
+    if (payloadLength < CRSF_FRAME_BATTERY_SENSOR_PAYLOAD_SIZE) {
         return;
     }
 
@@ -172,14 +177,20 @@ static void handleBaroFrame(const uint8_t *payload, uint8_t payloadLength, timeU
 
 // CRSF_FRAMETYPE_CELLS (0x0E), per the TBS CRSF spec ("Voltages" / "Voltage
 // Group", https://github.com/tbs-fpv/tbs-crsf-spec/blob/main/crsf.md):
-//   byte 0        Voltage_source_id - 0-127: index of the FIRST cell this
-//                 frame reports (not a count); 128-255: a general/non-cell
-//                 voltage source, not a per-cell battery reading.
-//   byte 1..      uint16_t big-endian millivolt values, starting at
-//                 Voltage_source_id, one after another.
-// A sensor may report all cells in one frame, or split a large pack across
-// several frames with different source_ids - merge into a persistent
-// per-index array rather than assuming one frame is the whole pack.
+//   byte 0        Voltage_source_id - a SOURCE identifier, not a cell index.
+//                 0-127: cell voltages of a single battery (up to 29S); a
+//                 sensor reporting more than one battery sends multiple
+//                 0x0E frames with a different source_id per battery (0 for
+//                 battery 1, 1 for battery 2, ...). 128-255: a general,
+//                 non-cell voltage source (e.g. an ESC's input/BEC/MCU
+//                 rails), not a per-cell battery reading.
+//   byte 1..      uint16_t big-endian millivolt values for that source,
+//                 starting at cell 0 of that battery - NOT offset by
+//                 source_id.
+// We only support a single battery pack, so only source_id 0 is decoded;
+// any other source (a second battery, or a general/non-cell voltage group)
+// is a different product/reading and would otherwise corrupt this pack's
+// cell array if naively merged in.
 static void handleCellsFrame(const uint8_t *payload, uint8_t payloadLength, timeUs_t currentTimeUs)
 {
     if (payloadLength < 3) {
@@ -187,14 +198,13 @@ static void handleCellsFrame(const uint8_t *payload, uint8_t payloadLength, time
     }
 
     const uint8_t sourceId = payload[0];
-    if (sourceId >= 128) {
-        // General/non-cell voltage source - not part of the per-cell pack.
+    if (sourceId != 0) {
         return;
     }
 
     const uint8_t valueCount = (uint8_t)((payloadLength - 1) / 2);
     for (uint8_t i = 0; i < valueCount; i++) {
-        const uint8_t cellIndex = (uint8_t)(sourceId + i);
+        const uint8_t cellIndex = i;
         if (cellIndex >= CRSF_SENSORS_CELLS_MAX) {
             break;
         }
@@ -229,14 +239,16 @@ static void handleCellsFrame(const uint8_t *payload, uint8_t payloadLength, time
     cellsData.lastUpdateUs = currentTimeUs;
 }
 
-// CRSF_FRAMETYPE_RPM (0x0C) - same shape this firmware's own outbound
-// telemetry/crsf.c uses to send it (crsfFrameRPM()):
-//   byte 0   Source ID - index of the FIRST value this frame reports (not
-//            a count), same source_id-as-offset convention as Cells above.
-//   byte 1.. int24_t big-endian RPM values, starting at Source ID.
-// A sensor may report all values in one frame, or split across several
-// frames with different source_ids - merge into a persistent per-index
-// array rather than assuming one frame is everything.
+// CRSF_FRAMETYPE_RPM (0x0C), per the TBS CRSF spec - same shape this
+// firmware's own outbound telemetry/crsf.c uses to send it (crsfFrameRPM()):
+//   byte 0   rpm_source_id - a SOURCE/device identifier (0 = motor group 1,
+//            1 = motor group 2, ...), not a starting index into the values
+//            below; our own encoder always sends source_id 0.
+//   byte 1.. int24_t big-endian RPM values for that source, one per motor
+//            in that group, starting at motor 0 - NOT offset by source_id.
+// We only support a single motor group, so only source_id 0 is decoded;
+// any other source is a different device and would otherwise corrupt this
+// group's RPM array if naively merged in at an offset.
 static void handleRpmFrame(const uint8_t *payload, uint8_t payloadLength, timeUs_t currentTimeUs)
 {
     if (payloadLength < 4) {
@@ -244,9 +256,13 @@ static void handleRpmFrame(const uint8_t *payload, uint8_t payloadLength, timeUs
     }
 
     const uint8_t sourceId = payload[0];
+    if (sourceId != 0) {
+        return;
+    }
+
     const uint8_t valueCount = (uint8_t)((payloadLength - 1) / 3);
     for (uint8_t i = 0; i < valueCount; i++) {
-        const uint8_t rpmIndex = (uint8_t)(sourceId + i);
+        const uint8_t rpmIndex = i;
         if (rpmIndex >= CRSF_SENSORS_RPM_MAX) {
             break;
         }
@@ -270,20 +286,20 @@ static void handleRpmFrame(const uint8_t *payload, uint8_t payloadLength, timeUs
     rpmData.lastUpdateUs = currentTimeUs;
 }
 
-static void processReceivedFrame(timeUs_t currentTimeUs)
+static void processReceivedFrame(const crsfSensorsFrame_t *frame, timeUs_t currentTimeUs)
 {
-    if (!processFrame.valid || processFrame.length < 5) {
+    if (!frame->valid || frame->length < 5) {
         return;
     }
 
-    const uint8_t frameLength = processFrame.data[1];
-    if (frameLength < 2 || (uint8_t)(frameLength + 2) != processFrame.length) {
+    const uint8_t frameLength = frame->data[1];
+    if (frameLength < 2 || (uint8_t)(frameLength + 2) != frame->length) {
         return;
     }
 
-    const uint8_t type = processFrame.data[2];
+    const uint8_t type = frame->data[2];
     const uint8_t payloadLength = frameLength - CRSF_FRAME_LENGTH_TYPE_CRC;
-    const uint8_t *payload = &processFrame.data[3];
+    const uint8_t *payload = &frame->data[3];
 
     switch (type) {
     case CRSF_FRAMETYPE_GPS:
@@ -306,6 +322,32 @@ static void processReceivedFrame(timeUs_t currentTimeUs)
     }
 }
 
+// Accept any first byte that's a real CRSF device/broadcast address, not
+// just CRSF_SYNC_BYTE (== CRSF_ADDRESS_FLIGHT_CONTROLLER) and
+// CRSF_ADDRESS_CRSF_RECEIVER - a third-party accessory can address its
+// telemetry frames to whichever address its own firmware uses. The CRC8
+// check further down rejects anything that isn't actually a valid frame,
+// so being permissive here only costs a wasted resync on a false start.
+static bool isCrsfSensorsFrameStartByte(uint8_t byte)
+{
+    switch (byte) {
+    case CRSF_SYNC_BYTE: // == CRSF_ADDRESS_FLIGHT_CONTROLLER
+    case CRSF_ADDRESS_BROADCAST:
+    case CRSF_ADDRESS_USB:
+    case CRSF_ADDRESS_TBS_CORE_PNP_PRO:
+    case CRSF_ADDRESS_CURRENT_SENSOR:
+    case CRSF_ADDRESS_GPS:
+    case CRSF_ADDRESS_TBS_BLACKBOX:
+    case CRSF_ADDRESS_RACE_TAG:
+    case CRSF_ADDRESS_RADIO_TRANSMITTER:
+    case CRSF_ADDRESS_CRSF_RECEIVER:
+    case CRSF_ADDRESS_CRSF_TRANSMITTER:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static void crsfSensorsDataReceive(uint16_t c, void *data)
 {
     UNUSED(data);
@@ -317,7 +359,7 @@ static void crsfSensorsDataReceive(uint16_t c, void *data)
     debugRawBytesHead = (uint8_t)((debugRawBytesHead + 1) % CRSF_SENSORS_DEBUG_RAW_LEN);
 
     if (rxPosition == 0) {
-        if (byte != CRSF_SYNC_BYTE && byte != CRSF_ADDRESS_CRSF_RECEIVER) {
+        if (!isCrsfSensorsFrameStartByte(byte)) {
             return;
         }
         debugRxSyncCount++;
@@ -366,6 +408,10 @@ static void crsfSensorsDataReceive(uint16_t c, void *data)
 
 void crsfSensorsGetDebugStats(crsfSensorsDebugStats_t *stats)
 {
+    if (!stats) {
+        return;
+    }
+
     stats->rxByteCount = debugRxByteCount;
     stats->rxSyncCount = debugRxSyncCount;
     stats->rxCrcOkCount = debugRxCrcOkCount;
@@ -421,9 +467,19 @@ void crsfSensorsUpdate(timeUs_t currentTimeUs)
     useRpm = crsfSensorsConfig()->useRpm != 0;
 
     if (rxFrameReady) {
-        rxFrameReady = false;
-        processReceivedFrame(currentTimeUs);
-        processFrame.valid = false;
+        // Snapshot the frame and clear both flags atomically with respect to
+        // the rx ISR: without this, the ISR can overwrite processFrame with
+        // a newly received frame the instant rxFrameReady goes false but
+        // before this task finishes decoding it, tearing the read and
+        // silently dropping the new frame when processFrame.valid is then
+        // cleared. Decode happens from the local copy, outside the section.
+        crsfSensorsFrame_t frame;
+        ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+            frame = processFrame;
+            rxFrameReady = false;
+            processFrame.valid = false;
+        }
+        processReceivedFrame(&frame, currentTimeUs);
     }
 
     if (gpsData.valid && cmpTimeUs(currentTimeUs, gpsData.lastUpdateUs) > timeoutUs) {

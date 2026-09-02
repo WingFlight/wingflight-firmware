@@ -248,10 +248,23 @@ static void taskUpdateBaro(timeUs_t currentTimeUs)
 {
     if (sensors(SENSOR_BARO)) {
 #if defined(USE_CRSF_SENSORS)
+        static bool usingCrsfBaroAltitude = false;
         crsfSensorsBaroData_t crsfBaro;
         if (crsfSensorsGetBaroUse() && crsfSensorsGetBaroData(&crsfBaro)) {
+            usingCrsfBaroAltitude = true;
             baroSetExternalAltitude(crsfBaro.altitudeCm);
             return;
+        }
+        if (usingCrsfBaroAltitude) {
+            // CRSF altitude just stopped (timeout, sensor unplugged, or the
+            // override was turned off). baroSetExternalAltitude() marks the
+            // physical barometer's calibration as complete without ever
+            // establishing its ground-level reference, so falling back to
+            // baroUpdate() now would report an altitude relative to an
+            // uninitialized baroGroundAltitude. Recalibrate before trusting
+            // the physical sensor again.
+            usingCrsfBaroAltitude = false;
+            baroStartCalibration();
         }
 #endif
         const uint32_t newDeadline = baroUpdate(currentTimeUs);
