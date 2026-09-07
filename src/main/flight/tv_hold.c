@@ -28,6 +28,8 @@
 
 #include "common/maths.h"
 
+#include "config/config.h"
+
 #include "flight/airborne.h"
 #include "flight/imu.h"
 #include "flight/pid.h"
@@ -70,12 +72,12 @@ INIT_CODE void tvHoldInit(const tvPidProfile_t *profile)
 
 int get_ADJUSTMENT_TV_HOLD_GAIN(void)
 {
-    return tvPidProfile()->hold.gain;
+    return currentTvPidProfile->hold.gain;
 }
 
 void set_ADJUSTMENT_TV_HOLD_GAIN(int value)
 {
-    tvPidProfileMutable()->hold.gain = value;
+    currentTvPidProfile->hold.gain = value;
     tvHold.Gain = value / 10.0f;
 }
 

@@ -1437,40 +1437,45 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 
     case MSP2_WING_TV_PID_CONFIG:
+        // Leading byte identifies which of the PID_PROFILE_COUNT TV profiles the
+        // rest of this payload describes -- always "currently active", same as
+        // MSP_PID_PROFILE for the main PID loop (the configurator/Lua suite select
+        // the active profile via MSP2_WING_SELECT_TV_PROFILE, then re-read this).
+        sbufWriteU8(dst, getCurrentTvProfileIndex());
         for (int i = 0; i < PID_ITEM_COUNT; i++) {
-            sbufWriteU16(dst, tvPidProfile()->pid[i].P);
-            sbufWriteU16(dst, tvPidProfile()->pid[i].I);
-            sbufWriteU16(dst, tvPidProfile()->pid[i].D);
-            sbufWriteU16(dst, tvPidProfile()->pid[i].F);
-            sbufWriteU16(dst, tvPidProfile()->pid[i].B);
+            sbufWriteU16(dst, currentTvPidProfile->pid[i].P);
+            sbufWriteU16(dst, currentTvPidProfile->pid[i].I);
+            sbufWriteU16(dst, currentTvPidProfile->pid[i].D);
+            sbufWriteU16(dst, currentTvPidProfile->pid[i].F);
+            sbufWriteU16(dst, currentTvPidProfile->pid[i].B);
         }
-        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_ROLL]);
-        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_PITCH]);
-        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_YAW]);
-        sbufWriteU8(dst, tvPidProfile()->iterm_decay_time);
-        sbufWriteU8(dst, tvPidProfile()->iterm_decay_limit);
-        sbufWriteU8(dst, tvPidProfile()->iterm_relax_type);
+        sbufWriteU16(dst, currentTvPidProfile->master_gain[PID_ROLL]);
+        sbufWriteU16(dst, currentTvPidProfile->master_gain[PID_PITCH]);
+        sbufWriteU16(dst, currentTvPidProfile->master_gain[PID_YAW]);
+        sbufWriteU8(dst, currentTvPidProfile->iterm_decay_time);
+        sbufWriteU8(dst, currentTvPidProfile->iterm_decay_limit);
+        sbufWriteU8(dst, currentTvPidProfile->iterm_relax_type);
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->iterm_relax_level[i]);
-        }
-        for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->iterm_relax_cutoff[i]);
+            sbufWriteU8(dst, currentTvPidProfile->iterm_relax_level[i]);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->error_limit[i]);
+            sbufWriteU8(dst, currentTvPidProfile->iterm_relax_cutoff[i]);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->dterm_cutoff[i]);
+            sbufWriteU8(dst, currentTvPidProfile->error_limit[i]);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->bterm_cutoff[i]);
+            sbufWriteU8(dst, currentTvPidProfile->dterm_cutoff[i]);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->gyro_cutoff[i]);
+            sbufWriteU8(dst, currentTvPidProfile->bterm_cutoff[i]);
         }
-        sbufWriteU8(dst, tvPidProfile()->hold.gain);
-        sbufWriteU8(dst, tvPidProfile()->hold.deadband);
-        sbufWriteU16(dst, tvPidProfile()->hold.max_rate);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, currentTvPidProfile->gyro_cutoff[i]);
+        }
+        sbufWriteU8(dst, currentTvPidProfile->hold.gain);
+        sbufWriteU8(dst, currentTvPidProfile->hold.deadband);
+        sbufWriteU16(dst, currentTvPidProfile->hold.max_rate);
         break;
 
     case MSP_DEBUG_CONFIG:
@@ -3587,42 +3592,62 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             return MSP_RESULT_ERROR;
         }
         for (int i = 0; i < PID_ITEM_COUNT; i++) {
-            tvPidProfileMutable()->pid[i].P = sbufReadU16(src);
-            tvPidProfileMutable()->pid[i].I = sbufReadU16(src);
-            tvPidProfileMutable()->pid[i].D = sbufReadU16(src);
-            tvPidProfileMutable()->pid[i].F = sbufReadU16(src);
-            tvPidProfileMutable()->pid[i].B = sbufReadU16(src);
+            currentTvPidProfile->pid[i].P = sbufReadU16(src);
+            currentTvPidProfile->pid[i].I = sbufReadU16(src);
+            currentTvPidProfile->pid[i].D = sbufReadU16(src);
+            currentTvPidProfile->pid[i].F = sbufReadU16(src);
+            currentTvPidProfile->pid[i].B = sbufReadU16(src);
         }
-        tvPidProfileMutable()->master_gain[PID_ROLL] = sbufReadU16(src);
-        tvPidProfileMutable()->master_gain[PID_PITCH] = sbufReadU16(src);
-        tvPidProfileMutable()->master_gain[PID_YAW] = sbufReadU16(src);
-        tvPidProfileMutable()->iterm_decay_time = sbufReadU8(src);
-        tvPidProfileMutable()->iterm_decay_limit = sbufReadU8(src);
-        tvPidProfileMutable()->iterm_relax_type = sbufReadU8(src);
+        currentTvPidProfile->master_gain[PID_ROLL] = sbufReadU16(src);
+        currentTvPidProfile->master_gain[PID_PITCH] = sbufReadU16(src);
+        currentTvPidProfile->master_gain[PID_YAW] = sbufReadU16(src);
+        currentTvPidProfile->iterm_decay_time = sbufReadU8(src);
+        currentTvPidProfile->iterm_decay_limit = sbufReadU8(src);
+        currentTvPidProfile->iterm_relax_type = sbufReadU8(src);
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->iterm_relax_level[i] = sbufReadU8(src);
-        }
-        for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->iterm_relax_cutoff[i] = sbufReadU8(src);
+            currentTvPidProfile->iterm_relax_level[i] = sbufReadU8(src);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->error_limit[i] = sbufReadU8(src);
+            currentTvPidProfile->iterm_relax_cutoff[i] = sbufReadU8(src);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->dterm_cutoff[i] = sbufReadU8(src);
+            currentTvPidProfile->error_limit[i] = sbufReadU8(src);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->bterm_cutoff[i] = sbufReadU8(src);
+            currentTvPidProfile->dterm_cutoff[i] = sbufReadU8(src);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->gyro_cutoff[i] = sbufReadU8(src);
+            currentTvPidProfile->bterm_cutoff[i] = sbufReadU8(src);
         }
-        tvPidProfileMutable()->hold.gain = sbufReadU8(src);
-        tvPidProfileMutable()->hold.deadband = sbufReadU8(src);
-        tvPidProfileMutable()->hold.max_rate = sbufReadU16(src);
-        tvPidLoadProfile(tvPidProfile());
-        tvHoldInit(tvPidProfile());
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            currentTvPidProfile->gyro_cutoff[i] = sbufReadU8(src);
+        }
+        currentTvPidProfile->hold.gain = sbufReadU8(src);
+        currentTvPidProfile->hold.deadband = sbufReadU8(src);
+        currentTvPidProfile->hold.max_rate = sbufReadU16(src);
+        tvPidLoadProfile(currentTvPidProfile);
+        tvHoldInit(currentTvPidProfile);
         break;
+
+    case MSP2_WING_SELECT_TV_PROFILE:
+        value = sbufReadU8(src);
+        if (value >= PID_PROFILE_COUNT) {
+            value = 0;
+        }
+        changeTvProfile(value);
+        break;
+
+    case MSP2_WING_COPY_TV_PID_PROFILE: {
+        const uint8_t dstTvProfileIndex = sbufReadU8(src);
+        const uint8_t srcTvProfileIndex = sbufReadU8(src);
+        if (dstTvProfileIndex < PID_PROFILE_COUNT && srcTvProfileIndex < PID_PROFILE_COUNT) {
+            memcpy(tvPidProfilesMutable(dstTvProfileIndex), tvPidProfiles(srcTvProfileIndex), sizeof(tvPidProfile_t));
+            if (!ARMING_FLAG(ARMED) && dstTvProfileIndex == getCurrentTvProfileIndex()) {
+                changeTvProfile(dstTvProfileIndex);
+            }
+        }
+        break;
+    }
 
     case MSP_SET_MIXER_CONFIG:
         mixerConfigMutable()->model_type = sbufReadU8(src);

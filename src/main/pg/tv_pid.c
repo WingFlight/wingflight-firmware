@@ -29,29 +29,43 @@
 #include "tv_pid.h"
 
 
-PG_REGISTER_WITH_RESET_TEMPLATE(tvPidProfile_t, tvPidProfile, PG_THRUST_VECTOR_PROFILE, 0);
+// v0->v1: promoted from a single instance to PID_PROFILE_COUNT independently
+// switchable profiles (see currentTvPidProfile/changeTvProfile() in
+// config/config.c) -- old single-profile saves reset to defaults rather than
+// reinterpreting their stored bytes as profile 0 of the new array.
+PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 1);
 
 // Nominal starting gains, mirroring the main loop's defaults
 // (resetPidProfile() in pg/pid.c) -- a reasonable bench-tuning starting point
 // rather than an inert (all-zero) loop, since the feature itself already
 // ships behind FEATURE_THRUST_VECTOR (off by default).
-PG_RESET_TEMPLATE(tvPidProfile_t, tvPidProfile,
-    .pid = {
-        [PID_ROLL]  = { .P = 50, .I = 16, .D = 0, .F = 100, .B = 0, },
-        [PID_PITCH] = { .P = 50, .I = 16, .D = 0, .F = 100, .B = 0, },
-        [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 100, .B = 0, },
-    },
-    .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
-    .iterm_decay_time = 6,
-    .iterm_decay_limit = 35,
-    .iterm_relax_type = ITERM_RELAX_RPY,
-    .iterm_relax_level = { 22, 22, 22 },
-    .iterm_relax_cutoff = { 10, 10, 10 },
-    .error_limit = { 45, 45, 60 },
-    .dterm_cutoff = { 15, 15, 20 },
-    .bterm_cutoff = { 15, 15, 20 },
-    .gyro_cutoff = { 50, 50, 100 },
-    // Mirrors pidProfile_t's atthold defaults (pg/pid.c) -- same reasonable
-    // bench-tuning starting point, not an inert (all-zero) hold.
-    .hold = { .gain = 40, .deadband = 5, .max_rate = 300 },
-);
+void resetTvPidProfile(tvPidProfile_t *tvPidProfile)
+{
+    RESET_CONFIG(tvPidProfile_t, tvPidProfile,
+        .pid = {
+            [PID_ROLL]  = { .P = 50, .I = 16, .D = 0, .F = 100, .B = 0, },
+            [PID_PITCH] = { .P = 50, .I = 16, .D = 0, .F = 100, .B = 0, },
+            [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 100, .B = 0, },
+        },
+        .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
+        .iterm_decay_time = 6,
+        .iterm_decay_limit = 35,
+        .iterm_relax_type = ITERM_RELAX_RPY,
+        .iterm_relax_level = { 22, 22, 22 },
+        .iterm_relax_cutoff = { 10, 10, 10 },
+        .error_limit = { 45, 45, 60 },
+        .dterm_cutoff = { 15, 15, 20 },
+        .bterm_cutoff = { 15, 15, 20 },
+        .gyro_cutoff = { 50, 50, 100 },
+        // Mirrors pidProfile_t's atthold defaults (pg/pid.c) -- same reasonable
+        // bench-tuning starting point, not an inert (all-zero) hold.
+        .hold = { .gain = 40, .deadband = 5, .max_rate = 300 },
+    );
+}
+
+void pgResetFn_tvPidProfiles(tvPidProfile_t *tvPidProfiles)
+{
+    for (int i = 0; i < PID_PROFILE_COUNT; i++) {
+        resetTvPidProfile(&tvPidProfiles[i]);
+    }
+}

@@ -705,8 +705,8 @@ void init(void)
     // Initialize the independent Thrust Vector PID loop. Always initialised (state
     // stays valid even if FEATURE_THRUST_VECTOR is toggled without a reboot) -- only
     // its execution is gated by the feature flag, in subTaskPidController().
-    tvPidInit(tvPidProfile());
-    tvHoldInit(tvPidProfile());
+    tvPidInit(currentTvPidProfile);
+    tvHoldInit(currentTvPidProfile);
 
 #ifdef USE_SERVOS
     servoInit();

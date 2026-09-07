@@ -49,6 +49,7 @@ void tvPidController(timeUs_t currentTimeUs);
 float tvPidGetOutput(int axis);
 const tvPidAxisData_t * tvPidGetAxisData(void);
 
+ADJFUN_DECLARE(TV_PROFILE)
 ADJFUN_DECLARE(TV_MASTER_GAIN_ROLL)
 ADJFUN_DECLARE(TV_MASTER_GAIN_PITCH)
 ADJFUN_DECLARE(TV_MASTER_GAIN_YAW)
