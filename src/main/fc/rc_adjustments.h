@@ -192,6 +192,9 @@ typedef enum {
     // Thrust Vector Attitude Hold -- independent hold engine (flight/tv_hold.c)
     ADJUSTMENT_TV_HOLD_GAIN                 = 110,
 
+    // Thrust Vector profile switching (independent of ADJUSTMENT_PID_PROFILE)
+    ADJUSTMENT_TV_PROFILE                   = 111,
+
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;
 

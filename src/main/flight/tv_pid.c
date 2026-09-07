@@ -30,6 +30,8 @@
 
 #include "sensors/gyro.h"
 
+#include "config/config.h"
+
 #include "fc/runtime_config.h"
 
 #include "flight/pid.h"
@@ -83,204 +85,214 @@ void tvPidReset(void)
 
 //// Adjustment functions
 
+int get_ADJUSTMENT_TV_PROFILE(void)
+{
+    return getCurrentTvProfileIndex() + 1;
+}
+
+void set_ADJUSTMENT_TV_PROFILE(int value)
+{
+    changeTvProfile(value - 1);
+}
+
 int get_ADJUSTMENT_TV_MASTER_GAIN_ROLL(void)
 {
-    return tvPidProfile()->master_gain[PID_ROLL];
+    return currentTvPidProfile->master_gain[PID_ROLL];
 }
 
 void set_ADJUSTMENT_TV_MASTER_GAIN_ROLL(int value)
 {
-    tvPidProfileMutable()->master_gain[PID_ROLL] = value;
+    currentTvPidProfile->master_gain[PID_ROLL] = value;
     tvPid.masterGain[PID_ROLL] = value * 0.01f;
 }
 
 int get_ADJUSTMENT_TV_MASTER_GAIN_PITCH(void)
 {
-    return tvPidProfile()->master_gain[PID_PITCH];
+    return currentTvPidProfile->master_gain[PID_PITCH];
 }
 
 void set_ADJUSTMENT_TV_MASTER_GAIN_PITCH(int value)
 {
-    tvPidProfileMutable()->master_gain[PID_PITCH] = value;
+    currentTvPidProfile->master_gain[PID_PITCH] = value;
     tvPid.masterGain[PID_PITCH] = value * 0.01f;
 }
 
 int get_ADJUSTMENT_TV_MASTER_GAIN_YAW(void)
 {
-    return tvPidProfile()->master_gain[PID_YAW];
+    return currentTvPidProfile->master_gain[PID_YAW];
 }
 
 void set_ADJUSTMENT_TV_MASTER_GAIN_YAW(int value)
 {
-    tvPidProfileMutable()->master_gain[PID_YAW] = value;
+    currentTvPidProfile->master_gain[PID_YAW] = value;
     tvPid.masterGain[PID_YAW] = value * 0.01f;
 }
 
 
 int get_ADJUSTMENT_TV_ROLL_P_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_ROLL].P;
+    return currentTvPidProfile->pid[PID_ROLL].P;
 }
 
 void set_ADJUSTMENT_TV_ROLL_P_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_ROLL].P = value;
+    currentTvPidProfile->pid[PID_ROLL].P = value;
     tvPid.coef[PID_ROLL].Kp = ROLL_P_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_ROLL_I_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_ROLL].I;
+    return currentTvPidProfile->pid[PID_ROLL].I;
 }
 
 void set_ADJUSTMENT_TV_ROLL_I_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_ROLL].I = value;
+    currentTvPidProfile->pid[PID_ROLL].I = value;
     tvPid.coef[PID_ROLL].Ki = ROLL_I_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_ROLL_D_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_ROLL].D;
+    return currentTvPidProfile->pid[PID_ROLL].D;
 }
 
 void set_ADJUSTMENT_TV_ROLL_D_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_ROLL].D = value;
+    currentTvPidProfile->pid[PID_ROLL].D = value;
     tvPid.coef[PID_ROLL].Kd = ROLL_D_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_ROLL_F_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_ROLL].F;
+    return currentTvPidProfile->pid[PID_ROLL].F;
 }
 
 void set_ADJUSTMENT_TV_ROLL_F_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_ROLL].F = value;
+    currentTvPidProfile->pid[PID_ROLL].F = value;
     tvPid.coef[PID_ROLL].Kf = ROLL_F_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_ROLL_B_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_ROLL].B;
+    return currentTvPidProfile->pid[PID_ROLL].B;
 }
 
 void set_ADJUSTMENT_TV_ROLL_B_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_ROLL].B = value;
+    currentTvPidProfile->pid[PID_ROLL].B = value;
     tvPid.coef[PID_ROLL].Kb = ROLL_B_TERM_SCALE * value;
 }
 
 
 int get_ADJUSTMENT_TV_PITCH_P_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_PITCH].P;
+    return currentTvPidProfile->pid[PID_PITCH].P;
 }
 
 void set_ADJUSTMENT_TV_PITCH_P_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_PITCH].P = value;
+    currentTvPidProfile->pid[PID_PITCH].P = value;
     tvPid.coef[PID_PITCH].Kp = PITCH_P_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_PITCH_I_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_PITCH].I;
+    return currentTvPidProfile->pid[PID_PITCH].I;
 }
 
 void set_ADJUSTMENT_TV_PITCH_I_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_PITCH].I = value;
+    currentTvPidProfile->pid[PID_PITCH].I = value;
     tvPid.coef[PID_PITCH].Ki = PITCH_I_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_PITCH_D_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_PITCH].D;
+    return currentTvPidProfile->pid[PID_PITCH].D;
 }
 
 void set_ADJUSTMENT_TV_PITCH_D_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_PITCH].D = value;
+    currentTvPidProfile->pid[PID_PITCH].D = value;
     tvPid.coef[PID_PITCH].Kd = PITCH_D_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_PITCH_F_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_PITCH].F;
+    return currentTvPidProfile->pid[PID_PITCH].F;
 }
 
 void set_ADJUSTMENT_TV_PITCH_F_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_PITCH].F = value;
+    currentTvPidProfile->pid[PID_PITCH].F = value;
     tvPid.coef[PID_PITCH].Kf = PITCH_F_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_PITCH_B_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_PITCH].B;
+    return currentTvPidProfile->pid[PID_PITCH].B;
 }
 
 void set_ADJUSTMENT_TV_PITCH_B_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_PITCH].B = value;
+    currentTvPidProfile->pid[PID_PITCH].B = value;
     tvPid.coef[PID_PITCH].Kb = PITCH_B_TERM_SCALE * value;
 }
 
 
 int get_ADJUSTMENT_TV_YAW_P_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_YAW].P;
+    return currentTvPidProfile->pid[PID_YAW].P;
 }
 
 void set_ADJUSTMENT_TV_YAW_P_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_YAW].P = value;
+    currentTvPidProfile->pid[PID_YAW].P = value;
     tvPid.coef[PID_YAW].Kp = YAW_P_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_YAW_I_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_YAW].I;
+    return currentTvPidProfile->pid[PID_YAW].I;
 }
 
 void set_ADJUSTMENT_TV_YAW_I_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_YAW].I = value;
+    currentTvPidProfile->pid[PID_YAW].I = value;
     tvPid.coef[PID_YAW].Ki = YAW_I_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_YAW_D_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_YAW].D;
+    return currentTvPidProfile->pid[PID_YAW].D;
 }
 
 void set_ADJUSTMENT_TV_YAW_D_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_YAW].D = value;
+    currentTvPidProfile->pid[PID_YAW].D = value;
     tvPid.coef[PID_YAW].Kd = YAW_D_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_YAW_F_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_YAW].F;
+    return currentTvPidProfile->pid[PID_YAW].F;
 }
 
 void set_ADJUSTMENT_TV_YAW_F_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_YAW].F = value;
+    currentTvPidProfile->pid[PID_YAW].F = value;
     tvPid.coef[PID_YAW].Kf = YAW_F_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_TV_YAW_B_GAIN(void)
 {
-    return tvPidProfile()->pid[PID_YAW].B;
+    return currentTvPidProfile->pid[PID_YAW].B;
 }
 
 void set_ADJUSTMENT_TV_YAW_B_GAIN(int value)
 {
-    tvPidProfileMutable()->pid[PID_YAW].B = value;
+    currentTvPidProfile->pid[PID_YAW].B = value;
     tvPid.coef[PID_YAW].Kb = YAW_B_TERM_SCALE * value;
 }
 

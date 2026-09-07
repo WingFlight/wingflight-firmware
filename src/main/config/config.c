@@ -58,6 +58,8 @@
 #include "flight/motors.h"
 #include "flight/servos.h"
 #include "flight/position.h"
+#include "flight/tv_pid.h"
+#include "flight/tv_hold.h"
 
 #include "io/beeper.h"
 #include "io/gps.h"
@@ -82,6 +84,7 @@
 #include "pg/freq.h"
 #include "pg/system.h"
 #include "pg/pilot.h"
+#include "pg/tv_pid.h"
 
 #include "rx/rx.h"
 #include "rx/rx_spi.h"
@@ -105,6 +108,7 @@ static bool rebootRequired = false;  // set if a config change requires a reboot
 static bool eepromWriteInProgress = false;
 
 pidProfile_t *currentPidProfile;
+tvPidProfile_t *currentTvPidProfile;
 
 #ifndef RX_SPI_DEFAULT_PROTOCOL
 #define RX_SPI_DEFAULT_PROTOCOL 0
@@ -123,6 +127,16 @@ uint8_t getCurrentPidProfileIndex(void)
 static void loadPidProfile(void)
 {
     currentPidProfile = pidProfilesMutable(systemConfig()->pidProfileIndex);
+}
+
+uint8_t getCurrentTvProfileIndex(void)
+{
+    return systemConfig()->tvProfileIndex;
+}
+
+static void loadTvProfile(void)
+{
+    currentTvPidProfile = tvPidProfilesMutable(systemConfig()->tvProfileIndex);
 }
 
 uint8_t getCurrentControlRateProfileIndex(void)
@@ -148,11 +162,14 @@ static void activateConfig(void)
 {
     loadPidProfile();
     loadControlRateProfile();
+    loadTvProfile();
 
     initRcProcessing();
     adjustmentRangeInit();
 
     pidChangeProfile(currentPidProfile);
+    tvPidLoadProfile(currentTvPidProfile);
+    tvHoldInit(currentTvPidProfile);
 
     rcControlsInit();
 
@@ -718,6 +735,11 @@ void validateAndFixGyroConfig(void)
         systemConfigMutable()->pidProfileIndex = 0;
     }
     loadPidProfile();
+
+    if (systemConfig()->tvProfileIndex >= PID_PROFILE_COUNT) {
+        systemConfigMutable()->tvProfileIndex = 0;
+    }
+    loadTvProfile();
 }
 
 bool readEEPROM(void)
@@ -835,6 +857,21 @@ void changePidProfile(uint8_t pidProfileIndex)
     }
 
     beeperConfirmationBeeps(pidProfileIndex + 1);
+}
+
+void changeTvProfile(uint8_t tvProfileIndex)
+{
+    // The config switch will cause a big enough delay in the current task to upset the scheduler
+    schedulerIgnoreTaskExecTime();
+
+    if (tvProfileIndex < PID_PROFILE_COUNT) {
+        systemConfigMutable()->tvProfileIndex = tvProfileIndex;
+        loadTvProfile();
+        tvPidLoadProfile(currentTvPidProfile);
+        tvHoldInit(currentTvPidProfile);
+    }
+
+    beeperConfirmationBeeps(tvProfileIndex + 1);
 }
 
 bool isSystemConfigured(void)

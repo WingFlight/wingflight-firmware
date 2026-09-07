@@ -260,6 +260,8 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 
     ADJ_ENTRY(TV_HOLD_GAIN,                 0, 250),
 
+    ADJ_ENTRY(TV_PROFILE,                   1, 6),
+
 };
 
 
@@ -334,7 +336,8 @@ static void updateAdjustmentData(int adjFunc, int value)
     if (adjFunc != ADJUSTMENT_NONE &&
         adjFunc != ADJUSTMENT_PID_PROFILE &&
         adjFunc != ADJUSTMENT_RATE_PROFILE &&
-        adjFunc != ADJUSTMENT_LED_PROFILE)
+        adjFunc != ADJUSTMENT_LED_PROFILE &&
+        adjFunc != ADJUSTMENT_TV_PROFILE)
     {
         adjustmentTime   = now;
         adjustmentName   = adjustmentConfigs[adjFunc].cfgName;
@@ -454,7 +457,7 @@ void processRcAdjustments(void)
 
                         // PID profile change does it's own confirmation, no of beeps eq profile no,
                         // a single beep here will kill that.
-                        if (adjFunc != ADJUSTMENT_PID_PROFILE)
+                        if (adjFunc != ADJUSTMENT_PID_PROFILE && adjFunc != ADJUSTMENT_TV_PROFILE)
                             beeperConfirmationBeeps(1);
 
                         setConfigDirty();

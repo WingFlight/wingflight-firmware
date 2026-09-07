@@ -116,6 +116,7 @@ bool cliMode = false;
 #include "flight/position.h"
 #include "flight/servos.h"
 #include "flight/motors.h"
+#include "flight/tv_pid.h"
 
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/beeper.h"
@@ -196,6 +197,7 @@ static bool configIsInCopy = false;
 #define CURRENT_PROFILE_INDEX -1
 static int8_t pidProfileIndexToUse = CURRENT_PROFILE_INDEX;
 static int8_t rateProfileIndexToUse = CURRENT_PROFILE_INDEX;
+static int8_t tvProfileIndexToUse = CURRENT_PROFILE_INDEX;
 
 #ifdef USE_CLI_BATCH
 static bool commandBatchActive = false;
@@ -403,6 +405,7 @@ typedef enum dumpFlags_e {
     HIDE_UNUSED = (1 << 6),
     HARDWARE_ONLY = (1 << 7),
     BARE = (1 << 8),
+    DUMP_TV_PROFILE = (1 << 9),
 } dumpFlags_t;
 
 typedef bool printFn(dumpFlags_t dumpMask, bool equalsDefault, const char *format, ...);
@@ -840,6 +843,11 @@ static uint8_t getRateProfileIndexToUse(void)
     return rateProfileIndexToUse == CURRENT_PROFILE_INDEX ? getCurrentControlRateProfileIndex() : rateProfileIndexToUse;
 }
 
+static uint8_t getTvProfileIndexToUse(void)
+{
+    return tvProfileIndexToUse == CURRENT_PROFILE_INDEX ? getCurrentTvProfileIndex() : tvProfileIndexToUse;
+}
+
 
 static uint16_t getValueOffset(const clivalue_t *value)
 {
@@ -851,6 +859,8 @@ static uint16_t getValueOffset(const clivalue_t *value)
         return value->offset + sizeof(pidProfile_t) * getPidProfileIndexToUse();
     case PROFILE_RATE_VALUE:
         return value->offset + sizeof(controlRateConfig_t) * getRateProfileIndexToUse();
+    case PROFILE_TV_VALUE:
+        return value->offset + sizeof(tvPidProfile_t) * getTvProfileIndexToUse();
     }
     return 0;
 }
@@ -4618,6 +4628,22 @@ static void cliRateProfile(const char *cmdName, char *cmdline)
     }
 }
 
+static void cliTvProfile(const char *cmdName, char *cmdline)
+{
+    if (isEmpty(cmdline)) {
+        cliPrintLinef("tv_profile %d", getTvProfileIndexToUse());
+        return;
+    } else {
+        const int i = atoi(cmdline);
+        if (i >= 0 && i < PID_PROFILE_COUNT) {
+            changeTvProfile(i);
+            cliTvProfile(cmdName, "");
+        } else {
+            cliPrintErrorLinef(cmdName, "PROFILE OUTSIDE OF [0..%d]", PID_PROFILE_COUNT - 1);
+        }
+    }
+}
+
 static void cliDumpPidProfile(const char *cmdName, uint8_t pidProfileIndex, dumpFlags_t dumpMask)
 {
     if (pidProfileIndex >= PID_PROFILE_COUNT) {
@@ -4654,6 +4680,25 @@ static void cliDumpRateProfile(const char *cmdName, uint8_t rateProfileIndex, du
     dumpAllValues(cmdName, PROFILE_RATE_VALUE, dumpMask, rateProfileStr);
 
     rateProfileIndexToUse = CURRENT_PROFILE_INDEX;
+}
+
+static void cliDumpTvProfile(const char *cmdName, uint8_t tvProfileIndex, dumpFlags_t dumpMask)
+{
+    if (tvProfileIndex >= PID_PROFILE_COUNT) {
+        // Faulty values
+        return;
+    }
+
+    tvProfileIndexToUse = tvProfileIndex;
+
+    cliPrintLinefeed();
+    cliTvProfile(cmdName, "");
+
+    char tvProfileStr[13];
+    tfp_sprintf(tvProfileStr, "tv_profile %d", tvProfileIndex);
+    dumpAllValues(cmdName, PROFILE_TV_VALUE, dumpMask, tvProfileStr);
+
+    tvProfileIndexToUse = CURRENT_PROFILE_INDEX;
 }
 
 #ifdef USE_CLI_BATCH
@@ -4913,6 +4958,7 @@ STATIC_UNIT_TESTED void cliGet(const char *cmdName, char *cmdline)
 
     pidProfileIndexToUse = getCurrentPidProfileIndex();
     rateProfileIndexToUse = getCurrentControlRateProfileIndex();
+    tvProfileIndexToUse = getCurrentTvProfileIndex();
 
     backupAndResetConfigs(true);
 
@@ -4934,6 +4980,10 @@ STATIC_UNIT_TESTED void cliGet(const char *cmdName, char *cmdline)
                 cliRateProfile(cmdName, "");
 
                 break;
+            case PROFILE_TV_VALUE:
+                cliTvProfile(cmdName, "");
+
+                break;
             default:
 
                 break;
@@ -4949,6 +4999,7 @@ STATIC_UNIT_TESTED void cliGet(const char *cmdName, char *cmdline)
 
     pidProfileIndexToUse = CURRENT_PROFILE_INDEX;
     rateProfileIndexToUse = CURRENT_PROFILE_INDEX;
+    tvProfileIndexToUse = CURRENT_PROFILE_INDEX;
 
     if (!matchedCommands) {
         cliPrintErrorLinef(cmdName, "INVALID NAME");
@@ -6747,6 +6798,8 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
         dumpMask = DUMP_PROFILE; // only
     } else if ((options = checkCommand(cmdline, "rates"))) {
         dumpMask = DUMP_RATES; // only
+    } else if ((options = checkCommand(cmdline, "tv_profile"))) {
+        dumpMask = DUMP_TV_PROFILE; // only
     } else if ((options = checkCommand(cmdline, "hardware"))) {
         dumpMask = DUMP_MASTER | HARDWARE_ONLY;   // Show only hardware related settings (useful to generate unified target configs).
     } else if ((options = checkCommand(cmdline, "all"))) {
@@ -6890,6 +6943,20 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
                     cliPrintHashLine("restore original rateprofile selection");
 
                     cliRateProfile(cmdName, "");
+                }
+
+                rateProfileIndexToUse = CURRENT_PROFILE_INDEX;
+
+                for (uint32_t tvProfileIndex = 0; tvProfileIndex < PID_PROFILE_COUNT; tvProfileIndex++) {
+                    cliDumpTvProfile(cmdName, tvProfileIndex, dumpMask);
+                }
+
+                tvProfileIndexToUse = systemConfig_Copy.tvProfileIndex;
+
+                if (!(dumpMask & BARE)) {
+                    cliPrintHashLine("restore original tv_profile selection");
+
+                    cliTvProfile(cmdName, "");
 
                     cliPrintHashLine("save configuration");
                     cliPrint("save");
@@ -6898,17 +6965,21 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
 #endif
                 }
 
-                rateProfileIndexToUse = CURRENT_PROFILE_INDEX;
+                tvProfileIndexToUse = CURRENT_PROFILE_INDEX;
             } else {
                 cliDumpPidProfile(cmdName, systemConfig_Copy.pidProfileIndex, dumpMask);
 
                 cliDumpRateProfile(cmdName, systemConfig_Copy.activeRateProfile, dumpMask);
+
+                cliDumpTvProfile(cmdName, systemConfig_Copy.tvProfileIndex, dumpMask);
             }
         }
     } else if (dumpMask & DUMP_PROFILE) {
         cliDumpPidProfile(cmdName, systemConfig_Copy.pidProfileIndex, dumpMask);
     } else if (dumpMask & DUMP_RATES) {
         cliDumpRateProfile(cmdName, systemConfig_Copy.activeRateProfile, dumpMask);
+    } else if (dumpMask & DUMP_TV_PROFILE) {
+        cliDumpTvProfile(cmdName, systemConfig_Copy.tvProfileIndex, dumpMask);
     }
 
 #ifdef USE_CLI_BATCH
@@ -7179,6 +7250,7 @@ const clicmd_t cmdTable[] = {
 #endif
     CLI_COMMAND_DEF("profile", "change profile", "[<index>]", cliProfile),
     CLI_COMMAND_DEF("rateprofile", "change rate profile", "[<index>]", cliRateProfile),
+    CLI_COMMAND_DEF("tv_profile", "change thrust vector profile", "[<index>]", cliTvProfile),
     CLI_COMMAND_DEF("setpoint_info", "show setpoint smoothing operational settings", NULL,cliSetpointInfo),
 #ifdef USE_RESOURCE_MGMT
     CLI_COMMAND_DEF("resource", "show/set resources", "<> | <resource name> <index> [<pin>|none] | show [all]", cliResource),
