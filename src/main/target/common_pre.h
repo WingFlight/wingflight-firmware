@@ -255,6 +255,12 @@ extern uint8_t _dmaram_end__;
 #define USE_SBUS_OUTPUT         // SBus Output feature
 #define USE_FBUS_MASTER         // FBUS Master feature
 #define USE_SPORT_MASTER        // S.Port master feature
+#define USE_RX_INPUT_BACKUP     // Secondary backup RX input, instant failover when the main RX link is lost
+#define USE_RX_INPUT_BACKUP_SBUS // SBUS provider for USE_RX_INPUT_BACKUP
+#define USE_RX_INPUT_BACKUP_FBUS // FBUS + FPort2 providers for USE_RX_INPUT_BACKUP
+#define USE_RX_INPUT_BACKUP_FPORT // FPort provider for USE_RX_INPUT_BACKUP
+#define USE_RX_INPUT_BACKUP_EXBUS // Jeti EX Bus provider for USE_RX_INPUT_BACKUP
+#define USE_RX_INPUT_BACKUP_CRSF // CRSF provider for USE_RX_INPUT_BACKUP
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
 #define USE_BUS_SERVO
 #endif
@@ -292,10 +298,7 @@ extern uint8_t _dmaram_end__;
 #define USE_TELEMETRY_SRXL
 
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 12))
-#define USE_CMS
-#define USE_MSP_DISPLAYPORT
 #define USE_MSP_OVER_TELEMETRY
-#define USE_OSD_OVER_MSP_DISPLAYPORT
 #define USE_LED_STRIP
 #endif
 
@@ -309,6 +312,7 @@ extern uint8_t _dmaram_end__;
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 10))
 #define USE_CAMERA_CONTROL
 #define USE_ESC_SENSOR
+#define USE_SRXL2_ESC
 #define USE_SERIAL_4WAY_BLHELI_BOOTLOADER
 #define USE_RCDEVICE
 #endif
@@ -346,7 +350,6 @@ extern uint8_t _dmaram_end__;
 #define USE_SPEKTRUM_RSSI_PERCENT_CONVERSION
 #define USE_SPEKTRUM_VTX_CONTROL
 #define USE_SPEKTRUM_VTX_TELEMETRY
-#define USE_SPEKTRUM_CMS_TELEMETRY
 #define USE_PIN_PULL_UP_DOWN
 #endif
 #endif
@@ -360,10 +363,8 @@ extern uint8_t _dmaram_end__;
 
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 1))
 #define USE_BOARD_INFO
-#define USE_EXTENDED_CMS_MENUS
 #define USE_RTC_TIME
 #define USE_RX_MSP
-#define USE_CRSF_CMS_TELEMETRY
 #define USE_CRSF_LINK_STATISTICS
 #define USE_RX_RSSI_DBM
 #endif
@@ -371,17 +372,13 @@ extern uint8_t _dmaram_end__;
 #endif // TARGET_FLASH_SIZE > 128
 
 #if (TARGET_FLASH_SIZE > 256)
-#define USE_CANVAS
-#define USE_FRSKYOSD
 #define USE_GPS
 #define USE_GPS_NMEA
 #define USE_GPS_UBLOX
 #define USE_GPS_RESCUE
+#define USE_GPS_NAV
 #define USE_GYRO_DLPF_EXPERIMENTAL
-#define USE_OSD
-#define USE_OSD_OVER_MSP_DISPLAYPORT
 #define USE_MULTI_GYRO
-#define USE_OSD_ADJUSTMENTS
 #define USE_SENSOR_NAMES
 #define USE_SERIALRX_JETIEXBUS
 #define USE_TELEMETRY_IBUS
@@ -390,21 +387,14 @@ extern uint8_t _dmaram_end__;
 #define USE_TELEMETRY_JETIEXBUS
 #define USE_TELEMETRY_MAVLINK
 #define USE_SIGNATURE
-#define USE_HOTT_TEXTMODE
 #define USE_LED_STRIP_STATUS_MODE
 #define USE_VARIO
-#define USE_RX_LINK_QUALITY_INFO
 #define USE_ESC_SENSOR_TELEMETRY
-#define USE_OSD_PROFILES
-#define USE_OSD_STICK_OVERLAY
-#define USE_CMS_FAILSAFE_MENU
-#define USE_CMS_GPS_RESCUE_MENU
 #define USE_VTX_TABLE
 #define USE_PERSISTENT_STATS
 #define USE_PROFILE_NAMES
 #define USE_SERIALRX_SRXL2     // Spektrum SRXL2 protocol
 #define USE_CUSTOM_BOX_NAMES
-#define USE_RX_LINK_UPLINK_POWER
 #define USE_CRSF_V3
 #define USE_SERIAL_4WAY_BLHELI_BOOTLOADER
 #define USE_SERIAL_4WAY_SK_BOOTLOADER

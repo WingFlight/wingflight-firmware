@@ -40,6 +40,8 @@
 #include "fc/rc.h"
 
 #include "flight/pid.h"
+#include "flight/tv_hold.h"
+#include "flight/tv_pid.h"
 #include "flight/mixer.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
@@ -50,8 +52,6 @@
 #include "io/ledstrip.h"
 
 #include "drivers/time.h"
-
-#include "osd/osd.h"
 
 #include "pg/rx.h"
 #include "pg/adjustments.h"
@@ -75,6 +75,30 @@
 // Servo trims are meant to be nudged continuously in flight via a momentary switch,
 // so they repeat much faster than other stepped adjustments (e.g. PID gains, rates).
 #define TRIM_REPEAT_DELAY 20
+
+// Continuous ("Absolute") SERVO_TRIM_* maps a channel position straight to a servo
+// center with no per-tick increment of its own, unlike stepped mode's adjStep -- so
+// once the link-settle gate below trusts a reading, it would otherwise move the
+// physical servo center by the whole adjustment range in a single tick. Cap how far
+// one applied tick may move it instead -- this is what actually prevents a snap (the
+// settle gate only decides when a reading is trusted, not how fast it may move the
+// output), and it's what lets continuous mode track the channel live on every tick
+// with no hold-still debounce: a bad reading can only nudge the output a little
+// before the next good one corrects it back. TRIM_REPEAT_DELAY (20ms) is the fastest
+// consecutive applies can land (see the deadTime assignment below), so this yields a
+// worst-case rate of ~200us/sec -- the full +-200 range takes ~2s, matching
+// AUTOTRIM_WINDOW_MS's order of magnitude. Any real tick rate slower than that only
+// makes the effective rate more conservative, never faster. Stepped mode is
+// unaffected: it already can't snap.
+#define SERVO_TRIM_MAX_STEP_PER_TICK 4
+
+// Servo trims move physical control surfaces, so their adjustment channels are
+// treated as untrustworthy until the RX link has been continuously valid for this
+// long. This rides out the garbage/failsafe-hold frames some receivers emit for a
+// moment right at boot, or when the link is reacquired after a brief drop, before
+// the pilot's actual stick/pot positions can be trusted -- mirrors the RX layer's
+// own MAX_INVALID_PULSE_TIME_MS hold window for bad channel data.
+#define SERVO_TRIM_LINK_SETTLE_MS 300
 
 // Timeout for the last changed adjustment (report for telemetry)
 #define ADJUSTMENT_LATENCY_MS 3000
@@ -144,9 +168,9 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
     ADJ_ENTRY(RATE_PROFILE,                 1, 6),
     ADJ_ENTRY(PID_PROFILE,                  1, 6),
     ADJ_ENTRY(LED_PROFILE,                  1, 4),
-#ifdef USE_OSD_PROFILES
-    ADJ_ENTRY(OSD_PROFILE,                  1, 3),
-#endif
+    // ADJUSTMENT_OSD_PROFILE (4) intentionally has no entry here -- reserved,
+    // see rc_adjustments.h. adjConfig->cfgName == NULL is already checked in
+    // processRcAdjustments() below, so this hole is handled safely.
 
     ADJ_ENTRY(PITCH_SRATE,                  0, CONTROL_RATE_CONFIG_SUPER_RATE_MAX),
     ADJ_ENTRY(ROLL_SRATE,                   0, CONTROL_RATE_CONFIG_SUPER_RATE_MAX),
@@ -214,6 +238,30 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
     ADJ_ENTRY(SERVO_TRIM_PITCH,            -200, 200),
     ADJ_ENTRY(SERVO_TRIM_YAW,             -200, 200),
 
+    ADJ_ENTRY(TV_MASTER_GAIN_ROLL,          25, 1000),
+    ADJ_ENTRY(TV_MASTER_GAIN_PITCH,         25, 1000),
+    ADJ_ENTRY(TV_MASTER_GAIN_YAW,           25, 1000),
+
+    ADJ_ENTRY(TV_ROLL_P_GAIN,               0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_ROLL_I_GAIN,               0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_ROLL_D_GAIN,               0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_ROLL_F_GAIN,               0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_ROLL_B_GAIN,               0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_PITCH_P_GAIN,              0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_PITCH_I_GAIN,              0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_PITCH_D_GAIN,              0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_PITCH_F_GAIN,              0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_PITCH_B_GAIN,              0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_YAW_P_GAIN,                0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_YAW_I_GAIN,                0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_YAW_D_GAIN,                0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_YAW_F_GAIN,                0, PID_GAIN_MAX),
+    ADJ_ENTRY(TV_YAW_B_GAIN,                0, PID_GAIN_MAX),
+
+    ADJ_ENTRY(TV_HOLD_GAIN,                 0, 250),
+
+    ADJ_ENTRY(TV_PROFILE,                   1, 6),
+
 };
 
 
@@ -258,6 +306,29 @@ void resyncServoTrimAdjustments(void)
     }
 }
 
+/*
+ * Tracks how long the RX link has been continuously up, used by
+ * processRcAdjustments() to gate SERVO_TRIM_* adjustments. Must be called on
+ * every processRcAdjustments() tick (regardless of whether the signal is
+ * currently present) so the timer correctly restarts on every fresh
+ * acquisition/reacquisition, not just the very first one at boot.
+ */
+static bool isServoTrimLinkSettled(void)
+{
+    static bool wasReceivingSignal = false;
+    static timeMs_t signalAcquiredAt = 0;
+
+    const bool receiving = rxIsReceivingSignal();
+    const timeMs_t now = millis();
+
+    if (receiving && !wasReceivingSignal) {
+        signalAcquiredAt = now;
+    }
+    wasReceivingSignal = receiving;
+
+    return receiving && cmp32(now, signalAcquiredAt + SERVO_TRIM_LINK_SETTLE_MS) >= 0;
+}
+
 static void updateAdjustmentData(int adjFunc, int value)
 {
     const timeMs_t now = millis();
@@ -266,7 +337,7 @@ static void updateAdjustmentData(int adjFunc, int value)
         adjFunc != ADJUSTMENT_PID_PROFILE &&
         adjFunc != ADJUSTMENT_RATE_PROFILE &&
         adjFunc != ADJUSTMENT_LED_PROFILE &&
-        adjFunc != ADJUSTMENT_OSD_PROFILE)
+        adjFunc != ADJUSTMENT_TV_PROFILE)
     {
         adjustmentTime   = now;
         adjustmentName   = adjustmentConfigs[adjFunc].cfgName;
@@ -283,6 +354,10 @@ void processRcAdjustments(void)
 {
     bool changed = false;
 
+    // Always evaluated, even if the signal is currently down, so the settle timer
+    // below tracks every link acquisition rather than just the first one at boot.
+    const bool servoTrimLinkSettled = isServoTrimLinkSettled();
+
     if (rxIsReceivingSignal())
     {
         for (int index = 0; index < MAX_ADJUSTMENT_RANGE_COUNT; index++)
@@ -298,6 +373,11 @@ void processRcAdjustments(void)
 
             // Entry is uninitialised
             if (adjConfig->cfgName == NULL)
+                continue;
+
+            // Refuse to touch a servo center on a link that hasn't proven stable yet --
+            // see SERVO_TRIM_LINK_SETTLE_MS.
+            if (isServoTrimAdjustment(adjFunc) && !servoTrimLinkSettled)
                 continue;
 
             if (adjRange->enaChannel == 0xff || isRangeActive(adjRange->enaChannel, &adjRange->enaRange))
@@ -334,6 +414,14 @@ void processRcAdjustments(void)
                 }
                 // Continuous adjustment
                 else {
+                    // This branch has no debounce of its own: it applies whatever the channel
+                    // reads on every single tick. For SERVO_TRIM_*, that's intentional -- the
+                    // whole point of this mode is to track a pot/channel live. Snap protection
+                    // comes from the settle gate above (don't trust a reading until the link
+                    // has proven stable) and the output-side slew limit below (can't move the
+                    // servo center faster than SERVO_TRIM_MAX_STEP_PER_TICK regardless of what
+                    // the input reports), not from requiring the input to sit still first --
+                    // that would defeat live tracking, which is what continuous mode is for.
                     const int rangeLower = STEP_TO_CHANNEL_VALUE(adjRange->adjRange1.startStep);
                     const int rangeUpper = STEP_TO_CHANNEL_VALUE(adjRange->adjRange1.endStep);
                     const int rangeWidth = rangeUpper - rangeLower;
@@ -345,6 +433,14 @@ void processRcAdjustments(void)
                             const int offset = rangeWidth / 2;
                             adjval = adjRange->adjMin + ((chValue - rangeLower) * valueWidth + offset) / rangeWidth;
                         }
+                    }
+
+                    // See SERVO_TRIM_MAX_STEP_PER_TICK -- slew the applied value toward the
+                    // mapped target instead of jumping straight to it, so a single trusted
+                    // frame can no longer snap the servo center outright.
+                    if (isServoTrimAdjustment(adjFunc)) {
+                        adjval = adjState->adjValue + constrain(adjval - adjState->adjValue,
+                            -SERVO_TRIM_MAX_STEP_PER_TICK, SERVO_TRIM_MAX_STEP_PER_TICK);
                     }
                 }
 
@@ -361,7 +457,7 @@ void processRcAdjustments(void)
 
                         // PID profile change does it's own confirmation, no of beeps eq profile no,
                         // a single beep here will kill that.
-                        if (adjFunc != ADJUSTMENT_PID_PROFILE)
+                        if (adjFunc != ADJUSTMENT_PID_PROFILE && adjFunc != ADJUSTMENT_TV_PROFILE)
                             beeperConfirmationBeeps(1);
 
                         setConfigDirty();

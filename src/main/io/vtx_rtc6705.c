@@ -30,9 +30,6 @@
 #include "common/maths.h"
 #include "common/utils.h"
 
-#include "config/feature.h"
-
-#include "drivers/max7456.h"
 #include "drivers/time.h"
 #include "drivers/vtx_table.h"
 #include "drivers/vtx_rtc6705.h"
@@ -41,7 +38,7 @@
 #include "io/vtx_rtc6705.h"
 
 
-#if (defined(USE_CMS) || defined(USE_VTX_COMMON)) && !defined(USE_VTX_TABLE)
+#if defined(USE_VTX_COMMON) && !defined(USE_VTX_TABLE)
 const char *rtc6705PowerNames[VTX_RTC6705_POWER_COUNT + 1] = {
     "---", "MIN", "MAX"
 };
@@ -83,11 +80,6 @@ bool vtxRTC6705Init(void)
 
 bool vtxRTC6705CanUpdate(void)
 {
-#if defined(MAX7456_SPI_INSTANCE) && defined(RTC6705_SPI_INSTANCE) && defined(SPI_SHARED_MAX7456_AND_RTC6705)
-    if (featureIsEnabled(FEATURE_OSD)) {
-        return !max7456DmaInProgress();
-    }
-#endif
     return true;
 }
 

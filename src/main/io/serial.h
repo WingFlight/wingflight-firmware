@@ -49,11 +49,13 @@ typedef enum {
     FUNCTION_VTX_TRAMP           = (1 << 13), // 8192
     FUNCTION_RCDEVICE            = (1 << 14), // 16384
     FUNCTION_LIDAR_TF            = (1 << 15), // 32768
-    FUNCTION_FRSKY_OSD           = (1 << 16), // 65536
     FUNCTION_PRINTF              = (1 << 17), // 131072
     FUNCTION_SBUS_OUT            = (1 << 18), // 262144
     FUNCTION_FBUS_MASTER         = (1 << 19), // 524288
     FUNCTION_SPORT_MASTER        = (1 << 20), // 1048576
+    FUNCTION_SRXL2_ESC           = (1 << 21), // 2097152
+    FUNCTION_RX_INPUT_BACKUP     = (1 << 22), // 4194304
+
 } serialPortFunction_e;
 
 #define TELEMETRY_SHAREABLE_PORT_FUNCTIONS_MASK (FUNCTION_TELEMETRY_FRSKY_HUB | FUNCTION_TELEMETRY_LTM | FUNCTION_TELEMETRY_MAVLINK)

@@ -23,9 +23,13 @@
 #include "pg/pg_ids.h"
 #include "pg/scheduler.h"
 
-PG_REGISTER_WITH_RESET_TEMPLATE(schedulerConfig_t, schedulerConfig, PG_SCHEDULER_CONFIG, 0);
+// v0: last version before osdRelaxDeterminism removal (trailing field, no
+// offset shift for rxRelaxDeterminism, but the PG version is still bumped
+// per this repo's own established convention -- see mixerConfig_t v1->v2 --
+// so pgLoad() resets to defaults on upgrade instead of trusting a
+// now-oversized stored record).
+PG_REGISTER_WITH_RESET_TEMPLATE(schedulerConfig_t, schedulerConfig, PG_SCHEDULER_CONFIG, 1);
 
 PG_RESET_TEMPLATE(schedulerConfig_t, schedulerConfig,
     .rxRelaxDeterminism = SCHEDULER_RELAX_RX,
-    .osdRelaxDeterminism = SCHEDULER_RELAX_OSD,
 );

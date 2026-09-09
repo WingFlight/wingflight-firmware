@@ -31,9 +31,6 @@
 #include "build/debug.h"
 #include "build/debug_pin.h"
 
-#include "cms/cms.h"
-#include "cms/cms_types.h"
-
 #include "common/axis.h"
 #include "common/color.h"
 #include "common/maths.h"
@@ -69,6 +66,7 @@
 #include "drivers/fbus_sensor.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
+#include "drivers/rx_input_backup.h"
 #include "drivers/sensor.h"
 #include "drivers/serial.h"
 #include "drivers/serial_softserial.h"
@@ -76,6 +74,7 @@
 #include "drivers/sdcard.h"
 #include "drivers/sdio.h"
 #include "drivers/sound_beeper.h"
+#include "drivers/srxl2_esc.h"
 #include "drivers/system.h"
 #include "drivers/time.h"
 #include "drivers/timer.h"
@@ -100,15 +99,14 @@
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/pid.h"
+#include "flight/tv_hold.h"
+#include "flight/tv_pid.h"
 #include "flight/servos.h"
 #include "flight/rpm_filter.h"
 
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/beeper.h"
 #include "io/dashboard.h"
-#include "io/displayport_frsky_osd.h"
-#include "io/displayport_max7456.h"
-#include "io/displayport_msp.h"
 #include "io/flashfs.h"
 #include "io/gps.h"
 #include "io/ledstrip.h"
@@ -130,8 +128,6 @@
 #include "msp/msp.h"
 #include "msp/msp_serial.h"
 
-#include "osd/osd.h"
-
 #include "pg/adc.h"
 #include "pg/beeper.h"
 #include "pg/beeper_dev.h"
@@ -149,12 +145,12 @@
 #include "pg/rx_pwm.h"
 #include "pg/rx_spi.h"
 #include "pg/sdcard.h"
-#include "pg/vcd.h"
 #include "pg/vtx_io.h"
 #include "pg/freq.h"
 
 #include "rx/rx.h"
 #include "rx/spektrum.h"
+#include "rx/srxl2.h"
 
 #include "scheduler/scheduler.h"
 
@@ -538,6 +534,10 @@ void init(void)
     printfSerialInit(PRINTF_SERIAL_PORT, PRINTF_SERIAL_SPEED, PRINTF_SERIAL_OPTIONS);
 #endif
 
+#ifdef USE_SERIALRX_SRXL2
+    srxl2RxEarlyInit(rxConfig());
+#endif
+
     mixerInit();
 
 #ifdef USE_MOTOR
@@ -565,6 +565,13 @@ void init(void)
     initInverters(serialPinConfig());
 #endif
 
+/* Initialize SRXL2 ESC driver immediately after serial ports are ready
+ * so it can open its port and begin handshake as early as possible
+ * (matching SRXL2 RX behavior which opens during rxInit). This ensures
+ * the FC starts communicating within the ESC's 250ms listening window. */
+#ifdef USE_SRXL2_ESC
+    srxl2escDriverInit();
+#endif
 
 #ifdef TARGET_BUS_INIT
     targetBusInit();
@@ -695,6 +702,12 @@ void init(void)
     // Initialize PID control
     pidInit(currentPidProfile);
 
+    // Initialize the independent Thrust Vector PID loop. Always initialised (state
+    // stays valid even if FEATURE_THRUST_VECTOR is toggled without a reboot) -- only
+    // its execution is gated by the feature flag, in subTaskPidController().
+    tvPidInit(currentTvPidProfile);
+    tvHoldInit(currentTvPidProfile);
+
 #ifdef USE_SERVOS
     servoInit();
 #endif
@@ -709,6 +722,10 @@ void init(void)
 
 #ifdef USE_FBUS_MASTER
     fbusMasterInit();
+#endif
+
+#ifdef USE_RX_INPUT_BACKUP
+    rxInputBackupInit();
 #endif
 
 #ifdef USE_PINIO
@@ -874,90 +891,7 @@ void init(void)
     mspInit();
     mspSerialInit();
 
-/*
- * CMS, display devices and OSD
- */
-#ifdef USE_CMS
-    cmsInit();
-#endif
-
-#if defined(USE_OSD)
-    displayPort_t *osdDisplayPort = NULL;
-    osdDisplayPortDevice_e osdDisplayPortDevice = OSD_DISPLAYPORT_DEVICE_NONE;
-#endif
-
-#if defined(USE_OSD)
-    //The OSD need to be initialised after GYRO to avoid GYRO initialisation failure on some targets
-
-    if (featureIsEnabled(FEATURE_OSD)) {
-        osdDisplayPortDevice_e device = osdConfig()->displayPortDevice;
-
-        switch(device) {
-
-        case OSD_DISPLAYPORT_DEVICE_AUTO:
-            FALLTHROUGH;
-
-#if defined(USE_FRSKYOSD)
-        // Test OSD_DISPLAYPORT_DEVICE_FRSKYOSD first, since an FC could
-        // have a builtin MAX7456 but also an FRSKYOSD connected to an
-        // uart.
-        case OSD_DISPLAYPORT_DEVICE_FRSKYOSD:
-            osdDisplayPort = frskyOsdDisplayPortInit(vcdProfile()->video_system);
-            if (osdDisplayPort || device == OSD_DISPLAYPORT_DEVICE_FRSKYOSD) {
-                osdDisplayPortDevice = OSD_DISPLAYPORT_DEVICE_FRSKYOSD;
-                break;
-            }
-            FALLTHROUGH;
-#endif
-
-#if defined(USE_MAX7456)
-        case OSD_DISPLAYPORT_DEVICE_MAX7456:
-            // If there is a max7456 chip for the OSD configured and detected then use it.
-            if (max7456DisplayPortInit(vcdProfile(), &osdDisplayPort) || device == OSD_DISPLAYPORT_DEVICE_MAX7456) {
-                osdDisplayPortDevice = OSD_DISPLAYPORT_DEVICE_MAX7456;
-                break;
-            }
-            FALLTHROUGH;
-#endif
-
-#if defined(USE_CMS) && defined(USE_MSP_DISPLAYPORT) && defined(USE_OSD_OVER_MSP_DISPLAYPORT)
-        case OSD_DISPLAYPORT_DEVICE_MSP:
-            osdDisplayPort = displayPortMspInit();
-            if (osdDisplayPort || device == OSD_DISPLAYPORT_DEVICE_MSP) {
-                osdDisplayPortDevice = OSD_DISPLAYPORT_DEVICE_MSP;
-                break;
-            }
-            FALLTHROUGH;
-#endif
-
-        // Other device cases can be added here
-
-        case OSD_DISPLAYPORT_DEVICE_NONE:
-        default:
-            break;
-        }
-
-        // osdInit will register with CMS by itself.
-        osdInit(osdDisplayPort, osdDisplayPortDevice);
-
-        if (osdDisplayPortDevice == OSD_DISPLAYPORT_DEVICE_NONE) {
-            featureDisableImmediate(FEATURE_OSD);
-        }
-    }
-#endif // USE_OSD
-
-#if defined(USE_CMS) && defined(USE_MSP_DISPLAYPORT)
-    // If BFOSD is not active, then register MSP_DISPLAYPORT as a CMS device.
-#if defined(USE_OSD)
-    if (!osdDisplayPort)
-#endif
-    {
-        cmsDisplayPortRegister(displayPortMspInit());
-    }
-#endif
-
 #ifdef USE_DASHBOARD
-    // Dashbord will register with CMS by itself.
     if (featureIsEnabled(FEATURE_DASHBOARD)) {
         dashboardInit();
 #ifdef USE_OLED_GPS_DEBUG_PAGE_ONLY
@@ -970,7 +904,6 @@ void init(void)
 #endif
 
 #ifdef USE_TELEMETRY
-    // Telemetry will initialise displayport and register with CMS by itself.
     if (featureIsEnabled(FEATURE_TELEMETRY)) {
         telemetryInit();
     }

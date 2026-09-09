@@ -60,7 +60,6 @@ typedef enum {
     CRSF_FRAMETYPE_MSP_REQ = 0x7A,   // response request using msp sequence as command
     CRSF_FRAMETYPE_MSP_RESP = 0x7B,  // reply with 58 byte chunked binary
     CRSF_FRAMETYPE_MSP_WRITE = 0x7C,  // write with 8 byte chunked binary (OpenTX outbound telemetry buffer limit)
-    CRSF_FRAMETYPE_DISPLAYPORT_CMD = 0x7D, // displayport control command
     CRSF_FRAMETYPE_CUSTOM_TELEM = 0x88, // custom telemetry
 } crsfFrameType_e;
 
@@ -71,19 +70,6 @@ enum {
 enum {
     CRSF_COMMAND_SUBCMD_GENERAL_CRSF_SPEED_PROPOSAL = 0x70,    // proposed new CRSF port speed
     CRSF_COMMAND_SUBCMD_GENERAL_CRSF_SPEED_RESPONSE = 0x71,    // response to the proposed CRSF port speed
-};
-
-enum {
-    CRSF_DISPLAYPORT_SUBCMD_UPDATE = 0x01, // transmit displayport buffer to remote
-    CRSF_DISPLAYPORT_SUBCMD_CLEAR = 0X02, // clear client screen
-    CRSF_DISPLAYPORT_SUBCMD_OPEN = 0x03,  // client request to open cms menu
-    CRSF_DISPLAYPORT_SUBCMD_CLOSE = 0x04,  // client request to close cms menu
-    CRSF_DISPLAYPORT_SUBCMD_POLL = 0x05,  // client request to poll/refresh cms menu
-};
-
-enum {
-    CRSF_DISPLAYPORT_OPEN_ROWS_OFFSET = 1,
-    CRSF_DISPLAYPORT_OPEN_COLS_OFFSET = 2,
 };
 
 enum {

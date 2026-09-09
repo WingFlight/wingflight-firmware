@@ -91,15 +91,6 @@
 
 #define SPI3_TX_DMA_OPT                     1     // DMA 1 Stream 7 Channel 0
 
-// *************** OSD *****************************
-#define USE_SPI_DEVICE_2
-#define SPI2_SCK_PIN            PB13
-#define SPI2_MISO_PIN           PB14
-#define SPI2_MOSI_PIN           PB15
-
-#define USE_MAX7456
-#define MAX7456_SPI_INSTANCE    SPI2
-#define MAX7456_SPI_CS_PIN      PB10
 // *************** UART *****************************
 #define USE_VCP
 #define USB_DETECT_PIN          PB12
@@ -142,7 +133,7 @@
 #define CURRENT_METER_ADC_PIN   PC4
 #define RSSI_ADC_PIN            PB0
 
-#define DEFAULT_FEATURES        (FEATURE_OSD | FEATURE_TELEMETRY )
+#define DEFAULT_FEATURES        (FEATURE_TELEMETRY)
 #define DEFAULT_VOLTAGE_METER_SOURCE VOLTAGE_METER_ADC
 #define DEFAULT_CURRENT_METER_SOURCE CURRENT_METER_ADC
 #define CURRENT_METER_SCALE_DEFAULT 179

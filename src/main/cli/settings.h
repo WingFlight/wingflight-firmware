@@ -38,6 +38,9 @@ typedef enum {
     TABLE_GPS_RESCUE_SANITY_CHECK,
     TABLE_GPS_RESCUE_ALT_MODE,
 #endif
+#ifdef USE_GPS_NAV
+    TABLE_NAV_LOITER_DIRECTION,
+#endif
 #ifdef USE_BLACKBOX
     TABLE_BLACKBOX_DEVICE,
     TABLE_BLACKBOX_MODE,
@@ -46,6 +49,9 @@ typedef enum {
     TABLE_VOLTAGE_METER,
 #ifdef USE_SERIAL_RX
     TABLE_SERIAL_RX,
+#endif
+#ifdef USE_RX_INPUT_BACKUP
+    TABLE_RX_INPUT_BACKUP_PROVIDER,
 #endif
 #ifdef USE_RX_SPI
     TABLE_RX_SPI,
@@ -67,9 +73,6 @@ typedef enum {
     TABLE_CAMERA_CONTROL_MODE,
 #endif
     TABLE_BUS_TYPE,
-#ifdef USE_MAX7456
-    TABLE_MAX7456_CLOCK,
-#endif
 #ifdef USE_RX_FRSKY_SPI
     TABLE_RX_FRSKY_SPI_A1_SOURCE,
 #endif
@@ -88,9 +91,6 @@ typedef enum {
 #ifdef USE_MULTI_GYRO
     TABLE_GYRO,
 #endif
-#if defined(USE_MAX7456) || defined(USE_FRSKYOSD)
-    TABLE_VIDEO_SYSTEM,
-#endif
 #ifdef USE_VTX_COMMON
     TABLE_VTX_LOW_POWER_DISARM,
 #endif
@@ -106,13 +106,6 @@ typedef enum {
     TABLE_OFF_ON_AUTO,
     TABLE_FEEDFORWARD_AVERAGING,
     TABLE_DSHOT_BITBANGED_TIMER,
-    TABLE_OSD_DISPLAYPORT_DEVICE,
-#ifdef USE_OSD
-    TABLE_OSD_LOGO_ON_ARMING,
-#endif
-#ifdef USE_OSD
-    TABLE_CMS_BACKGROUND,
-#endif
 #ifdef USE_RX_EXPRESSLRS
     TABLE_FREQ_DOMAIN,
     TABLE_SWITCH_MODE,
@@ -142,7 +135,7 @@ typedef struct lookupTableEntry_s {
 
 #define VALUE_TYPE_OFFSET 0
 #define VALUE_SECTION_OFFSET 3
-#define VALUE_MODE_OFFSET 5
+#define VALUE_MODE_OFFSET 6
 
 typedef enum {
     // value type, bits 0-2
@@ -152,13 +145,15 @@ typedef enum {
     VAR_INT16 = (3 << VALUE_TYPE_OFFSET),
     VAR_UINT32 = (4 << VALUE_TYPE_OFFSET),
 
-    // value section, bits 3-4
+    // value section, bits 3-5 -- widened from 2 to 3 bits (was VALUE_MODE_OFFSET 5)
+    // to make room for PROFILE_TV_VALUE alongside the pre-existing four sections.
     MASTER_VALUE = (0 << VALUE_SECTION_OFFSET),
     PROFILE_VALUE = (1 << VALUE_SECTION_OFFSET),
     PROFILE_RATE_VALUE = (2 << VALUE_SECTION_OFFSET),
     HARDWARE_VALUE = (3 << VALUE_SECTION_OFFSET), // Part of the master section, but used for the hardware definition
+    PROFILE_TV_VALUE = (4 << VALUE_SECTION_OFFSET),
 
-    // value mode, bits 5-7
+    // value mode, bits 6-8
     MODE_DIRECT = (0 << VALUE_MODE_OFFSET),
     MODE_LOOKUP = (1 << VALUE_MODE_OFFSET),
     MODE_ARRAY = (2 << VALUE_MODE_OFFSET),
@@ -168,8 +163,8 @@ typedef enum {
 
 
 #define VALUE_TYPE_MASK (0x07)
-#define VALUE_SECTION_MASK (0x18)
-#define VALUE_MODE_MASK (0xE0)
+#define VALUE_SECTION_MASK (0x38)
+#define VALUE_MODE_MASK (0x1C0)
 
 typedef struct cliMinMaxConfig_s {
     const int16_t min;
@@ -210,7 +205,7 @@ typedef union {
 
 typedef struct clivalue_s {
     const char *name;
-    const uint8_t type;                       // see cliValueFlag_e
+    const uint16_t type;                      // see cliValueFlag_e -- widened from uint8_t to fit PROFILE_TV_VALUE
     const cliValueConfig_t config;
 
     pgn_t pgn;
@@ -241,10 +236,6 @@ extern const char * const lookupTableLedstripColors[];
 
 extern const char * const lookupTableRescueAltitudeMode[];
 
-extern const char * const lookupTableOsdDisplayPortDevice[];
-
 extern const char * const lookupTableFeedforwardAveraging[];
 
 extern const char * const lookupTableOffOn[];
-
-extern const char * const lookupTableCMSMenuBackgroundType[];

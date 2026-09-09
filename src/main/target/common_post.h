@@ -34,6 +34,7 @@
 
 #ifndef USE_ESC_SENSOR
 #undef USE_ESC_SENSOR_TELEMETRY
+#undef USE_SRXL2_ESC
 #endif
 
 // XXX Followup implicit dependencies among DASHBOARD, display_xxx and USE_I2C.
@@ -123,10 +124,6 @@
 #undef USE_TELEMETRY_GHST
 #endif
 
-#if !defined(USE_TELEMETRY_CRSF) || !defined(USE_CMS)
-#undef USE_CRSF_CMS_TELEMETRY
-#endif
-
 #if !defined(USE_SERIALRX_JETIEXBUS)
 #undef USE_TELEMETRY_JETIEXBUS
 #endif
@@ -149,10 +146,6 @@
 #undef USE_SPEKTRUM_VTX_CONTROL
 #undef USE_SPEKTRUM_VTX_TELEMETRY
 #undef USE_TELEMETRY_SRXL
-#endif
-
-#if !defined(USE_CMS) || !defined(USE_TELEMETRY_SRXL)
-#undef USE_SPEKTRUM_CMS_TELEMETRY
 #endif
 
 #if defined(USE_SERIALRX_SBUS) || defined(USE_SERIALRX_FPORT) || defined(USE_SERIALRX_FBUS)
@@ -236,17 +229,6 @@
 #define USE_USB_ADVANCED_PROFILES
 #endif
 
-#if defined(USE_MAX7456)
-#define USE_OSD
-#endif
-
-#if !defined(USE_OSD)
-#undef USE_RX_LINK_QUALITY_INFO
-#undef USE_OSD_PROFILES
-#undef USE_OSD_STICK_OVERLAY
-#undef USE_RX_LINK_UPLINK_POWER
-#endif
-
 #if defined(USE_GPS_RESCUE)
 #define USE_GPS
 #endif
@@ -317,10 +299,6 @@
 #undef USE_DYN_NOTCH_FILTER
 #endif
 
-#ifndef USE_CMS
-#undef USE_CMS_FAILSAFE_MENU
-#endif
-
 #ifndef USE_DSHOT
 #undef USE_DSHOT_TELEMETRY
 #undef USE_DSHOT_BITBANG
@@ -337,11 +315,8 @@
 
 #if !defined(USE_ACC)
 #undef USE_GPS_RESCUE
+#undef USE_GPS_NAV
 #undef USE_ACRO_TRAINER
-#endif
-
-#if (!defined(USE_GPS_RESCUE) || !defined(USE_CMS_FAILSAFE_MENU))
-#undef USE_CMS_GPS_RESCUE_MENU
 #endif
 
 #ifndef USE_BEEPER
@@ -372,10 +347,6 @@
 #undef USE_RANGEFINDER_VL53L0X
 #undef USE_RANGEFINDER_UIB
 #undef USE_RANGEFINDER_TF
-#endif
-
-#ifndef USE_GPS_RESCUE
-#undef USE_CMS_GPS_RESCUE_MENU
 #endif
 
 // TODO: Remove this once HAL support is fixed for ESCSERIAL

@@ -381,6 +381,8 @@ the actual values are calculated automatically (#332).
 
 `smartfuel_sag_gain` scales sag compensation from cyclic and collective stick load while airborne. Range 0..100, default 40.
 
+`bus_servo_clone_pwm` parameter added (ON/OFF). When ON, bus servo channel N mirrors PWM servo output S(N+1) one-to-one for every bus channel that has a physical PWM counterpart, so a PWM-only mixer setup (e.g. a named model type built via the configurator wizard) drives bus servos too without separate mixer rules. Bus channels beyond the physical PWM servo count are unaffected and always use their own mixer rule. `MSP_MIXER_CONFIG`/`MSP_SET_MIXER_CONFIG` gain a second byte carrying this value.
+
 
 ## Defaults
 
@@ -415,6 +417,8 @@ the actual values are calculated automatically (#332).
 `blackbox_log_governor` default is changed to ON (#412).
 
 `blackbox_rolling_erase` default is changed to ON (#412).
+
+`bus_servo_clone_pwm` defaults to ON.
 
 `roll_srate` default is changed to 12 (#413).
 
@@ -554,6 +558,46 @@ and the value is always reported as available regardless of whether
 Support for the IBUS2 protocol for control link and basic telemetry using the ibus hub protocol.
 
 ## Bug Fixes
+
+### Servo trim (SERVO_TRIM_*) could snap on a boot-time or reacquired RX link
+
+The mapped/continuous ("Absolute") in-flight adjustment mode had no debounce
+of its own, unlike the stepped mode: it wrote whatever the adjustment channel
+read straight to the servo center on every tick. A single garbage or
+not-yet-settled frame right at boot, or immediately after the RX link was
+reacquired following a brief dropout, could snap a servo's trimmed center
+before the pilot had any control over it.
+
+`SERVO_TRIM_ROLL/PITCH/YAW` adjustments now require the RX link to have been
+continuously valid for 300 ms before they are evaluated at all, and the
+continuous/mapped mode now uses the same +-2 / 100 ms channel-stability
+debounce that stepped mode already had. Other adjustment functions (PID
+gains, rates, etc.) are unaffected.
+
+### Servo trim (SERVO_TRIM_*) could still snap in continuous/"Absolute" mode, and was sluggish to use
+
+The boot/reacquisition debounce added above narrowed the window but didn't
+close it: continuous ("Absolute") mode maps a channel position straight to
+the servo center with no per-tick increment of its own (unlike stepped
+mode's step size), so once a reading cleared the settle/stability checks it
+could still move the physical servo center by the whole adjustment range in
+a single tick. Reports of the original snap still occurring, specifically
+on channel-mapped (not switch-stepped) trim setups, confirmed this path.
+The same +-2 / 100 ms stability debounce also meant a continuously-moving
+pot/channel never updated at all while it was moving -- it only caught up
+100 ms after the pilot stopped and held still, making live trimming feel
+sluggish and coarse.
+
+Continuous-mode `SERVO_TRIM_ROLL/PITCH/YAW` now tracks the channel live on
+every tick (the stability debounce is gone for this mode), but the applied
+value slews toward the mapped target instead of jumping straight to it,
+capped to roughly 200us/sec (the full +-200 range takes ~2s to traverse, in
+line with the auto-trim capture window). A bad reading can now only nudge
+the servo center a little before the next good one corrects it back --
+never a snap -- while legitimate movement is followed in real time instead
+of waiting for the pilot to stop and hold still. Stepped mode is
+unaffected -- it already couldn't snap and was never subject to the
+stability debounce's live-tracking issue.
 
 ### S.PORT telemetry Scaling for attitude sensors
 

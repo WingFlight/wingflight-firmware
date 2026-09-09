@@ -122,7 +122,7 @@ static INIT_CODE void initGyroCalibration(gyroSensor_t *gyroSensor)
     }
 }
 
-void gyroStartCalibration(bool isFirstArmingCalibration)  // for init.c core.c rc_controlcs.c CMS
+void gyroStartCalibration(bool isFirstArmingCalibration)  // for init.c core.c rc_controlcs.c
 {
     if (isFirstArmingCalibration && firstArmingCalibrationWasStarted) {
         return;

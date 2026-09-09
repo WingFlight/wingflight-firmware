@@ -127,8 +127,14 @@ static void sbusOutCalculateCyclicRatio(void)
     for (int ch = 0; ch < SBUS_OUT_CHANNELS; ch++)
     {
         const uint8_t servoIndex = BUS_SERVO_OFFSET + ch;
-        
+
         if (servoIndex >= MAX_SUPPORTED_SERVOS)
+            continue;
+
+        // Cloned channels mirror the PWM output verbatim (see
+        // sbusOutGetValueMixer) and never consult their own servoParams, so
+        // their speed/cyclic setting shouldn't factor into the shared ratio.
+        if (busServoConfig()->cloneFromPwm && ch < getServoCount())
             continue;
 
         const servoParam_t *servo = servoParams(servoIndex);
@@ -167,9 +173,20 @@ float sbusOutGetValueMixer(uint8_t channel)
         return 0;
     
     const uint8_t servoIndex = BUS_SERVO_OFFSET + channel;
-    
+
     if (servoIndex >= MAX_SUPPORTED_SERVOS)
         return 0;
+
+    // Clone mode: mirror the already fully-mixed/trimmed/limited PWM servo
+    // output for this channel instead of evaluating this bus channel's own
+    // (independent) mixer rule and servoParams. This is what lets a
+    // PWM-only mixer setup (e.g. one of the configurator's named-type
+    // wizards) drive bus servos too. Only applies to channels that have an
+    // actual PWM counterpart -- channels beyond the physical PWM servo
+    // count have nothing to mirror, so they always fall through to their
+    // own mixer rule below.
+    if (busServoConfig()->cloneFromPwm && channel < getServoCount())
+        return constrainf(getServoOutput(channel), BUS_SERVO_MIN_SIGNAL, BUS_SERVO_MAX_SIGNAL);
 
     const servoParam_t *servo = servoParams(servoIndex);
 

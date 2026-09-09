@@ -39,3 +39,21 @@ uint16_t getBusServoOutput(uint8_t channel);
 
 // Bus servo configuration helpers
 bool hasBusServosConfigured(void);
+
+typedef struct busServoConfig_s {
+    // When ON (default), bus channel N mirrors PWM servo output S(N+1)
+    // one-to-one (PWM1->BUS1, PWM2->BUS2, ...) for every bus channel that
+    // has a physical PWM counterpart, so mixer setups built by the
+    // configurator's PWM-only wizards (named model types) drive bus servos
+    // too without any extra mixer rules. Bus channels beyond the physical
+    // PWM servo count always keep their own independent mixer rule
+    // regardless of this setting, since there's no PWM output to mirror.
+    //
+    // Turn this OFF for a custom model where the bus servos need mixer
+    // rules of their own that differ from the PWM outputs (e.g. a
+    // different surface layout, or extra bus-only channels interleaved
+    // with the PWM-mirrored ones).
+    uint8_t cloneFromPwm;
+} busServoConfig_t;
+
+PG_DECLARE(busServoConfig_t, busServoConfig);

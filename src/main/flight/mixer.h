@@ -115,6 +115,11 @@ static inline bool pidAxisSaturated(uint8_t index)
     return mixerSaturated(MIXER_IN_STABILIZED_ROLL + index);
 }
 
+static inline bool tvPidAxisSaturated(uint8_t index)
+{
+    return mixerSaturated(MIXER_IN_STABILIZED_TV_ROLL + index);
+}
+
 static inline void mixerSaturateServoOutput(uint8_t index)
 {
     mixerSaturateOutput(index + MIXER_SERVO_OFFSET);

@@ -121,17 +121,6 @@ blackbox_encoding_unittest_SRC :=  \
 #		SystemCoreClock=1000000
 
 # This test is disabled due to build errors.
-#cms_unittest_SRC := \
-#		$(USER_DIR)/cms/cms.c \
-#		$(USER_DIR)/cms/cms_menu_saveexit.c \
-#		$(USER_DIR)/common/typeconversion.c \
-#		$(USER_DIR)/drivers/display.c
-
-#cms_unittest_DEFINES := \
-#		USE_OSD=
-
-
-# This test is disabled due to build errors.
 #common_filter_unittest_SRC := \
 #		$(USER_DIR)/common/filter.c \
 #		$(USER_DIR)/common/maths.c
@@ -197,25 +186,6 @@ maths_unittest_SRC := \
 #motor_output_unittest_SRC := \
 #		$(USER_DIR)/drivers/dshot.c
 
-
-# This test is disabled due to build errors.
-#osd_unittest_SRC := \
-#		$(USER_DIR)/osd/osd.c \
-#		$(USER_DIR)/osd/osd_elements.c \
-#		$(USER_DIR)/osd/osd_warnings.c \
-#		$(USER_DIR)/common/typeconversion.c \
-#		$(USER_DIR)/drivers/display.c \
-#		$(USER_DIR)/common/maths.c \
-#		$(USER_DIR)/common/printf.c \
-#		$(USER_DIR)/common/time.c \
-#		$(USER_DIR)/common/filter.c \
-#		$(USER_DIR)/fc/runtime_config.c
-
-#osd_unittest_DEFINES := \
-#		USE_OSD= \
-#		USE_GPS= \
-#		USE_RTC_TIME= \
-#		USE_ADC_INTERNAL=
 
 # This test is disabled due to build errors.
 #link_quality_unittest_SRC := \

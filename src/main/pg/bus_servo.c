@@ -23,8 +23,16 @@
 
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER) || defined(USE_BUS_SERVO)
 
+#include "config/config_reset.h"
 #include "io/serial.h"
 #include "pg/bus_servo.h"
+#include "pg/pg_ids.h"
+
+PG_REGISTER_WITH_RESET_TEMPLATE(busServoConfig_t, busServoConfig, PG_BUS_SERVO_CONFIG, 0);
+
+PG_RESET_TEMPLATE(busServoConfig_t, busServoConfig,
+    .cloneFromPwm = 1,
+);
 
 bool hasBusServosConfigured(void)
 {

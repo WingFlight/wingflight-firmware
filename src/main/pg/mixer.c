@@ -113,7 +113,7 @@ void pgResetFn_mixerCurves(mixerCurve_t *curve)
     }
 }
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(mixerInput_t, MIXER_INPUT_COUNT, mixerInputs, PG_GENERIC_MIXER_INPUTS, 0);
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerInput_t, MIXER_INPUT_COUNT, mixerInputs, PG_GENERIC_MIXER_INPUTS, 1);
 
 void pgResetFn_mixerInputs(mixerInput_t *input)
 {
@@ -129,6 +129,12 @@ void pgResetFn_mixerInputs(mixerInput_t *input)
     input[MIXER_IN_STABILIZED_THROTTLE].max  =  1000;
 
     for (int i = MIXER_IN_RC_COMMAND_ROLL; i <= MIXER_IN_RC_CHANNEL_18; i++) {
+        input[i].rate =  1000;
+        input[i].min  = -1000;
+        input[i].max  =  1000;
+    }
+
+    for (int i = MIXER_IN_STABILIZED_TV_ROLL; i <= MIXER_IN_STABILIZED_TV_YAW; i++) {
         input[i].rate =  1000;
         input[i].min  = -1000;
         input[i].max  =  1000;

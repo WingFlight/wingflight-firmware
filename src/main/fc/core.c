@@ -32,8 +32,6 @@
 
 #include "cli/cli.h"
 
-#include "cms/cms.h"
-
 #include "common/axis.h"
 #include "common/filter.h"
 #include "common/maths.h"
@@ -62,6 +60,7 @@
 
 #include "flight/failsafe.h"
 #include "flight/gps_rescue.h"
+#include "flight/gps_nav.h"
 #include "flight/wiggle.h"
 
 #if defined(USE_DYN_NOTCH_FILTER)
@@ -69,6 +68,8 @@
 #endif
 
 #include "flight/pid.h"
+#include "flight/tv_hold.h"
+#include "flight/tv_pid.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/pid.h"
@@ -89,8 +90,6 @@
 #include "io/vtx_rtc6705.h"
 
 #include "msp/msp_serial.h"
-
-#include "osd/osd.h"
 
 #include "pg/governor.h"
 #include "pg/arming.h"
@@ -256,15 +255,6 @@ static bool accNeedsCalibration(void)
             isModeActivationConditionPresent(BOXCALIB)) {
             return true;
         }
-
-#ifdef USE_OSD
-        // Check for any enabled OSD elements that need the ACC
-        if (featureIsEnabled(FEATURE_OSD)) {
-            if (osdNeedsAccelerometer()) {
-                return true;
-            }
-        }
-#endif
 
 #ifdef USE_GPS_RESCUE
         // Check if failsafe will use GPS Rescue
@@ -437,8 +427,7 @@ void updateArmingStatus(void)
                     !(flags & (
                         ARMING_DISABLED_BOOT_GRACE_TIME |
                         ARMING_DISABLED_MSP |
-                        ARMING_DISABLED_CLI |
-                        ARMING_DISABLED_CMS_MENU
+                        ARMING_DISABLED_CLI
                     )))
                 {
                     const timeMs_t now = millis();
@@ -547,10 +536,6 @@ void tryArm(void)
             armingDelayed = ARMING_DELAYED;
             return;
         }
-#endif
-
-#ifdef USE_OSD
-        osdSuppressStats(false);
 #endif
 
         ENABLE_ARMING_FLAG(ARMED);
@@ -689,11 +674,7 @@ void processRxModes(timeUs_t currentTimeUs)
         disarmAt = currentTimeUs + autoDisarmDelayUs;  // extend auto-disarm timer
     }
 
-    if (!(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED))
-#ifdef USE_CMS
-        && !cmsInMenu
-#endif
-        ) {
+    if (!(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED))) {
         processRcStickPositions();
     }
 
@@ -720,9 +701,6 @@ void processRxModes(timeUs_t currentTimeUs)
 #endif // USE_SERVOS
 
     if (!cliMode &&
-#ifdef USE_CMS
-        !cmsInMenu &&
-#endif
         !(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED)))
     {
         processRcAdjustments();
@@ -736,6 +714,40 @@ void processRxModes(timeUs_t currentTimeUs)
             ENABLE_FLIGHT_MODE(GPS_RESCUE_MODE);
         } else {
             DISABLE_FLIGHT_MODE(GPS_RESCUE_MODE);
+        }
+#endif
+
+#ifdef USE_GPS_NAV
+        {
+            static bool wasRthActive = false;
+            static bool wasLoiterActive = false;
+
+            // RTH takes priority if both switches are active at once
+            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXRTH)) {
+                if (!wasRthActive) {
+                    navRthStart();
+                }
+                ENABLE_FLIGHT_MODE(RTH_MODE);
+                wasRthActive = true;
+            } else {
+                DISABLE_FLIGHT_MODE(RTH_MODE);
+                wasRthActive = false;
+            }
+
+            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXLOITER) && !FLIGHT_MODE(RTH_MODE)) {
+                if (!wasLoiterActive) {
+                    navLoiterStart();
+                }
+                ENABLE_FLIGHT_MODE(LOITER_MODE);
+                wasLoiterActive = true;
+            } else {
+                DISABLE_FLIGHT_MODE(LOITER_MODE);
+                wasLoiterActive = false;
+            }
+
+            if (!FLIGHT_MODE(RTH_MODE) && !FLIGHT_MODE(LOITER_MODE)) {
+                navStop();
+            }
         }
 #endif
 
@@ -929,6 +941,26 @@ static void subTaskPidController(timeUs_t currentTimeUs)
 
     pidController(currentPidProfile, currentTimeUs);
 
+    // Independent Thrust Vector loop -- must run after pidController() above so
+    // it can reuse this tick's final main-loop setpoint via pidGetSetpoint().
+    // BOXTHRUSTVECTOR gates the mix live in flight, on top of the feature
+    // being enabled at all; reset (rather than just skip) while switched off
+    // so I-term doesn't silently wind up unseen and bump the output on
+    // re-engage -- it ramps back up from zero instead. Also reset on gyro
+    // overflow, mirroring pidController()'s own pidReset() above -- the TV
+    // loop reads gyro.gyroADCf directly and must not keep integrating on
+    // corrupted samples while the main axes have already zeroed out.
+    if (featureIsEnabled(FEATURE_THRUST_VECTOR)) {
+        if (IS_RC_MODE_ACTIVE(BOXTHRUSTVECTOR) && !gyroOverflowDetected()) {
+            // BOXTVHOLD: independent attitude/heading hold for this loop only, decoupled
+            // from the main loop's ANGLE/AUTOHOVER/ATTHOLD chain -- see flight/tv_hold.c.
+            tvHoldSetState(IS_RC_MODE_ACTIVE(BOXTVHOLD));
+            tvPidController(currentTimeUs);
+        } else {
+            tvHoldSetState(false);
+            tvPidReset();
+        }
+    }
 }
 
 static void subTaskMixerUpdate(timeUs_t currentTimeUs)

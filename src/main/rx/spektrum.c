@@ -264,12 +264,18 @@ void spektrumBind(rxConfig_t *rxConfig)
     IO_t bindIO = IOGetByTag(bindPin);
 
     IOInit(bindIO, OWNER_RX_BIND, 0);
+
+    // Prepare bind pin, set output register high before setting it as an
+    // output to avoid glitch. IOCFG_IN_FLOATING doesn't change the pin's
+    // configuration, just enables the GPIO clock, so the write below
+    // reaches the output data register while the pin is still high-Z --
+    // by the time IOCFG_OUT_PP takes effect the register already reads
+    // high, so there's no low pulse on the transition to output.
+    IOConfigGPIO(bindIO, IOCFG_IN_FLOATING);
+    IOWrite(bindIO, true);
     IOConfigGPIO(bindIO, IOCFG_OUT_PP);
 
     LED1_ON;
-
-    // RX line, set high
-    IOWrite(bindIO, true);
 
     // Bind window is around 20-140ms after powerup
     delay(60);

@@ -34,8 +34,6 @@
 
 #include "drivers/system.h"
 
-#include "io/displayport_msp.h"
-
 #include "msp/msp.h"
 
 #include "msp_serial.h"

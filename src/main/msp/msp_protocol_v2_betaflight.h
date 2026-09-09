@@ -23,4 +23,4 @@
 //#define MSP2_SET_MOTOR_OUTPUT_REORDERING    0x3002
 #define MSP2_SEND_DSHOT_COMMAND             0x3003
 #define MSP2_GET_VTX_DEVICE_STATUS          0x3004
-#define MSP2_GET_OSD_WARNINGS               0x3005  // returns active OSD warning message text
+//#define MSP2_GET_OSD_WARNINGS               0x3005  // reserved (OSD removed) -- do not reuse

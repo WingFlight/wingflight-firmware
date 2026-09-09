@@ -44,6 +44,7 @@
 
 #include "flight/imu.h"
 #include "flight/gps_rescue.h"
+#include "flight/gps_nav.h"
 
 #include "sensors/acceleration.h"
 #include "sensors/gyro.h"
@@ -121,6 +122,9 @@ static float calcLevelErrorAngle(int axis)
 
 #ifdef USE_GPS_RESCUE
     angle += gpsRescueAngle[axis] / 100.0f; // ANGLE IS IN CENTIDEGREES
+#endif
+#ifdef USE_GPS_NAV
+    angle += navAngle[axis] / 100.0f; // ANGLE IS IN CENTIDEGREES
 #endif
     angle = constrainf(angle, -level.AngleLimit, level.AngleLimit);
 

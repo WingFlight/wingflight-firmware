@@ -244,10 +244,6 @@
 #define USE_RANGEFINDER_HCSR04
 #define USE_RANGEFINDER_TF
 
-#define USE_MAX7456
-#define MAX7456_SPI_INSTANCE    NULL // SPI3
-#define MAX7456_SPI_CS_PIN      NONE // PC9
-
 #define USE_I2C_OLED_DISPLAY
 
 #define USE_ADC
@@ -278,8 +274,6 @@
 #define ADC1_DMA_OPT 8
 #define ADC2_DMA_OPT 9
 #define ADC3_DMA_OPT 10
-
-#define DEFAULT_FEATURE (FEATURE_OSD)
 
 #define TARGET_IO_PORTA 0xffff
 #define TARGET_IO_PORTB 0xffff

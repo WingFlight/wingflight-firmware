@@ -66,17 +66,6 @@
 #define ENSURE_MPU_DATA_READY_IS_LOW
 #define GYRO_CONFIG_USE_GYRO_DEFAULT GYRO_CONFIG_USE_GYRO_1
 
-// *************** SPI2 OSD ***********************
-
-#define USE_SPI_DEVICE_2
-#define SPI2_SCK_PIN            PB13
-#define SPI2_MISO_PIN           PB14
-#define SPI2_MOSI_PIN           PB15
-
-#define USE_MAX7456
-#define MAX7456_SPI_INSTANCE    SPI2
-#define MAX7456_SPI_CS_PIN      PB12
-
 // *************** SPI3 ***************************
 
 #define USE_SPI_DEVICE_3
@@ -201,7 +190,7 @@
 
 // *************** Others ***************************
 
-#define DEFAULT_FEATURES        (FEATURE_OSD | FEATURE_TELEMETRY )
+#define DEFAULT_FEATURES        (FEATURE_TELEMETRY)
 
 //#define ENABLE_DSHOT_DMAR       DSHOT_DMAR_ON
 

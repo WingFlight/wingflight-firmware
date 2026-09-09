@@ -46,10 +46,6 @@
 #define CAMERA_CONTROL_HARDWARE_PWM_AVAILABLE
 #include "timer.h"
 
-#ifdef USE_OSD
-#include "osd/osd.h"
-#endif
-
 static struct {
     bool enabled;
     IO_t io;
@@ -186,11 +182,6 @@ void cameraControlKeyPress(cameraControlKey_e key, uint32_t holdDurationMs)
     const float dutyCycle = calculatePWMDutyCycle(key);
 #else
     (void) holdDurationMs;
-#endif
-
-#ifdef USE_OSD
-    // Force OSD timeout so we are alone on the display.
-    resumeRefreshAt = 0;
 #endif
 
     if (CAMERA_CONTROL_MODE_HARDWARE_PWM == cameraControlConfig()->mode) {

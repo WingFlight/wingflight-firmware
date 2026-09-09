@@ -37,7 +37,7 @@ typedef struct governorConfig_s {
     uint16_t governor_rpm;       // target idle RPM (RPM mode)
     uint16_t governor_gain;      // P gain, scaled (x0.000005 -> throttle fraction per RPM error) (RPM mode)
     uint16_t governor_i_gain;    // I gain, scaled (x0.000005 -> throttle fraction per RPM error per second); closes P droop to zero (RPM mode)
-    uint8_t  governor_throttle;  // fixed idle throttle output, % (0-100) (THROTTLE mode)
+    uint8_t  governor_throttle;  // fixed idle throttle output/floor, % (0-100) (RPM/THROTTLE modes)
     uint8_t  governor_handover;  // throttle handover threshold, % (0-100) (RPM/THROTTLE modes only)
     uint8_t  governor_ceiling;   // max throttle % the governor may output (safety clamp)
     uint16_t governor_rpm_min;   // target RPM at 0% throttle stick (RPM_RANGE mode)
