@@ -2271,6 +2271,32 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         }
         break;
 
+#ifdef USE_SERIAL_RX
+    case MSP2_WING_RX_SERIAL_TRIAL:
+        // action: 0 = poll only, 1 = (re)start a scan, 2 = stop/cancel - always
+        // restores the pre-trial wiring and reports the resulting status either
+        // way, same start/poll/action shape as MSP2_WING_BOARD_AUTO_ALIGN above.
+        if (sbufBytesRemaining(src) >= 1) {
+            const uint8_t action = sbufReadU8(src);
+            if (action == 1) {
+                rxSerialTrialStart();
+            } else if (action == 2) {
+                rxSerialTrialStop();
+            }
+        }
+
+        {
+            const rxSerialTrialStatus_t status = rxSerialTrialGetStatus();
+            sbufWriteU8(dst, status.state);
+            sbufWriteU8(dst, status.comboIndex);
+            sbufWriteU8(dst, status.inverted);
+            sbufWriteU8(dst, status.halfDuplex);
+            sbufWriteU8(dst, status.pinSwap);
+            sbufWriteU16(dst, status.elapsedMs);
+        }
+        break;
+#endif
+
 #ifdef USE_RPM_FILTER
     case MSP_RPM_FILTER_V2:
         if (sbufBytesRemaining(src) == 1) {
