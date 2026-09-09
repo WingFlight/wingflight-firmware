@@ -1,3 +1,8 @@
+# 0.0.18
+
+Add Thrust Vector profiles (6 independently-switchable profiles).
+Generalize the backup RX from SBUS-only into a provider-selectable input, adding FBUS, FPort, FPort2, Jeti EX Bus, and CRSF support alongside SBUS.
+
 # 0.0.17
 
 Add Thrust Vector Attitude Hold.
