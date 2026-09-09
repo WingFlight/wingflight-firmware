@@ -59,6 +59,13 @@ Four independent conditions must agree before anything happens: error-based sign
 rate), band-pass energy, periodicity, and sustained persistence. Per-axis, independent state —
 roll oscillating doesn't touch yaw's gain.
 
+**Gain-rise sensitivity.** A combined gain (`masterGain*curveMult`) that is climbing fast while a
+candidate is otherwise forming — e.g. a pilot sweeping a `master_gain` adjustment function up in
+flight to find a tuning limit — is itself corroborating evidence, not something to wait out: the
+score step for a candidate sample is increased (see `OSC_LIMITER_FAST_RISE_SCORE_STEP` in
+`pid.c`) whenever the rise rate exceeds `OSC_LIMITER_GAIN_RISE_FAST_PER_SEC`, so confirmation
+lands sooner in exactly the higher-risk case where gain keeps being raised into the oscillation.
+
 ## 4. Gating conditions
 
 The detector only runs (state stays frozen otherwise, never reset mid-oscillation) when:
@@ -68,37 +75,78 @@ The detector only runs (state stays frozen otherwise, never reset mid-oscillatio
 - Not in `FAILSAFE_MODE` / `GPS_RESCUE_MODE` — those paths already force safe behavior.
 - `pid.pidMode == 1` (normal fixed-wing rate mode), not passthrough.
 
-## 5. Mitigation: bounded, gradual, ratcheting
+## 5. Mitigation: an absolute, monotonic ceiling — not a relative trim
+
+**Revision note.** The first pass expressed the cut as a fraction of whatever gain happened to be
+*live* (`gainScale` applied on top of the current `masterGain`). That has a hole: if something
+keeps raising the commanded gain while the cut is active — most concretely, a pilot sweeping a
+`master_gain` adjustment function up in flight to find a tuning limit — the cut and the rise
+multiply against each other, and a fixed-percentage cut of an ever-rising number can be outrun.
+Once the cut reaches its floor it has no headroom left to counter any further rise. This section
+now describes the fix: the detector pins its cut to the absolute gain level it was first
+confirmed at, so raising gain afterwards from *any* source cannot inflate what "floor%" means.
 
 ```
-if confirmed: gainScale = max(oscLimiterFloor, gainScale - rampStep)  // back off one step further
+if confirmed:
+    if combinedGain > OSC_LIMITER_MIN_REF_GAIN:      // ignore a near-zero gain_curve sample --
+        refGain = min(refGain, combinedGain)          // see note below
+    gainScale = max(oscLimiterFloor, gainScale - rampStep)   // same ramp as before
 // else: hold -- never eased back up mid-flight
+
+ceiling = refGain * gainScale        // refGain starts at +infinity: unrestricted until engaged
+enforcedGain = min(combinedGain, ceiling)
 ```
 
-Applied as one more multiplicative factor exactly where `gain_curve`/`fw_tpa_gain` are already
-applied in `pidApplyMode1()`:
+The `OSC_LIMITER_MIN_REF_GAIN` guard matters because `combinedGain` includes `curveMult`, which a
+pilot-configured `gain_curve` can legitimately map to (near) zero at some stick positions. Without
+the guard, an engagement landing on exactly such a sample would pin `refGain` near zero — freezing
+the axis near-zero for the rest of the flight even at *other*, untested stick positions, which is
+worse than the problem this ceiling exists to fix. The guard simply refuses to pin the ceiling to
+a gain sample too small to plausibly be "the gain that caused this."
+
+Applied in place of the plain multiplicative factor in `pidApplyMode1()` (replacing
+`pid.masterGain[axis] * curveMult * pid.oscGainScale[axis]` from the first pass):
 
 ```c
-const float masterGain = pid.masterGain[axis] * curveMult * pid.oscGainScale[axis];
+const float combinedGain = pid.masterGain[axis] * curveMult;
+const float masterGain   = updateOscLimiter(axis, setpoint, errorRate, combinedGain);  // <= combinedGain, always
 ```
 
 Key properties:
 
-- **Never persisted** — `pid.oscGainScale[axis]` is pure runtime state in `pid_t`
-  (`src/main/flight/pid.h`), never written back into `pidProfile_t`. `diff`/`save`/profile
-  switching are unaffected.
-- **Only ever attenuates**: clamped to `[oscLimiterFloor, 1.0]` — can never exceed 1.0.
-- **Gradual, not a snap cut**: gain eases down one small step per loop for as long as a sustained
-  oscillation is confirmed, and stops the moment it's no longer detected — so a single mild event
-  need not reach the floor.
-- **Ratchets, never recovers mid-flight**: once the oscillation clears, `gainScale` holds at
-  wherever it ended up — it is never eased back up during the same flight. If the same axis
-  oscillates again later, it resumes backing off from that already-reduced level, cutting harder
-  each time it recurs. A new arm or profile reload is the only way authority is restored.
+- **Never persisted** — the ratchet state (`refGain`, `gainScale`, `baseGainCeiling`, etc. in
+  `oscLimiterAxis_t`, `src/main/flight/pid.h`) is pure runtime state, never written back into
+  `pidProfile_t`. `diff`/`save` are unaffected.
+- **Only ever attenuates**: `enforcedGain <= combinedGain` always, by construction (a `min()`),
+  regardless of how large `combinedGain` becomes afterwards.
+- **Immune to a rising commanded gain**: `refGain` only ever ratchets *down* (`min()`), so a
+  gain that keeps climbing after engagement — whether from a static profile, `gain_curve`, or a
+  live `master_gain` adjustment function sweep — cannot raise the ceiling it's being measured
+  against. This is the actual fix for the gap above.
+- **Gradual, not a snap cut**: `gainScale` still eases from 1.0 toward `oscLimiterFloor` over a
+  fixed ramp (unchanged from the first pass) — the first cut after engagement is as smooth as
+  before, not a step function.
+- **Ratchets, never recovers mid-flight, independent per PID profile**: once the oscillation
+  clears, the ceiling holds at wherever it ended up — never eased back up during the same flight.
+  If the same axis oscillates again later (even at a gain still under the current ceiling),
+  `refGain` only ever tightens further. Switching PID profiles and back no longer resets this:
+  `pid.oscLimiter[profile][axis]` keeps independent history per profile, and only
+  `pidResetOscLimiter()` — called from `tryArm()` — clears it. (Previously a mere profile reload
+  reset everything, which meant a profile switch could be used, deliberately or not, to undo an
+  active cut without a new arm; a PID-profile switch is a common RC-bound feature, so that was a
+  materially easier way to defeat the ratchet than the gain-sweep issue above.)
 - **Slew-limited** on the way down — an abrupt gain step could itself excite a transient.
-- **Reported 'active' flag has its own 3s hold**, decoupled from `gainScale`: it stays asserted
-  for a bit after the last engagement so a brief drop-out doesn't flicker the blackbox/telemetry
-  indication, even though the underlying gain cut itself is permanent for the flight.
+- **Reported 'active' flag has its own 3s hold**, decoupled from the cut itself: it stays
+  asserted for a bit after the last engagement so a brief drop-out doesn't flicker the
+  blackbox/telemetry indication, even though the underlying ceiling itself is permanent for the
+  flight (per profile).
+- **Feeds back into the adjustment function, not just the PID output**: `baseGainCeiling` is the
+  same ratchet expressed against `pid.masterGain[axis]` alone (independent of `curveMult`), and
+  `set_ADJUSTMENT_MASTER_GAIN_{PITCH,ROLL,YAW}` clamp against it (via `pidOscLimiterBaseCeiling()`)
+  before writing either the runtime value or `currentPidProfile->master_gain`. This closes a
+  second gap in the first pass: without it, a pilot could `save` a `master_gain` value the
+  limiter was actively fighting, persisting a bad baseline into the next flight even though the
+  runtime cut itself was never persisted.
 
 ## 6. New accessor API (`src/main/flight/pid.h` / `pid.c`)
 
@@ -106,9 +154,13 @@ Read-only getters, mirroring the existing `pidGetAxisData()` / `pidGetRuntimeGai
 all reporting consumers (CRSF, blackbox) go through these instead of touching detector internals:
 
 ```c
-bool    pidOscLimiterActive(int axis);   // true while engaged, plus a 3s hold after (reporting only)
-uint8_t pidOscLimiterScale(int axis);    // current gain scale, percent (100 = no cut)
+bool    pidOscLimiterActive(int axis);        // true while engaged, plus a 3s hold after (reporting only)
+uint8_t pidOscLimiterScale(int axis);         // percent of the currently-requested gain let through, 100 = no cut
+float   pidOscLimiterBaseCeiling(int axis);   // cap on pid.masterGain[axis] alone; FLT_MAX = unrestricted --
+                                               // used only by set_ADJUSTMENT_MASTER_GAIN_* (not the hot PID path)
 ```
+
+All three report on the currently active PID profile's own history (`getCurrentPidProfileIndex()`).
 
 ## 7. New configuration (`pidProfile_t`, `src/main/pg/pid.h`)
 
@@ -202,12 +254,19 @@ adding them later is additive and doesn't require revisiting the detector.
 - No dynamic allocation, fixed-size state per axis, O(1) per loop.
 - Doesn't alter `pidApplySetpoint()` or any flight-mode logic — only scales the final gain
   multiplier.
-- Doesn't write to `pidProfile_t` — profile save/diff/copy semantics unchanged.
+- Doesn't write to `pidProfile_t` on its own — the one intentional exception is
+  `set_ADJUSTMENT_MASTER_GAIN_*` clamping its write through `pidOscLimiterBaseCeiling()`, which
+  only ever lowers what would otherwise be written, never raises it; the limiter's own ratchet
+  state is still never persisted, so `diff`/`copy` semantics for the limiter itself are unchanged.
 - Bounded output range guarantees the detector can only reduce, never increase or fully remove,
-  authority.
+  authority — true even if the commanded gain keeps rising after engagement (the ceiling is
+  pinned, not relative to the live value; see §5's revision note).
 - Disabled by default (`osc_limiter = 0`) and fully gated off airborne/gyro-health/failsafe state.
 - Reporting reads (`pidOscLimiterActive/Scale`) are pure getters — cannot feed back into the
-  detector or gain math.
+  detector or gain math. `pidOscLimiterBaseCeiling()` is a getter too; it feeds a `min()` clamp at
+  the adjustment-function boundary, not the detector.
+- Surviving a PID-profile switch mid-flight is intentional, not a leak: each profile's ratchet is
+  independent, and only `pidResetOscLimiter()` (`tryArm()`) clears any of them.
 - Event logging is edge-triggered, not per-loop, so a latched-and-stable condition can't spam the
   blackbox log.
 - CRSF text stays within the existing 32-byte buffer; the new sensor's payload fits within the
@@ -239,3 +298,9 @@ adding them later is additive and doesn't require revisiting the detector.
   radio (verify the new sensor value over CRSF custom telemetry, and the flight-mode text suffix)
   and a FrSky S.Port/FBUS radio (verify the new sensor value decodes correctly on-radio/on a
   companion app). Both must show the oscillation state — the feature isn't done until both pass.
+- Specifically exercise the two gaps this revision closes: (1) bind a `master_gain` adjustment
+  function to a switch/pot and sweep it up through an axis's oscillation point in flight (SITL or
+  bench with a synthetic oscillating error signal) — confirm the ceiling holds even as the
+  adjustment function keeps requesting more, and that `currentPidProfile->master_gain` never ends
+  up saved above `pidOscLimiterBaseCeiling()`; (2) trigger a cut, then switch PID profiles and
+  back — confirm the original profile's ceiling is still enforced, not reset to unrestricted.

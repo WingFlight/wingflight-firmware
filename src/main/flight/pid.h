@@ -86,12 +86,21 @@ typedef struct {
     biquadFilter_t bandpass;
     float energy;             // smoothed band-passed error energy (mean square)
     float score;              // sustained-detection hysteresis, in loop ticks
-    float gainScale;          // live gain multiplier applied on top of masterGain (1.0 = no cut)
+    float gainScale;          // 0..1 ratchet, floor at engage; multiplies the *frozen* refGain/
+                              // baseRefGain below -- never the live, possibly-still-rising gain
+    float refGain;            // combined (masterGain*curveMult) value the current cut is pinned
+                              // to -- snapshotted (min-only, never rises) at/while engaged, so a
+                              // gain rising afterwards (e.g. a live adjustment function sweep)
+                              // can't inflate what the cut is relative to. FLT_MAX = unrestricted
+    float baseGainCeiling;    // absolute cap on pid.masterGain[axis] alone, same ratchet, used
+                              // only to gate set_ADJUSTMENT_MASTER_GAIN_*. FLT_MAX = unrestricted
     float prevSample;         // previous band-passed sample, for zero-crossing detection
     float prevSetpoint;       // previous setpoint, for the setpoint-slew gate
+    float prevCombinedGain;   // previous masterGain*curveMult, for the gain-rise-rate gate
     uint16_t crossCount;      // zero crossings counted in the current periodicity window
     uint16_t windowRemaining; // loop ticks left in the current periodicity window
     uint16_t telemetryHold;   // loop ticks left before the reported 'active' flag clears
+    uint8_t reportedScale;    // percent of the currently-requested gain actually let through
     bool periodicOk;          // result of the last completed periodicity window
     bool active;              // true while this axis's gain is currently cut (reporting only)
 } oscLimiterAxis_t;
@@ -129,7 +138,11 @@ typedef struct pid_s {
 
     float errorLimit[PID_AXIS_COUNT];
 
-    // Oscillation limiter -- see docs/development/Oscillation Detection.md
+    // Oscillation limiter -- see docs/development/Oscillation Detection.md.
+    // Indexed [pidProfileIndex][axis] and NOT reset on a profile switch (pidLoadProfile) --
+    // only pidResetOscLimiter() (called from tryArm()) clears it, so switching profiles
+    // mid-flight can no longer be used to undo an active cut; each profile keeps its own
+    // independent history for the flight and resumes it if switched back to.
     bool oscLimiterEnabled;
     float oscLimiterThresholdSq;  // squared energy threshold, avoids a sqrt in the hot loop
     float oscLimiterFloor;        // 0..1, minimum gain scale the limiter may reach
@@ -137,7 +150,7 @@ typedef struct pid_s {
     uint16_t oscLimiterWindowTicks; // loop ticks per periodicity window
     uint16_t oscLimiterTelemetryHoldTicks; // loop ticks the reported 'active' flag stays asserted
     float oscLimiterRampPerLoop;  // max gainScale change per loop (slew limit)
-    oscLimiterAxis_t oscLimiter[PID_AXIS_COUNT];
+    oscLimiterAxis_t oscLimiter[PID_PROFILE_COUNT][PID_AXIS_COUNT];
 
     pidAxisCoef_t coef[PID_ITEM_COUNT];
     pidAxisData_t data[PID_AXIS_COUNT];
@@ -177,9 +190,17 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);
 
 // Oscillation limiter read-only accessors -- see docs/development/Oscillation Detection.md.
 // Reporting consumers (blackbox, telemetry) must go through these instead of touching pid_t.
+// All report on the currently active PID profile's own history.
 bool pidOscLimiterActive(int axis);
-uint8_t pidOscLimiterScale(int axis);  // percent, 100 = no cut
-void pidResetOscLimiter(void);  // clears the cut and telemetry hold for a new flight -- call from tryArm() only
+uint8_t pidOscLimiterScale(int axis);  // percent of the currently-requested gain let through, 100 = no cut
+void pidResetOscLimiter(void);  // clears every profile's cut and telemetry hold for a new flight -- call from tryArm() only
+
+// Absolute cap on pid.masterGain[axis] alone (independent of gain_curve), for the currently
+// active profile. FLT_MAX ("unrestricted") until this axis has engaged at least once this
+// flight. Used only to gate set_ADJUSTMENT_MASTER_GAIN_* so a live gain sweep can't persist
+// a base gain past what this profile's limiter is already fighting -- not used in the hot
+// PID-output path, which enforces the combined (masterGain*curveMult) cut directly instead.
+float pidOscLimiterBaseCeiling(int axis);
 
 ADJFUN_DECLARE(PID_PROFILE)
 ADJFUN_DECLARE(MASTER_GAIN_PITCH)

@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <float.h>
 
 #include "platform.h"
 
@@ -28,6 +29,7 @@
 #include "common/axis.h"
 #include "common/filter.h"
 
+#include "config/config.h"
 #include "config/config_reset.h"
 
 #include "pg/pg.h"
@@ -72,6 +74,23 @@ static FAST_DATA_ZERO_INIT pidData_t pid;
 #define OSC_LIMITER_TELEMETRY_HOLD_MS        3000.0f   // min time the reported 'active' flag stays asserted
 #define OSC_LIMITER_SETPOINT_GATE_DEGS      300.0f    // freeze while commanding a large rate
 #define OSC_LIMITER_SETPOINT_SLEW_GATE_DEGS 3000.0f    // freeze right after an abrupt stick step
+#define OSC_LIMITER_GAIN_RISE_FAST_PER_SEC  0.5f      // combined-gain (masterGain*curveMult) rise
+                                                        // rate, per second, treated as an actively-
+                                                        // rising gain (e.g. a live adjustment
+                                                        // function sweep) rather than a static tune
+#define OSC_LIMITER_FAST_RISE_SCORE_STEP    3.0f       // score step on a candidate sample while the
+                                                        // gain is rising fast (vs +1.0f normally) --
+                                                        // confirms sooner, since a rising gain during
+                                                        // a live candidate is itself corroborating
+#define OSC_LIMITER_MIN_REF_GAIN            0.1f      // ignore an engaged sample's gain snapshot
+                                                        // below this when pinning the ceiling -- a
+                                                        // gain_curve dipping near zero at this exact
+                                                        // stick position is not evidence that near-
+                                                        // zero gain is "safe"; it would otherwise
+                                                        // freeze the axis near-zero even at other,
+                                                        // untested stick positions for the rest of
+                                                        // the flight, which is worse than the bug
+                                                        // this ceiling exists to fix
 
 
 //// Access functions
@@ -138,10 +157,14 @@ int get_ADJUSTMENT_MASTER_GAIN_PITCH(void)
     return currentPidProfile->master_gain[PID_PITCH];
 }
 
+// Oscillation limiter note: clamped to pidOscLimiterBaseCeiling() so a live gain sweep can't
+// climb -- or get saved -- past what this axis's limiter is already fighting this flight. See
+// docs/development/Oscillation Detection.md.
 void set_ADJUSTMENT_MASTER_GAIN_PITCH(int value)
 {
-    currentPidProfile->master_gain[PID_PITCH] = value;
-    pid.masterGain[PID_PITCH] = value * 0.01f;
+    const float gain = fminf(value * 0.01f, pidOscLimiterBaseCeiling(PID_PITCH));
+    currentPidProfile->master_gain[PID_PITCH] = lrintf(gain * 100.0f);
+    pid.masterGain[PID_PITCH] = gain;
 }
 
 int get_ADJUSTMENT_MASTER_GAIN_ROLL(void)
@@ -151,8 +174,9 @@ int get_ADJUSTMENT_MASTER_GAIN_ROLL(void)
 
 void set_ADJUSTMENT_MASTER_GAIN_ROLL(int value)
 {
-    currentPidProfile->master_gain[PID_ROLL] = value;
-    pid.masterGain[PID_ROLL] = value * 0.01f;
+    const float gain = fminf(value * 0.01f, pidOscLimiterBaseCeiling(PID_ROLL));
+    currentPidProfile->master_gain[PID_ROLL] = lrintf(gain * 100.0f);
+    pid.masterGain[PID_ROLL] = gain;
 }
 
 int get_ADJUSTMENT_MASTER_GAIN_YAW(void)
@@ -162,8 +186,9 @@ int get_ADJUSTMENT_MASTER_GAIN_YAW(void)
 
 void set_ADJUSTMENT_MASTER_GAIN_YAW(int value)
 {
-    currentPidProfile->master_gain[PID_YAW] = value;
-    pid.masterGain[PID_YAW] = value * 0.01f;
+    const float gain = fminf(value * 0.01f, pidOscLimiterBaseCeiling(PID_YAW));
+    currentPidProfile->master_gain[PID_YAW] = lrintf(gain * 100.0f);
+    pid.masterGain[PID_YAW] = gain;
 }
 
 int get_ADJUSTMENT_PITCH_P_GAIN(void)
@@ -506,10 +531,12 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     pt1FilterUpdate(&pid.crossAxisRelaxFilter, crossAxisRelaxCutoff, pid.freq);
 
 
-    // Oscillation limiter -- see docs/development/Oscillation Detection.md. Eases master_gain
-    // down further each time a sustained oscillation is confirmed, and holds (never eases back
-    // up) once it clears -- so a recurring oscillation gets cut harder each time. Reloading (or
-    // any new arm) always clears it back to a clean state.
+    // Oscillation limiter -- see docs/development/Oscillation Detection.md. Eases the combined
+    // (masterGain*curveMult) gain down further each time a sustained oscillation is confirmed,
+    // and holds (never eases back up) once it clears -- so a recurring oscillation gets cut
+    // harder each time. Only a new arm clears it (pidResetOscLimiter(), called from tryArm());
+    // reloading -- including switching to a different PID profile and back -- does NOT reset the
+    // accumulated history below, only the tuning constants and this profile's filter coefficients.
     pid.oscLimiterEnabled = pidProfile->osc_limiter;
     const float oscMinHz = MAX(1, pidProfile->osc_limiter_min_hz);
     const float oscMaxHz = MAX(oscMinHz + 1, pidProfile->osc_limiter_max_hz);
@@ -522,18 +549,11 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     pid.oscLimiterTelemetryHoldTicks = fmaxf(1.0f, OSC_LIMITER_TELEMETRY_HOLD_MS * 1e-3f * pid.freq);
     const float oscRampTicks = fmaxf(1.0f, OSC_LIMITER_RAMP_MS * 1e-3f * pid.freq);
     pid.oscLimiterRampPerLoop = (1.0f - pid.oscLimiterFloor) / oscRampTicks;
+    // Only (re)initialise this profile's own filter coefficients -- other profiles' history/
+    // filters are untouched so a profile switch and back finds its own state as it left it.
+    const uint8_t oscProfileIndex = getCurrentPidProfileIndex();
     for (int i = 0; i < PID_AXIS_COUNT; i++) {
-        biquadFilterInit(&pid.oscLimiter[i].bandpass, oscCenterHz, pid.freq, oscQ, BIQUAD_BPF);
-        pid.oscLimiter[i].energy = 0;
-        pid.oscLimiter[i].score = 0;
-        pid.oscLimiter[i].gainScale = 1.0f;
-        pid.oscLimiter[i].prevSample = 0;
-        pid.oscLimiter[i].prevSetpoint = 0;
-        pid.oscLimiter[i].crossCount = 0;
-        pid.oscLimiter[i].windowRemaining = pid.oscLimiterWindowTicks;
-        pid.oscLimiter[i].telemetryHold = 0;
-        pid.oscLimiter[i].periodicOk = false;
-        pid.oscLimiter[i].active = false;
+        biquadFilterInit(&pid.oscLimiter[oscProfileIndex][i].bandpass, oscCenterHz, pid.freq, oscQ, BIQUAD_BPF);
     }
 
     // Initialise sub-profiles
@@ -559,6 +579,9 @@ void INIT_CODE pidInit(const pidProfile_t *pidProfile)
     pidSetLooptime(gyro.targetLooptime);
     pidInitFilters(pidProfile);
     pidChangeProfile(pidProfile);
+    // One-time clean start for every profile's oscillation-limiter history; tryArm() repeats
+    // this on every arm thereafter (a profile switch alone deliberately does not).
+    pidResetOscLimiter();
 }
 
 void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileIndex)
@@ -838,20 +861,42 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
     }
 }
 
-// Oscillation limiter detector -- see docs/development/Oscillation Detection.md.
-// Pure function of read-only per-axis signals; only ever writes pid.oscLimiter[axis].
-// Never touches pidProfile_t, never alters setpoint/gyroRate, and is fully disabled
-// unless osc_limiter is turned on.
-static void updateOscLimiter(uint8_t axis, float setpoint, float errorRate)
+// Resets one axis's detector + ratchet history to a clean, fully-unrestricted state.
+static void oscLimiterResetAxis(oscLimiterAxis_t *osc)
 {
-    oscLimiterAxis_t *osc = &pid.oscLimiter[axis];
+    osc->energy = 0;
+    osc->score = 0;
+    osc->gainScale = 1.0f;
+    osc->refGain = FLT_MAX;
+    osc->baseGainCeiling = FLT_MAX;
+    osc->prevSample = 0;
+    osc->prevSetpoint = 0;
+    osc->prevCombinedGain = 0;
+    osc->crossCount = 0;
+    osc->windowRemaining = pid.oscLimiterWindowTicks;
+    osc->telemetryHold = 0;
+    osc->reportedScale = 100;
+    osc->periodicOk = false;
+    osc->active = false;
+}
+
+// Oscillation limiter detector -- see docs/development/Oscillation Detection.md.
+// Pure function of read-only per-axis signals; only ever writes pid.oscLimiter[profile][axis].
+// Never touches pidProfile_t, never alters setpoint/gyroRate, and is fully disabled unless
+// osc_limiter is turned on. Returns the combined (masterGain*curveMult) gain to actually apply,
+// clamped to this axis's ratcheted ceiling if one has ever been established this flight.
+static float updateOscLimiter(uint8_t axis, float setpoint, float errorRate, float combinedGain)
+{
+    oscLimiterAxis_t *osc = &pid.oscLimiter[getCurrentPidProfileIndex()][axis];
 
     if (!pid.oscLimiterEnabled || pid.pidMode != 1 || !isAirborne() || gyroOverflowDetected() ||
         FLIGHT_MODE(FAILSAFE_MODE) || FLIGHT_MODE(GPS_RESCUE_MODE)) {
-        // Preconditions not met. Track setpoint so the slew gate doesn't see a
-        // stale value next time, but otherwise freeze -- don't reset ongoing state.
+        // Preconditions not met. Track setpoint/gain so the slew gates don't see a stale
+        // value next time, but otherwise freeze -- don't reset ongoing state. A ceiling
+        // already latched (osc->refGain) still applies -- it's enforced below regardless.
         osc->prevSetpoint = setpoint;
-        return;
+        osc->prevCombinedGain = combinedGain;
+        return fminf(combinedGain, osc->refGain * osc->gainScale);
     }
 
     // Band-pass the tracking error to isolate the oscillation band
@@ -880,14 +925,39 @@ static void updateOscLimiter(uint8_t axis, float setpoint, float errorRate)
                         (setpointRate > OSC_LIMITER_SETPOINT_SLEW_GATE_DEGS);
     osc->prevSetpoint = setpoint;
 
+    // A combined gain that's actively climbing fast (e.g. a live master_gain adjustment
+    // function sweep) while a candidate is otherwise forming is itself corroborating
+    // evidence, not something to gate out -- confirm sooner instead of waiting it out.
+    const float gainRiseRate = (combinedGain - osc->prevCombinedGain) * pid.freq;
+    const bool gainRisingFast = gainRiseRate > OSC_LIMITER_GAIN_RISE_FAST_PER_SEC;
+    osc->prevCombinedGain = combinedGain;
+
     const bool candidate = !gated && osc->periodicOk && (osc->energy > pid.oscLimiterThresholdSq);
 
     // Asymmetric hysteresis: slow to confirm oscillating, faster to confirm it has subsided.
-    osc->score = constrainf(osc->score + (candidate ? 1.0f : -2.0f), 0.0f, pid.oscLimiterScoreMax);
+    const float scoreStep = candidate ? (gainRisingFast ? OSC_LIMITER_FAST_RISE_SCORE_STEP : 1.0f) : -2.0f;
+    osc->score = constrainf(osc->score + scoreStep, 0.0f, pid.oscLimiterScoreMax);
 
     const bool engaged = osc->score >= pid.oscLimiterScoreMax;
 
     if (engaged) {
+        // Pin the ceiling to the LOWEST combined gain seen while engaged, times the floor --
+        // never to whatever's live right now. This is what actually stops a gain that keeps
+        // climbing afterwards (e.g. the pilot keeps raising master_gain) from outrunning the
+        // cut: raising combinedGain can't raise refGain, since only fminf() ever applies.
+        // Guarded by OSC_LIMITER_MIN_REF_GAIN: a gain_curve sample that happens to be near
+        // zero at this exact stick position isn't evidence that near-zero gain is the fix --
+        // pinning to it would freeze the axis near-zero at every OTHER stick position too,
+        // for the rest of the flight.
+        if (combinedGain > OSC_LIMITER_MIN_REF_GAIN) {
+            osc->refGain = fminf(osc->refGain, combinedGain);
+        }
+        // Same ratchet, expressed against pid.masterGain[axis] alone (curve-independent) --
+        // this is what gates the adjustment-function setters below, so a live sweep can't
+        // creep the *persisted* base gain past what this axis is already fighting either.
+        if (pid.masterGain[axis] > OSC_LIMITER_MIN_REF_GAIN) {
+            osc->baseGainCeiling = fminf(osc->baseGainCeiling, pid.masterGain[axis]);
+        }
         // Back off further each time -- never eased back up mid-flight, so a recurring
         // oscillation gets cut harder on every engagement, down to the floor at most.
         osc->gainScale = fmaxf(pid.oscLimiterFloor, osc->gainScale - pid.oscLimiterRampPerLoop);
@@ -900,36 +970,43 @@ static void updateOscLimiter(uint8_t axis, float setpoint, float errorRate)
     // engagement so a brief drop-out doesn't flicker the blackbox/telemetry indication.
     osc->active = engaged || (osc->telemetryHold > 0);
 
+    const float ceiling = osc->refGain * osc->gainScale;   // FLT_MAX while never engaged
+    const float enforcedGain = fminf(combinedGain, ceiling);
+    osc->reportedScale = (combinedGain > 0.0f)
+        ? (uint8_t)lrintf(constrainf(enforcedGain / combinedGain, 0.0f, 1.0f) * 100.0f)
+        : 100;
+
     DEBUG_AXIS(OSC_LIMITER, axis, 0, lrintf(osc->energy));
     DEBUG_AXIS(OSC_LIMITER, axis, 1, lrintf(osc->score));
-    DEBUG_AXIS(OSC_LIMITER, axis, 2, lrintf(osc->gainScale * 1000));
+    DEBUG_AXIS(OSC_LIMITER, axis, 2, osc->reportedScale);
+
+    return enforcedGain;
 }
 
 bool pidOscLimiterActive(int axis)
 {
-    return pid.oscLimiter[axis].active;
+    return pid.oscLimiter[getCurrentPidProfileIndex()][axis].active;
 }
 
-// Clears the cut and telemetry hold for a new flight -- called from tryArm() only.
+// Clears every profile's cut and telemetry hold for a new flight -- called from tryArm() only.
 void pidResetOscLimiter(void)
 {
-    for (int i = 0; i < PID_AXIS_COUNT; i++) {
-        pid.oscLimiter[i].energy = 0;
-        pid.oscLimiter[i].score = 0;
-        pid.oscLimiter[i].gainScale = 1.0f;
-        pid.oscLimiter[i].prevSample = 0;
-        pid.oscLimiter[i].prevSetpoint = 0;
-        pid.oscLimiter[i].crossCount = 0;
-        pid.oscLimiter[i].windowRemaining = pid.oscLimiterWindowTicks;
-        pid.oscLimiter[i].telemetryHold = 0;
-        pid.oscLimiter[i].periodicOk = false;
-        pid.oscLimiter[i].active = false;
+    for (int p = 0; p < PID_PROFILE_COUNT; p++) {
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            oscLimiterResetAxis(&pid.oscLimiter[p][i]);
+        }
     }
 }
 
 uint8_t pidOscLimiterScale(int axis)
 {
-    return lrintf(constrainf(pid.oscLimiter[axis].gainScale, 0.0f, 1.0f) * 100.0f);
+    return pid.oscLimiter[getCurrentPidProfileIndex()][axis].reportedScale;
+}
+
+float pidOscLimiterBaseCeiling(int axis)
+{
+    const oscLimiterAxis_t *osc = &pid.oscLimiter[getCurrentPidProfileIndex()][axis];
+    return osc->baseGainCeiling * osc->gainScale;
 }
 
 static void pidApplyMode1(uint8_t axis)
@@ -943,10 +1020,6 @@ static void pidApplyMode1(uint8_t axis)
     // Calculate error rate
     const float errorRate = setpoint - gyroRate;
 
-    // Detect a sustained gain-induced oscillation on this axis and, if found, ease masterGain
-    // down (never up) further -- holds once it subsides, backing off more if it recurs
-    updateOscLimiter(axis, setpoint, errorRate);
-
     // Throttle-based gain attenuation
     const float atten = pidThrottleAttenuation();
 
@@ -955,12 +1028,22 @@ static void pidApplyMode1(uint8_t axis)
 
     // Optional per-axis curve scaling master gain by |stick deflection|
     const float curveMult = pidAxisGainCurve(axis);
+    const float combinedGain = pid.masterGain[axis] * curveMult;
 
-    // Failsafe/GPS-rescue authority always wins over a stale oscillation cut -- the cut
-    // itself is untouched here and resumes as soon as those modes clear.
-    const float oscGainScale = (FLIGHT_MODE(FAILSAFE_MODE) || FLIGHT_MODE(GPS_RESCUE_MODE)) ?
-        1.0f : pid.oscLimiter[axis].gainScale;
-    const float masterGain = pid.masterGain[axis] * curveMult * oscGainScale;
+    // Detect a sustained gain-induced oscillation on this axis and, if found, ease the
+    // combined gain down (never up) further -- holds once it subsides, backing off more if
+    // it recurs. The ceiling this enforces is pinned to the gain level it was first seen at,
+    // so a gain that keeps climbing afterwards (a live master_gain adjustment function sweep,
+    // say) cannot outrun the cut -- see docs/development/Oscillation Detection.md. Always
+    // called (even in failsafe/rescue, which updateOscLimiter itself gates off internally) so
+    // its state keeps freezing/tracking correctly and resumes cleanly once those modes clear.
+    const float oscEnforcedGain = updateOscLimiter(axis, setpoint, errorRate, combinedGain);
+
+    // Failsafe/GPS-rescue authority always wins over a stale cut, regardless of what the
+    // detector above just returned.
+    const float masterGain = (FLIGHT_MODE(FAILSAFE_MODE) || FLIGHT_MODE(GPS_RESCUE_MODE))
+        ? combinedGain
+        : oscEnforcedGain;
 
 
   //// P-term
