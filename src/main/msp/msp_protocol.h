@@ -321,4 +321,5 @@
 #define MSP2_WING_SELECT_TV_PROFILE          0x5F10
 #define MSP2_WING_COPY_TV_PID_PROFILE        0x5F11
 #define MSP2_WING_RX_SERIAL_TRIAL            0x5F12
+#define MSP2_WING_RX_INPUT_BACKUP_TRIAL       0x5F13
 #define MSP_V2_FRAME                         255

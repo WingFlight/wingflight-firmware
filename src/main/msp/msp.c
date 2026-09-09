@@ -2297,6 +2297,31 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         break;
 #endif
 
+#ifdef USE_RX_INPUT_BACKUP
+    case MSP2_WING_RX_INPUT_BACKUP_TRIAL:
+        // Same action/status shape as MSP2_WING_RX_SERIAL_TRIAL above, applied
+        // to the backup RX port's own inverted/halfDuplex/pinSwap instead.
+        if (sbufBytesRemaining(src) >= 1) {
+            const uint8_t action = sbufReadU8(src);
+            if (action == 1) {
+                rxInputBackupTrialStart();
+            } else if (action == 2) {
+                rxInputBackupTrialStop();
+            }
+        }
+
+        {
+            const rxInputBackupTrialStatus_t status = rxInputBackupTrialGetStatus();
+            sbufWriteU8(dst, status.state);
+            sbufWriteU8(dst, status.comboIndex);
+            sbufWriteU8(dst, status.inverted);
+            sbufWriteU8(dst, status.halfDuplex);
+            sbufWriteU8(dst, status.pinSwap);
+            sbufWriteU16(dst, status.elapsedMs);
+        }
+        break;
+#endif
+
 #ifdef USE_RPM_FILTER
     case MSP_RPM_FILTER_V2:
         if (sbufBytesRemaining(src) == 1) {
