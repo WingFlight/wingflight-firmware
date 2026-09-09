@@ -119,7 +119,7 @@ Engage/release transitions are logged as a new blackbox event
 (`FLIGHT_LOG_EVENT_OSC_LIMITER`, numeric ID 53) carrying axis, active state,
 and the resulting gain scale percent; a new `DEBUG_OSC_LIMITER` debug mode
 continuously logs energy/score/gain-scale for the debug axis. A new
-protocol-agnostic telemetry sensor `TELEM_OSC_LIMITER` (numeric ID 118)
+protocol-agnostic telemetry sensor `TELEM_OSC_LIMITER` (numeric ID 119)
 reports a per-axis active bitmask and the worst-case gain scale, exposed on
 both CRSF (custom sensor `0x1204`) and FrSky S.Port/FBUS (`0x5124`). CRSF's
 flight-mode text also gets an `OSC!` suffix while any axis is reported active,

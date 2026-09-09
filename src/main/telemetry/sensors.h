@@ -172,8 +172,11 @@ typedef enum
     TELEM_FBUS_SENSOR_7                 = 116,
     TELEM_FBUS_SENSOR_8                 = 117,
 
-    TELEM_OSC_LIMITER                   = 118, // Oscillation limiter status, see docs/development/Oscillation Detection.md
-    TELEM_TV_PROFILE                    = 119,
+    // TELEM_TV_PROFILE stays at 118 -- already released on master (0.0.18) before this branch
+    // existed; TELEM_OSC_LIMITER is the new, unreleased one and takes the next free slot instead
+    // of displacing it. Never renumber an already-shipped sensor ID -- see AGENTS.md.
+    TELEM_TV_PROFILE                    = 118,
+    TELEM_OSC_LIMITER                   = 119, // Oscillation limiter status, see docs/development/Oscillation Detection.md
 
     TELEM_SENSOR_COUNT
 } sensor_id_e;
