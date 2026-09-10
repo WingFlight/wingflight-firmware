@@ -1,43 +1,63 @@
 # Flight controller hardware
 
-The current focus is geared towards flight controller hardware that use the STM32F303 and legacy STM32F103 series processors.  The core logic is separated from the hardware drivers, porting to other processors is possible.
+Wingflight ships firmware for four flight controllers, all Matek boards with an STM32 MCU.
+Each one has a target directory under `src/main/target/<TARGET>/`, and that directory is
+the authoritative description of the board: `target.h` names the pins, sensors and serial
+ports, `target.c` lists the timer outputs, and `target.mk` selects the MCU family and the
+drivers that are compiled in.
 
-If you want a fully featured version of Cleanflight then the recommendation for new purchases is an STM32 F3 based board with 256KB of flash memory.  The F3 processor is faster, has built in USB support and supports more hardware without the need for additional adaptors and cables.
+The Wingflight Configurator identifies a connected board by the values below. The
+**Target** column is what the Firmware Flasher and `FC.CONFIG.targetName` report, the
+**Board identifier** is `TARGET_BOARD_IDENTIFIER` from `target.h`, and the **USB product
+string** is what the operating system shows when the board is plugged in.
 
-The core set of recommended boards are:
+| Target      | MCU        | Board identifier | USB product string | Gyro / Acc            | Barometer                 | Compass                        | Logging storage        | UARTs            | Timer outputs (`target.c`) | Default receiver UART |
+| ----------- | ---------- | ---------------- | ------------------ | --------------------- | ------------------------- | ------------------------------ | ---------------------- | ---------------- | -------------------------- | --------------------- |
+| `MATEKF405` | STM32F405  | `MKF4`           | `MatekF4`          | MPU6000 / MPU6500     | BMP280, MS5611, BMP085    | HMC5883, QMC5883, LIS3MDL      | On-board flash, SD card (SPI) | 1, 2, 3, 4, 5    | S1–S7                      | UART2                 |
+| `MATEKF411` | STM32F411  | `MK41`           | `MatekF411`        | MPU6000 / MPU6500     | BMP280, MS5611, BMP085    | none                           | SD card (SPI)          | 1, 2             | S1–S6                      | UART1                 |
+| `MATEKF722` | STM32F722  | `MKF7`           | `MatekF7`          | MPU6500 / ICM20689    | BMP280, MS5611, BMP085    | HMC5883, QMC5883, LIS3MDL      | SD card (SPI)          | 1, 2, 3, 4, 5    | S1–S8                      | UART2                 |
+| `MATEKH743` | STM32H743  | `M743`           | `MATEK-H743`       | MPU6000 / MPU6500     | MS5611, BMP280, DPS310    | HMC5883, QMC5883, LIS3MDL      | SD card (SDIO)         | 1, 2, 3, 4, 6, 7, 8 | S1–S12                  | UART6                 |
 
-* [Seriously Pro SPRacingF3Mini](boards/Board%20-%20SPRacingF3MINI.md)
-* [Seriously Pro SPRacingF3](boards/Board%20-%20SPRacingF3.md)
-* [Seriously Pro SPRacingF3EVO](boards/Board%20-%20SPRacingF3EVO.md)
-* [TBS Colibri Race](boards/Board%20-%20ColibriRace.md)
-* [AlienFlightF3](boards/Board%20-%20AlienFlight.md)
-* [TauLabs Sparky](boards/Board%20-%20Sparky.md)
+Notes on the table:
 
-The core set of legacy boards are:
+* "Timer outputs" are the pads that `target.c` assigns a timer to for motor or servo use,
+  named as on the Matek silkscreen. Any of them can drive a servo or an ESC; which one does
+  what is decided by the mixer and the `resource` assignments, not by the board. See
+  [Getting Started](Getting%20Started.md), stage 3 (Wiring), and the `resource`, `timer`
+  and `dma` commands in the [CLI](Cli.md) chapter.
+* "Default receiver UART" is `SERIALRX_UART` in `target.h`, the port a serial receiver is
+  expected on before you change anything. Any UART can be reassigned in
+  **Configuration → Ports**.
+* Sensor lists are the drivers compiled into the target. Which of them is actually fitted
+  depends on the board revision you bought; check the vendor page for your exact unit.
+* STM32F411 has less flash and RAM than the other three MCUs. The project
+  [README](../README.md) marks F411 support as end-of-life, so prefer an F405, F722 or
+  H743 board for a new build.
 
-* [AlienFlightF1](boards/Board%20-%20AlienFlight.md)
-* [OpenPilot CC3D](boards/Board%20-%20CC3D.md)
-* [CJMCU](boards/Board%20-%20CJMCU.md)
-* Flip32+
-* [AbuseMark Naze32](boards/Board%20-%20Naze32.md)
-* [RMRC Dodo](boards/Board%20-%20RMDO.md)
+The current in-tree targets are the four above only. Boards that were supported by
+Cleanflight or Betaflight are **not** automatically supported by Wingflight; the
+`docs/boards/` directory was pruned to match, see [boards/README.md](boards/README.md).
 
-Cleanflight also runs on the following developer boards:
+## Choosing a board
 
-* STM32F3Discovery - Recommended for developers.
-* Port103R - Recommended for F1 developers.
+Before buying, count what you will connect: one timer output per servo and per ESC, one
+UART for the receiver, and further UARTs for GPS, telemetry, a backup receiver input, ESC
+telemetry and so on. A four-servo, one-motor trainer with a serial receiver fits on any of
+the four boards; a twin-motor model with flaps, retracts, GPS and a telemetry radio wants the
+extra outputs and UARTs of the F722 or the H743.
 
-There is also limited support for the following boards which may be removed due to lack of users or commercial availability.
- 
-* STM32F3Discovery with Chebuzz F3 shield.
+## Development targets
 
-NOTE: Users are advised against purhasing boards that have CPUs with less than 256KB of EEPROM space - available features may be limited.
-NOTE: Hardware developers should not design new boards that have CPUs with less than 256KB EEPROM space. 
+`src/main/target/` also contains `NUCLEOF722`, `NUCLEOH743` and `SITL`. These are for
+firmware developers: the two Nucleo targets run on ST evaluation boards without flight
+sensors, and SITL (software in the loop) runs the firmware on a PC. None of them is a
+flight controller you can fly.
 
-Each board has it's pros and cons, before purchasing hardware the main thing to check is if the board offers enough serial ports and input/output pins for the hardware you want to use with it and that you can use them at the same time.  On some boards some features are mutually exclusive.
+## Adding a board
 
-Please see the board-specific chapters in the manual for wiring details.
-
-There are off-shoots (forks) of the project that support the STM32F4 processors as found on the Revo and Quanton boards.
-
-Where applicable the chapters also provide links to other hardware that is known to work with Cleanflight, such as receivers, buzzers, etc.
+Wiring a board that is not in this list is possible through the CLI `resource` commands,
+see [Custom Board Configuration](Custom%20Board%20Configuration.md), but it is unsupported
+and every pin has to be verified by hand. Adding a proper target means a pull request with a
+new `src/main/target/<TARGET>/` directory. For the configurator side — the board drawing
+and silkscreen labels shown in the Setup journey — see the configurator's
+`docs/adding-a-board-profile.md`.

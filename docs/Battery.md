@@ -41,10 +41,6 @@ Notes:
 
 * When battery monitoring is enabled on the CC3D, RC5 can no-longer be used for PWM input.
 
-### Sparky
-
-See the [Sparky board chapter](boards/Board%20-%20Sparky.md).
-
 ## Configuration
 
 Enable the `VBAT` feature.
