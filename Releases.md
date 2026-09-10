@@ -1,3 +1,9 @@
+# 0.0.19
+
+Add RX and ESC telemetry serial wiring auto-detect trial modes to help diagnose signal-inversion and pin-swap mismatches.
+Fix RX/TX invert and pin-swap settings sticking across UART reopens.
+Fix Spektrum satellite bind pin selection to honor serial pin-swap.
+
 # 0.0.18
 
 Add Thrust Vector profiles (6 independently-switchable profiles).
