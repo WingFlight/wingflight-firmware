@@ -24,7 +24,12 @@
 
 #include "drivers/rx_input_backup.h"
 
+#include "common/maths.h"
+#include "common/utils.h"
+
 #include "drivers/time.h"
+
+#include "fc/runtime_config.h"
 
 #include "io/serial.h"
 
@@ -197,6 +202,188 @@ void rxInputBackupInit(void)
         MODE_RX,
         rxInputBackupOps.portOptions |
             (rxInputBackupConfig()->pinSwap ? SERIAL_PINSWAP : SERIAL_NOSWAP));
+}
+
+// Backup-port wiring auto-detect - mirrors rx/rx.c's rxSerialTrial* mechanism
+// (see docs/rx-wiring-autodetect-design.md) applied to this port instead:
+// cycle inverted/halfDuplex/pinSwap live and report which combo (if any)
+// produces a valid frame. No persistence here either - the caller (MSP)
+// only ever reads the winning combo back out of a SUCCESS status and applies
+// it through the normal config-save path.
+#define RX_INPUT_BACKUP_TRIAL_COMBO_COUNT 8
+#define RX_INPUT_BACKUP_TRIAL_DEBOUNCE_MS 200
+#define RX_INPUT_BACKUP_TRIAL_WATCHDOG_MS 3000
+#define RX_INPUT_BACKUP_TRIAL_DEFAULT_SETTLE_MS 1000
+#define RX_INPUT_BACKUP_TRIAL_HANDSHAKE_SETTLE_MS 2200
+
+typedef struct rxInputBackupTrialRuntime_s {
+    rxInputBackupTrialState_e state;
+    uint8_t comboIndex;
+    uint8_t comboOrder[RX_INPUT_BACKUP_TRIAL_COMBO_COUNT];
+    timeMs_t comboStartedAt;
+    timeMs_t signalSince;
+    timeMs_t lastPollAt;
+    uint8_t savedInverted;
+    uint8_t savedHalfDuplex;
+    uint8_t savedPinSwap;
+} rxInputBackupTrialRuntime_t;
+
+static rxInputBackupTrialRuntime_t rxInputBackupTrial = { .state = RX_INPUT_BACKUP_TRIAL_IDLE };
+
+static timeMs_t rxInputBackupTrialSettleMs(void)
+{
+    switch (rxInputBackupConfig()->provider) {
+    case RX_INPUT_BACKUP_EXBUS:
+        return RX_INPUT_BACKUP_TRIAL_HANDSHAKE_SETTLE_MS;
+    default:
+        return RX_INPUT_BACKUP_TRIAL_DEFAULT_SETTLE_MS;
+    }
+}
+
+// Closing the old port explicitly (rather than just calling
+// rxInputBackupInit() again) matters here: openSerialPort() refuses to
+// reopen an identifier that's still marked in-use by a previous open, so
+// calling Init() a second time without this first would leave
+// rxInputBackupPort NULL (backup silently disabled) instead of reconfigured.
+static void rxInputBackupTrialReinit(void)
+{
+    const serialPortConfig_t *portConfig = findSerialPortConfig(FUNCTION_RX_INPUT_BACKUP);
+    if (portConfig) {
+        serialPortUsage_t *usage = findSerialPortUsageByIdentifier(portConfig->identifier);
+        if (usage && usage->serialPort) {
+            closeSerialPort(usage->serialPort);
+        }
+    }
+
+    rxInputBackupInit();
+}
+
+static void rxInputBackupTrialApplyCombo(uint8_t combo)
+{
+    rxInputBackupConfigMutable()->inverted   = (combo & (1 << 0)) ? 1 : 0;
+    rxInputBackupConfigMutable()->halfDuplex = (combo & (1 << 1)) ? 1 : 0;
+    rxInputBackupConfigMutable()->pinSwap    = (combo & (1 << 2)) ? 1 : 0;
+
+    rxInputBackupTrialReinit();
+
+    rxInputBackupTrial.comboStartedAt = millis();
+    rxInputBackupTrial.signalSince = 0;
+}
+
+static void rxInputBackupTrialRestore(void)
+{
+    rxInputBackupConfigMutable()->inverted   = rxInputBackupTrial.savedInverted;
+    rxInputBackupConfigMutable()->halfDuplex = rxInputBackupTrial.savedHalfDuplex;
+    rxInputBackupConfigMutable()->pinSwap    = rxInputBackupTrial.savedPinSwap;
+
+    rxInputBackupTrialReinit();
+}
+
+bool rxInputBackupTrialStart(void)
+{
+    if (rxInputBackupTrial.state == RX_INPUT_BACKUP_TRIAL_RUNNING) {
+        return false;
+    }
+
+    if (ARMING_FLAG(ARMED)) {
+        rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_REJECTED;
+        return false;
+    }
+
+    if (rxInputBackupConfig()->provider == RX_INPUT_BACKUP_NONE || !findSerialPortConfig(FUNCTION_RX_INPUT_BACKUP)) {
+        rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_REJECTED;
+        return false;
+    }
+
+    rxInputBackupTrial.savedInverted   = rxInputBackupConfig()->inverted;
+    rxInputBackupTrial.savedHalfDuplex = rxInputBackupConfig()->halfDuplex;
+    rxInputBackupTrial.savedPinSwap    = rxInputBackupConfig()->pinSwap;
+
+    const uint8_t current = (rxInputBackupTrial.savedInverted ? (1 << 0) : 0)
+        | (rxInputBackupTrial.savedHalfDuplex ? (1 << 1) : 0)
+        | (rxInputBackupTrial.savedPinSwap ? (1 << 2) : 0);
+    int n = 0;
+    for (int distance = 0; distance <= 3; distance++) {
+        for (int combo = 0; combo < RX_INPUT_BACKUP_TRIAL_COMBO_COUNT; combo++) {
+            if ((int)BITCOUNT((uint8_t)(combo ^ current)) == distance) {
+                rxInputBackupTrial.comboOrder[n++] = (uint8_t)combo;
+            }
+        }
+    }
+
+    rxInputBackupTrial.comboIndex = 0;
+    rxInputBackupTrial.lastPollAt = millis();
+    rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_RUNNING;
+    rxInputBackupTrialApplyCombo(rxInputBackupTrial.comboOrder[0]);
+
+    return true;
+}
+
+void rxInputBackupTrialStop(void)
+{
+    if (rxInputBackupTrial.state == RX_INPUT_BACKUP_TRIAL_IDLE) {
+        return;
+    }
+
+    rxInputBackupTrialRestore();
+    rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_IDLE;
+}
+
+void rxInputBackupTrialTick(void)
+{
+    if (rxInputBackupTrial.state != RX_INPUT_BACKUP_TRIAL_RUNNING) {
+        return;
+    }
+
+    const timeMs_t now = millis();
+
+    if (cmp32(now, rxInputBackupTrial.lastPollAt) > RX_INPUT_BACKUP_TRIAL_WATCHDOG_MS) {
+        rxInputBackupTrialRestore();
+        rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_IDLE;
+        return;
+    }
+
+    if (rxInputBackupIsActive()) {
+        if (rxInputBackupTrial.signalSince == 0) {
+            rxInputBackupTrial.signalSince = now;
+        } else if (cmp32(now, rxInputBackupTrial.signalSince) >= RX_INPUT_BACKUP_TRIAL_DEBOUNCE_MS) {
+            rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_SUCCESS;
+        }
+        return;
+    }
+
+    rxInputBackupTrial.signalSince = 0;
+
+    if (cmp32(now, rxInputBackupTrial.comboStartedAt) < (int32_t)rxInputBackupTrialSettleMs()) {
+        return;
+    }
+
+    if (rxInputBackupTrial.comboIndex + 1 >= RX_INPUT_BACKUP_TRIAL_COMBO_COUNT) {
+        rxInputBackupTrialRestore();
+        rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_FAILED;
+        return;
+    }
+
+    rxInputBackupTrial.comboIndex++;
+    rxInputBackupTrialApplyCombo(rxInputBackupTrial.comboOrder[rxInputBackupTrial.comboIndex]);
+}
+
+rxInputBackupTrialStatus_t rxInputBackupTrialGetStatus(void)
+{
+    const int32_t elapsedMs = cmp32(millis(), rxInputBackupTrial.comboStartedAt);
+
+    const rxInputBackupTrialStatus_t status = {
+        .state = rxInputBackupTrial.state,
+        .comboIndex = rxInputBackupTrial.comboIndex,
+        .inverted = rxInputBackupConfig()->inverted,
+        .halfDuplex = rxInputBackupConfig()->halfDuplex,
+        .pinSwap = rxInputBackupConfig()->pinSwap,
+        .elapsedMs = (uint16_t)constrain(elapsedMs, 0, 0xFFFF),
+    };
+
+    rxInputBackupTrial.lastPollAt = millis();
+
+    return status;
 }
 
 #endif // USE_RX_INPUT_BACKUP
