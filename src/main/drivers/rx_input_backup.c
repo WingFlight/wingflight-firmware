@@ -29,6 +29,8 @@
 
 #include "drivers/time.h"
 
+#include "fc/runtime_config.h"
+
 #include "io/serial.h"
 
 #include "pg/rx_input_backup.h"
@@ -280,6 +282,11 @@ static void rxInputBackupTrialRestore(void)
 bool rxInputBackupTrialStart(void)
 {
     if (rxInputBackupTrial.state == RX_INPUT_BACKUP_TRIAL_RUNNING) {
+        return false;
+    }
+
+    if (ARMING_FLAG(ARMED)) {
+        rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_REJECTED;
         return false;
     }
 
