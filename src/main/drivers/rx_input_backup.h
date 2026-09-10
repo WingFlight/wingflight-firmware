@@ -107,3 +107,33 @@ rxInputBackupProvider_e rxInputBackupGetProvider(void);
 
 // Channel value in the same convention as rx/rx.c's rcInput[]/rcChannel[] (~880-2012us).
 float rxInputBackupGetChannel(uint8_t channel);
+
+// Backup-port wiring auto-detect ("trial mode") - same mechanism and
+// numeric state values as rx/rx.h's rxSerialTrialState_e for the main RX
+// (see docs/rx-wiring-autodetect-design.md), applied to this port's own
+// inverted/halfDuplex/pinSwap instead. Kept as a separate type rather than
+// sharing rx.h's, since this driver has no other dependency on rx/rx.h.
+typedef enum {
+    RX_INPUT_BACKUP_TRIAL_IDLE = 0,
+    RX_INPUT_BACKUP_TRIAL_RUNNING,
+    RX_INPUT_BACKUP_TRIAL_SUCCESS,
+    RX_INPUT_BACKUP_TRIAL_FAILED,
+    RX_INPUT_BACKUP_TRIAL_REJECTED,   // no provider selected / no port assigned / already running
+} rxInputBackupTrialState_e;
+
+typedef struct rxInputBackupTrialStatus_s {
+    uint8_t state;          // rxInputBackupTrialState_e
+    uint8_t comboIndex;     // 0..7: combo currently (or, on FAILED, last) being tried
+    uint8_t inverted;
+    uint8_t halfDuplex;
+    uint8_t pinSwap;
+    uint16_t elapsedMs;     // time spent on the current/last combo
+} rxInputBackupTrialStatus_t;
+
+bool rxInputBackupTrialStart(void);
+void rxInputBackupTrialStop(void);
+rxInputBackupTrialStatus_t rxInputBackupTrialGetStatus(void);
+
+// Ticked every rxInputBackupPoll() cycle (rx.c's detectAndApplySignalLossBehaviour()) -
+// cheap early-out when idle, same as rx.c's own rxSerialTrialTick().
+void rxInputBackupTrialTick(void);
