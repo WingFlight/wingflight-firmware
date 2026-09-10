@@ -2271,6 +2271,7 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         }
         break;
 
+#ifdef USE_ESC_SENSOR
     case MSP2_WING_ESC_SENSOR_TRIAL:
         // action: 0 = poll only, 1 = (re)start a scan, 2 = stop/cancel - same
         // start/poll/action shape as MSP2_WING_BOARD_AUTO_ALIGN above, and
@@ -2295,6 +2296,7 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             sbufWriteU16(dst, status.elapsedMs);
         }
         break;
+#endif
 
 #ifdef USE_RPM_FILTER
     case MSP_RPM_FILTER_V2:
