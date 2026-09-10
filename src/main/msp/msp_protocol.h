@@ -320,4 +320,11 @@
 #define MSP2_WING_SET_RX_INPUT_BACKUP_CONFIG 0x5F0F
 #define MSP2_WING_SELECT_TV_PROFILE          0x5F10
 #define MSP2_WING_COPY_TV_PID_PROFILE        0x5F11
+// 0x5F12/0x5F13 are claimed by the (still-open, at the time of writing)
+// RX wiring auto-detect PR's MSP2_WING_RX_SERIAL_TRIAL/
+// MSP2_WING_RX_INPUT_BACKUP_TRIAL - skipping straight to 0x5F14 rather than
+// colliding with them, since both branches were cut from master
+// independently and each just grabbed the next free slot from its own
+// starting point.
+#define MSP2_WING_ESC_SENSOR_TRIAL            0x5F14
 #define MSP_V2_FRAME                         255
