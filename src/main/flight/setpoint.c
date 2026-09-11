@@ -160,15 +160,20 @@ float getDeflection(int axis)
     return sp.deflection[axis];
 }
 
-// For MANUAL mode: the same expo-shaped rate demand the PID rate loop targets (sp.setpoint,
-// post rates-curve), collapsed back to a -1..1 surface deflection instead of a gyro-corrected
-// PID output. Dividing by this axis's own configured max rate (rather than the fixed
+// For MANUAL mode: the same rates/expo curve the PID rate loop's setpoint is shaped by,
+// collapsed back to a -1..1 surface deflection instead of a gyro-corrected PID output.
+// Built from sp.deflection (smoothing/yaw-range/response-accel applied, but before the
+// feed-forward "boost" kick) rather than sp.setpoint, since that boost only exists to
+// sharpen the gyro-PID's rate target and has no meaning with no gyro loop to feed it -
+// reusing the boosted, already-curved sp.setpoint let fast stick moves push past this
+// axis's max rate and saturate early, losing the rate curve and feeling like passthrough.
+// Dividing by this axis's own configured max rate (rather than the fixed
 // SETPOINT_RATE_LIMIT clamp) recovers the full curve shape and lets full stick reach full
 // throw regardless of how the rate profile is tuned.
 float getManualDeflection(int axis)
 {
     const float maxRate = currentControlRateProfile->rcRates[axis] * 5.0f;
-    return maxRate > 0 ? constrainf(sp.setpoint[axis] / maxRate, -1.0f, 1.0f) : 0;
+    return maxRate > 0 ? constrainf(applyRatesCurve(axis, sp.deflection[axis]) / maxRate, -1.0f, 1.0f) : 0;
 }
 
 static float setpointResponseAccel(int axis, float value)
