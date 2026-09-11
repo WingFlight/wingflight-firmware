@@ -160,20 +160,25 @@ float getDeflection(int axis)
     return sp.deflection[axis];
 }
 
-// For MANUAL mode: the same rates/expo curve the PID rate loop's setpoint is shaped by,
-// collapsed back to a -1..1 surface deflection instead of a gyro-corrected PID output.
-// Built from sp.deflection (smoothing/yaw-range/response-accel applied, but before the
-// feed-forward "boost" kick) rather than sp.setpoint, since that boost only exists to
-// sharpen the gyro-PID's rate target and has no meaning with no gyro loop to feed it -
-// reusing the boosted, already-curved sp.setpoint let fast stick moves push past this
-// axis's max rate and saturate early, losing the rate curve and feeling like passthrough.
-// Dividing by this axis's own configured max rate (rather than the fixed
-// SETPOINT_RATE_LIMIT clamp) recovers the full curve shape and lets full stick reach full
-// throw regardless of how the rate profile is tuned.
+// For MANUAL mode: identical to the stabilised rate loop's setpoint - same rates/expo curve,
+// same rcRates scaling - just applied directly as surface deflection instead of driving a
+// gyro-corrected PID, since there's no gyro loop to stabilise around. Built from sp.deflection
+// (smoothing/yaw-range/response-accel applied, but before the feed-forward "boost" kick) rather
+// than sp.setpoint, since that boost only exists to sharpen the gyro-PID's rate target and has
+// no meaning here - reusing the boosted, already-curved sp.setpoint let fast stick moves push
+// past this axis's max rate and saturate early, losing the rate curve and feeling like
+// passthrough.
+//
+// Normalise against the fixed ceiling any profile's rcRates could reach (RC_RATES_MAX), not
+// this profile's own configured rcRates - dividing by the profile's own rate cancels it out of
+// the result entirely (full stick always reaches full throw, whatever rcRates is set to), which
+// left MANUAL flying at max authority regardless of how the pilot tuned rates. Against the fixed
+// ceiling, a milder rate profile genuinely yields milder MANUAL throw, exactly mirroring how
+// rcRates scales the stabilised-mode rate target.
 float getManualDeflection(int axis)
 {
-    const float maxRate = currentControlRateProfile->rcRates[axis] * 5.0f;
-    return maxRate > 0 ? constrainf(applyRatesCurve(axis, sp.deflection[axis]) / maxRate, -1.0f, 1.0f) : 0;
+    const float maxRate = CONTROL_RATE_CONFIG_RC_RATES_MAX * 5.0f;
+    return constrainf(applyRatesCurve(axis, sp.deflection[axis]) / maxRate, -1.0f, 1.0f);
 }
 
 static float setpointResponseAccel(int axis, float value)
