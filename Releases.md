@@ -1,3 +1,7 @@
+# 0.0.21
+
+Tag CLI errors raised while replaying a target's embedded custom-defaults blob (e.g. on `defaults`/`defaults nosave`) with "(custom defaults)", so they're no longer indistinguishable from an error in whatever command the user actually typed.
+
 # 0.0.20
 
 Fix MANUAL mode losing its rates/expo shaping on fast stick moves and ignoring the configured rate profile's authority, both of which pushed it toward full-deflection passthrough.
