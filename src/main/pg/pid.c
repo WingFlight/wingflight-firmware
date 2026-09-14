@@ -65,8 +65,9 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // fw_tpa_rate with fw_tpa_gain (baseline scale) and fw_tpa_curve (index into
 // the shared gainCurves pool), mirroring master_gain/gain_curve. v8->v9:
 // master_gain widened from uint8_t to uint16_t per axis to allow values up
-// to 1000 (was capped at 255).
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 9);
+// to 1000 (was capped at 255). v9->v10: added oscillation limiter settings
+// (osc_limiter, osc_limiter_min_hz/max_hz/threshold/floor/engage_ms).
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 10);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -82,6 +83,12 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .gain_curve = { [PID_ROLL] = 0, [PID_PITCH] = 0, [PID_YAW] = 0 },
         .fw_tpa_gain = 100,
         .fw_tpa_curve = 0,
+        .osc_limiter = 0,
+        .osc_limiter_min_hz = 4,
+        .osc_limiter_max_hz = 20,
+        .osc_limiter_threshold = 30,
+        .osc_limiter_floor = 50,
+        .osc_limiter_engage_ms = 250,
         .iterm_decay_time = 6,
         .iterm_decay_limit = 35,
         .iterm_relax_type = ITERM_RELAX_RPY,
