@@ -361,7 +361,7 @@ static void mixerUpdateInputs(void)
     // "the flap channel" without hardcoding which raw AUX channel that
     // happens to be. RC_CHANNEL_* inputs are already populated above.
     const uint8_t flapChannel = pidGetFlapChannel();
-    mixerSetInput(MIXER_IN_FLAP, flapChannel ? mixer.input[MIXER_IN_RC_CHANNEL_AUX1 + flapChannel - 1] : 0);
+    mixerSetInput(MIXER_IN_FLAP, flapChannel ? mixer.input[MIXER_IN_RC_CHANNEL_ROLL + flapChannel - 1] : 0);
 }
 
 void mixerUpdate(timeUs_t currentTimeUs)

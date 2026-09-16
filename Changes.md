@@ -50,9 +50,10 @@ Existing PID profiles are reset to defaults on upgrade.
 
 Added `MIXER_IN_FLAP`, a new named mixer input (index 30) computed from a
 configurable RC channel (`fw_flap_channel` PID profile setting, 0=off,
-1..`MAX_SUPPORTED_RC_CHANNEL_COUNT`), so mixer rules can reference "the
-flap channel" directly instead of hardcoding a specific raw AUX channel
-(e.g. `AUX1`). `MIXER_IN_COUNT` grows 30 -> 31, so `MSP_MIXER_INPUTS`
+1..`MAX_SUPPORTED_RC_CHANNEL_COUNT`, absolute channel numbering matching
+`rssi_channel`'s own convention: 1=roll, 2=pitch, 3=yaw, 4=throttle,
+5=AUX1, ...), so mixer rules can reference "the flap channel" directly
+instead of hardcoding a specific raw AUX channel (e.g. `AUX1`). `MIXER_IN_COUNT` grows 30 -> 31, so `MSP_MIXER_INPUTS`
 reports one more entry -- backward-compatible growth, same as the earlier
 addition of `MIXER_IN_STABILIZED_TV_ROLL/PITCH/YAW`. Existing mixer rules
 are unaffected, since they reference inputs by index and this is
