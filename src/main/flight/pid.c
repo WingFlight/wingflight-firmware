@@ -784,7 +784,7 @@ static float pidThrottleAttenuation(void)
 static float pidFlapPosition(void)
 {
     return pid.fwFlapChannel
-        ? mixerGetInput(MIXER_IN_RC_CHANNEL_AUX1 + pid.fwFlapChannel - 1)
+        ? mixerGetInput(MIXER_IN_RC_CHANNEL_ROLL + pid.fwFlapChannel - 1)
         : 0;
 }
 

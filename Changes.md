@@ -50,15 +50,18 @@ Existing PID profiles are reset to defaults on upgrade.
 
 Added `fw_flap_channel` and `fw_flap_compensation` PID profile settings.
 `fw_flap_channel` (0=off, 1..`MAX_SUPPORTED_RC_CHANNEL_COUNT`) selects which
-RC channel represents flap deployment; `fw_flap_compensation` (percent,
--100..100) is a pitch bias applied in proportion to that channel's
-deflection, on the pitch axis only. Unlike a mixer rule's `weight`, this is
-a named, adjustable value -- it has its own `ADJUSTMENT_FW_FLAP_COMPENSATION`
-ID (112), so it can be tuned live from a transmitter switch/knob or a Lua
-script the same way `master_gain`/`fw_tpa_gain` already are. Defaults to
-off (`fw_flap_channel = 0`), so existing profiles are unaffected until
+RC channel represents flap deployment -- channel numbering is absolute
+(1=roll, 2=pitch, 3=yaw, 4=throttle, 5=AUX1, ...), matching `rssi_channel`'s
+own convention; `fw_flap_compensation` (percent, -100..100) is a pitch bias
+applied in proportion to that channel's deflection, on the pitch axis only.
+Unlike a mixer rule's `weight`, this is a named, adjustable value -- it has
+its own `ADJUSTMENT_FW_FLAP_COMPENSATION` ID (112), so it can be tuned live
+from a transmitter switch/knob or a Lua script the same way
+`master_gain`/`fw_tpa_gain` already are. Defaults to off
+(`fw_flap_channel = 0`), so existing profiles are unaffected until
 configured. PID profile PG version bumped (9 -> 10) for the new fields;
-existing PID profiles are reset to defaults on upgrade.
+existing PID profiles are reset to defaults on upgrade. API version bumped
+to 22.3 so clients can detect support for these fields.
 
 Added `model_type` to `mixerConfig_t` (`REGULAR_AIRPLANE` / `FLYING_WING` /
 `V_TAIL_AIRPLANE` / `DELTA_WING` / `RUDDER_ELEVATOR_TRAINER` / `CUSTOM`).
