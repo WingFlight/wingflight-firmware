@@ -262,6 +262,8 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 
     ADJ_ENTRY(TV_PROFILE,                   1, 6),
 
+    ADJ_ENTRY(FW_FLAP_COMPENSATION,         -100, 100),
+
 };
 
 

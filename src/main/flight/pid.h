@@ -102,6 +102,9 @@ typedef struct pid_s {
     float fwTpaGain;          // Baseline throttle attenuation scale (1.0 = unscaled) - see pidProfile_t.fw_tpa_gain
     uint8_t fwTpaCurveIndex;  // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1) - see pidProfile_t.fw_tpa_curve
 
+    uint8_t fwFlapChannel;        // 0=off, else 1-based AUX channel index (mirrors pidProfile_t.fw_flap_channel)
+    float   fwFlapCompensation;   // Scale (0.01 = 1%) - see pidProfile_t.fw_flap_compensation
+
     uint8_t itermRelaxType;
     uint8_t itermRelaxLevel[PID_AXIS_COUNT];
     float crossAxisRelaxStrength;

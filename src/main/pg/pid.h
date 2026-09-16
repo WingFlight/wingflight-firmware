@@ -143,6 +143,9 @@ typedef struct pidProfile_s {
     uint8_t             cross_axis_relax_cutoff;   // Hz smoothing cutoff for yaw setpoint detector
     uint8_t             cross_axis_relax_pitch_strength; // Percent max pitch feedback attenuation from yaw setpoint activity
 
+    uint8_t             fw_flap_channel;       // 0 = off, 1..MAX_SUPPORTED_RC_CHANNEL_COUNT = RC channel driving flap position
+    int8_t              fw_flap_compensation;  // Percent, -100..100 - pitch bias added in proportion to flap channel deflection
+
 } pidProfile_t;
 
 PG_DECLARE_ARRAY(pidProfile_t, PID_PROFILE_COUNT, pidProfiles);

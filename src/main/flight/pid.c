@@ -155,6 +155,17 @@ void set_ADJUSTMENT_MASTER_GAIN_YAW(int value)
     pid.masterGain[PID_YAW] = value * 0.01f;
 }
 
+int get_ADJUSTMENT_FW_FLAP_COMPENSATION(void)
+{
+    return currentPidProfile->fw_flap_compensation;
+}
+
+void set_ADJUSTMENT_FW_FLAP_COMPENSATION(int value)
+{
+    currentPidProfile->fw_flap_compensation = value;
+    pid.fwFlapCompensation = value * 0.01f;
+}
+
 int get_ADJUSTMENT_PITCH_P_GAIN(void)
 {
     return currentPidProfile->pid[PID_PITCH].P;
@@ -437,6 +448,10 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     // optional shaping curve, mirroring master_gain + gain_curve
     pid.fwTpaGain = pidProfile->fw_tpa_gain * 0.01f;
     pid.fwTpaCurveIndex = pidProfile->fw_tpa_curve;
+
+    // Fixed-wing flap pitch compensation
+    pid.fwFlapChannel = pidProfile->fw_flap_channel;
+    pid.fwFlapCompensation = pidProfile->fw_flap_compensation * 0.01f;
 
     // Roll axis
     pid.coef[PID_ROLL].Kp = ROLL_P_TERM_SCALE * pidProfile->pid[PID_ROLL].P;
@@ -762,6 +777,17 @@ static float pidThrottleAttenuation(void)
     return pid.fwTpaGain * curveMult;
 }
 
+// Normalized (-1..1) deflection of the configured flap channel, or 0 if no
+// channel is assigned. Reads the mixer's own already-populated raw-channel
+// input rather than rcCommand directly, so this stays consistent with
+// whatever the mixer itself sees for that channel.
+static float pidFlapPosition(void)
+{
+    return pid.fwFlapChannel
+        ? mixerGetInput(MIXER_IN_RC_CHANNEL_AUX1 + pid.fwFlapChannel - 1)
+        : 0;
+}
+
 static uint32_t pidScaleToCentiPercent(float scale)
 {
     return lrintf(fmaxf(0.0f, scale) * 10000.0f);
@@ -875,9 +901,13 @@ static void pidApplyMode1(uint8_t axis)
 
   //// PID Sum
 
-    // Calculate sum of all terms (no Offset/HSI term -- heli-only)
+    // Calculate sum of all terms, plus flap pitch compensation on the pitch axis
     pid.data[axis].pidSum = pid.data[axis].P + pid.data[axis].I + pid.data[axis].D +
                             pid.data[axis].F + pid.data[axis].B;
+
+    if (axis == PID_PITCH && pid.fwFlapChannel) {
+        pid.data[axis].pidSum += pid.fwFlapCompensation * pidFlapPosition();
+    }
 }
 
 

@@ -2077,6 +2077,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->gain_curve[PID_YAW]);
         /* Att Hold max rate */
         sbufWriteU16(dst, currentPidProfile->atthold.max_rate);
+        /* Fixed-wing flap pitch compensation */
+        sbufWriteU8(dst, currentPidProfile->fw_flap_channel);
+        sbufWriteU8(dst, currentPidProfile->fw_flap_compensation);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -3266,6 +3269,11 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         /* Att Hold max rate */
         if (sbufBytesRemaining(src) >= 2) {
             currentPidProfile->atthold.max_rate = sbufReadU16(src);
+        }
+        /* Fixed-wing flap pitch compensation */
+        if (sbufBytesRemaining(src) >= 2) {
+            currentPidProfile->fw_flap_channel = sbufReadU8(src);
+            currentPidProfile->fw_flap_compensation = sbufReadU8(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

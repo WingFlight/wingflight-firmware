@@ -48,6 +48,18 @@ same shared gain-curve pool used by per-axis `gain_curve`, further scaling
 non-linear attenuation shape instead of the previous fixed linear ramp.
 Existing PID profiles are reset to defaults on upgrade.
 
+Added `fw_flap_channel` and `fw_flap_compensation` PID profile settings.
+`fw_flap_channel` (0=off, 1..`MAX_SUPPORTED_RC_CHANNEL_COUNT`) selects which
+RC channel represents flap deployment; `fw_flap_compensation` (percent,
+-100..100) is a pitch bias applied in proportion to that channel's
+deflection, on the pitch axis only. Unlike a mixer rule's `weight`, this is
+a named, adjustable value -- it has its own `ADJUSTMENT_FW_FLAP_COMPENSATION`
+ID (112), so it can be tuned live from a transmitter switch/knob or a Lua
+script the same way `master_gain`/`fw_tpa_gain` already are. Defaults to
+off (`fw_flap_channel = 0`), so existing profiles are unaffected until
+configured. PID profile PG version bumped (9 -> 10) for the new fields;
+existing PID profiles are reset to defaults on upgrade.
+
 Added `model_type` to `mixerConfig_t` (`REGULAR_AIRPLANE` / `FLYING_WING` /
 `V_TAIL_AIRPLANE` / `DELTA_WING` / `RUDDER_ELEVATOR_TRAINER` / `CUSTOM`).
 This is descriptive metadata only -- the firmware does not read it or change
@@ -105,6 +117,8 @@ generic per-motor RPM/gear-ratio handling now, not heli-specific:
 - `error_rotation` parameter is unused (#294)
 - `fw_tpa_breakpoint` and `fw_tpa_rate` are replaced by `fw_tpa_gain` (U8,
   baseline percent scale) and `fw_tpa_curve` (U8, gain-curve index).
+- appended `fw_flap_channel` (U8) and `fw_flap_compensation` (U8, wire
+  representation of a signed -100..100 value).
 
 ### MSP_SET_PID_PROFILE
 
@@ -114,6 +128,9 @@ generic per-motor RPM/gear-ratio handling now, not heli-specific:
 - `error_rotation` parameter is unused (#294)
 - `fw_tpa_breakpoint` and `fw_tpa_rate` are replaced by `fw_tpa_gain` (U8,
   baseline percent scale) and `fw_tpa_curve` (U8, gain-curve index).
+- accepts optional appended `fw_flap_channel` (U8) and
+  `fw_flap_compensation` (U8, wire representation of a signed -100..100
+  value).
 
 ### MSP_PILOT_CONFIG
 

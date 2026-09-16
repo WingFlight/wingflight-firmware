@@ -195,6 +195,9 @@ typedef enum {
     // Thrust Vector profile switching (independent of ADJUSTMENT_PID_PROFILE)
     ADJUSTMENT_TV_PROFILE                   = 111,
 
+    // Fixed-wing flap pitch compensation (percent, signed)
+    ADJUSTMENT_FW_FLAP_COMPENSATION          = 112,
+
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;
 
