@@ -65,6 +65,7 @@ enum {
     MIXER_IN_STABILIZED_TV_ROLL,
     MIXER_IN_STABILIZED_TV_PITCH,
     MIXER_IN_STABILIZED_TV_YAW,
+    MIXER_IN_FLAP,          // Named flap-position input -- see pidProfile_t.fw_flap_channel for the source RC channel
     MIXER_IN_COUNT
 };
 

@@ -147,6 +147,8 @@ float pidGetPidFrequency(void);
 float pidGetSetpoint(int axis);
 float pidGetOutput(int axis);
 
+uint8_t pidGetFlapChannel(void);
+
 const pidAxisData_t * pidGetAxisData(void);
 void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);
 

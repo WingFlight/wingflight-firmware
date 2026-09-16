@@ -90,6 +90,13 @@ const pidAxisData_t * pidGetAxisData(void)
     return pid.data;
 }
 
+// 0=off, else 1-based AUX channel index -- lets the mixer compute
+// MIXER_IN_FLAP without reaching into pidProfile internals directly.
+uint8_t pidGetFlapChannel(void)
+{
+    return currentPidProfile->fw_flap_channel;
+}
+
 void INIT_CODE pidReset(void)
 {
     memset(pid.data, 0, sizeof(pid.data));

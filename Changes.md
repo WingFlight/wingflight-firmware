@@ -48,6 +48,19 @@ same shared gain-curve pool used by per-axis `gain_curve`, further scaling
 non-linear attenuation shape instead of the previous fixed linear ramp.
 Existing PID profiles are reset to defaults on upgrade.
 
+Added `MIXER_IN_FLAP`, a new named mixer input (index 30) computed from a
+configurable RC channel (`fw_flap_channel` PID profile setting, 0=off,
+1..`MAX_SUPPORTED_RC_CHANNEL_COUNT`), so mixer rules can reference "the
+flap channel" directly instead of hardcoding a specific raw AUX channel
+(e.g. `AUX1`). `MIXER_IN_COUNT` grows 30 -> 31, so `MSP_MIXER_INPUTS`
+reports one more entry -- backward-compatible growth, same as the earlier
+addition of `MIXER_IN_STABILIZED_TV_ROLL/PITCH/YAW`. Existing mixer rules
+are unaffected, since they reference inputs by index and this is
+appended at the tail. Defaults to off (`fw_flap_channel = 0`, `MIXER_IN_FLAP`
+reads 0), so no behavior changes until configured. PID profile PG version
+bumped 9 -> 10 for the new field; existing PID profiles are reset to
+defaults on upgrade.
+
 Added `model_type` to `mixerConfig_t` (`REGULAR_AIRPLANE` / `FLYING_WING` /
 `V_TAIL_AIRPLANE` / `DELTA_WING` / `RUDDER_ELEVATOR_TRAINER` / `CUSTOM`).
 This is descriptive metadata only -- the firmware does not read it or change

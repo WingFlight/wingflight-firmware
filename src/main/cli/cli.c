@@ -339,6 +339,7 @@ static const char * const mixerInputNames[] = {
     [MIXER_IN_STABILIZED_TV_ROLL]    = "TR",
     [MIXER_IN_STABILIZED_TV_PITCH]   = "TP",
     [MIXER_IN_STABILIZED_TV_YAW]     = "TY",
+    [MIXER_IN_FLAP]                  = "FLAP",
 };
 
 #if MAX_SUPPORTED_MOTORS != 4

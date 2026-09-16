@@ -65,8 +65,9 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // fw_tpa_rate with fw_tpa_gain (baseline scale) and fw_tpa_curve (index into
 // the shared gainCurves pool), mirroring master_gain/gain_curve. v8->v9:
 // master_gain widened from uint8_t to uint16_t per axis to allow values up
-// to 1000 (was capped at 255).
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 9);
+// to 1000 (was capped at 255). v9->v10: added fw_flap_channel, selecting
+// the RC channel that feeds the new MIXER_IN_FLAP mixer input.
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 10);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -110,6 +111,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .cross_axis_relax_level = 100,
         .cross_axis_relax_cutoff = 10,
         .cross_axis_relax_pitch_strength = 0,
+        .fw_flap_channel = 0,
     );
 }
 
