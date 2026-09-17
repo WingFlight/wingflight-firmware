@@ -120,6 +120,9 @@ typedef enum {
     TABLE_SMARTFUEL_MODE,
 #endif
     TABLE_GOVERNOR_MODE,
+#ifdef USE_FBUS_MUX_FPGA
+    TABLE_FBUS_MUX_MODE,
+#endif
 
     LOOKUP_TABLE_COUNT
 } lookupTableIndex_e;

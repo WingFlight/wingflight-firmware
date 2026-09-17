@@ -263,6 +263,9 @@ extern uint8_t _dmaram_end__;
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
 #define USE_BUS_SERVO
 #endif
+#if defined(STM32F7X2) && defined(USE_FBUS_MASTER)
+#define USE_FBUS_MUX_FPGA       // iCE40 FBUS/PWM output mux (FrSky RF007-V3)
+#endif
 
 #if (TARGET_FLASH_SIZE > 256)
 #define PID_PROFILE_COUNT 6

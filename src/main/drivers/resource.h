@@ -103,6 +103,10 @@ typedef enum {
     OWNER_FREQ,
     OWNER_ACC_CS,
     OWNER_GYRO_CLK,
+    OWNER_FBUS_MASTER_SEND,
+    OWNER_FPGA_CS,
+    OWNER_FPGA_CRESET,
+    OWNER_FPGA_CDONE,
     OWNER_TOTAL_COUNT
 } resourceOwner_e;
 
