@@ -31,5 +31,6 @@ void attHoldInit(const pidProfile_t *pidProfile);
 void attHoldSetState(bool state);
 
 float attHoldApply(int axis, float pidSetpoint);
+bool attHoldIsHolding(int axis);
 
 ADJFUN_DECLARE(ATTHOLD_GAIN)

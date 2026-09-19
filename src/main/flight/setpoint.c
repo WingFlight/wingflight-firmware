@@ -160,15 +160,28 @@ float getDeflection(int axis)
     return sp.deflection[axis];
 }
 
-// For MANUAL mode: the same expo-shaped rate demand the PID rate loop targets (sp.setpoint,
-// post rates-curve), collapsed back to a -1..1 surface deflection instead of a gyro-corrected
-// PID output. Dividing by this axis's own configured max rate (rather than the fixed
-// SETPOINT_RATE_LIMIT clamp) recovers the full curve shape and lets full stick reach full
-// throw regardless of how the rate profile is tuned.
+// For MANUAL mode: identical to the stabilised rate loop's setpoint - same rates/expo curve,
+// same rcRates scaling - just applied directly as surface deflection instead of driving a
+// gyro-corrected PID, since there's no gyro loop to stabilise around. Built from sp.deflection
+// (smoothing/yaw-range/response-accel applied, but before the feed-forward "boost" kick) rather
+// than sp.setpoint, since that boost only exists to sharpen the gyro-PID's rate target and has
+// no meaning here - reusing the boosted, already-curved sp.setpoint let fast stick moves push
+// past this axis's max rate and saturate early, losing the rate curve and feeling like
+// passthrough.
+//
+// Scaled through pidGetFeedforward() -- the exact same Kf*rate computation stabilised flight's
+// F-term uses -- rather than a fixed rcRates-independent ceiling (the previous approach). MANUAL
+// is meant to be "stabilised flight minus the gyro correction", and F is precisely stabilised
+// flight's non-corrective, no-gyro-feedback contribution: reusing it means MANUAL tracks however
+// F has actually been tuned for this airframe (so a well-tuned F puts MANUAL's fixed output in
+// the neighbourhood of stabilised flight's typical in-flight settled output, with the gap between
+// them being exactly the stabilisation MANUAL omits), rather than an arbitrary fraction unrelated
+// to the aircraft's real tuned response. Judged in flight, not on the bench -- a static airframe
+// never rotates far enough for stabilised mode's P-term to relax toward that same settled state,
+// so the two won't visibly match sitting on a bench either way.
 float getManualDeflection(int axis)
 {
-    const float maxRate = currentControlRateProfile->rcRates[axis] * 5.0f;
-    return maxRate > 0 ? constrainf(sp.setpoint[axis] / maxRate, -1.0f, 1.0f) : 0;
+    return constrainf(pidGetFeedforward(axis, applyRatesCurve(axis, sp.deflection[axis])), -1.0f, 1.0f);
 }
 
 static float setpointResponseAccel(int axis, float value)

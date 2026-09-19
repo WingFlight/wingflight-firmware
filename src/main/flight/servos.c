@@ -27,6 +27,7 @@
 
 #include "build/build_config.h"
 
+#include "common/curve.h"
 #include "common/maths.h"
 
 #include "config/config.h"
@@ -43,6 +44,7 @@
 #include "flight/mixer.h"
 
 #include "pg/servos.h"
+#include "pg/servo_curve.h"
 #include "pg/bus_servo.h"
 
 #include "rx/rx.h"
@@ -239,7 +241,11 @@ void servoInit(void)
             break;
 
         IOInit(io, OWNER_SERVO, RESOURCE_INDEX(index));
+#if defined(STM32F4) || defined(STM32F7) || defined(STM32H7) || defined(STM32G4)
         IOConfigGPIOAF(io, IOCFG_AF_PP, timer[index]->alternateFunction);
+#else
+        IOConfigGPIO(io, IOCFG_AF_PP);
+#endif
     }
 
     servoCount = index;
@@ -380,6 +386,17 @@ void servoUpdate(void)
         if (servo->flags & SERVO_FLAG_GEO_CORR)
             input[i] = geometryCorrection(input[i]);
 #endif
+
+        // Servo balance curve: a small corrective delta added on top of the
+        // servo's own output (not a full reshape), so two servos driving the
+        // same surface can be trimmed to match each other's travel. An
+        // unconfigured/disabled curve (count < 2) contributes 0 - the
+        // fallback is a delta of nothing, not a passthrough of input[i].
+        {
+            const servoCurve_t *curve = servoCurves(i);
+            input[i] += evaluateCurvePoints(curve->points, curve->count,
+                                             input[i] * 1000.0f, 0.0f) / 1000.0f;
+        }
 
         if (servo->speed && mixerIsCyclicServo(i)) {
             const float limit = 1200 * pidGetDT() / servo->speed;

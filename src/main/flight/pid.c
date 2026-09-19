@@ -58,6 +58,7 @@
 #include "flight/leveling.h"
 #include "flight/autohover.h"
 #include "flight/atthold.h"
+#include "flight/hold_engine.h"
 #include "flight/rpm_filter.h"
 
 #include "pid.h"
@@ -113,6 +114,15 @@ float pidGetSetpoint(int axis)
 float pidGetOutput(int axis)
 {
     return pid.data[axis].pidSum;
+}
+
+// Exposes the same feedforward computation pidApplyMode1's F-term uses (pid.coef[axis].Kf is
+// otherwise file-static) -- lets a caller ask "what would stabilized flight command for this
+// axis at this rate, with no gyro correction at all" without duplicating Kf's derivation or
+// scale. See setpoint.c's getManualDeflection(), which uses this as MANUAL mode's whole output.
+float pidGetFeedforward(int axis, float rate)
+{
+    return pid.coef[axis].Kf * rate;
 }
 
 const pidAxisData_t * pidGetAxisData(void)
@@ -1074,15 +1084,64 @@ static void pidApplyMode1(uint8_t axis)
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
-    pid.data[axis].I = pid.coef[axis].Ki * masterGain * crossAxisRelax * pid.data[axis].axisError;
+    // TRADITIONAL_MODE forces I output to zero without touching axisError's own bookkeeping, so
+    // relax/decay keep behaving as configured and I resumes smoothly if the mode is switched off.
+    pid.data[axis].I = FLIGHT_MODE(TRADITIONAL_MODE) ? 0.0f
+        : pid.coef[axis].Ki * masterGain * crossAxisRelax * pid.data[axis].axisError;
 
     // Apply error decay (fixed rate -- no ground/airborne distinction; a plane
     // sitting on its wheels isn't at risk of tipping over from I-term windup
     // the way a loaded heli rotor disk is, so there's no need to decay faster
-    // while landed)
-    const float errorDecay = limitf(pid.data[axis].axisError * pid.itermDecayRate, pid.itermDecayLimit);
+    // while landed) -- but suspended while a leveling/attitude-hold layer is
+    // actively shaping this axis's setpoint. Those layers (ANGLE/HORIZON/GPS
+    // rescue/failsafe/loiter/RTH's shared angleModeApply on roll+pitch, the
+    // acro trainer likewise, and ATTHOLD/AUTOHOVER on an axis that is actually
+    // holding a target) fundamentally need a sustained I-term to hold a
+    // corrected attitude against a persistent disturbance once the rate error
+    // itself has settled to ~0 -- an unconditional decay quietly erodes exactly
+    // that contribution, which feels indistinguishable from the correction just
+    // giving up after a couple of seconds even though the true attitude error
+    // never went away. Plain acro/manual flight (and TRADITIONAL_MODE, which
+    // only masks the I *output* above, not axisError itself) still decay
+    // normally -- and so does an ATTHOLD/AUTOHOVER axis that's free-tracking
+    // (stick active, or still settling after release): there it's plain rate
+    // flight, so it should bleed I exactly like normal mode rather than carry
+    // stale I from an earlier maneuver into the next hold.
+    //
+    // An ATTHOLD axis that IS holding is the one exception to "suspended":
+    // it decays at a small fraction of the normal rate instead of not at all.
+    // With no bleed whatsoever, I left over from before the hold engaged (or
+    // from a disturbance long gone) would keep the surfaces parked off-center
+    // forever even with zero attitude error and zero motion -- e.g. sitting on
+    // the bench, where nothing the hold does can ever move the aircraft. A
+    // slow bleed still lets the hold carry a real steady disturbance (torque
+    // roll): the outer attitude loop just re-grows whatever I is needed, at the
+    // cost of a small sag -- while anything not actually needed drains away.
+#ifdef USE_ACRO_TRAINER
+    const flightModeFlags_e rollPitchLevelingModes = ANGLE_MODE | HORIZON_MODE | GPS_RESCUE_MODE
+        | FAILSAFE_MODE | LOITER_MODE | RTH_MODE | TRAINER_MODE;
+#else
+    const flightModeFlags_e rollPitchLevelingModes = ANGLE_MODE | HORIZON_MODE | GPS_RESCUE_MODE
+        | FAILSAFE_MODE | LOITER_MODE | RTH_MODE;
+#endif
 
-    pid.data[axis].axisError -= errorDecay * pid.dT;
+    bool autoHoverHoldingThisAxis = false;
+    bool attHoldHoldingThisAxis = false;
+#ifdef USE_ACC
+    autoHoverHoldingThisAxis = autoHoverIsHolding(axis);
+    attHoldHoldingThisAxis = attHoldIsHolding(axis);
+#endif
+
+    const bool isYaw = (axis == FD_YAW);
+    const bool levelingModeShapingThisAxis = autoHoverHoldingThisAxis
+        || (!isYaw && FLIGHT_MODE(rollPitchLevelingModes));
+
+    if (!levelingModeShapingThisAxis) {
+        const float decayScale = attHoldHoldingThisAxis ? QUATHOLD_HOLD_I_DECAY_SCALE : 1.0f;
+        const float errorDecay = limitf(pid.data[axis].axisError * pid.itermDecayRate * decayScale, pid.itermDecayLimit * decayScale);
+
+        pid.data[axis].axisError -= errorDecay * pid.dT;
+    }
 
 
   //// Feedforward

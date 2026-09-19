@@ -1127,6 +1127,41 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         }
         break;
 
+    case MSP_SERVO_CURVES:
+        // Same servo indexing/remap shape as MSP_SERVO_CONFIGURATIONS above.
+        if (hasBusServosConfigured()) {
+            const uint8_t pwmServoCount = getServoCount();
+            const uint8_t totalCount = pwmServoCount + BUS_SERVO_CHANNELS;
+            sbufWriteU8(dst, totalCount);
+
+            for (int i = 0; i < pwmServoCount; i++) {
+                sbufWriteU8(dst, servoCurves(i)->count);
+                for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
+                    sbufWriteU16(dst, servoCurves(i)->points[p].x);
+                    sbufWriteU16(dst, servoCurves(i)->points[p].y);
+                }
+            }
+
+            for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
+                sbufWriteU8(dst, servoCurves(i)->count);
+                for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
+                    sbufWriteU16(dst, servoCurves(i)->points[p].x);
+                    sbufWriteU16(dst, servoCurves(i)->points[p].y);
+                }
+            }
+        } else {
+            sbufWriteU8(dst, getServoCount());
+
+            for (int i = 0; i < getServoCount(); i++) {
+                sbufWriteU8(dst, servoCurves(i)->count);
+                for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
+                    sbufWriteU16(dst, servoCurves(i)->points[p].x);
+                    sbufWriteU16(dst, servoCurves(i)->points[p].y);
+                }
+            }
+        }
+        break;
+
     case MSP_SERVO_OVERRIDE:
         for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
             sbufWriteU16(dst, getServoOverride(i));
@@ -1713,6 +1748,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
           sbufWriteU16(dst, mixerRules(i)->speed);
           sbufWriteU8(dst, mixerRules(i)->curve);
           sbufWriteU8(dst, mixerRules(i)->condition);
+          sbufWriteU8(dst, mixerRules(i)->role);
         }
         break;
 
@@ -2077,6 +2113,12 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->gain_curve[PID_YAW]);
         /* Att Hold max rate */
         sbufWriteU16(dst, currentPidProfile->atthold.max_rate);
+        /* Auto Hover roll deadband */
+        sbufWriteU8(dst, currentPidProfile->autohover.roll_deadband);
+        /* Auto Hover throttle assist */
+        sbufWriteU8(dst, currentPidProfile->autohover.throttle_assist_gain);
+        sbufWriteU8(dst, currentPidProfile->autohover.throttle_assist_max);
+        sbufWriteU16(dst, currentPidProfile->autohover.throttle_assist_trigger_ms);
         /* Oscillation limiter */
         sbufWriteU8(dst, currentPidProfile->osc_limiter);
         sbufWriteU8(dst, currentPidProfile->osc_limiter_min_hz);
@@ -3057,6 +3099,48 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         validateAndFixServoConfig();
         break;
 
+    case MSP_SET_SERVO_CURVE:
+        i = sbufReadU8(src);
+
+        // Same servo indexing/remap shape as MSP_SET_SERVO_CONFIGURATION above.
+        if (hasBusServosConfigured()) {
+            const uint8_t pwmServoCount = getServoCount();
+            const uint8_t totalCount = pwmServoCount + BUS_SERVO_CHANNELS;
+
+            if (i >= totalCount) {
+                return MSP_RESULT_ERROR;
+            }
+
+            if (i >= pwmServoCount) {
+                i = BUS_SERVO_OFFSET + (i - pwmServoCount);
+            }
+        } else {
+            if (i >= getServoCount()) {
+                return MSP_RESULT_ERROR;
+            }
+        }
+
+        if (i >= MAX_SUPPORTED_SERVOS) {
+            return MSP_RESULT_ERROR;
+        }
+
+        {
+            // count is later used unchecked as an array bound by
+            // evaluateCurvePoints() -- reject anything outside the wire
+            // format's actual valid range, same discipline as
+            // MSP_SET_MIXER_CURVE above.
+            uint8_t pointCount = sbufReadU8(src);
+            if (pointCount < 2 || pointCount > SERVO_CURVE_POINTS) {
+                return MSP_RESULT_ERROR;
+            }
+            servoCurvesMutable(i)->count = pointCount;
+        }
+        for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
+            servoCurvesMutable(i)->points[p].x = sbufReadU16(src);
+            servoCurvesMutable(i)->points[p].y = sbufReadU16(src);
+        }
+        break;
+
     case MSP_SET_SERVO_OVERRIDE:
         i = sbufReadU8(src);
         if (i >= MAX_SUPPORTED_SERVOS) {
@@ -3273,6 +3357,16 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         /* Att Hold max rate */
         if (sbufBytesRemaining(src) >= 2) {
             currentPidProfile->atthold.max_rate = sbufReadU16(src);
+        }
+        /* Auto Hover roll deadband */
+        if (sbufBytesRemaining(src) >= 1) {
+            currentPidProfile->autohover.roll_deadband = sbufReadU8(src);
+        }
+        /* Auto Hover throttle assist */
+        if (sbufBytesRemaining(src) >= 4) {
+            currentPidProfile->autohover.throttle_assist_gain = sbufReadU8(src);
+            currentPidProfile->autohover.throttle_assist_max = sbufReadU8(src);
+            currentPidProfile->autohover.throttle_assist_trigger_ms = sbufReadU16(src);
         }
         /* Oscillation limiter */
         if (sbufBytesRemaining(src) >= 7) {
@@ -3778,6 +3872,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         mixerRulesMutable(i)->speed = sbufReadU16(src);
         mixerRulesMutable(i)->curve = sbufReadU8(src);
         mixerRulesMutable(i)->condition = sbufReadU8(src);
+        mixerRulesMutable(i)->role = sbufReadU8(src);
+        mixerCaptureRuleSign(i);
         break;
 
     case MSP_SET_MIXER_CURVE:

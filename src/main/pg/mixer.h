@@ -20,6 +20,8 @@
 #include "types.h"
 #include "platform.h"
 
+#include "common/curve.h"
+
 #include "pg/pg.h"
 
 // Descriptive only -- firmware does not branch on this. It lets the
@@ -97,11 +99,8 @@ typedef struct
 
 PG_DECLARE_ARRAY(mixerInput_t, MIXER_INPUT_COUNT, mixerInputs);
 
-typedef struct
-{
-    int16_t   x;                // -1000..1000, normalized like weight/offset
-    int16_t   y;                // -1000..1000
-} mixerCurvePoint_t;
+// -1000..1000, normalized like weight/offset
+typedef curvePoint_t mixerCurvePoint_t;
 
 typedef struct
 {
@@ -110,6 +109,13 @@ typedef struct
 } mixerCurve_t;
 
 PG_DECLARE_ARRAY(mixerCurve_t, MIXER_CURVE_COUNT, mixerCurves);
+
+typedef enum {
+    MIXER_RULE_ROLE_NONE = 0,
+    MIXER_RULE_ROLE_FLAP_COMPENSATION,
+    MIXER_RULE_ROLE_DIFFERENTIAL_THRUST_YAW,
+    MIXER_RULE_ROLE_COUNT
+} mixerRuleRole_e;
 
 typedef struct
 {
@@ -122,6 +128,7 @@ typedef struct
     uint16_t  speed;            // slew rate limit on this rule's contribution (0=unlimited, same units/scale as servo speed)
     uint8_t   curve;            // 0=none, 1..MIXER_CURVE_COUNT = mixerCurves(curve-1), applied before weight selection
     uint8_t   condition;        // 0=always active, 1..LOGIC_CONDITION_COUNT = logicConditions(condition-1) gates this rule
+    uint8_t   role;             // mixerRuleRole_e -- descriptive tag only, never read by the mixer evaluator
 } mixerRule_t;
 
 PG_DECLARE_ARRAY(mixerRule_t, MIXER_RULE_COUNT, mixerRules);

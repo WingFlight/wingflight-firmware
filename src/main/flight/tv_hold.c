@@ -26,14 +26,9 @@
 #include "build/build_config.h"
 #include "build/debug.h"
 
-#include "common/maths.h"
-
 #include "config/config.h"
 
-#include "flight/airborne.h"
-#include "flight/imu.h"
-#include "flight/pid.h"
-#include "flight/setpoint.h"
+#include "flight/hold_engine.h"
 
 #include "tv_hold.h"
 
@@ -44,30 +39,20 @@
 // on the vectored nozzle while the aerodynamic control surfaces stay in plain
 // rate/acro under the pilot's stick.
 //
-// Deliberately a second, independent instance of atthold.c's track/freeze
-// algorithm rather than shared state or a call into atthold.c -- same "not
-// sharing state" reasoning tv_pid.c already documents for itself: this hold
-// engine needs to run (or not) regardless of what the main loop's flight mode
-// is doing, and must stay tunable/removable on its own. See atthold.c for the
-// full rationale behind the quaternion track/freeze model and the singularity
-// handling below; this is a straight port of that algorithm onto its own state.
+// A second, independent *instance* of the shared hold engine (hold_engine.c) that
+// atthold.c also runs -- same "not sharing state" reasoning tv_pid.c documents for
+// itself: this hold needs to run (or not) regardless of what the main loop's flight
+// mode is doing, and must stay tunable/removable on its own, so it owns its own
+// quatHold_t rather than touching atthold's. It shares only the algorithm, so a fix
+// to the hold behavior (settle-then-capture, stall timeout, per-axis tracking,
+// pre-airborne authority) reaches both loops at once instead of being ported by hand.
 
-typedef struct {
-    bool        Active;
-    bool        Tracking;
-    float       Gain;
-    float       Deadband;
-    float       MaxRate;
-    quaternion  qTarget;
-} tvHold_t;
-
-static FAST_DATA_ZERO_INIT tvHold_t tvHold;
+static FAST_DATA_ZERO_INIT quatHold_t tvHold;
 
 INIT_CODE void tvHoldInit(const tvPidProfile_t *profile)
 {
-    tvHold.Gain = profile->hold.gain / 10.0f;
-    tvHold.Deadband = profile->hold.deadband / 100.0f;
-    tvHold.MaxRate = profile->hold.max_rate;
+    quatHoldInit(&tvHold, profile->hold.gain / 10.0f, profile->hold.deadband / 100.0f,
+                 profile->hold.max_rate);
 }
 
 int get_ADJUSTMENT_TV_HOLD_GAIN(void)
@@ -78,89 +63,34 @@ int get_ADJUSTMENT_TV_HOLD_GAIN(void)
 void set_ADJUSTMENT_TV_HOLD_GAIN(int value)
 {
     currentTvPidProfile->hold.gain = value;
-    tvHold.Gain = value / 10.0f;
+    quatHoldSetGain(&tvHold, value / 10.0f);
 }
 
 // Called once on the rising edge of BOXTVHOLD so a stale target from a
 // previous engagement can never linger -- mirrors attHoldSetState.
 void tvHoldSetState(bool state)
 {
-    if (state && !tvHold.Active) {
-        getQuaternion(&tvHold.qTarget);
-    }
+    quatHoldSetState(&tvHold, state);
+}
 
-    tvHold.Active = state;
+// True while this axis is actively holding a frozen target -- tv_pid.c uses this to
+// decide how much I-term decay to apply, same as pid.c does for ATT HOLD.
+bool tvHoldIsHolding(int axis)
+{
+    return quatHoldIsHolding(&tvHold, axis);
 }
 
 float tvHoldApply(int axis, float pidSetpoint)
 {
-    static float rate[3];
-
     if (!tvHold.Active) {
         return pidSetpoint;
     }
 
-    // Shared, cross-axis work only needs computing once per PID loop iteration --
-    // do it on the first axis touched each iteration and cache it, same pattern
-    // attHoldApply uses.
-    if (axis == PID_ROLL) {
-        const bool sticksActive = !isAirborne()
-            || fabsf(getDeflection(PID_ROLL))  > tvHold.Deadband
-            || fabsf(getDeflection(PID_PITCH)) > tvHold.Deadband
-            || fabsf(getDeflection(PID_YAW))   > tvHold.Deadband;
+    const float setpoint = quatHoldApply(&tvHold, axis, pidSetpoint);
 
-        if (sticksActive) {
-            getQuaternion(&tvHold.qTarget);
-            tvHold.Tracking = true;
-        } else {
-            tvHold.Tracking = false;
+    DEBUG_AXIS(TVHOLD, axis, 0, setpoint);
 
-            quaternion qCurrent;
-            getQuaternion(&qCurrent);
-
-            quaternion qCurrentConj = { .w = qCurrent.w, .x = -qCurrent.x, .y = -qCurrent.y, .z = -qCurrent.z };
-
-            quaternion qError;
-            imuQuaternionMultiplication(&qCurrentConj, &tvHold.qTarget, &qError);
-
-            // Shortest-path sign correction -- see atthold.c for why this is needed.
-            if (qError.w < 0.0f) {
-                qError.w = -qError.w;
-                qError.x = -qError.x;
-                qError.y = -qError.y;
-                qError.z = -qError.z;
-            }
-
-            const float errorDeg[3] = {
-                (2.0f * qError.x) / M_RADf,
-                (2.0f * qError.y) / M_RADf,
-                (2.0f * qError.z) / M_RADf,
-            };
-
-            float magnitude = 0.0f;
-            for (int i = 0; i < 3; i++) {
-                rate[i] = errorDeg[i] * tvHold.Gain;
-                magnitude += sq(rate[i]);
-            }
-            magnitude = sqrtf(magnitude);
-
-            if (magnitude > tvHold.MaxRate && magnitude > 0.0f) {
-                const float scale = tvHold.MaxRate / magnitude;
-                rate[0] *= scale;
-                rate[1] *= scale;
-                rate[2] *= scale;
-            }
-        }
-    }
-
-    if (tvHold.Tracking) {
-        DEBUG_AXIS(TVHOLD, axis, 0, pidSetpoint);
-        return pidSetpoint;
-    }
-
-    DEBUG_AXIS(TVHOLD, axis, 0, rate[axis]);
-
-    return rate[axis];
+    return setpoint;
 }
 
 #endif

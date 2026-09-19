@@ -48,6 +48,7 @@
 #include "drivers/system.h"
 #include "drivers/time.h"
 #include "drivers/freq.h"
+#include "drivers/rx_input_backup.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
 
@@ -328,11 +329,17 @@ void updateArmingStatus(void)
             unsetArmingDisabled(ARMING_DISABLED_ANGLE);
         }
 
+#ifndef SIMULATOR_BUILD
+        // Not meaningful under SITL: the scheduler's load percentages are
+        // host/wall-clock artifacts of the simulated (simRate-scaled) time
+        // base and routinely sit above the threshold, which would make
+        // arming in the simulator permanently flaky.
         if (getMaxRealTimeLoad() > 750 || getAverageCPULoad() > 750 || getAverageSystemLoad() > 750) {
             setArmingDisabled(ARMING_DISABLED_LOAD);
         } else {
             unsetArmingDisabled(ARMING_DISABLED_LOAD);
         }
+#endif
 
         if (isCalibrating()) {
             setArmingDisabled(ARMING_DISABLED_CALIBRATING);
@@ -360,6 +367,29 @@ void updateArmingStatus(void)
             } else {
                 unsetArmingDisabled(ARMING_DISABLED_RESC);
             }
+        }
+#endif
+
+#ifdef USE_RX_INPUT_BACKUP
+        // A configured backup RX must prove itself linked before the first arm of this
+        // power cycle - same "don't trust it until it's shown you a signal" reasoning as
+        // the GPS-rescue fix check above, and the same exception once WAS_EVER_ARMED: a
+        // backup that blips stale between flights (satellite hiccup, momentary
+        // interference) must not lock out rearming for the rest of the session, only the
+        // very first arm while the backup's health is still completely unknown. Held off
+        // until the shared boot arming-grace window (armingConfig()->power_on_arming_grace_time,
+        // handled above) has elapsed, so slow-binding backup protocols (SRXL2/EXBUS-style
+        // handshakes) get the same settle time real receivers need - see
+        // docs/rx-wiring-autodetect-design.md's settleMs discussion for typical link-up
+        // timing per protocol.
+        if (rxInputBackupIsEnabled() && !(getArmingDisableFlags() & ARMING_DISABLED_BOOT_GRACE_TIME)) {
+            if (rxInputBackupIsActive() || ARMING_FLAG(WAS_EVER_ARMED)) {
+                unsetArmingDisabled(ARMING_DISABLED_RX_INPUT_BACKUP);
+            } else {
+                setArmingDisabled(ARMING_DISABLED_RX_INPUT_BACKUP);
+            }
+        } else {
+            unsetArmingDisabled(ARMING_DISABLED_RX_INPUT_BACKUP);
         }
 #endif
 
@@ -585,7 +615,7 @@ void tryArm(void)
         armingWiggle = WIGGLE_NOT_DONE;
 
         if (!isFirstArmingGyroCalibrationRunning()) {
-            int armingDisabledReason = ffs(getArmingDisableFlags());
+            int armingDisabledReason = __builtin_ffs(getArmingDisableFlags());
             if (lastArmingDisabledReason != armingDisabledReason) {
                 lastArmingDisabledReason = armingDisabledReason;
                 beeperWarningBeeps(armingDisabledReason);
@@ -690,6 +720,12 @@ void processRxModes(timeUs_t currentTimeUs)
         ENABLE_FLIGHT_MODE(MANUAL_MODE);
     } else {
         DISABLE_FLIGHT_MODE(MANUAL_MODE);
+    }
+
+    if (IS_RC_MODE_ACTIVE(BOXTRADITIONAL)) {
+        ENABLE_FLIGHT_MODE(TRADITIONAL_MODE);
+    } else {
+        DISABLE_FLIGHT_MODE(TRADITIONAL_MODE);
     }
 
 #ifdef USE_SERVOS
@@ -856,8 +892,18 @@ void processRxModes(timeUs_t currentTimeUs)
     acroTrainerSetState(FLIGHT_MODE(TRAINER_MODE));
 #endif // USE_ACRO_TRAINER
 #ifdef USE_ACC
-    autoHoverSetState(FLIGHT_MODE(AUTOHOVER_MODE));
-    attHoldSetState(FLIGHT_MODE(ATTHOLD_MODE));
+    // GPS rescue/failsafe/RTH/loiter take priority over AUTOHOVER/ATTHOLD for the actual setpoint
+    // (see pidApplySetpoint's angleModeApply branch in pid.c), but AUTOHOVER_MODE/ATTHOLD_MODE's
+    // flightModeFlags bit stays set the whole time it's preempted -- the box-selection chain above
+    // only clears it when a different BOX switch position is chosen, not when a safety mode merely
+    // takes priority. Left unguarded, autoHoverSetState/attHoldSetState would see the mode as
+    // continuously active and never re-capture a fresh target, so once the safety mode clears and
+    // priority falls back to the hold, it resumes whatever heading/roll/attitude target (and, for
+    // AUTOHOVER, throttle assist ramp -- see autoHoverThrottleBoost) was captured before the
+    // preemption instead of the aircraft's current attitude. Mirrors pid.c's own priority mask.
+    const bool safetyLevelingActive = FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE);
+    autoHoverSetState(FLIGHT_MODE(AUTOHOVER_MODE) && !safetyLevelingActive);
+    attHoldSetState(FLIGHT_MODE(ATTHOLD_MODE) && !safetyLevelingActive);
 #endif // USE_ACC
 #ifdef USE_SERVOS
     autoTrimUpdate();
@@ -954,7 +1000,12 @@ static void subTaskPidController(timeUs_t currentTimeUs)
         if (IS_RC_MODE_ACTIVE(BOXTHRUSTVECTOR) && !gyroOverflowDetected()) {
             // BOXTVHOLD: independent attitude/heading hold for this loop only, decoupled
             // from the main loop's ANGLE/AUTOHOVER/ATTHOLD chain -- see flight/tv_hold.c.
-            tvHoldSetState(IS_RC_MODE_ACTIVE(BOXTVHOLD));
+            // Not engaged while a safety mode has priority (tvPidApplyAxis skips the hold
+            // then -- same mask as attHoldSetState's below/above): leaving it "engaged" but
+            // unapplied would let the target go stale, and the nozzle would head back to the
+            // pre-safety-mode attitude once the safety mode cleared instead of re-capturing.
+            const bool tvSafetyLevelingActive = FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE);
+            tvHoldSetState(IS_RC_MODE_ACTIVE(BOXTVHOLD) && !tvSafetyLevelingActive);
             tvPidController(currentTimeUs);
         } else {
             tvHoldSetState(false);

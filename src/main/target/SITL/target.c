@@ -26,6 +26,9 @@
 
 #include <errno.h>
 #include <time.h>
+#if defined(_WIN32) || defined(__MINGW32__)
+#include <pthread_time.h>
+#endif
 
 #include "common/maths.h"
 
@@ -37,13 +40,39 @@
 #include "drivers/system.h"
 #include "drivers/pwm_output.h"
 #include "drivers/light_led.h"
+#include "drivers/adc.h"
 
 #include "drivers/timer.h"
 #include "drivers/timer_def.h"
-const timerHardware_t timerHardware[1]; // unused
+
+// Synthetic timer table so motorConfig()/servoConfig()'s default ioTags (built by
+// timerioTagGetByUsage(), see pg/motor.c and pg/servos.c) and timerAllocate()
+// resolve to non-zero channels on SITL, which has no real timer hardware.
+//
+// The TIM_USE_MOTOR entries matter as much as the servo ones: motorInit() sizes
+// motorCount by counting non-zero motorConfig()->dev.ioTags, and a motorCount of
+// 0 means motorDevInit() never wires up the motor device - so
+// pwmCompleteMotorUpdate() below, the *only* place a servo_packet is ever sent to
+// the simulator, is never called and the JSBSim bridge receives nothing at all.
+// Four motor channels match servo_packet.motor_speed[4]; a fixed-wing mixer only
+// drives M1. motorPwmDevInit() rejects anything above four.
+#define SITL_TIMER_MOTOR_COUNT 4
+#define SITL_TIMER_SERVO_COUNT 4
+const timerHardware_t timerHardware[SITL_TIMER_MOTOR_COUNT + SITL_TIMER_SERVO_COUNT] = {
+    { .tag = 0x01, .usageFlags = TIM_USE_MOTOR },
+    { .tag = 0x02, .usageFlags = TIM_USE_MOTOR },
+    { .tag = 0x03, .usageFlags = TIM_USE_MOTOR },
+    { .tag = 0x04, .usageFlags = TIM_USE_MOTOR },
+    { .tag = 0x11, .usageFlags = TIM_USE_SERVO },
+    { .tag = 0x12, .usageFlags = TIM_USE_SERVO },
+    { .tag = 0x13, .usageFlags = TIM_USE_SERVO },
+    { .tag = 0x14, .usageFlags = TIM_USE_SERVO },
+};
 
 #include "drivers/accgyro/accgyro_fake.h"
+#include "drivers/barometer/barometer_fake.h"
 #include "flight/imu.h"
+#include "flight/servos.h"
 
 #include "config/feature.h"
 #include "config/config.h"
@@ -54,7 +83,6 @@ const timerHardware_t timerHardware[1]; // unused
 
 #include "rx/rx.h"
 
-#include "dyad.h"
 #include "target/SITL/udplink.h"
 
 uint32_t SystemCoreClock;
@@ -64,11 +92,43 @@ static servo_packet pwmPkt;
 
 static struct timespec start_time;
 static double simRate = 1.0;
-static pthread_t tcpWorker, udpWorker;
+static pthread_t udpWorker;
 static bool workerRunning = true;
 static udpLink_t stateLink, pwmLink;
 static pthread_mutex_t updateLock;
 static pthread_mutex_t mainLoopLock;
+
+// SITL has no real timers/registers, but flight/servos.c (compiled for every
+// target) unconditionally calls this to arm each configured servo channel.
+// drivers/pwm_output.c (the normal home of pwmOutConfig()) is excluded from
+// the SITL build (see make/mcu/SITL.mk), so provide a no-op stand-in here:
+// leave ccr NULL so servos.c's "if (servoChannel[index].ccr)" guards skip the
+// (nonexistent) register write; the actual servo positions are read back via
+// getServoOutput() in pwmCompleteMotorUpdate() below instead.
+void pwmOutConfig(timerChannel_t *channel, const timerHardware_t *timerHardware, uint32_t hz, uint16_t period, uint16_t value, uint8_t inversion)
+{
+    UNUSED(timerHardware);
+    UNUSED(hz);
+    UNUSED(period);
+    UNUSED(value);
+    UNUSED(inversion);
+
+    channel->ccr = NULL;
+    channel->tim = NULL;
+}
+
+// SITL has no real timer/clock registers, but flight/servos.c's servoInit()
+// unconditionally calls this (drivers/timer_stm32*.c, the normal home of
+// timerClock(), is excluded from the SITL build - see make/mcu/SITL.mk) to
+// size the update-rate timebase it passes to pwmOutConfig() above. Since
+// pwmOutConfig() is a no-op here (leaves ccr NULL), the exact value doesn't
+// matter functionally - just return a plausible fixed timer clock so the
+// arithmetic in servoInit() stays well-defined.
+uint32_t timerClock(TIM_TypeDef *tim)
+{
+    UNUSED(tim);
+    return 240000000;
+}
 
 int timeval_sub(struct timespec *result, struct timespec *x, struct timespec *y);
 
@@ -82,6 +142,42 @@ int lockMainPID(void) {
 void sendMotorUpdate(void) {
     udpSend(&pwmLink, &pwmPkt, sizeof(servo_packet));
 }
+
+// Refresh the outgoing servo_packet from the current mixer outputs. Defined
+// alongside the motor device further down; declared here because updateState()
+// (below, on the UDP thread) needs it too - see the comment at its call site.
+static void refreshPwmPacket(bool motorsActive);
+
+#if defined(USE_FAKE_BARO)
+// The fake baro driver keeps whatever fakeBaroDetect() seeded (101325 Pa, i.e.
+// a constant 0 m MSL) until something calls fakeBaroSet(), so without this the
+// simulated aircraft's altitude never changes as far as the firmware is
+// concerned. Derive a pressure from the FDM's altitude via the ISA troposphere
+// model, so baro-derived altitude tracks the simulator.
+//
+// Note the altitude is *relative to the simulator's initial condition*:
+// fdm_packet.position_xyz is NED metres from the sim's origin (see
+// wingflight-sitl-hitl sitl/jsbsim_bridge.py), so the firmware sees the IC altitude as 0 m MSL.
+// That's what altitude-hold/vario style consumers care about; absolute MSL
+// altitude would need a new field in fdm_packet.
+static void updateFakeBaroFromFdm(const fdm_packet *pkt)
+{
+    const double altitudeMeters = -pkt->position_xyz[2];
+
+    // ISA: p = p0 * (1 - 2.25577e-5 * h)^5.25588, valid to ~11 km.
+    double factor = 1.0 - 2.25577e-5 * altitudeMeters;
+    if (factor < 0.1) {   // guard the pow() against absurd/negative altitudes
+        factor = 0.1;
+    }
+    const double pressurePa = 101325.0 * pow(factor, 5.25588);
+
+    // ISA temperature lapse: 15 degC at 0 m, -6.5 degC/km, in 0.01 degC units.
+    const double temperatureCentiC = (15.0 - 0.0065 * altitudeMeters) * 100.0;
+
+    fakeBaroSet((int32_t)lrint(pressurePa), (int32_t)lrint(temperatureCentiC));
+}
+#endif
+
 void updateState(const fdm_packet* pkt) {
     static double last_timestamp = 0; // in seconds
     static uint64_t last_realtime = 0; // in uS
@@ -115,6 +211,15 @@ void updateState(const fdm_packet* pkt) {
     z = constrain(-pkt->imu_angular_velocity_rpy[2] * GYRO_SCALE * RAD2DEG, -32767, 32767);
     fakeGyroSet(fakeGyroDev, x, y, z);
 //    printf("[gyr]%lf,%lf,%lf\n", pkt->imu_angular_velocity_rpy[0], pkt->imu_angular_velocity_rpy[1], pkt->imu_angular_velocity_rpy[2]);
+
+#if defined(USE_FAKE_BARO)
+    updateFakeBaroFromFdm(pkt);
+#endif
+// The fake compass is deliberately left at its static "pointing north" detect
+// default: SITL undefines USE_IMU_CALC, so attitude (heading included) is taken
+// straight from the simulator's orientation quaternion below and the mag is
+// never consulted for it. Feed it here if USE_IMU_CALC is ever enabled to test
+// the AHRS itself against the simulator.
 
 #if !defined(USE_IMU_CALC)
 #if defined(SET_IMU_FROM_EULER)
@@ -161,6 +266,19 @@ void updateState(const fdm_packet* pkt) {
     }
 //    printf("simRate = %lf, millis64 = %lu, millis64_real = %lu, deltaSim = %lf\n", simRate, millis64(), millis64_real(), deltaSim*1e6);
 
+    // While disarmed, drivers/motor.c's motorWriteAll() short-circuits on
+    // motorDevice->enabled, so pwmCompleteMotorUpdate() - the only other place
+    // a servo_packet is sent - never runs. The control surfaces still move
+    // while disarmed (bench/passthrough testing, which every
+    // wingflight-sitl-hitl tests/sitl-rc-check.ps1 mode relies on), so keep the simulator link
+    // alive from here instead; otherwise the FDM receives nothing at all until
+    // the aircraft is armed.
+    if (!motorIsEnabled()) {
+        refreshPwmPacket(false);
+        sendMotorUpdate();
+    }
+
+
     last_timestamp = pkt->timestamp;
     last_realtime = micros64_real();
 
@@ -190,22 +308,6 @@ static void* udpThread(void* data) {
     return NULL;
 }
 
-static void* tcpThread(void* data) {
-    UNUSED(data);
-
-    dyad_init();
-    dyad_setTickInterval(0.2f);
-    dyad_setUpdateTimeout(0.5f);
-
-    while (workerRunning) {
-        dyad_update();
-    }
-
-    dyad_shutdown();
-    printf("tcpThread end!!\n");
-    return NULL;
-}
-
 // system
 void systemInit(void) {
     int ret;
@@ -225,12 +327,6 @@ void systemInit(void) {
         exit(1);
     }
 
-    ret = pthread_create(&tcpWorker, NULL, tcpThread, NULL);
-    if (ret != 0) {
-        printf("Create tcpWorker error!\n");
-        exit(1);
-    }
-
     ret = udpInit(&pwmLink, "127.0.0.1", 9002, false);
     printf("init PwmOut UDP link...%d\n", ret);
 
@@ -243,16 +339,37 @@ void systemInit(void) {
         exit(1);
     }
 
-    // serial can't been slow down
-    rescheduleTask(TASK_SERIAL, 1);
+    // Note: task attributes (tasks[].attribute) aren't initialized until
+    // tasksInitData() runs, which happens after systemInit() returns (see
+    // fc/init.c's init()). So the "serial can't be slowed down" override for
+    // TASK_SERIAL is applied later, in fc/tasks.c's tasksInit(), instead of
+    // here via rescheduleTask() (which would dereference a NULL attribute
+    // pointer this early).
 }
 
 void systemResetHard(void){
     printf("[system]Reset!\n");
     workerRunning = false;
-    pthread_join(tcpWorker, NULL);
+    // The per-port TCP accept threads (see drivers/serial_tcp.c) block
+    // indefinitely in accept()/recv() and have no way to be woken up short of
+    // closing their sockets, which isn't worth doing here since exit() below
+    // tears down the whole process (and all its threads) regardless.
     pthread_join(udpWorker, NULL);
     exit(0);
+}
+
+void systemReset(int reason)
+{
+    UNUSED(reason);
+    systemResetHard();
+}
+
+// drivers/adc.c is excluded from the SITL build (no real ADC hardware),
+// so provide a stub for the generic caller (blackbox.c, etc.).
+bool adcIsEnabled(uint8_t channel)
+{
+    UNUSED(channel);
+    return false;
 }
 
 void timerInit(void) {
@@ -392,19 +509,9 @@ int timeval_sub(struct timespec *result, struct timespec *x, struct timespec *y)
 
 // PWM part
 pwmOutputPort_t motors[MAX_SUPPORTED_MOTORS];
-static pwmOutputPort_t servos[MAX_SUPPORTED_SERVOS];
 
 // real value to send
 static int16_t motorsPwm[MAX_SUPPORTED_MOTORS];
-static int16_t servosPwm[MAX_SUPPORTED_SERVOS];
-static int16_t idlePulse;
-
-void servoDevInit(const servoDevConfig_t *servoConfig) {
-    UNUSED(servoConfig);
-    for (uint8_t servoIndex = 0; servoIndex < MAX_SUPPORTED_SERVOS; servoIndex++) {
-        servos[servoIndex].enabled = true;
-    }
-}
 
 static motorDevice_t motorPwmDevice; // Forward
 
@@ -412,14 +519,19 @@ pwmOutputPort_t *pwmGetMotors(void) {
     return motors;
 }
 
-static float pwmConvertFromExternal(uint16_t externalValue)
+static float pwmConvertToInternal(uint8_t mode, float throttle)
 {
-    return (float)externalValue;
-}
+    float value = motorConfig()->mincommand;
 
-static uint16_t pwmConvertToExternal(float motorValue)
-{
-    return (uint16_t)motorValue;
+    if (mode == MOTOR_CONTROL_BIDIR) {
+        if (throttle != 0)
+            value = scaleRangef(throttle, -1, 1, motorConfig()->minthrottle, motorConfig()->maxthrottle);
+    } else {
+        if (throttle > 0)
+            value = scaleRangef(throttle, 0, 1, motorConfig()->minthrottle, motorConfig()->maxthrottle);
+    }
+
+    return value;
 }
 
 static void pwmDisableMotors(void)
@@ -434,14 +546,9 @@ static bool pwmEnableMotors(void)
     return true;
 }
 
-static void pwmWriteMotor(uint8_t index, float value)
+static void pwmWriteMotor(uint8_t index, uint8_t mode, float value)
 {
-    motorsPwm[index] = value - idlePulse;
-}
-
-static void pwmWriteMotorInt(uint8_t index, uint16_t value)
-{
-    pwmWriteMotor(index, (float)value);
+    motorsPwm[index] = pwmConvertToInternal(mode, value) - motorConfig()->mincommand;
 }
 
 static void pwmShutdownPulsesForAllMotors(void)
@@ -453,54 +560,62 @@ bool pwmIsMotorEnabled(uint8_t index) {
     return motors[index].enabled;
 }
 
+static void refreshPwmPacket(bool motorsActive)
+{
+    // Normal range = [0.0, 1.0], 3D range = [-1.0, 1.0]. motor_speed[i] carries
+    // M(i+1), so M1 (the fixed-wing throttle) is motor_speed[0];
+    // wingflight-sitl-hitl sitl/jsbsim_bridge.py reads it from there.
+    const double outScale = 1000.0;
+
+    if (motorsActive) {
+        for (uint8_t i = 0; i < ARRAYLEN(pwmPkt.motor_speed); i++) {
+            pwmPkt.motor_speed[i] = motorsPwm[i] / outScale;
+        }
+    } else {
+        // Motor device disabled (disarmed): motorsPwm[] is stale, and the real
+        // output is motor-stop regardless of RC.
+        for (uint8_t i = 0; i < ARRAYLEN(pwmPkt.motor_speed); i++) {
+            pwmPkt.motor_speed[i] = 0;
+        }
+    }
+
+    // wing control-surface outputs (S1-Sn), in microseconds, for fixed-wing FDMs
+    const uint8_t servoCount = MIN(getServoCount(), (uint8_t)ARRAYLEN(pwmPkt.servo));
+    for (uint8_t i = 0; i < ARRAYLEN(pwmPkt.servo); i++) {
+        pwmPkt.servo[i] = (i < servoCount) ? getServoOutput(i) : 0;
+    }
+}
+
 static void pwmCompleteMotorUpdate(void)
 {
     // send to simulator
-    // for gazebo8 ArduCopterPlugin remap, normal range = [0.0, 1.0], 3D rang = [-1.0, 1.0]
-
-    double outScale = 1000.0;
-
-    pwmPkt.motor_speed[3] = motorsPwm[0] / outScale;
-    pwmPkt.motor_speed[0] = motorsPwm[1] / outScale;
-    pwmPkt.motor_speed[1] = motorsPwm[2] / outScale;
-    pwmPkt.motor_speed[2] = motorsPwm[3] / outScale;
+    refreshPwmPacket(true);
 
     // get one "fdm_packet" can only send one "servo_packet"!!
     if (pthread_mutex_trylock(&updateLock) != 0) return;
     udpSend(&pwmLink, &pwmPkt, sizeof(servo_packet));
-//    printf("[pwm]%u:%u,%u,%u,%u\n", idlePulse, motorsPwm[0], motorsPwm[1], motorsPwm[2], motorsPwm[3]);
-}
-
-void pwmWriteServo(uint8_t index, float value) {
-    servosPwm[index] = value;
 }
 
 static motorDevice_t motorPwmDevice = {
     .vTable = {
         .postInit = motorPostInitNull,
-        .convertExternalToMotor = pwmConvertFromExternal,
-        .convertMotorToExternal = pwmConvertToExternal,
         .enable = pwmEnableMotors,
         .disable = pwmDisableMotors,
         .isMotorEnabled = pwmIsMotorEnabled,
         .updateStart = motorUpdateStartNull,
         .write = pwmWriteMotor,
-        .writeInt = pwmWriteMotorInt,
         .updateComplete = pwmCompleteMotorUpdate,
         .shutdown = pwmShutdownPulsesForAllMotors,
     }
 };
 
-motorDevice_t *motorPwmDevInit(const motorDevConfig_t *motorConfig, uint16_t _idlePulse, uint8_t motorCount, bool useUnsyncedPwm)
+motorDevice_t *motorPwmDevInit(const motorDevConfig_t *motorConfig, uint8_t motorCount)
 {
     UNUSED(motorConfig);
-    UNUSED(useUnsyncedPwm);
 
     if (motorCount > 4) {
         return NULL;
     }
-
-    idlePulse = _idlePulse;
 
     for (int motorIndex = 0; motorIndex < MAX_SUPPORTED_MOTORS && motorIndex < motorCount; motorIndex++) {
         motors[motorIndex].enabled = true;
@@ -531,24 +646,31 @@ void FLASH_Unlock(void) {
         return;
     }
 
-    // open or create
-    eepromFd = fopen(EEPROM_FILENAME,"r+");
+    // open or create (binary mode - text mode on Windows corrupts binary
+    // data via CRLF/EOF-byte translation)
+    eepromFd = fopen(EEPROM_FILENAME,"rb+");
     if (eepromFd != NULL) {
         // obtain file size:
         fseek(eepromFd , 0 , SEEK_END);
         size_t lSize = ftell(eepromFd);
         rewind(eepromFd);
 
+        // A file of a different size is still usable: the config is validated by
+        // its header/CRC, and FLASH_Lock() rewrites it at exactly EEPROM_SIZE.
         size_t n = fread(eepromData, 1, sizeof(eepromData), eepromFd);
-        if (n == lSize) {
-            printf("[FLASH_Unlock] loaded '%s', size = %ld / %ld\n", EEPROM_FILENAME, lSize, sizeof(eepromData));
+        if (n == sizeof(eepromData) || n == lSize) {
+            printf("[FLASH_Unlock] loaded '%s', size = %zu / %zu\n", EEPROM_FILENAME, lSize, sizeof(eepromData));
+            if (lSize != sizeof(eepromData)) {
+                fprintf(stderr, "[FLASH_Unlock] '%s' is %zu bytes, expected %zu - it is rewritten at the expected size on the next save\n",
+                    EEPROM_FILENAME, lSize, sizeof(eepromData));
+            }
         } else {
             fprintf(stderr, "[FLASH_Unlock] failed to load '%s'\n", EEPROM_FILENAME);
             return;
         }
     } else {
-        printf("[FLASH_Unlock] created '%s', size = %ld\n", EEPROM_FILENAME, sizeof(eepromData));
-        if ((eepromFd = fopen(EEPROM_FILENAME, "w+")) == NULL) {
+        printf("[FLASH_Unlock] created '%s', size = %zu\n", EEPROM_FILENAME, sizeof(eepromData));
+        if ((eepromFd = fopen(EEPROM_FILENAME, "wb+")) == NULL) {
             fprintf(stderr, "[FLASH_Unlock] failed to create '%s'\n", EEPROM_FILENAME);
             return;
         }
@@ -561,11 +683,18 @@ void FLASH_Unlock(void) {
 void FLASH_Lock(void) {
     // flush & close
     if (eepromFd != NULL) {
-        fseek(eepromFd, 0, SEEK_SET);
-        fwrite(eepromData, 1, sizeof(eepromData), eepromFd);
+        // Reopen truncating, so an oversized file from elsewhere shrinks to EEPROM_SIZE.
         fclose(eepromFd);
         eepromFd = NULL;
-        printf("[FLASH_Lock] saved '%s'\n", EEPROM_FILENAME);
+        FILE *out = fopen(EEPROM_FILENAME, "wb");
+        if (out == NULL || fwrite(eepromData, sizeof(eepromData), 1, out) != 1) {
+            fprintf(stderr, "[FLASH_Lock] failed to save '%s': %s\n", EEPROM_FILENAME, strerror(errno));
+        } else {
+            printf("[FLASH_Lock] saved '%s'\n", EEPROM_FILENAME);
+        }
+        if (out != NULL) {
+            fclose(out);
+        }
     } else {
         fprintf(stderr, "[FLASH_Lock] eeprom is not unlocked\n");
     }

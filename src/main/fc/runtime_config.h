@@ -66,7 +66,8 @@ typedef enum {
     ARMING_DISABLED_ACC_CALIBRATION = (1 << 23),
     ARMING_DISABLED_MOTOR_PROTOCOL  = (1 << 24),
     ARMING_DISABLED_OVERRIDE        = (1 << 25),
-    ARMING_DISABLED_ARM_SWITCH      = (1 << 26), // Needs to be the last element, since it's always activated if one of the others is active when arming
+    ARMING_DISABLED_RX_INPUT_BACKUP = (1 << 26),
+    ARMING_DISABLED_ARM_SWITCH      = (1 << 27), // Needs to be the last element, since it's always activated if one of the others is active when arming
 } armingDisableFlags_e;
 
 #define ARMING_DISABLE_FLAGS_COUNT (LOG2(ARMING_DISABLED_ARM_SWITCH) + 1)
@@ -93,6 +94,7 @@ typedef enum {
     AUTOTRIM_MODE_BIT    = 11,
     LOITER_MODE_BIT      = 12,
     RTH_MODE_BIT         = 13,
+    TRADITIONAL_MODE_BIT = 14,
 } flightModeBits_e;
 
 typedef enum {
@@ -138,6 +140,11 @@ typedef enum {
     // inject a bank/pitch angle on top of the pilot's stick input, throttle stays manual.
     LOITER_MODE          = BIT(LOITER_MODE_BIT),
     RTH_MODE             = BIT(RTH_MODE_BIT),
+    // TRADITIONAL: layers on top of whatever stabilisation is already active (default rate PID,
+    // ANGLE, or HORIZON) and forces that axis's I-term output to zero, so the servo snaps back
+    // immediately on stick release instead of holding -- a more traditional RC-gyro feel. Does not
+    // touch iterm_relax/iterm_decay bookkeeping, so I resumes smoothly if this mode is switched off.
+    TRADITIONAL_MODE     = BIT(TRADITIONAL_MODE_BIT),
 } flightModeFlags_e;
 
 extern uint16_t flightModeFlags;

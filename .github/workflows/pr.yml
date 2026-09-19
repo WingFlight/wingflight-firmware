@@ -8,7 +8,7 @@ on:
 
 env:
 
-  TARGETS: unified MATEKF405 MATEKF411 MATEKF722 MATEKH743
+  TARGETS: unified
 
 jobs:
 

@@ -85,6 +85,8 @@ typedef enum {
                          // main loop's ANGLE/AUTOHOVER/ATTHOLD chain, so the vectored nozzle
                          // can hold while control surfaces stay in plain rate/acro. Only
                          // meaningful while BOXTHRUSTVECTOR is also active.
+    BOXTRADITIONAL,     // TRADITIONAL: forces I-term output to zero while layered on top of
+                         // whatever stabilisation is already active (see TRADITIONAL_MODE)
 
     CHECKBOX_ITEM_COUNT,
 

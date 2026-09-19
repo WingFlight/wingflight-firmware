@@ -20,6 +20,7 @@
 #include "config/config.h"
 
 #include "pg/servos.h"
+#include "pg/servo_curve.h"
 #include "pg/adjustments.h"
 
 #define DEFAULT_SERVO_FLAGS      0
@@ -27,7 +28,7 @@
 #define DEFAULT_SERVO_MIN     -700
 #define DEFAULT_SERVO_MAX      700
 #define DEFAULT_SERVO_SCALE    500
-#define DEFAULT_SERVO_RATE     150
+#define DEFAULT_SERVO_RATE      50
 #define DEFAULT_SERVO_SPEED      0
 
 #define SERVO_LIMIT_MIN      -1000

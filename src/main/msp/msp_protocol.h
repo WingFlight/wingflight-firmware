@@ -284,6 +284,8 @@
 #define MSP_SET_VTXTABLE_POWERLEVEL          228
 
 #define MSP_MULTIPLE_MSP                     230
+#define MSP_SERVO_CURVES                     231
+#define MSP_SET_SERVO_CURVE                  232
 #define MSP_MODE_RANGES_EXTRA                238
 #define MSP_ACC_TRIM                         240
 #define MSP_SET_ACC_TRIM                     239

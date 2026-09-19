@@ -109,7 +109,7 @@ rate, or `pidProfile_t` at runtime. See
 [docs/development/Oscillation Detection.md](docs/development/Oscillation%20Detection.md)
 for the full design.
 
-New PID profile settings (`pidProfile_t` version 9 -> 10, existing profiles
+New PID profile settings (`pidProfile_t` version 11 -> 12, existing profiles
 reset to defaults on upgrade): `osc_limiter` (off by default), `osc_limiter_min_hz`
 / `osc_limiter_max_hz` (detection band), `osc_limiter_threshold` (error energy
 threshold, deg/s), `osc_limiter_floor` (minimum gain scale, percent), and

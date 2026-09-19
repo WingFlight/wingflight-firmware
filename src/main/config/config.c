@@ -20,6 +20,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 
@@ -213,6 +214,13 @@ static void validateAndFixPositionConfig(void)
 
 static void validateAndFixConfig(void)
 {
+#ifdef SIMULATOR_BUILD
+    // The Configurator offers every feature, but SITL compiles many of them out
+    // and the checks below silently clear those - which on SITL looks exactly
+    // like "save didn't persist". Say so on the console.
+    const uint32_t requestedFeatures = featureConfig()->enabledFeatures;
+#endif
+
     if (!isSerialConfigValid(serialConfig())) {
         pgResetFn_serialConfig(serialConfigMutable());
     }
@@ -476,6 +484,13 @@ static void validateAndFixConfig(void)
     featureDisableImmediate(FEATURE_RSSI_ADC);
 #endif
 
+#ifdef SIMULATOR_BUILD
+    const uint32_t droppedFeatures = requestedFeatures & ~featureConfig()->enabledFeatures;
+    if (droppedFeatures) {
+        fprintf(stderr, "[config] features 0x%08x not supported by this build (or its config) - disabled, not saved\n", (unsigned)droppedFeatures);
+    }
+#endif
+
 #ifdef USE_RPM_FILTER
     validateAndFixRPMFilterConfig();
 #endif
@@ -504,6 +519,7 @@ static void validateAndFixConfig(void)
 #endif
 
     bool configuredMotorProtocolDshot = checkMotorProtocolDshot(&motorConfig()->dev);
+    UNUSED(configuredMotorProtocolDshot);
 #if defined(USE_DSHOT)
     // If using DSHOT protocol disable unsynched PWM as it's meaningless
     if (configuredMotorProtocolDshot) {

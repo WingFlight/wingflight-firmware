@@ -6,7 +6,7 @@
     $ git clone https://github.com/betaflight/betaflight.git
     $ cd betaflight
     $ make arm_sdk_install
-    $ make TARGET=MATEKF411
+    $ make TARGET=STM32F411
 
 ### Building Configurator in Fedora 35
 

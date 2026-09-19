@@ -28,6 +28,30 @@
 
 #include "platform.h"
 
+// MinGW/MSYS toolchains used for native Windows SITL builds lack the GNU/BSD
+// strcasestr() extension that is available on the Linux/macOS and ARM/newlib
+// toolchains used for the other targets.
+#if defined(_WIN32) || defined(__MINGW32__)
+static const char *strcasestr(const char *haystack, const char *needle)
+{
+    if (!*needle) {
+        return haystack;
+    }
+    for (; *haystack; haystack++) {
+        const char *h = haystack;
+        const char *n = needle;
+        while (*h && *n && tolower((unsigned char)*h) == tolower((unsigned char)*n)) {
+            h++;
+            n++;
+        }
+        if (!*n) {
+            return haystack;
+        }
+    }
+    return NULL;
+}
+#endif
+
 // FIXME remove this for targets that don't need a CLI.  Perhaps use a no-op macro when USE_CLI is not enabled
 // signal that we're in cli mode
 bool cliMode = false;
@@ -544,6 +568,16 @@ static void cliPrintErrorVa(const char *cmdName, const char *format, va_list va)
     if (cliErrorWriter) {
         cliPrintInternal(cliErrorWriter, "###ERROR IN ");
         cliPrintInternal(cliErrorWriter, cmdName);
+#if defined(USE_CUSTOM_DEFAULTS)
+        // Custom-defaults replay (see cliProcessCustomDefaults()) runs with
+        // cliWriter suppressed, so a failing line's own command echo never
+        // appears -- only this error does, with nothing to say where it came
+        // from. Tag it so it doesn't look like it fired out of context (e.g.
+        // right after typing `defaults`, with no obvious connection to it).
+        if (processingCustomDefaults) {
+            cliPrintInternal(cliErrorWriter, " (custom defaults)");
+        }
+#endif
         cliPrintInternal(cliErrorWriter, ": ");
 
         tfp_format(cliErrorWriter, cliPutp, format, va);
@@ -1477,7 +1511,7 @@ static void cliSerial(const char *cmdName, char *cmdline)
 static void cbCtrlLine(void *context, uint16_t ctrl)
 {
 #ifdef USE_PINIO
-    int contextValue = (int)(long)context;
+    int contextValue = (int)(intptr_t)context;
     if (contextValue) {
         pinioSet(contextValue - 1, !(ctrl & CTRL_LINE_STATE_DTR));
     } else
@@ -2462,7 +2496,7 @@ static void printMixerInputs(dumpFlags_t dumpMask, const mixerInput_t *inputs, c
 
 static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, const mixerRule_t *defaults, const char *headingStr)
 {
-    const char *format = "mixer rule %u %s %s %s %d %d %d %d %d %d";
+    const char *format = "mixer rule %u %s %s %s %d %d %d %d %d %d %d";
     bool equalsDefault = false;
 
     if (defaults) {
@@ -2487,7 +2521,8 @@ static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, cons
                                  def->weightNeg,
                                  def->speed,
                                  def->curve,
-                                 def->condition
+                                 def->condition,
+                                 def->role
             );
         }
         if (rule->oper) {
@@ -2500,7 +2535,8 @@ static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, cons
                               rule->weightNeg,
                               rule->speed,
                               rule->curve,
-                              rule->condition
+                              rule->condition,
+                              rule->role
             );
         }
     }
@@ -2674,8 +2710,8 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 }
             }
         }
-        else if (count == 7 || count == 8 || count == 9 || count == 10 || count == 11) {
-            enum { FUNC=0, RULE, OPER, INPUT, OUTPUT, WEIGHT, OFFSET, WEIGHTNEG, SPEED, CURVE, CONDITION, ARGS_COUNT };
+        else if (count == 7 || count == 8 || count == 9 || count == 10 || count == 11 || count == 12) {
+            enum { FUNC=0, RULE, OPER, INPUT, OUTPUT, WEIGHT, OFFSET, WEIGHTNEG, SPEED, CURVE, CONDITION, ROLE, ARGS_COUNT };
             int vals[ARGS_COUNT];
             for (int i=1; i<count; i++)
                 vals[i] = atoi(args[i]);
@@ -2691,7 +2727,7 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 if (strcasecmp(args[OUTPUT], mixerOutputNames[i]) == 0)
                     vals[OUTPUT] = i;
             }
-            // weightNeg defaults to weight (symmetric) when omitted; speed/curve/condition default to off
+            // weightNeg defaults to weight (symmetric) when omitted; speed/curve/condition/role default to off
             if (count == 7) {
                 vals[WEIGHTNEG] = vals[WEIGHT];
             }
@@ -2704,6 +2740,9 @@ static void cliMixer(const char *cmdName, char *cmdline)
             if (count < 11) {
                 vals[CONDITION] = 0;
             }
+            if (count < 12) {
+                vals[ROLE] = 0;
+            }
             if (vals[RULE] >= 0 && vals[RULE] < MIXER_RULE_COUNT &&
                 vals[OPER] >= MIXER_OP_NUL && vals[OPER] < MIXER_OP_COUNT &&
                 vals[INPUT] >= 0 && vals[INPUT] < MIXER_INPUT_COUNT &&
@@ -2713,7 +2752,8 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 vals[WEIGHTNEG] >= MIXER_WEIGHT_MIN && vals[WEIGHTNEG] <= MIXER_WEIGHT_MAX &&
                 vals[SPEED] >= SERVO_SPEED_MIN && vals[SPEED] <= SERVO_SPEED_MAX &&
                 vals[CURVE] >= 0 && vals[CURVE] <= MIXER_CURVE_COUNT &&
-                vals[CONDITION] >= 0 && vals[CONDITION] <= LOGIC_CONDITION_COUNT)
+                vals[CONDITION] >= 0 && vals[CONDITION] <= LOGIC_CONDITION_COUNT &&
+                vals[ROLE] >= 0 && vals[ROLE] < MIXER_RULE_ROLE_COUNT)
             {
                 mixerRule_t *mix = mixerRulesMutable(vals[RULE]);
                 mix->oper      = vals[OPER];
@@ -2725,6 +2765,8 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 mix->speed     = vals[SPEED];
                 mix->curve     = vals[CURVE];
                 mix->condition = vals[CONDITION];
+                mix->role      = vals[ROLE];
+                mixerCaptureRuleSign(vals[RULE]);
             } else {
                 cliShowArgumentRangeError(cmdName, NULL, 0, 0);
             }
@@ -4345,6 +4387,7 @@ static void cliDumpGyroRegisters(const char *cmdName, char *cmdline)
 #endif
 
 
+#if defined(USE_DSHOT) || defined(USE_ESCSERIAL)
 static int parseOutputIndex(const char *cmdName, char *pch, bool allowAllEscs) {
     int outputIndex = atoi(pch);
     if (outputIndex > 0 && outputIndex <= getMotorCount()) {
@@ -4357,6 +4400,7 @@ static int parseOutputIndex(const char *cmdName, char *pch, bool allowAllEscs) {
     }
     return outputIndex - 1;
 }
+#endif // USE_DSHOT || USE_ESCSERIAL
 
 #if defined(USE_DSHOT)
 static void cliDshotProg(const char *cmdName, char *cmdline)
@@ -5409,7 +5453,7 @@ static void cliStatus(const char *cmdName, char *cmdline)
     cliPrint("Arming disable flags:");
     armingDisableFlags_e flags = getArmingDisableFlags();
     while (flags) {
-        const int bitpos = ffs(flags) - 1;
+        const int bitpos = __builtin_ffs(flags) - 1;
         flags &= ~(1 << bitpos);
         cliPrintf(" %s", armingDisableFlagNames[bitpos]);
     }

@@ -36,6 +36,7 @@
 
 #include "flight/pid.h"
 #include "flight/mixer.h"
+#include "flight/hold_engine.h"
 #include "flight/tv_hold.h"
 
 #include "tv_pid.h"
@@ -433,7 +434,13 @@ static void tvPidApplyAxis(uint8_t axis)
     tvPid.data[axis].axisError = limitf(tvPid.data[axis].axisError + itermDelta, tvPid.errorLimit[axis]);
     tvPid.data[axis].I = tvPid.coef[axis].Ki * masterGain * tvPid.data[axis].axisError;
 
-    const float errorDecay = limitf(tvPid.data[axis].axisError * tvPid.itermDecayRate, tvPid.itermDecayLimit);
+    // An axis that is actually holding a frozen attitude target bleeds I at a small fraction of
+    // the normal rate instead of the full rate -- a full-rate decay erodes the I a sustained hold
+    // needs against a persistent disturbance (the correction "gives up" after a couple of
+    // seconds), while no decay at all would leave stale I parking the nozzle off-center forever.
+    // Same reasoning as pid.c's ATT HOLD handling.
+    const float decayScale = tvHoldIsHolding(axis) ? QUATHOLD_HOLD_I_DECAY_SCALE : 1.0f;
+    const float errorDecay = limitf(tvPid.data[axis].axisError * tvPid.itermDecayRate * decayScale, tvPid.itermDecayLimit * decayScale);
     tvPid.data[axis].axisError -= errorDecay * pidGetDT();
 
   //// Feedforward

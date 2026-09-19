@@ -92,6 +92,15 @@
 // unaffected: it already can't snap.
 #define SERVO_TRIM_MAX_STEP_PER_TICK 4
 
+// Continuous ("Absolute") adjustments map the channel straight to a value, so a pot
+// that isn't perfectly still (ADC/RX noise, or resting right on a value boundary)
+// flips the result by +-1 every tick, and every flip is a config write plus a
+// blackbox event. The channel has to move more than this many us away from the last
+// position that was acted on before the mapping is re-evaluated; slower drift still
+// gets through because the reference only moves when it is exceeded. On a wide
+// range (e.g. 975 values over 1250us) this costs about two counts of resolution.
+#define CONTINUOUS_CHANNEL_DEADBAND 3
+
 // Servo trims move physical control surfaces, so their adjustment channels are
 // treated as untrustworthy until the RX link has been continuously valid for this
 // long. This rides out the garbage/failsafe-hold frames some receivers emit for a
@@ -262,6 +271,17 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 
     ADJ_ENTRY(TV_PROFILE,                   1, 6),
 
+    // Magnitude only, 0..1000 -- applyRoleWeight() (flight/mixer.c) never
+    // touches a tagged rule's sign, only scales |weight|, so polarity stays
+    // whatever the rule was configured with (Reverse in the mixer table, or
+    // a negative weight via CLI) regardless of what this adjustment does.
+    // 1000 is already a full 1.0x on the flap input, generous for a
+    // compensation trim; MIXER_WEIGHT_MAX itself (pg/mixer.h, 10000) is
+    // never a deliberate live-tuning choice, just a typo, like every other
+    // gain-style adjustment here.
+    ADJ_ENTRY(FLAP_COMPENSATION_GAIN,      0, 1000),
+    ADJ_ENTRY(DIFF_THRUST_YAW_GAIN,        0, 1000),
+
 };
 
 
@@ -427,11 +447,20 @@ void processRcAdjustments(void)
                     const int rangeWidth = rangeUpper - rangeLower;
                     const int valueWidth = adjRange->adjMax - adjRange->adjMin;
 
+                    // Hold the channel reading steady inside the deadband so a noisy pot
+                    // doesn't make the mapped value wander. adjState->chValue is only used
+                    // by stepped mode otherwise, and an adjRange is one mode or the other.
+                    // (Starts at 0 after a reset, so the first reading is always taken.)
+                    if (abs(chValue - adjState->chValue) > CONTINUOUS_CHANNEL_DEADBAND) {
+                        adjState->chValue = chValue;
+                    }
+                    const int heldValue = adjState->chValue;
+
                     if (rangeWidth > 0 && valueWidth > 0) {
                         const int rangeMargin = MAX(5, rangeWidth / (valueWidth * 2));
-                        if (chValue > rangeLower - rangeMargin && chValue < rangeUpper + rangeMargin) {
+                        if (heldValue > rangeLower - rangeMargin && heldValue < rangeUpper + rangeMargin) {
                             const int offset = rangeWidth / 2;
-                            adjval = adjRange->adjMin + ((chValue - rangeLower) * valueWidth + offset) / rangeWidth;
+                            adjval = adjRange->adjMin + ((heldValue - rangeLower) * valueWidth + offset) / rangeWidth;
                         }
                     }
 

@@ -48,9 +48,6 @@ do
     testbuild STM32F411 &
     testbuild STM32F405 &
     testbuild STM32G47X &
-    testbuild MATEKF722 &
-    testbuild MATEKF411 &
-    testbuild MATEKF405 &
 
     wait
 

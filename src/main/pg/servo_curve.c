@@ -15,17 +15,26 @@
  * along with this software. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#pragma once
+#include "types.h"
+#include "platform.h"
 
-#include <stdbool.h>
+#ifdef USE_SERVOS
 
-#include "pg/tv_pid.h"
-#include "pg/adjustments.h"
+#include "pg/pg_ids.h"
+#include "pg/servo_curve.h"
 
-void  tvHoldInit(const tvPidProfile_t *profile);
-void  tvHoldSetState(bool state);
+PG_REGISTER_ARRAY_WITH_RESET_FN(servoCurve_t, MAX_SUPPORTED_SERVOS, servoCurves, PG_SERVO_CURVES, 0);
 
-float tvHoldApply(int axis, float pidSetpoint);
-bool  tvHoldIsHolding(int axis);
+void pgResetFn_servoCurves(servoCurve_t *curve)
+{
+    // Flat zero-delta per servo, so an unconfigured curve adds no
+    // correction to servo output (see servoUpdate() - the curve is added
+    // to the servo's own output, not substituted for it).
+    for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
+        curve[i].count = 2;
+        curve[i].points[0] = (curvePoint_t){ -1000, 0 };
+        curve[i].points[1] = (curvePoint_t){  1000, 0 };
+    }
+}
 
-ADJFUN_DECLARE(TV_HOLD_GAIN)
+#endif

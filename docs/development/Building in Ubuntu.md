@@ -16,14 +16,14 @@ This document is tested and based on the latest Ubuntu 20.04.03 LTS release and 
 Navigate to your local betaflight repository and use the following steps to pull the latest changes and rebuild your version of betaflight:
 
     $ git pull
-    $ make clean TARGET=MATEKF405
-    $ make TARGET=MATEKF405 [OPTIONS=RANGEFINDER] [DEBUG=DBG]
+    $ make clean TARGET=STM32F405
+    $ make TARGET=STM32F405 [OPTIONS=RANGEFINDER] [DEBUG=DBG]
 
 Using the optional OPTIONS parameters you can specify options like RANGEFINDER.
 Using the optional DEBUG parameter you can specify the debugger.
 
 You'll see a set of files being compiled, and finally linked, yielding both an ELF and then a HEX.
-You can use the Betaflight-Configurator to flash the `obj/betaflight_MATEKF405.hex` file.
+You can use the Betaflight-Configurator to flash the `obj/betaflight_STM32F405.hex` file.
 Make sure to remove `obj/` and `make clean`, before building again.
 
 ### Building Betaflight Configurator

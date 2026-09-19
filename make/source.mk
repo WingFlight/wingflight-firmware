@@ -114,6 +114,7 @@ COMMON_SRC = \
             flight/trainer.c \
             flight/leveling.c \
             flight/autohover.c \
+            flight/hold_engine.c \
             flight/atthold.c \
             flight/tv_hold.c \
             flight/autotrim.c \
@@ -220,6 +221,7 @@ SPEED_OPTIMISED_SRC := ""
 SIZE_OPTIMISED_SRC  := ""
 
 SPEED_OPTIMISED_SRC := $(SPEED_OPTIMISED_SRC) \
+            common/curve.c \
             common/encoding.c \
             common/filter.c \
             common/maths.c \

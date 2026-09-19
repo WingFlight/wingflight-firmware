@@ -1,47 +1,43 @@
-## SITL in gazebo 8 with ArduCopterPlugin
-SITL (software in the loop) simulator allows you to run betaflight/cleanflight without any hardware.
-Currently only tested on Ubuntu 16.04, x86_64, gcc (Ubuntu 5.4.0-6ubuntu1~16.04.4) 5.4.0 20160609.
+## SITL
 
-### install gazebo 8
-see here: [Installation](http://gazebosim.org/tutorials?cat=install)
+`TARGET=SITL` builds Wingflight as a native executable that talks to an external
+flight dynamics model over UDP. The simulator tooling (JSBSim bridge, launcher,
+aircraft models, joystick RC, automated checks) lives in the
+[wingflight-sitl-hitl](https://github.com/WingFlight/wingflight-sitl-hitl) repo,
+whose `setup-sitl.ps1` checks out, builds and launches everything.
 
-### copy & modify world
-for Ubunutu 16.04:
-`cp /usr/share/gazebo-8/worlds/iris_arducopter_demo.world .`
+### Build
 
-change `real_time_update_rate` in `iris_arducopter_demo.world`:
-`<real_time_update_rate>0</real_time_update_rate>`
-to
-`<real_time_update_rate>100</real_time_update_rate>`
-***this suggest set to non-zero***
+```sh
+make mingw_sdk_install      # Windows only, once: native MinGW-w64 GCC into tools/mingw64
+make TARGET=SITL            # -> obj/main/wingflight_SITL.elf (a native executable)
+```
 
-`100` mean what speed your computer should run in (Hz).
-Faster computer can set to a higher rate.
-see [here](http://gazebosim.org/tutorials?tut=modifying_world&cat=build_world#PhysicsProperties) for detail.
-`max_step_size` should NOT higher than `0.0025` as I tested.
-smaller mean more accurate, but need higher speed CPU to run as realtime.
+On Linux/macOS the system `gcc` is used. Delete any stale
+`obj/main/wingflight_SITL.exe`: `make` only produces the `.elf`.
 
-### build betaflight
-run `make TARGET=SITL`
+### Ports
 
-### settings
-to avoid simulation speed slow down, suggest to set some settings belows:
+| Direction | Address | Payload |
+|---|---|---|
+| Wingflight -> simulator | `udp://127.0.0.1:9002` | `servo_packet`: `motor_speed[4]` (M1-M4) + `servo[8]` (S1-S8, us) |
+| Simulator -> Wingflight | `udp://127.0.0.1:9003` | `fdm_packet`: IMU, attitude quaternion, velocity, NED position |
+| UARTx <-> MSP clients | `tcp://127.0.0.1:576x` | one client per port; config defaults: 5761 RC, 5762 GPS feed (`GPS_MSP`), 5763 Configurator |
 
-In `configuration` page:
+Both structs are defined in [target.h](target.h). `motor_speed[i]` carries M(i+1),
+so the wing throttle M1 is `motor_speed[0]`. SITL's RX is `FEATURE_RX_MSP`, so RC
+arrives as `MSP_SET_RAW_RC`; SITL-specific config defaults are in [config.c](config.c).
 
-1. `ESC/Motor`: `PWM`, disable `Motor PWM speed Sparted from PID speed`
-2. `PID loop frequency` as high as it can.
+### eeprom.bin
 
-### start and run
-1. start betaflight: `./obj/main/betaflight_SITL.elf`
-2. start gazebo: `gazebo --verbose ./iris_arducopter_demo.world`
-4. connect your transmitter and fly/test, I used a app to send `MSP_SET_RAW_RC`, code available [here](https://github.com/cs8425/msp-controller).
+`eeprom.bin` in the working directory holds the saved config. Its size is
+`EEPROM_SIZE` (32768 bytes) in [target.h](target.h). On a missing `eeprom.bin`,
+the first launch writes the default config and exits; start it again. A
+wrong-sized file still loads (with a warning) and is rewritten at `EEPROM_SIZE`
+on save. A stale `eeprom.bin` from an older build can mask config-default
+changes; delete it to re-apply the defaults.
 
-### note
-betaflight	->	gazebo	`udp://127.0.0.1:9002`
-gazebo	->	betaflight	`udp://127.0.0.1:9003`
-
-UARTx will bind on `tcp://127.0.0.1:576x` when port been open.
-
-`eeprom.bin`, size 8192 Byte, is for config saving.
-size can be changed in `src/main/target/SITL/pg.ld` >> `__FLASH_CONFIG_Size`
+"Save and reboot" writes `eeprom.bin` and then **exits** SITL (there is no
+in-process restart). Features SITL doesn't compile in (LED_STRIP, OSD, SOFTSERIAL,
+RANGEFINDER, DYN_NOTCH, RPM_FILTER, ...) are cleared when you save, and SITL prints
+`[config] features 0x... not supported by this build` on stderr.

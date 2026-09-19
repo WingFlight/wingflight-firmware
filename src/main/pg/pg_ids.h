@@ -173,6 +173,7 @@
 #define PG_SRXL2_ESC_CONFIG          1014
 #define PG_DRIVER_RX_INPUT_BACKUP_CONFIG 1015
 #define PG_BUS_SERVO_CONFIG          1016
+#define PG_SERVO_CURVES              1017
 
 // OSD configuration -- removed (OSD)
 //#define PG_OSD_FONT_CONFIG 2047
