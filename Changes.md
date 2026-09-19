@@ -183,8 +183,9 @@ Multiple changes (#314) (#353).
 Servo trim is appended without changing the existing layout:
 
 - `MSP_SERVO_CONFIGURATIONS` returns the unchanged count + 8x U16 records, followed
-  by one S16 trim per servo in the same order. Clients that stop reading after the
-  records are unaffected.
+  by one S16 saved trim per servo in the same order, then one S16 runtime trim per servo
+  (the live, unsaved offset from continuous adjustments; read-only, for display).
+  Clients that stop reading after the records are unaffected.
 - `MSP_GET_SERVO_CONFIG` returns an extra trailing S16 trim.
 - `MSP_SET_SERVO_CONFIGURATION` and `MSP_SET_SERVO_CONFIG` accept an optional
   trailing S16 trim. Without it the trim is left unchanged. The trim is limited to
