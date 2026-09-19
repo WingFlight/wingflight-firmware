@@ -56,8 +56,16 @@
 // the simulator, is never called and the JSBSim bridge receives nothing at all.
 // Four motor channels match servo_packet.motor_speed[4]; a fixed-wing mixer only
 // drives M1. motorPwmDevInit() rejects anything above four.
+//
+// Eight servo channels match servo_packet.servo[8] and MAX_SUPPORTED_PWM_SERVOS.
+// This table is what sizes servoCount (servoInit() counts the non-zero
+// servoConfig()->ioTags it can allocate a timer for), and refreshPwmPacket()
+// below sends 0 for every slot at or above servoCount. With only four entries
+// the mixer would compute S5-S8 perfectly and then drop them on the floor, so
+// any airframe needing more than aileron/elevator/rudder - a thrust-vectoring
+// nozzle on S5/S6, flaps, a second aileron pair - silently did nothing.
 #define SITL_TIMER_MOTOR_COUNT 4
-#define SITL_TIMER_SERVO_COUNT 4
+#define SITL_TIMER_SERVO_COUNT 8
 const timerHardware_t timerHardware[SITL_TIMER_MOTOR_COUNT + SITL_TIMER_SERVO_COUNT] = {
     { .tag = 0x01, .usageFlags = TIM_USE_MOTOR },
     { .tag = 0x02, .usageFlags = TIM_USE_MOTOR },
@@ -67,6 +75,10 @@ const timerHardware_t timerHardware[SITL_TIMER_MOTOR_COUNT + SITL_TIMER_SERVO_CO
     { .tag = 0x12, .usageFlags = TIM_USE_SERVO },
     { .tag = 0x13, .usageFlags = TIM_USE_SERVO },
     { .tag = 0x14, .usageFlags = TIM_USE_SERVO },
+    { .tag = 0x15, .usageFlags = TIM_USE_SERVO },
+    { .tag = 0x16, .usageFlags = TIM_USE_SERVO },
+    { .tag = 0x17, .usageFlags = TIM_USE_SERVO },
+    { .tag = 0x18, .usageFlags = TIM_USE_SERVO },
 };
 
 #include "drivers/accgyro/accgyro_fake.h"
@@ -89,6 +101,23 @@ uint32_t SystemCoreClock;
 
 static fdm_packet fdmPkt;
 static servo_packet pwmPkt;
+
+// The two halves of the servo path have to agree, and nothing else checks them.
+//
+// servoInit() sizes servoCount from the TIM_USE_SERVO entries in
+// timerHardware[] above, while refreshPwmPacket() can only forward what fits in
+// servo_packet - and sends 0 for every slot at or above servoCount. Declare
+// fewer channels than the packet holds and the mixer computes those outputs
+// correctly and then drops them, with no error anywhere: that is exactly how
+// S5-S8 came to be dead.
+STATIC_ASSERT(SITL_TIMER_SERVO_COUNT == ARRAYLEN(pwmPkt.servo),
+              SITL_servo_channels_must_match_servo_packet);
+
+// timerHardware[] is sized by the SITL_TIMER_*_COUNTs, but every consumer
+// iterates USABLE_TIMER_CHANNEL_COUNT (target.h). Too small hides channels;
+// too large reads past the end of the table.
+STATIC_ASSERT(USABLE_TIMER_CHANNEL_COUNT == ARRAYLEN(timerHardware),
+              SITL_usable_timer_channel_count_must_match_table);
 
 static struct timespec start_time;
 static double simRate = 1.0;

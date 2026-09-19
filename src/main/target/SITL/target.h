@@ -69,8 +69,8 @@
 #define USE_BARO
 #define USE_FAKE_BARO
 
-// Must match the synthetic timerHardware[] table in target.c (4 motor + 4 servo).
-#define USABLE_TIMER_CHANNEL_COUNT 8
+// Must match the synthetic timerHardware[] table in target.c (4 motor + 8 servo).
+#define USABLE_TIMER_CHANNEL_COUNT 12
 
 #define USE_UART1
 #define USE_UART2
