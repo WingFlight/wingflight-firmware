@@ -43,6 +43,7 @@
 #include "flight/tv_hold.h"
 #include "flight/tv_pid.h"
 #include "flight/mixer.h"
+#include "flight/servos.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
 #include "flight/autohover.h"
@@ -312,6 +313,39 @@ static bool isServoTrimAdjustment(int adjFunc)
 }
 
 /*
+ * Continuous ("Absolute") SERVO_TRIM_* maps a pot/channel position straight to a
+ * value, so that value must not be saved: after a reboot the pot would apply itself
+ * again on top of the saved result. It drives a runtime-only axis trim instead (see
+ * setServoAxisRuntimeTrim()), which starts from zero and just follows the pot.
+ * Switch-stepped SERVO_TRIM_* is relative, so it edits the servo center as before.
+ */
+static bool isRuntimeServoTrim(const adjustmentRange_t *adjRange)
+{
+    return isServoTrimAdjustment(adjRange->function) && !adjRange->adjStep;
+}
+
+static int servoTrimAxis(int adjFunc)
+{
+    return adjFunc - ADJUSTMENT_SERVO_TRIM_ROLL;
+}
+
+static int getAdjustmentValue(const adjustmentRange_t *adjRange, const adjustmentConfig_t *adjConfig)
+{
+    if (isRuntimeServoTrim(adjRange))
+        return getServoAxisRuntimeTrim(servoTrimAxis(adjRange->function));
+
+    return adjConfig->cfgGet();
+}
+
+static void setAdjustmentValue(const adjustmentRange_t *adjRange, const adjustmentConfig_t *adjConfig, int value)
+{
+    if (isRuntimeServoTrim(adjRange))
+        setServoAxisRuntimeTrim(servoTrimAxis(adjRange->function), value);
+    else
+        adjConfig->cfgSet(value);
+}
+
+/*
  * The SERVO_TRIM_* adjustments are re-baselined to zero whenever the servo
  * mid points get persisted (see servoTrimCommit()), so that further trim is
  * only ever allowed to move +-200us away from the last saved value. Every
@@ -480,8 +514,8 @@ void processRcAdjustments(void)
                 adjval = constrain(adjval, adjRange->adjMin, adjRange->adjMax);
 
                 if (adjval != adjState->adjValue) {
-                    adjConfig->cfgSet(adjval);
-                    adjval = adjConfig->cfgGet();
+                    setAdjustmentValue(adjRange, adjConfig, adjval);
+                    adjval = getAdjustmentValue(adjRange, adjConfig);
 
                     if (adjval != adjState->adjValue) {
                         updateAdjustmentData(adjFunc, adjval);
@@ -492,7 +526,9 @@ void processRcAdjustments(void)
                         if (adjFunc != ADJUSTMENT_PID_PROFILE && adjFunc != ADJUSTMENT_TV_PROFILE)
                             beeperConfirmationBeeps(1);
 
-                        setConfigDirty();
+                        // A runtime-only trim is not part of the saved config.
+                        if (!isRuntimeServoTrim(adjRange))
+                            setConfigDirty();
 
                         adjState->deadTime = now + (isServoTrimAdjustment(adjFunc) ? TRIM_REPEAT_DELAY : REPEAT_DELAY);
                         adjState->adjValue = adjval;
@@ -544,6 +580,6 @@ INIT_CODE void adjustmentRangeReset(int index)
         const adjustmentConfig_t * adjConfig = &adjustmentConfigs[adjFunc];
 
         if (adjConfig->cfgGet)
-            adjustmentState[index].adjValue = adjConfig->cfgGet();
+            adjustmentState[index].adjValue = getAdjustmentValue(adjustmentRanges(index), adjConfig);
     }
 }

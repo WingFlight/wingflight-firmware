@@ -56,6 +56,14 @@ void servoShutdown(void);
 void validateAndFixServoConfig(void);
 void servoTrimCommit(void);
 
+// Runtime-only trim from continuous SERVO_TRIM_* adjustments (see servos.c).
+// A servo's runtime trim is limited to this share of its scale (rneg/rpos, whichever
+// is larger).
+#define SERVO_TRIM_LIMIT_PERCENT     20
+int getServoAxisRuntimeTrim(int axis);
+void setServoAxisRuntimeTrim(int axis, int value);
+float getServoRuntimeTrim(uint8_t servo);
+
 ADJFUN_DECLARE(SERVO_TRIM_ROLL)
 ADJFUN_DECLARE(SERVO_TRIM_PITCH)
 ADJFUN_DECLARE(SERVO_TRIM_YAW)

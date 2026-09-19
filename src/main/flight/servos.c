@@ -59,15 +59,54 @@ static FAST_DATA_ZERO_INIT float        servoResolution[MAX_SUPPORTED_SERVOS];
 static FAST_DATA_ZERO_INIT int16_t      servoOverride[MAX_SUPPORTED_SERVOS];
 
 static FAST_DATA_ZERO_INIT float        servoAxisTrim[3];  // last commanded per-axis trim value in µs [ROLL=0, PITCH=1, YAW=2]
+static FAST_DATA_ZERO_INIT float        servoRuntimeAxisTrim[3]; // runtime-only (continuous mode) axis trim in µs, never saved
+static FAST_DATA_ZERO_INIT float        servoRuntimeTrim[MAX_SUPPORTED_SERVOS]; // the above, resolved per servo
 
 static FAST_DATA_ZERO_INIT timerChannel_t servoChannel[MAX_SUPPORTED_SERVOS];
 
 
 /*
+ * Which way a stabilized axis's trim moves a servo: 0 if no mixer rule feeds that
+ * servo from the axis, otherwise +1 or -1.
+ *
+ * mixerUpdateRules() scales the raw stabilized value by the axis input's rate
+ * (mixer.input[src] * mixerInputs(src)->rate) before any rule sees it, so a
+ * negative rate -- the per-axis "Invert" setting -- flips every rule fed by
+ * this axis the same way a negative weight would. Three independent things can
+ * flip a servo's direction relative to the stabilized axis: that Invert/rate
+ * sign, a negative mixer rule weight (e.g. paired aileron servos driven from
+ * the same input with opposite-signed weights instead of a flag), and the
+ * per-servo SERVO_FLAG_REVERSED flag (servoUpdate() negates pos before applying
+ * rpos/rneg/mid). All three must be folded into the trim direction so it stays
+ * coordinated with other servos sharing the same axis, regardless of which
+ * mechanism reverses which servo.
+ */
+static int axisTrimDirection(int axis, int servo)
+{
+    static const uint8_t axisInput[3] = {
+        MIXER_IN_STABILIZED_ROLL, MIXER_IN_STABILIZED_PITCH, MIXER_IN_STABILIZED_YAW,
+    };
+
+    const bool rateReversed = mixerInputs(axisInput[axis])->rate < 0;
+
+    for (int r = 0; r < MIXER_RULE_COUNT; r++) {
+        const mixerRule_t *rule = mixerRules(r);
+        if (rule->oper && rule->output == (uint8_t)(MIXER_SERVO_OFFSET + servo) &&
+            rule->input == axisInput[axis]) {
+            const bool flagReversed = servoParams(servo)->flags & SERVO_FLAG_REVERSED;
+            const bool weightReversed = (rule->weight != 0 ? rule->weight : rule->weightNeg) < 0;
+            return (rateReversed != (flagReversed != weightReversed)) ? -1 : 1;
+        }
+    }
+    return 0;
+}
+
+/*
  * Apply the change (delta) in a stabilized axis's trim directly to servoParams()->mid
  * of every servo whose mixer rule is fed by that axis, so the new center point is
  * immediately visible (e.g. in the configurator's Servos tab) and persists like any
- * other live-adjusted config value.
+ * other live-adjusted config value. This is the relative path (switch-stepped
+ * adjustment); the continuous path below never touches mid.
  */
 static void applyServoAxisTrim(int axis, int newValue)
 {
@@ -77,41 +116,52 @@ static void applyServoAxisTrim(int axis, int newValue)
     if (delta == 0)
         return;
 
-    static const uint8_t axisInput[3] = {
-        MIXER_IN_STABILIZED_ROLL, MIXER_IN_STABILIZED_PITCH, MIXER_IN_STABILIZED_YAW,
-    };
-
-    // mixerUpdateRules() scales the raw stabilized value by this input's rate
-    // (mixer.input[src] * mixerInputs(src)->rate) before any rule sees it, so a
-    // negative rate -- the per-axis "Invert" setting -- flips every rule fed by
-    // this axis the same way a negative weight would. It's set once per axis,
-    // not per servo, unlike the other two reversal sources below.
-    const bool rateReversed = mixerInputs(axisInput[axis])->rate < 0;
-
     const uint8_t count = getServoCount();
     for (int s = 0; s < count; s++) {
-        for (int r = 0; r < MIXER_RULE_COUNT; r++) {
-            const mixerRule_t *rule = mixerRules(r);
-            if (rule->oper && rule->output == (uint8_t)(MIXER_SERVO_OFFSET + s) &&
-                rule->input == axisInput[axis]) {
-                // Three independent things can flip this servo's direction relative
-                // to the stabilized axis: the axis's own Invert/rate sign above, a
-                // negative mixer rule weight (e.g. paired aileron servos driven from
-                // the same input with opposite-signed weights instead of a flag), and
-                // the per-servo SERVO_FLAG_REVERSED flag (servoUpdate() negates pos
-                // before applying rpos/rneg/mid). All three must be folded into the
-                // trim direction so it stays coordinated with other servos sharing
-                // the same axis, regardless of which mechanism reverses which servo.
-                const bool flagReversed = servoParams(s)->flags & SERVO_FLAG_REVERSED;
-                const bool weightReversed = (rule->weight != 0 ? rule->weight : rule->weightNeg) < 0;
-                const bool reversed = rateReversed != (flagReversed != weightReversed);
-                servoParamsMutable(s)->mid += lrintf(reversed ? -delta : delta);
-                break;
-            }
-        }
+        const int dir = axisTrimDirection(axis, s);
+        if (dir)
+            servoParamsMutable(s)->mid += lrintf(dir * delta);
     }
 
     validateAndFixServoConfig();
+}
+
+/*
+ * Runtime-only axis trim, for the continuous ("Absolute") adjustment mode where a
+ * pot/channel position IS the trim. It is added at the servo output on top of the
+ * center and never written to servoParams()->mid, so:
+ *  - it can't be saved: if it were, the pot would apply itself again on top of its
+ *    own saved result after every reboot (or save), walking the center away;
+ *  - a bad channel reading (e.g. a channel that isn't valid yet at boot) can move a
+ *    surface by at most SERVO_TRIM_LIMIT_PERCENT of the servo's scale, and leaves
+ *    nothing behind once the reading is fixed.
+ * It starts from zero at boot and follows the pot. The per-servo values are worked
+ * out from the mixer rules as they are when the pot moves.
+ */
+int getServoAxisRuntimeTrim(int axis)
+{
+    return lrintf(servoRuntimeAxisTrim[axis]);
+}
+
+void setServoAxisRuntimeTrim(int axis, int value)
+{
+    servoRuntimeAxisTrim[axis] = value;
+
+    for (int s = 0; s < MAX_SUPPORTED_SERVOS; s++) {
+        float sum = 0;
+        for (int a = 0; a < 3; a++) {
+            sum += axisTrimDirection(a, s) * servoRuntimeAxisTrim[a];
+        }
+        servoRuntimeTrim[s] = sum;
+    }
+}
+
+// What is actually added to the output, limited to its share of the servo's scale.
+float getServoRuntimeTrim(uint8_t servo)
+{
+    const servoParam_t *param = servoParams(servo);
+    const float limit = MAX(param->rneg, param->rpos) * SERVO_TRIM_LIMIT_PERCENT / 100;
+    return constrainf(servoRuntimeTrim[servo], -limit, limit);
 }
 
 int get_ADJUSTMENT_SERVO_TRIM_ROLL(void)    { return lrintf(servoAxisTrim[0]); }
@@ -425,7 +475,8 @@ void servoUpdate(void)
 
         float scale = (pos > 0) ? servo->rpos : servo->rneg;
 
-        pos = limitTravel(i, scale * pos, servo->min, servo->max);
+        // The runtime trim shifts the whole output but stays inside the servo's travel limits.
+        pos = limitTravel(i, scale * pos + getServoRuntimeTrim(i), servo->min, servo->max);
         pos = servo->mid + pos;
 
         servoSetOutput(i, pos);

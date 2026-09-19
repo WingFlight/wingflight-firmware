@@ -1127,6 +1127,29 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         }
         break;
 
+    case MSP_SERVO_TRIM:
+        // The live, runtime-only trim in us from continuous SERVO_TRIM_* adjustments
+        // (never saved), one S16 per servo. Same servo indexing/remap shape as
+        // MSP_SERVO_CONFIGURATIONS above.
+        if (hasBusServosConfigured()) {
+            const uint8_t pwmServoCount = getServoCount();
+            sbufWriteU8(dst, pwmServoCount + BUS_SERVO_CHANNELS);
+
+            for (int i = 0; i < pwmServoCount; i++) {
+                sbufWriteU16(dst, (int16_t)lrintf(getServoRuntimeTrim(i)));
+            }
+            for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
+                sbufWriteU16(dst, (int16_t)lrintf(getServoRuntimeTrim(i)));
+            }
+        } else {
+            sbufWriteU8(dst, getServoCount());
+
+            for (int i = 0; i < getServoCount(); i++) {
+                sbufWriteU16(dst, (int16_t)lrintf(getServoRuntimeTrim(i)));
+            }
+        }
+        break;
+
     case MSP_SERVO_CURVES:
         // Same servo indexing/remap shape as MSP_SERVO_CONFIGURATIONS above.
         if (hasBusServosConfigured()) {
