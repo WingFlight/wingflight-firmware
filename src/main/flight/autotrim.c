@@ -129,7 +129,9 @@ void autoTrimUpdate(void)
             if (cmp32(millis(), autoTrim.startedAt) > AUTOTRIM_WINDOW_MS) {
                 for (int s = 0; s < servoCount; s++) {
                     if (isTrimmableServo(s) && autoTrim.accumCount[s] > 0) {
-                        setServoTrim(s, (int32_t)(autoTrim.accum[s] / autoTrim.accumCount[s]) - (int32_t)servoParams(s)->mid);
+                        // The averaged output already includes any runtime (pot) trim; that part follows the
+                        // pot and is not saved, so leave it out of the saved trim.
+                        setServoTrim(s, (int32_t)(autoTrim.accum[s] / autoTrim.accumCount[s]) - (int32_t)servoParams(s)->mid - getServoRuntimeTrim(s));
                     }
                 }
                 setConfigDirty();

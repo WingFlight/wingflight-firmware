@@ -65,6 +65,9 @@ void validateAndFixServoConfig(void);
 int16_t getServoTrim(uint8_t servo);
 void setServoTrim(uint8_t servo, int16_t trim);
 int16_t getServoTrimLimit(uint8_t servo);
+int16_t getServoRuntimeTrim(uint8_t servo);
+int getServoAxisRuntimeTrim(int axis);
+void setServoAxisRuntimeTrim(int axis, int value);
 
 ADJFUN_DECLARE(SERVO_TRIM_ROLL)
 ADJFUN_DECLARE(SERVO_TRIM_PITCH)

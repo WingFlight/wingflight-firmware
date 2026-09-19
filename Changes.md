@@ -31,6 +31,13 @@ adjustment range is reduced from +-200 to +-100us to match. Set it with
 firmware are left as they are. The trim is stored in a way that lets configs
 saved before it existed load unchanged (all trims zero).
 
+A continuous ("Absolute") `SERVO_TRIM_*` adjustment, where a pot or channel position
+is the trim, is now a runtime-only offset on top of the saved trim: it starts from
+zero at boot, follows the pot, and is never saved. Previously the pot value was
+written into the saved servo center, so after a reboot the pot applied itself again
+on top of its own saved result. Switch-stepped adjustments and `BOXAUTOTRIM` still
+edit the saved trim.
+
 Added airborne re-arm grace settings `rearm_grace_seconds` and
 `rearm_min_armed_seconds`. After the aircraft has been armed for the minimum
 time and has latched in-flight state, an accidental disarm opens a short re-arm
