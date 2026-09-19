@@ -1119,15 +1119,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
                 sbufWriteU16(dst, getServoTrim(i));
             }
-
-            // Then the live runtime-only trim per servo (pot-driven adjustments, not saved),
-            // read-only, for display.
-            for (int i = 0; i < pwmServoCount; i++) {
-                sbufWriteU16(dst, getServoRuntimeTrim(i));
-            }
-            for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
-                sbufWriteU16(dst, getServoRuntimeTrim(i));
-            }
         } else {
             // When bus servos are not configured, only send PWM servo configs
             sbufWriteU8(dst, getServoCount());
@@ -1145,10 +1136,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 
             for (int i = 0; i < getServoCount(); i++) {
                 sbufWriteU16(dst, getServoTrim(i));
-            }
-
-            for (int i = 0; i < getServoCount(); i++) {
-                sbufWriteU16(dst, getServoRuntimeTrim(i));
             }
         }
         break;
