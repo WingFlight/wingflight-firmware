@@ -1482,10 +1482,6 @@ const clivalue_t valueTable[] = {
     { "bus_servo_clone_pwm",           VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_BUS_SERVO_CONFIG, offsetof(busServoConfig_t, cloneFromPwm) },
 #endif
 
-#ifdef USE_SERVOS
-    { "servo_trim_limit",              VAR_UINT8 | MASTER_VALUE, .config.minmaxUnsigned = {0, SERVO_TRIM_LIMIT_PERCENT_MAX}, PG_SERVO_CONFIG, offsetof(servoConfig_t, trimLimit) },
-#endif
-
 #ifdef USE_SPORT_MASTER
     { "sport_master_pinswap",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_SPORT_MASTER_CONFIG, offsetof(sportMasterConfig_t, pinSwap) },
     { "sport_master_inverted",         VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_SPORT_MASTER_CONFIG, offsetof(sportMasterConfig_t, inverted) },

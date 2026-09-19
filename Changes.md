@@ -22,8 +22,7 @@ PID Mode 3 is maintained for backward compatibility.
 ## Configuration Changes
 
 Servos now have a separate `trim` (us), added on top of the servo center at the
-output stage and limited to `servo_trim_limit` percent of the servo scale (the larger of
-`rneg`/`rpos`). The default is 20 and the CLI-only setting accepts 0 to 50.
+output stage and limited to 20% of the servo scale (the larger of `rneg`/`rpos`).
 The `SERVO_TRIM_ROLL/PITCH/YAW` adjustment functions and `BOXAUTOTRIM` now move
 this trim instead of rewriting the servo center, so a bad adjustment reading can
 no longer move a surface further than that limit from its center. Set it with
@@ -189,7 +188,7 @@ Servo trim is appended without changing the existing layout:
 - `MSP_GET_SERVO_CONFIG` returns an extra trailing S16 trim.
 - `MSP_SET_SERVO_CONFIGURATION` and `MSP_SET_SERVO_CONFIG` accept an optional
   trailing S16 trim. Without it the trim is left unchanged. The trim is limited to
-  `servo_trim_limit` percent of the servo scale.
+  20% of the servo scale.
 
 ### MSP_BUS_SERVO_CONFIG
 
