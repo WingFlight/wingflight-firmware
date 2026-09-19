@@ -1110,6 +1110,15 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
                 sbufWriteU16(dst, servoParams(i)->speed);
                 sbufWriteU16(dst, servoParams(i)->flags);
             }
+
+            // Trailing per-servo trims, same order as above. Old clients stop reading after
+            // the records, so this is invisible to them.
+            for (int i = 0; i < pwmServoCount; i++) {
+                sbufWriteU16(dst, getServoTrim(i));
+            }
+            for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
+                sbufWriteU16(dst, getServoTrim(i));
+            }
         } else {
             // When bus servos are not configured, only send PWM servo configs
             sbufWriteU8(dst, getServoCount());
@@ -1123,6 +1132,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
                 sbufWriteU16(dst, servoParams(i)->rate);
                 sbufWriteU16(dst, servoParams(i)->speed);
                 sbufWriteU16(dst, servoParams(i)->flags);
+            }
+
+            for (int i = 0; i < getServoCount(); i++) {
+                sbufWriteU16(dst, getServoTrim(i));
             }
         }
         break;
@@ -2503,8 +2516,8 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
     case MSP_SET_SERVO_CONFIG:
         {
             const int rem = sbufBytesRemaining(src);
-            // Expect index (U8) + eight U16 fields = 1 + 8*2 bytes
-            if (rem != 1 + 8 * 2) {
+            // Expect index (U8) + eight U16 fields = 1 + 8*2 bytes, optionally followed by the S16 trim
+            if (rem != 1 + 8 * 2 && rem != 1 + 8 * 2 + 2) {
                 return MSP_RESULT_ERROR;
             }
 
@@ -2522,8 +2535,11 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             servoParamsMutable(i)->rate  = sbufReadU16(src);
             servoParamsMutable(i)->speed = sbufReadU16(src);
             servoParamsMutable(i)->flags = sbufReadU16(src);
+            if (sbufBytesRemaining(src) >= 2) {
+                servoConfigMutable()->trim[i] = (int16_t)sbufReadU16(src);
+            }
 
-            // Validate and fix the servo configuration
+            // Validate and fix the servo configuration (this also limits the trim)
             validateAndFixServoConfig();
         }
         break;
@@ -2547,6 +2563,7 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             sbufWriteU16(dst, servoParams(i)->rate);
             sbufWriteU16(dst, servoParams(i)->speed);
             sbufWriteU16(dst, servoParams(i)->flags);
+            sbufWriteU16(dst, getServoTrim(i));
         }
         break;
 #endif
@@ -3043,7 +3060,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
 #ifdef USE_SERVOS
     case MSP_SET_SERVO_CONFIGURATION:
-        if (dataSize != 1 + 16) {
+        // 16 bytes of servo config, optionally followed by the S16 trim (API 22.3+).
+        if (dataSize != 1 + 16 && dataSize != 1 + 16 + 2) {
             return MSP_RESULT_ERROR;
         }
         i = sbufReadU8(src);
@@ -3087,8 +3105,11 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         servoParamsMutable(i)->rate = sbufReadU16(src);
         servoParamsMutable(i)->speed = sbufReadU16(src);
         servoParamsMutable(i)->flags = sbufReadU16(src);
+        if (sbufBytesRemaining(src) >= 2) {
+            servoConfigMutable()->trim[i] = (int16_t)sbufReadU16(src);
+        }
         
-        // Validate and fix the servo configuration
+        // Validate and fix the servo configuration (this also limits the trim)
         validateAndFixServoConfig();
         break;
 

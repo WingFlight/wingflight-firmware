@@ -43,6 +43,7 @@
 #include "flight/tv_hold.h"
 #include "flight/tv_pid.h"
 #include "flight/mixer.h"
+#include "flight/servos.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
 #include "flight/autohover.h"
@@ -86,7 +87,7 @@
 // with no hold-still debounce: a bad reading can only nudge the output a little
 // before the next good one corrects it back. TRIM_REPEAT_DELAY (20ms) is the fastest
 // consecutive applies can land (see the deadTime assignment below), so this yields a
-// worst-case rate of ~200us/sec -- the full +-200 range takes ~2s, matching
+// worst-case rate of ~200us/sec -- the full +-100 range takes ~1s, matching
 // AUTOTRIM_WINDOW_MS's order of magnitude. Any real tick rate slower than that only
 // makes the effective rate more conservative, never faster. Stepped mode is
 // unaffected: it already can't snap.
@@ -246,9 +247,9 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 
     ADJ_ENTRY(ATTHOLD_GAIN,                 0, 250),
 
-    ADJ_ENTRY(SERVO_TRIM_ROLL,             -200, 200),
-    ADJ_ENTRY(SERVO_TRIM_PITCH,            -200, 200),
-    ADJ_ENTRY(SERVO_TRIM_YAW,             -200, 200),
+    ADJ_ENTRY(SERVO_TRIM_ROLL,             -SERVO_TRIM_LIMIT_DEFAULT, SERVO_TRIM_LIMIT_DEFAULT),
+    ADJ_ENTRY(SERVO_TRIM_PITCH,            -SERVO_TRIM_LIMIT_DEFAULT, SERVO_TRIM_LIMIT_DEFAULT),
+    ADJ_ENTRY(SERVO_TRIM_YAW,              -SERVO_TRIM_LIMIT_DEFAULT, SERVO_TRIM_LIMIT_DEFAULT),
 
     ADJ_ENTRY(TV_MASTER_GAIN_ROLL,          25, 1000),
     ADJ_ENTRY(TV_MASTER_GAIN_PITCH,         25, 1000),
@@ -311,23 +312,6 @@ static bool isServoTrimAdjustment(int adjFunc)
         adjFunc == ADJUSTMENT_SERVO_TRIM_YAW;
 }
 
-/*
- * The SERVO_TRIM_* adjustments are re-baselined to zero whenever the servo
- * mid points get persisted (see servoTrimCommit()), so that further trim is
- * only ever allowed to move +-200us away from the last saved value. Every
- * adjustment range driving one of those functions must be resynced right
- * after that happens, otherwise adjState->adjValue keeps the stale
- * pre-commit value and the next (possibly tiny) stick movement is compared
- * against it, producing a large, discontinuous jump in cfgSet()'s delta.
- */
-void resyncServoTrimAdjustments(void)
-{
-    for (int index = 0; index < MAX_ADJUSTMENT_RANGE_COUNT; index++) {
-        if (isServoTrimAdjustment(adjustmentRanges(index)->function)) {
-            adjustmentRangeReset(index);
-        }
-    }
-}
 
 /*
  * Tracks how long the RX link has been continuously up, used by

@@ -21,6 +21,16 @@ PID Mode 3 is maintained for backward compatibility.
 
 ## Configuration Changes
 
+Servos now have a separate `trim` (us), added on top of the servo center at the
+output stage and limited to 20% of the servo scale (the larger of `rneg`/`rpos`).
+The `SERVO_TRIM_ROLL/PITCH/YAW` adjustment functions and `BOXAUTOTRIM` now move
+this trim instead of rewriting the servo center, so a bad adjustment reading can
+no longer move a surface further than that limit from its center. The
+adjustment range is reduced from +-200 to +-100us to match. Set it with
+`servo trim <servo> <us>`. Trims already baked into a servo's center by earlier
+firmware are left as they are. The trim is stored in a way that lets configs
+saved before it existed load unchanged (all trims zero).
+
 Added airborne re-arm grace settings `rearm_grace_seconds` and
 `rearm_min_armed_seconds`. After the aircraft has been armed for the minimum
 time and has latched in-flight state, an accidental disarm opens a short re-arm
@@ -161,6 +171,18 @@ Multiple changes (#314) (#353).
 
 - `tail_rotor_mode` (U8) is removed. Payload is now just `model_type` (U8).
   Breaking wire change, same as `MSP_MIXER_CONFIG` above.
+
+### MSP_SERVO_CONFIGURATIONS / MSP_SET_SERVO_CONFIGURATION / MSP_GET_SERVO_CONFIG / MSP_SET_SERVO_CONFIG (API 22.3)
+
+Servo trim is appended without changing the existing layout:
+
+- `MSP_SERVO_CONFIGURATIONS` returns the unchanged count + 8x U16 records, followed
+  by one S16 trim per servo in the same order. Clients that stop reading after the
+  records are unaffected.
+- `MSP_GET_SERVO_CONFIG` returns an extra trailing S16 trim.
+- `MSP_SET_SERVO_CONFIGURATION` and `MSP_SET_SERVO_CONFIG` accept an optional
+  trailing S16 trim. Without it the trim is left unchanged. The trim is limited to
+  20% of the servo scale.
 
 ### MSP_BUS_SERVO_CONFIG
 

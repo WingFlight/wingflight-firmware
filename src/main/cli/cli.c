@@ -2146,6 +2146,19 @@ static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, co
     }
 }
 
+static void printServoTrim(dumpFlags_t dumpMask, const char *headingStr)
+{
+    // Trims are not part of servoParams (that array's layout is fixed by old configs), so
+    // they get their own `servo trim <servo> <us>` lines -- only the non-zero ones.
+    for (uint32_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
+        const int16_t trim = getServoTrim(i);
+        if (trim != 0) {
+            headingStr = cliPrintSectionHeading(dumpMask, true, headingStr);
+            cliDumpPrintLinef(dumpMask, false, "servo trim %u %d", i + 1, trim);
+        }
+    }
+}
+
 static void printServoStatus(uint8_t index)
 {
     const bool hasBusServos = hasBusServosConfigured();
@@ -2293,6 +2306,28 @@ static void cliServo(const char *cmdName, char *cmdline)
                 setServoOverride(i, value);
                 printServoOverride(i);
             }
+        }
+        else {
+            cliShowInvalidArgumentCountError(cmdName);
+        }
+    }
+    else if (strcasecmp(args[FUNC], "trim") == 0) {
+        if (count == 1) {
+            for (int i = 0; i < servoCount; i++) {
+                cliPrintLinef("servo trim %d %d (limit +-%d)", i + 1, getServoTrim(i), getServoTrimLimit(i));
+            }
+        }
+        else if (count == 3) {
+            enum { FUNC=0, INDEX, VALUE };
+            const int index = atoi(args[INDEX]);
+            const int value = atoi(args[VALUE]);
+            if (index < 1 || index > MAX_SUPPORTED_SERVOS ||
+                value < -getServoTrimLimit(index - 1) || value > getServoTrimLimit(index - 1)) {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+                return;
+            }
+            setServoTrim(index - 1, value);
+            cliPrintLinef("servo trim %d %d (limit +-%d)", index, getServoTrim(index - 1), getServoTrimLimit(index - 1));
         }
         else {
             cliShowInvalidArgumentCountError(cmdName);
@@ -6919,6 +6954,7 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
 
 #ifdef USE_SERVOS
             printServo(dumpMask, servoParams_CopyArray, servoParams(0), &serialConfig_Copy, serialConfig(), "servo");
+            printServoTrim(dumpMask, "servo trim");
 #endif
 
             printMixerInputs(dumpMask, mixerInputs_CopyArray, mixerInputs(0), "mixer input");
@@ -7316,6 +7352,8 @@ const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("servo", "configure servos",
                     "<servo> <center> <min> <max> <-scale> <+scale> <update_rate> <speed> <flags>\r\n\t"
                     "status\r\n\t"
+                    "trim\r\n\t"
+                    "trim <servo> <us>\r\n\t"
                     "flags\r\n\t"
                     "flags <servo> <[+|-]FLAG> ...\r\n\t"
                     "override\r\n\t"

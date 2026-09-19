@@ -39,6 +39,10 @@ PG_DECLARE_ARRAY(servoParam_t, MAX_SUPPORTED_SERVOS, servoParams);
 
 typedef struct {
     ioTag_t  ioTags[MAX_SUPPORTED_SERVOS];
+    // Per-servo output trim in us, added on top of the servo center at the output
+    // stage and limited to SERVO_TRIM_LIMIT_PERCENT of the servo scale. Kept at the
+    // end of this struct so configs stored before it existed load with all zeros.
+    int16_t  trim[MAX_SUPPORTED_SERVOS];
 } servoConfig_t;
 
 PG_DECLARE(servoConfig_t, servoConfig);

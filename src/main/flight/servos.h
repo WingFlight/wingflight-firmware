@@ -43,6 +43,14 @@
 #define SERVO_OVERRIDE_MAX    2000
 #define SERVO_OVERRIDE_OFF   (SERVO_OVERRIDE_MAX + 1)
 
+// A servo's trim may move its output by at most this share of its scale (rneg/rpos,
+// whichever is larger). The trim is separate from the center so that whatever drives
+// it (adjustment channel, auto trim, configurator) can never move a surface further
+// than this from where the center puts it.
+#define SERVO_TRIM_LIMIT_PERCENT     20
+// Limit for the default 500us scale; also the range of the SERVO_TRIM_* adjustments.
+#define SERVO_TRIM_LIMIT_DEFAULT    (DEFAULT_SERVO_SCALE * SERVO_TRIM_LIMIT_PERCENT / 100)
+
 enum {
     SERVO_FLAG_REVERSED     = BIT(0),
     SERVO_FLAG_GEO_CORR     = BIT(1),
@@ -54,7 +62,9 @@ void servoUpdate(void);
 void servoShutdown(void);
 
 void validateAndFixServoConfig(void);
-void servoTrimCommit(void);
+int16_t getServoTrim(uint8_t servo);
+void setServoTrim(uint8_t servo, int16_t trim);
+int16_t getServoTrimLimit(uint8_t servo);
 
 ADJFUN_DECLARE(SERVO_TRIM_ROLL)
 ADJFUN_DECLARE(SERVO_TRIM_PITCH)

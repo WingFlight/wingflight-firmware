@@ -164,7 +164,7 @@ typedef enum {
     // Att Hold
     ADJUSTMENT_ATTHOLD_GAIN               = 88,
 
-    // Servo axis trim (runtime-only, shifts servo center points per axis)
+    // Servo axis trim (adds to the trim of every servo fed by the axis; centers are untouched)
     ADJUSTMENT_SERVO_TRIM_ROLL            = 89,
     ADJUSTMENT_SERVO_TRIM_PITCH           = 90,
     ADJUSTMENT_SERVO_TRIM_YAW             = 91,
@@ -208,7 +208,6 @@ typedef enum {
 
 void adjustmentRangeInit(void);
 void adjustmentRangeReset(int index);
-void resyncServoTrimAdjustments(void);
 
 void processRcAdjustments(void);
 

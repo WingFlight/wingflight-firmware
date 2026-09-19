@@ -63,11 +63,28 @@ static FAST_DATA_ZERO_INIT float        servoAxisTrim[3];  // last commanded per
 static FAST_DATA_ZERO_INIT timerChannel_t servoChannel[MAX_SUPPORTED_SERVOS];
 
 
+int16_t getServoTrimLimit(uint8_t servo)
+{
+    const servoParam_t *servo_ = servoParams(servo);
+    return MAX(servo_->rneg, servo_->rpos) * SERVO_TRIM_LIMIT_PERCENT / 100;
+}
+
+int16_t getServoTrim(uint8_t servo)
+{
+    return servoConfig()->trim[servo];
+}
+
+void setServoTrim(uint8_t servo, int16_t trim)
+{
+    const int16_t limit = getServoTrimLimit(servo);
+    servoConfigMutable()->trim[servo] = constrain(trim, -limit, limit);
+}
+
 /*
- * Apply the change (delta) in a stabilized axis's trim directly to servoParams()->mid
- * of every servo whose mixer rule is fed by that axis, so the new center point is
- * immediately visible (e.g. in the configurator's Servos tab) and persists like any
- * other live-adjusted config value.
+ * Apply the change (delta) in a stabilized axis's trim to the trim of every servo
+ * whose mixer rule is fed by that axis. The servo centers are never touched, and
+ * every trim is limited to SERVO_TRIM_LIMIT_PERCENT of that servo's scale, so however
+ * the adjustment channel behaves it cannot move a surface further than that.
  */
 static void applyServoAxisTrim(int axis, int newValue)
 {
@@ -99,19 +116,17 @@ static void applyServoAxisTrim(int axis, int newValue)
                 // negative mixer rule weight (e.g. paired aileron servos driven from
                 // the same input with opposite-signed weights instead of a flag), and
                 // the per-servo SERVO_FLAG_REVERSED flag (servoUpdate() negates pos
-                // before applying rpos/rneg/mid). All three must be folded into the
+                // before applying rpos/rneg/trim). All three must be folded into the
                 // trim direction so it stays coordinated with other servos sharing
                 // the same axis, regardless of which mechanism reverses which servo.
                 const bool flagReversed = servoParams(s)->flags & SERVO_FLAG_REVERSED;
                 const bool weightReversed = (rule->weight != 0 ? rule->weight : rule->weightNeg) < 0;
                 const bool reversed = rateReversed != (flagReversed != weightReversed);
-                servoParamsMutable(s)->mid += lrintf(reversed ? -delta : delta);
+                setServoTrim(s, getServoTrim(s) + lrintf(reversed ? -delta : delta));
                 break;
             }
         }
     }
-
-    validateAndFixServoConfig();
 }
 
 int get_ADJUSTMENT_SERVO_TRIM_ROLL(void)    { return lrintf(servoAxisTrim[0]); }
@@ -122,23 +137,6 @@ void set_ADJUSTMENT_SERVO_TRIM_PITCH(int v) { applyServoAxisTrim(1, v); }
 
 int get_ADJUSTMENT_SERVO_TRIM_YAW(void)     { return lrintf(servoAxisTrim[2]); }
 void set_ADJUSTMENT_SERVO_TRIM_YAW(int v)   { applyServoAxisTrim(2, v); }
-
-/*
- * Re-baseline the runtime trim tracking to zero once the current servo
- * mid points have actually been persisted (written to EEPROM). The
- * adjustment range for SERVO_TRIM_* is clamped to +-200us of whatever
- * servoAxisTrim[] currently reads, so without this call that window would
- * stay relative to the value at boot rather than the last saved value,
- * letting repeated save cycles drift the servo center arbitrarily far.
- * The mid points themselves are already live-updated by applyServoAxisTrim(),
- * so this only resets the tracking, it does not touch servoParams()->mid.
- */
-void servoTrimCommit(void)
-{
-    servoAxisTrim[0] = 0;
-    servoAxisTrim[1] = 0;
-    servoAxisTrim[2] = 0;
-}
 
 uint8_t getServoCount(void)
 {
@@ -214,6 +212,9 @@ void validateAndFixServoConfig(void)
         if (servo->max > maxAllowed) {
             servo->max = maxAllowed;
         }
+
+        // Keep the trim within its share of this servo's scale (which may have just changed).
+        setServoTrim(i, getServoTrim(i));
     }
 }
 
@@ -425,7 +426,8 @@ void servoUpdate(void)
 
         float scale = (pos > 0) ? servo->rpos : servo->rneg;
 
-        pos = limitTravel(i, scale * pos, servo->min, servo->max);
+        // Trim shifts the whole output but stays inside the servo's travel limits.
+        pos = limitTravel(i, scale * pos + getServoTrim(i), servo->min, servo->max);
         pos = servo->mid + pos;
 
         servoSetOutput(i, pos);

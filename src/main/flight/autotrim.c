@@ -45,10 +45,12 @@
 // background feature. While the switch is on and armed, every servo whose output is fed by a
 // stabilized axis (roll/pitch/yaw -- i.e. anything the gyro/PID loop can move, regardless of
 // which flight mode is active) has its actual, already-mixed output averaged over a fixed
-// window, and that average becomes the new center point. Unlike transmitter sub-trim, this
-// never touches the RC/gyro "center" reference -- it edits servoParams()->mid, the same
-// downstream-of-everything value CLI's `servo` command edits, so the result is identical
-// regardless of flight mode.
+// window, and that average becomes the new trim (average minus the servo center).
+// Unlike transmitter sub-trim, this
+// never touches the RC/gyro "center" reference -- it edits the servo trim, which is added
+// downstream-of-everything at the servo output, so the result is identical regardless of
+// flight mode. The servo center itself is never changed, and the trim is limited to
+// SERVO_TRIM_LIMIT_PERCENT of the servo scale.
 //
 // Turning the switch off before disarming aborts and restores the pre-trim center; only
 // disarming while the capture has completed lets it stick (via the normal isConfigDirty()
@@ -65,7 +67,7 @@ typedef enum {
 typedef struct {
     autoTrimState_e state;
     timeMs_t        startedAt;
-    uint16_t        backup[MAX_SUPPORTED_SERVOS];
+    int16_t         backup[MAX_SUPPORTED_SERVOS];
     uint32_t        accum[MAX_SUPPORTED_SERVOS];
     uint32_t        accumCount[MAX_SUPPORTED_SERVOS];
 } autoTrim_t;
@@ -100,7 +102,7 @@ void autoTrimUpdate(void)
             if (switchOn && ARMING_FLAG(ARMED)) {
                 for (int s = 0; s < servoCount; s++) {
                     if (isTrimmableServo(s)) {
-                        autoTrim.backup[s] = servoParams(s)->mid;
+                        autoTrim.backup[s] = getServoTrim(s);
                         autoTrim.accum[s] = 0;
                         autoTrim.accumCount[s] = 0;
                     }
@@ -127,7 +129,7 @@ void autoTrimUpdate(void)
             if (cmp32(millis(), autoTrim.startedAt) > AUTOTRIM_WINDOW_MS) {
                 for (int s = 0; s < servoCount; s++) {
                     if (isTrimmableServo(s) && autoTrim.accumCount[s] > 0) {
-                        servoParamsMutable(s)->mid = autoTrim.accum[s] / autoTrim.accumCount[s];
+                        setServoTrim(s, (int32_t)(autoTrim.accum[s] / autoTrim.accumCount[s]) - (int32_t)servoParams(s)->mid);
                     }
                 }
                 setConfigDirty();
@@ -137,10 +139,10 @@ void autoTrimUpdate(void)
 
         case AUTOTRIM_SAVE_PENDING:
             if (!switchOn) {
-                // Pilot changed their mind before disarming -- revert to the pre-trim center.
+                // Pilot changed their mind before disarming -- revert to the previous trim.
                 for (int s = 0; s < servoCount; s++) {
                     if (isTrimmableServo(s)) {
-                        servoParamsMutable(s)->mid = autoTrim.backup[s];
+                        setServoTrim(s, autoTrim.backup[s]);
                     }
                 }
                 setConfigDirty();
