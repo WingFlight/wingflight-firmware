@@ -38,6 +38,7 @@ void pgResetFn_servoConfig(servoConfig_t *servoConfig)
     for (unsigned i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
         servoConfig->ioTags[i] = timerioTagGetByUsage(TIM_USE_SERVO, i);
     }
+    servoConfig->trimLimit = SERVO_TRIM_LIMIT_PERCENT_DEFAULT;
 }
 
 PG_REGISTER_ARRAY_WITH_RESET_FN(servoParam_t, MAX_SUPPORTED_SERVOS, servoParams, PG_SERVO_PARAMS, 1);

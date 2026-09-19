@@ -43,13 +43,18 @@
 #define SERVO_OVERRIDE_MAX    2000
 #define SERVO_OVERRIDE_OFF   (SERVO_OVERRIDE_MAX + 1)
 
-// A servo's trim may move its output by at most this share of its scale (rneg/rpos,
-// whichever is larger). The trim is separate from the center so that whatever drives
-// it (adjustment channel, auto trim, configurator) can never move a surface further
-// than this from where the center puts it.
-#define SERVO_TRIM_LIMIT_PERCENT     20
-// Limit for the default 500us scale; also the range of the SERVO_TRIM_* adjustments.
-#define SERVO_TRIM_LIMIT_DEFAULT    (DEFAULT_SERVO_SCALE * SERVO_TRIM_LIMIT_PERCENT / 100)
+// A servo's trim may move its output by at most servo_trim_limit percent of its scale
+// (rneg/rpos, whichever is larger). The trim is separate from the center so that
+// whatever drives it (adjustment channel, auto trim, configurator) can never move a
+// surface further than this from where the center puts it. The limit is a CLI-only
+// setting: the default suits nearly everything, and a larger one has to be a
+// deliberate choice.
+#define SERVO_TRIM_LIMIT_PERCENT_DEFAULT  20
+#define SERVO_TRIM_LIMIT_PERCENT_MAX      50
+// Largest value the SERVO_TRIM_* adjustments can take; the per-servo limit above is what
+// actually bounds the trim. A continuous (pot) adjustment is absolute, so a range wider
+// than the limit just has dead travel at the ends.
+#define SERVO_TRIM_ADJUSTMENT_MAX         200
 
 enum {
     SERVO_FLAG_REVERSED     = BIT(0),

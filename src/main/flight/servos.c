@@ -68,7 +68,7 @@ static FAST_DATA_ZERO_INIT timerChannel_t servoChannel[MAX_SUPPORTED_SERVOS];
 int16_t getServoTrimLimit(uint8_t servo)
 {
     const servoParam_t *servo_ = servoParams(servo);
-    return MAX(servo_->rneg, servo_->rpos) * SERVO_TRIM_LIMIT_PERCENT / 100;
+    return MAX(servo_->rneg, servo_->rpos) * servoConfig()->trimLimit / 100;
 }
 
 int16_t getServoTrim(uint8_t servo)
@@ -122,7 +122,7 @@ static int axisTrimDirection(int axis, int servo)
  * Apply the change (delta) in a stabilized axis's trim to the saved trim of every
  * servo fed by that axis. This is the relative path (switch-stepped adjustment):
  * the servo centers are never touched, and every trim is limited to
- * SERVO_TRIM_LIMIT_PERCENT of that servo's scale.
+ * servo_trim_limit percent of that servo's scale.
  */
 static void applyServoAxisTrim(int axis, int newValue)
 {

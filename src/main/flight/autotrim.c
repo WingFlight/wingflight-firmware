@@ -50,7 +50,7 @@
 // never touches the RC/gyro "center" reference -- it edits the servo trim, which is added
 // downstream-of-everything at the servo output, so the result is identical regardless of
 // flight mode. The servo center itself is never changed, and the trim is limited to
-// SERVO_TRIM_LIMIT_PERCENT of the servo scale.
+// servo_trim_limit percent of the servo scale.
 //
 // Turning the switch off before disarming aborts and restores the pre-trim center; only
 // disarming while the capture has completed lets it stick (via the normal isConfigDirty()
