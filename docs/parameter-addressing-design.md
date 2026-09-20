@@ -493,6 +493,101 @@ same trick applied narrowly: a small `(id → address, size)` table for the
 values that really are plain globals, with bespoke cases kept for the computed
 ones. That is additive and needs no new protocol.
 
+## 11.2 Runtime parameters
+
+§11.1 says live data does not move to addressed access, and the reasons there
+still hold. This section is not a reversal of that: it is what to do about the
+need that surfaced afterwards, which §11.1 did not anticipate.
+
+### What actually needs solving
+
+Deleting the CLI removed three diagnostics that have **no MSP equivalent at
+all**: `tasks`, `gyroregisters` and `setpoint_info`. Those are simply gone. And
+every configurator tab that wants a live value today needs a bespoke opcode
+written for it, which is the same per-field hand-marshalling this whole
+exercise exists to remove — just on the read side.
+
+So the question is not "should live data use PARAM_READ" (it cannot, see
+below). It is "is there a uniform way to name and read runtime values".
+
+### Why the config mechanism does not extend to it
+
+Measured, not assumed:
+
+- **Live values are not in a parameter group.** `acc`, `attitude` and `rcData`
+  are plain globals with no pgn, so there is nothing for `PARAM_READ` to
+  address.
+- **Their addresses are not stable.** Config struct layout is fixed by the ABI
+  and checked in CI; a global's address moves freely between builds, so an
+  offset in a manifest would be wrong the moment anything is relinked.
+- **Most of it is computed, not stored.** Of the 79 opcodes in
+  `mspProcessOutCommand`, only 23 mostly copy existing values out; 56 do real
+  work first. `MSP_RAW_IMU` rescales by `acc.dev.acc_1G` as it builds the
+  reply.
+- **Some of it is not memory at all.** `getTaskInfo()` is a function that fills
+  a caller's struct. `gyroregisters` performs bus transactions against the gyro
+  chip. No pointer exists to hand out.
+
+### The concept: a live registry addressed by id
+
+Symmetric with `.pg_registry`, and deliberately different from it in three
+ways, each answering one of the objections above.
+
+```c
+    WF_LIVE_VALUE(WF_LIVE_ATTITUDE_ROLL, "attitude.roll", INT16, &attitude.values.roll)
+    WF_LIVE_FN(WF_LIVE_TASK_LOAD,        "task.load",     U16,   readTaskLoad)
+```
+
+Each macro emits a descriptor into a `.wf_live` section: a stable id, a type,
+and **either a pointer to the value or a getter function** — the same union
+`pgRegistry_t` already uses for `reset.ptr` / `reset.fn`, so the pattern is
+precedented in this codebase rather than invented.
+
+- **Addressed by id, never by offset.** The address stays inside the firmware,
+  in the descriptor. Nothing in the manifest depends on where a global landed,
+  so relinking cannot invalidate it. This is what makes live data describable
+  at all.
+- **A getter covers what a pointer cannot.** The 56 computed cases keep their
+  existing code, moved behind a function rather than duplicated. `getTaskInfo`
+  and the gyro register reads fit here too.
+- **Reads are batched.** The client registers a set of ids once and then polls
+  a single opcode that returns those values packed, so the access pattern is
+  one round trip per frame rather than one per field. That was the strongest
+  objection in §11.1 and it is addressed directly.
+
+The manifest gains a `live` section — id, name, type, size, units — exactly as
+it carries settings, so a client names a runtime value the same way it names a
+setting.
+
+### What this is not
+
+**It is not `wfLive_t`.** The step-6 proposal that was dropped built a struct
+holding copies of live values, at an unmeasured cost in RAM on a target already
+carrying 118 KB of bss. Descriptors point at values that already exist; they
+live in flash, and nothing is duplicated. That was the objection that killed
+the original proposal and it does not apply here.
+
+**It is not a flash saving.** Unlike the config work, this adds rather than
+removes: roughly 12 bytes per descriptor, so ~1.8 KB for 150 values. The live
+MSP opcodes stay regardless, because radio telemetry and third-party ground
+stations poll them (§13). The return is uniform access and the end of writing
+an opcode per tab, not bytes.
+
+### Recommended sequencing
+
+Two tiers, because the second is only worth it at scale:
+
+1. **Now: three opcodes for what is actually lost.** `tasks`,
+   `gyroregisters`, `setpoint_info`. Small, bounded, and it closes a real
+   regression rather than anticipating one.
+2. **Later: the registry**, once tab migration has shown how many live values
+   the tabs actually want. If the answer is a few dozen, bespoke opcodes remain
+   cheaper. If it is hundreds, the registry pays for itself in the same way the
+   manifest did for settings.
+
+Building tier 2 before tier 1 would be designing for a need that has not been
+measured, which is the mistake §11.1 was written to avoid.
+
 ## 12. CI gates
 
 Without these the design decays back into hand-maintained tables.
