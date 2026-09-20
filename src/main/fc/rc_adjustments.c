@@ -43,6 +43,7 @@
 #include "flight/tv_hold.h"
 #include "flight/tv_pid.h"
 #include "flight/mixer.h"
+#include "flight/servos.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
 #include "flight/autohover.h"
@@ -92,13 +93,25 @@
 // unaffected: it already can't snap.
 #define SERVO_TRIM_MAX_STEP_PER_TICK 4
 
+// Continuous ("Absolute") adjustments map the channel straight to a value, so a pot
+// that isn't perfectly still (ADC/RX noise, or resting right on a value boundary)
+// flips the result by +-1 every tick, and every flip is a config write plus a
+// blackbox event. The channel has to move more than this many us away from the last
+// position that was acted on before the mapping is re-evaluated; slower drift still
+// gets through because the reference only moves when it is exceeded. On a wide
+// range (e.g. 975 values over 1250us) this costs about two counts of resolution.
+#define CONTINUOUS_CHANNEL_DEADBAND 3
+
 // Servo trims move physical control surfaces, so their adjustment channels are
 // treated as untrustworthy until the RX link has been continuously valid for this
 // long. This rides out the garbage/failsafe-hold frames some receivers emit for a
 // moment right at boot, or when the link is reacquired after a brief drop, before
 // the pilot's actual stick/pot positions can be trusted -- mirrors the RX layer's
-// own MAX_INVALID_PULSE_TIME_MS hold window for bad channel data.
-#define SERVO_TRIM_LINK_SETTLE_MS 300
+// own MAX_INVALID_PULSE_TIME_MS hold window for bad channel data. Some setups (e.g.
+// a channel fed by a secondary receiver or a telemetry-derived source) bring the
+// adjustment channel online noticeably later than the link itself, so this is kept
+// generous: a trim is not worth acting on until well after everything has settled.
+#define SERVO_TRIM_LINK_SETTLE_MS 1000
 
 // Timeout for the last changed adjustment (report for telemetry)
 #define ADJUSTMENT_LATENCY_MS 3000
@@ -260,6 +273,19 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 
     ADJ_ENTRY(TV_HOLD_GAIN,                 0, 250),
 
+    ADJ_ENTRY(TV_PROFILE,                   1, 6),
+
+    // Magnitude only, 0..1000 -- applyRoleWeight() (flight/mixer.c) never
+    // touches a tagged rule's sign, only scales |weight|, so polarity stays
+    // whatever the rule was configured with (Reverse in the mixer table, or
+    // a negative weight via CLI) regardless of what this adjustment does.
+    // 1000 is already a full 1.0x on the flap input, generous for a
+    // compensation trim; MIXER_WEIGHT_MAX itself (pg/mixer.h, 10000) is
+    // never a deliberate live-tuning choice, just a typo, like every other
+    // gain-style adjustment here.
+    ADJ_ENTRY(FLAP_COMPENSATION_GAIN,      0, 1000),
+    ADJ_ENTRY(DIFF_THRUST_YAW_GAIN,        0, 1000),
+
 };
 
 
@@ -284,6 +310,39 @@ static bool isServoTrimAdjustment(int adjFunc)
     return adjFunc == ADJUSTMENT_SERVO_TRIM_ROLL ||
         adjFunc == ADJUSTMENT_SERVO_TRIM_PITCH ||
         adjFunc == ADJUSTMENT_SERVO_TRIM_YAW;
+}
+
+/*
+ * Continuous ("Absolute") SERVO_TRIM_* maps a pot/channel position straight to a
+ * value, so that value must not be saved: after a reboot the pot would apply itself
+ * again on top of the saved result. It drives a runtime-only axis trim instead (see
+ * setServoAxisRuntimeTrim()), which starts from zero and just follows the pot.
+ * Switch-stepped SERVO_TRIM_* is relative, so it edits the servo center as before.
+ */
+static bool isRuntimeServoTrim(const adjustmentRange_t *adjRange)
+{
+    return isServoTrimAdjustment(adjRange->function) && !adjRange->adjStep;
+}
+
+static int servoTrimAxis(int adjFunc)
+{
+    return adjFunc - ADJUSTMENT_SERVO_TRIM_ROLL;
+}
+
+static int getAdjustmentValue(const adjustmentRange_t *adjRange, const adjustmentConfig_t *adjConfig)
+{
+    if (isRuntimeServoTrim(adjRange))
+        return getServoAxisRuntimeTrim(servoTrimAxis(adjRange->function));
+
+    return adjConfig->cfgGet();
+}
+
+static void setAdjustmentValue(const adjustmentRange_t *adjRange, const adjustmentConfig_t *adjConfig, int value)
+{
+    if (isRuntimeServoTrim(adjRange))
+        setServoAxisRuntimeTrim(servoTrimAxis(adjRange->function), value);
+    else
+        adjConfig->cfgSet(value);
 }
 
 /*
@@ -334,7 +393,8 @@ static void updateAdjustmentData(int adjFunc, int value)
     if (adjFunc != ADJUSTMENT_NONE &&
         adjFunc != ADJUSTMENT_PID_PROFILE &&
         adjFunc != ADJUSTMENT_RATE_PROFILE &&
-        adjFunc != ADJUSTMENT_LED_PROFILE)
+        adjFunc != ADJUSTMENT_LED_PROFILE &&
+        adjFunc != ADJUSTMENT_TV_PROFILE)
     {
         adjustmentTime   = now;
         adjustmentName   = adjustmentConfigs[adjFunc].cfgName;
@@ -424,11 +484,20 @@ void processRcAdjustments(void)
                     const int rangeWidth = rangeUpper - rangeLower;
                     const int valueWidth = adjRange->adjMax - adjRange->adjMin;
 
+                    // Hold the channel reading steady inside the deadband so a noisy pot
+                    // doesn't make the mapped value wander. adjState->chValue is only used
+                    // by stepped mode otherwise, and an adjRange is one mode or the other.
+                    // (Starts at 0 after a reset, so the first reading is always taken.)
+                    if (abs(chValue - adjState->chValue) > CONTINUOUS_CHANNEL_DEADBAND) {
+                        adjState->chValue = chValue;
+                    }
+                    const int heldValue = adjState->chValue;
+
                     if (rangeWidth > 0 && valueWidth > 0) {
                         const int rangeMargin = MAX(5, rangeWidth / (valueWidth * 2));
-                        if (chValue > rangeLower - rangeMargin && chValue < rangeUpper + rangeMargin) {
+                        if (heldValue > rangeLower - rangeMargin && heldValue < rangeUpper + rangeMargin) {
                             const int offset = rangeWidth / 2;
-                            adjval = adjRange->adjMin + ((chValue - rangeLower) * valueWidth + offset) / rangeWidth;
+                            adjval = adjRange->adjMin + ((heldValue - rangeLower) * valueWidth + offset) / rangeWidth;
                         }
                     }
 
@@ -445,8 +514,8 @@ void processRcAdjustments(void)
                 adjval = constrain(adjval, adjRange->adjMin, adjRange->adjMax);
 
                 if (adjval != adjState->adjValue) {
-                    adjConfig->cfgSet(adjval);
-                    adjval = adjConfig->cfgGet();
+                    setAdjustmentValue(adjRange, adjConfig, adjval);
+                    adjval = getAdjustmentValue(adjRange, adjConfig);
 
                     if (adjval != adjState->adjValue) {
                         updateAdjustmentData(adjFunc, adjval);
@@ -454,10 +523,12 @@ void processRcAdjustments(void)
 
                         // PID profile change does it's own confirmation, no of beeps eq profile no,
                         // a single beep here will kill that.
-                        if (adjFunc != ADJUSTMENT_PID_PROFILE)
+                        if (adjFunc != ADJUSTMENT_PID_PROFILE && adjFunc != ADJUSTMENT_TV_PROFILE)
                             beeperConfirmationBeeps(1);
 
-                        setConfigDirty();
+                        // A runtime-only trim is not part of the saved config.
+                        if (!isRuntimeServoTrim(adjRange))
+                            setConfigDirty();
 
                         adjState->deadTime = now + (isServoTrimAdjustment(adjFunc) ? TRIM_REPEAT_DELAY : REPEAT_DELAY);
                         adjState->adjValue = adjval;
@@ -509,6 +580,6 @@ INIT_CODE void adjustmentRangeReset(int index)
         const adjustmentConfig_t * adjConfig = &adjustmentConfigs[adjFunc];
 
         if (adjConfig->cfgGet)
-            adjustmentState[index].adjValue = adjConfig->cfgGet();
+            adjustmentState[index].adjValue = getAdjustmentValue(adjustmentRanges(index), adjConfig);
     }
 }

@@ -17,6 +17,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <math.h>
 
 #include "platform.h"
 
@@ -127,7 +128,9 @@ void autoTrimUpdate(void)
             if (cmp32(millis(), autoTrim.startedAt) > AUTOTRIM_WINDOW_MS) {
                 for (int s = 0; s < servoCount; s++) {
                     if (isTrimmableServo(s) && autoTrim.accumCount[s] > 0) {
-                        servoParamsMutable(s)->mid = autoTrim.accum[s] / autoTrim.accumCount[s];
+                        // The averaged output already includes any runtime (pot) trim; that part follows the
+                        // pot and is not saved, so leave it out of the new center.
+                        servoParamsMutable(s)->mid = lrintf(autoTrim.accum[s] / (float)autoTrim.accumCount[s] - getServoRuntimeTrim(s));
                     }
                 }
                 setConfigDirty();

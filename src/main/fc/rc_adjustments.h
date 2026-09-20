@@ -192,6 +192,16 @@ typedef enum {
     // Thrust Vector Attitude Hold -- independent hold engine (flight/tv_hold.c)
     ADJUSTMENT_TV_HOLD_GAIN                 = 110,
 
+    // Thrust Vector profile switching (independent of ADJUSTMENT_PID_PROFILE)
+    ADJUSTMENT_TV_PROFILE                   = 111,
+
+    // Mixer rule weight, found by mixerRuleRole_e tag rather than a fixed
+    // rule index (pg/mixer.h) -- lets a switch/pot live-tune a rule the
+    // configurator or wizard tagged, regardless of where it ends up in the
+    // 32-slot table.
+    ADJUSTMENT_FLAP_COMPENSATION_GAIN       = 112,
+    ADJUSTMENT_DIFF_THRUST_YAW_GAIN         = 113,
+
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;
 

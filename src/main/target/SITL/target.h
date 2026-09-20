@@ -69,7 +69,8 @@
 #define USE_BARO
 #define USE_FAKE_BARO
 
-#define USABLE_TIMER_CHANNEL_COUNT 0
+// Must match the synthetic timerHardware[] table in target.c (4 motor + 8 servo).
+#define USABLE_TIMER_CHANNEL_COUNT 12
 
 #define USE_UART1
 #define USE_UART2
@@ -88,6 +89,10 @@
 #define DEFAULT_RX_FEATURE      FEATURE_RX_MSP
 #define DEFAULT_FEATURES        (FEATURE_GPS | FEATURE_TELEMETRY)
 
+// SITL-specific config defaults (GPS provider = MSP, second MSP port on
+// UART2/TCP 5762 for the JSBSim bridge's --msp-gps feed) - see config.c.
+#define USE_TARGET_CONFIG
+
 #define USE_PARAMETER_GROUPS
 
 #undef USE_STACK_CHECK // I think SITL don't need this
@@ -104,13 +109,24 @@
 #undef USE_SERIALRX_IBUS2
 #undef USE_SERIALRX_SBUS
 #undef USE_SERIALRX_SPEKTRUM
+#undef USE_SERIALRX_SRXL2
 #undef USE_SERIALRX_SUMD
 #undef USE_SERIALRX_SUMH
 #undef USE_SERIALRX_XBUS
+// The backup RX providers decode serial RX frames (SBUS/FBUS/FPort/EX Bus/CRSF)
+// and timestamp bytes with microsISR(); SITL has neither a serial RX stack nor
+// drivers/system.c. Keep the core USE_RX_INPUT_BACKUP API (fc/core.c and msp.c
+// call it unconditionally) but build it with no providers, so it stays inert.
+#undef USE_RX_INPUT_BACKUP_SBUS
+#undef USE_RX_INPUT_BACKUP_FBUS
+#undef USE_RX_INPUT_BACKUP_FPORT
+#undef USE_RX_INPUT_BACKUP_EXBUS
+#undef USE_RX_INPUT_BACKUP_CRSF
 #undef USE_LED_STRIP
 #undef USE_TELEMETRY_FRSKY_HUB
 #undef USE_TELEMETRY_HOTT
 #undef USE_TELEMETRY_SMARTPORT
+#undef USE_SPORT_MASTER
 #undef USE_TELEMETRY_MAVLINK
 #undef USE_RESOURCE_MGMT
 #undef USE_TELEMETRY_CRSF
@@ -131,6 +147,14 @@
 
 #undef USE_I2C
 #undef USE_SPI
+
+// No DMA controller and no real gyro registers exist here, and the drivers that
+// would back them (drivers/dma.c, drivers/accgyro/accgyro_mpu.c) are not part of
+// the SITL build - see MCU_EXCLUDES in make/mcu/SITL.mk. Leaving these defined
+// makes drivers/dma_common.c and sensors/gyro_init.c's gyroReadRegister() link
+// against symbols that don't exist in this target.
+#undef USE_DMA
+#undef USE_GYRO_REGISTER_DUMP
 
 #define TARGET_FLASH_SIZE 2048
 
@@ -173,6 +197,7 @@ typedef struct
 typedef struct
 {
     void* test;
+    uint32_t CCR1; // unused: present only so common driver code referencing tim->CCR1 (e.g. timerCCR()) type-checks on SITL
 } TIM_TypeDef;
 
 typedef struct
@@ -244,6 +269,7 @@ typedef struct {
 } fdm_packet;
 typedef struct {
     float motor_speed[4];   // normal: [0.0, 1.0], 3D: [-1.0, 1.0]
+    float servo[8];         // wing control-surface outputs S1-S8, in microseconds (e.g. 1000-2000)
 } servo_packet;
 
 void FLASH_Unlock(void);

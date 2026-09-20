@@ -284,6 +284,9 @@
 #define MSP_SET_VTXTABLE_POWERLEVEL          228
 
 #define MSP_MULTIPLE_MSP                     230
+#define MSP_SERVO_CURVES                     231
+#define MSP_SET_SERVO_CURVE                  232
+#define MSP_SERVO_TRIM                       233
 #define MSP_MODE_RANGES_EXTRA                238
 #define MSP_ACC_TRIM                         240
 #define MSP_SET_ACC_TRIM                     239
@@ -318,5 +321,14 @@
 #define MSP2_WING_RX_INPUT_BACKUP_STATUS     0x5F0D
 #define MSP2_WING_RX_INPUT_BACKUP_CONFIG     0x5F0E
 #define MSP2_WING_SET_RX_INPUT_BACKUP_CONFIG 0x5F0F
-#define MSP2_WING_CRSF_SENSORS_STATUS        0x5F10
+#define MSP2_WING_SELECT_TV_PROFILE          0x5F10
+#define MSP2_WING_COPY_TV_PID_PROFILE        0x5F11
+#define MSP2_WING_RX_SERIAL_TRIAL             0x5F12
+#define MSP2_WING_RX_INPUT_BACKUP_TRIAL       0x5F13
+// 0x5F14, not 0x5F12/0x5F13 - see MSP2_WING_RX_SERIAL_TRIAL/
+// MSP2_WING_RX_INPUT_BACKUP_TRIAL above, which claimed those two from master
+// independently on a sibling branch.
+#define MSP2_WING_ESC_SENSOR_TRIAL            0x5F14
+// 0x5F15: CRSF Sensors link diagnostics (0x5F10-0x5F14 are taken by the entries above).
+#define MSP2_WING_CRSF_SENSORS_STATUS         0x5F15
 #define MSP_V2_FRAME                         255

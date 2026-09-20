@@ -23,12 +23,14 @@
 #include "target/common_pre.h"
 
 
-PG_REGISTER_WITH_RESET_TEMPLATE(systemConfig_t, systemConfig, PG_SYSTEM_CONFIG, 3);
+// v3->v4: added tvProfileIndex (active Thrust Vector profile).
+PG_REGISTER_WITH_RESET_TEMPLATE(systemConfig_t, systemConfig, PG_SYSTEM_CONFIG, 4);
 
 PG_RESET_TEMPLATE(systemConfig_t, systemConfig,
     .boardIdentifier = TARGET_BOARD_IDENTIFIER,
     .pidProfileIndex = 0,
     .activeRateProfile = 0,
+    .tvProfileIndex = 0,
     .debug_mode = 0,
     .debug_axis = 0,
     .task_statistics = true,

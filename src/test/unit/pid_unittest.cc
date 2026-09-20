@@ -60,11 +60,6 @@ pidProfile_t *mockPidProfile = pidProfilesMutable(0);
 
 float getSetpoint(int axis) { return g_mock->getDeflection(axis) * 360; }
 float getDeflection(int axis) { return g_mock->getDeflection(axis); }
-float getCyclicDeflection() {
-    float SP = g_mock->getDeflection(1);
-    float SR = g_mock->getDeflection(0);
-    return sqrtf(sq(SP) + sq(SR));
-}
 }
 
 TEST(Empty, BuildTest) {}

@@ -1,3 +1,54 @@
+# 0.0.24
+
+Make continuous (pot/channel-mapped) SERVO_TRIM_* adjustments runtime-only: they no longer rewrite and save the servo center, so a trim can't re-apply itself on top of its own saved result after a reboot or leave a wrong center behind.
+Add MSP_SERVO_TRIM (command 233) to report the live runtime servo trim per servo. The MSP API version stays at 22.2.
+Lengthen the servo trim link-settle delay from 300ms to 1000ms, fixing trim channels that come online later than the RX link driving a servo center far off position after boot.
+Add a channel deadband to continuous adjustments so a noisy pot no longer flips the value by 1 every tick, causing repeated config writes, beeps, blackbox events and wandering PID values.
+Make ATT HOLD fly like normal mode until it holds: the hold target is captured once the axis stops rotating instead of the instant the stick centers, so releasing mid-rotation no longer snaps the aircraft back.
+Let ATT HOLD re-center when nothing is happening: I-term bleeds slowly on a holding axis, and a frozen axis pinned against something it can't move (e.g. tilted on the bench) re-captures its target after a stall timeout.
+Apply the same settle-then-capture and per-axis I-term decay to AUTOHOVER roll, fixing its release snap-back.
+Run the Thrust Vector hold on the same shared hold engine as ATT HOLD, picking up all of its fixes (per-axis tracking, reduced ground authority, clamped deadband, settle-then-capture, stall timeout), and drop its engaged state while a safety mode has priority.
+
+# 0.0.23
+
+Add optional throttle assist to AUTOHOVER for underthrottled hover, ramping throttle when pitch correction stays pinned at max rate.
+Add per-servo balance curve for matching multi-servo control surfaces (e.g. dual ailerons).
+Add SITL (Software-In-The-Loop) simulator target for testing firmware behavior without hardware.
+Give ATT HOLD/AUTOHOVER real pre-airborne correction authority instead of none, and stop I-term decay eroding a sustained hold once rate error settles.
+Fix ATT HOLD holding all axes as a single gated group instead of tracking/freezing each axis independently.
+Fix AUTOHOVER/ATTHOLD retaining a stale hold target after a safety mode (GPS rescue/failsafe/RTH/loiter/angle) preempts them, unclamped MSP deadbands freezing hold correction, and a throttle assist trigger that could fire with max_rate at 0.
+Fix blackbox flightModeFlags truncating box IDs past bit 31, so modes like AUTOHOVER never showed as engaged in logs.
+Fix MANUAL mode's throw being scaled against the rate profile's maximum ceiling instead of the tune's actual feedforward.
+Fix blackbox mass-storage log filenames still using the legacy "rtfl" prefix.
+Remove legacy Matek/Nucleo board targets (superseded by unified STM32 targets).
+
+# 0.0.22
+
+Add a descriptive role tag to mixer rules, with per-role adjustment functions (ADJUSTMENT_FLAP_COMPENSATION_GAIN, ADJUSTMENT_DIFF_THRUST_YAW_GAIN) and fixes for role-adjusted rules losing their Reverse flag.
+Add TRADITIONAL flight mode: stabilized with I-term forced to zero.
+Block first arm until a configured backup RX has linked.
+Hold Auto Hover's roll axis against disturbance drift (e.g. torque roll) once the stick centers, instead of leaving it a bare pass-through the whole time.
+Change default servo refresh rate to a safe 50Hz.
+
+# 0.0.21
+
+Tag CLI errors raised while replaying a target's embedded custom-defaults blob (e.g. on `defaults`/`defaults nosave`) with "(custom defaults)", so they're no longer indistinguishable from an error in whatever command the user actually typed.
+
+# 0.0.20
+
+Fix MANUAL mode losing its rates/expo shaping on fast stick moves and ignoring the configured rate profile's authority, both of which pushed it toward full-deflection passthrough.
+
+# 0.0.19
+
+Add RX and ESC telemetry serial wiring auto-detect trial modes to help diagnose signal-inversion and pin-swap mismatches.
+Fix RX/TX invert and pin-swap settings sticking across UART reopens.
+Fix Spektrum satellite bind pin selection to honor serial pin-swap.
+
+# 0.0.18
+
+Add Thrust Vector profiles (6 independently-switchable profiles).
+Generalize the backup RX from SBUS-only into a provider-selectable input, adding FBUS, FPort, FPort2, Jeti EX Bus, and CRSF support alongside SBUS.
+
 # 0.0.17
 
 Add Thrust Vector Attitude Hold.

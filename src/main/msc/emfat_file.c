@@ -91,7 +91,7 @@ enum {
     EMFAT_PREDEF_ENTRY_COUNT
 };
 
-// RTFL_002_20251012_141213.bbl
+// WFLT_002_20251012_141213.bbl
 //     1234567890123456789012345
 #define EMFAT_MAX_NAME_LENGTH (MAX_NAME_LENGTH + 25)
 
@@ -398,7 +398,7 @@ void emfat_init_files(void)
     }
 
 #ifdef USE_FLASHFS
-    strcpy(logPrefix, pilotConfig()->name[0] ? pilotConfig()->name : "rtfl");
+    strcpy(logPrefix, pilotConfig()->name[0] ? pilotConfig()->name : "wflt");
     legalize_filename(logPrefix);
 
     flashInit(flashConfig());

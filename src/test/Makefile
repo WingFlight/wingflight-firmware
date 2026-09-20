@@ -126,6 +126,9 @@ blackbox_encoding_unittest_SRC :=  \
 #		$(USER_DIR)/common/maths.c
 
 
+curve_unittest_SRC := \
+		$(USER_DIR)/common/curve.c
+
 encoding_unittest_SRC := \
 		$(USER_DIR)/common/encoding.c
 

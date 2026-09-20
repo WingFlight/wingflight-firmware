@@ -65,8 +65,14 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // fw_tpa_rate with fw_tpa_gain (baseline scale) and fw_tpa_curve (index into
 // the shared gainCurves pool), mirroring master_gain/gain_curve. v8->v9:
 // master_gain widened from uint8_t to uint16_t per axis to allow values up
-// to 1000 (was capped at 255).
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 9);
+// to 1000 (was capped at 255). v9->v10: added autohover.roll_deadband (new
+// field appended at the tail of the autohover sub-struct, widening it) - old
+// saved profiles reset to defaults rather than reinterpreting their stored
+// bytes at the new layout, matching the v6->v7 precedent. v10->v11: added
+// autohover.throttle_assist_gain/_max/_trigger_ms (3 new fields appended at
+// the tail of the autohover sub-struct, widening it again) - old saved
+// profiles reset to defaults, matching the v9->v10 precedent.
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 11);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -102,7 +108,11 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .trainer.lookahead_ms = 50,
         .autohover.gain = 50,
         .autohover.max_angle = 30,
-        .autohover.max_rate = 300,
+        .autohover.max_rate = 120,
+        .autohover.roll_deadband = 5,
+        .autohover.throttle_assist_gain = 0,
+        .autohover.throttle_assist_max = 15,
+        .autohover.throttle_assist_trigger_ms = 300,
         .atthold.gain = 40,
         .atthold.deadband = 5,
         .atthold.max_rate = 300,

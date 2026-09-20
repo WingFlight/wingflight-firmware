@@ -136,12 +136,19 @@ void gyroStartCalibration(bool isFirstArmingCalibration)  // for init.c core.c r
     }
 
 #if defined(USE_FAKE_GYRO) && !defined(UNIT_TEST)
+    // The fake gyro (SITL) skips calibration entirely - but merely clearing
+    // `running` leaves the sensor permanently "not yet calibrated", because
+    // isGyroSensorCalibrationComplete() requires cycles > 0 too. That kept
+    // the CALIBRATING arming-disable flag set forever, making SITL unarmable.
+    // Mark at least one cycle as done so the skip reads as "complete".
     if (gyro.gyroSensor1.gyroDev.gyroHardware == GYRO_FAKE) {
         gyro.gyroSensor1.calibration.running = false;
+        gyro.gyroSensor1.calibration.cycles = 1;
     }
 #ifdef USE_MULTI_GYRO
     if (gyro.gyroSensor2.gyroDev.gyroHardware == GYRO_FAKE) {
         gyro.gyroSensor2.calibration.running = false;
+        gyro.gyroSensor2.calibration.cycles = 1;
     }
 #endif
 #endif

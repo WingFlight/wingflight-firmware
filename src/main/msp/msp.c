@@ -1128,6 +1128,64 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         }
         break;
 
+    case MSP_SERVO_TRIM:
+        // The live, runtime-only trim in us from continuous SERVO_TRIM_* adjustments
+        // (never saved), one S16 per servo. Same servo indexing/remap shape as
+        // MSP_SERVO_CONFIGURATIONS above.
+        if (hasBusServosConfigured()) {
+            const uint8_t pwmServoCount = getServoCount();
+            sbufWriteU8(dst, pwmServoCount + BUS_SERVO_CHANNELS);
+
+            for (int i = 0; i < pwmServoCount; i++) {
+                sbufWriteU16(dst, (int16_t)lrintf(getServoRuntimeTrim(i)));
+            }
+            for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
+                sbufWriteU16(dst, (int16_t)lrintf(getServoRuntimeTrim(i)));
+            }
+        } else {
+            sbufWriteU8(dst, getServoCount());
+
+            for (int i = 0; i < getServoCount(); i++) {
+                sbufWriteU16(dst, (int16_t)lrintf(getServoRuntimeTrim(i)));
+            }
+        }
+        break;
+
+    case MSP_SERVO_CURVES:
+        // Same servo indexing/remap shape as MSP_SERVO_CONFIGURATIONS above.
+        if (hasBusServosConfigured()) {
+            const uint8_t pwmServoCount = getServoCount();
+            const uint8_t totalCount = pwmServoCount + BUS_SERVO_CHANNELS;
+            sbufWriteU8(dst, totalCount);
+
+            for (int i = 0; i < pwmServoCount; i++) {
+                sbufWriteU8(dst, servoCurves(i)->count);
+                for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
+                    sbufWriteU16(dst, servoCurves(i)->points[p].x);
+                    sbufWriteU16(dst, servoCurves(i)->points[p].y);
+                }
+            }
+
+            for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
+                sbufWriteU8(dst, servoCurves(i)->count);
+                for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
+                    sbufWriteU16(dst, servoCurves(i)->points[p].x);
+                    sbufWriteU16(dst, servoCurves(i)->points[p].y);
+                }
+            }
+        } else {
+            sbufWriteU8(dst, getServoCount());
+
+            for (int i = 0; i < getServoCount(); i++) {
+                sbufWriteU8(dst, servoCurves(i)->count);
+                for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
+                    sbufWriteU16(dst, servoCurves(i)->points[p].x);
+                    sbufWriteU16(dst, servoCurves(i)->points[p].y);
+                }
+            }
+        }
+        break;
+
     case MSP_SERVO_OVERRIDE:
         for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
             sbufWriteU16(dst, getServoOverride(i));
@@ -1504,40 +1562,45 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 
     case MSP2_WING_TV_PID_CONFIG:
+        // Leading byte identifies which of the PID_PROFILE_COUNT TV profiles the
+        // rest of this payload describes -- always "currently active", same as
+        // MSP_PID_PROFILE for the main PID loop (the configurator/Lua suite select
+        // the active profile via MSP2_WING_SELECT_TV_PROFILE, then re-read this).
+        sbufWriteU8(dst, getCurrentTvProfileIndex());
         for (int i = 0; i < PID_ITEM_COUNT; i++) {
-            sbufWriteU16(dst, tvPidProfile()->pid[i].P);
-            sbufWriteU16(dst, tvPidProfile()->pid[i].I);
-            sbufWriteU16(dst, tvPidProfile()->pid[i].D);
-            sbufWriteU16(dst, tvPidProfile()->pid[i].F);
-            sbufWriteU16(dst, tvPidProfile()->pid[i].B);
+            sbufWriteU16(dst, currentTvPidProfile->pid[i].P);
+            sbufWriteU16(dst, currentTvPidProfile->pid[i].I);
+            sbufWriteU16(dst, currentTvPidProfile->pid[i].D);
+            sbufWriteU16(dst, currentTvPidProfile->pid[i].F);
+            sbufWriteU16(dst, currentTvPidProfile->pid[i].B);
         }
-        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_ROLL]);
-        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_PITCH]);
-        sbufWriteU16(dst, tvPidProfile()->master_gain[PID_YAW]);
-        sbufWriteU8(dst, tvPidProfile()->iterm_decay_time);
-        sbufWriteU8(dst, tvPidProfile()->iterm_decay_limit);
-        sbufWriteU8(dst, tvPidProfile()->iterm_relax_type);
+        sbufWriteU16(dst, currentTvPidProfile->master_gain[PID_ROLL]);
+        sbufWriteU16(dst, currentTvPidProfile->master_gain[PID_PITCH]);
+        sbufWriteU16(dst, currentTvPidProfile->master_gain[PID_YAW]);
+        sbufWriteU8(dst, currentTvPidProfile->iterm_decay_time);
+        sbufWriteU8(dst, currentTvPidProfile->iterm_decay_limit);
+        sbufWriteU8(dst, currentTvPidProfile->iterm_relax_type);
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->iterm_relax_level[i]);
-        }
-        for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->iterm_relax_cutoff[i]);
+            sbufWriteU8(dst, currentTvPidProfile->iterm_relax_level[i]);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->error_limit[i]);
+            sbufWriteU8(dst, currentTvPidProfile->iterm_relax_cutoff[i]);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->dterm_cutoff[i]);
+            sbufWriteU8(dst, currentTvPidProfile->error_limit[i]);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->bterm_cutoff[i]);
+            sbufWriteU8(dst, currentTvPidProfile->dterm_cutoff[i]);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, tvPidProfile()->gyro_cutoff[i]);
+            sbufWriteU8(dst, currentTvPidProfile->bterm_cutoff[i]);
         }
-        sbufWriteU8(dst, tvPidProfile()->hold.gain);
-        sbufWriteU8(dst, tvPidProfile()->hold.deadband);
-        sbufWriteU16(dst, tvPidProfile()->hold.max_rate);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, currentTvPidProfile->gyro_cutoff[i]);
+        }
+        sbufWriteU8(dst, currentTvPidProfile->hold.gain);
+        sbufWriteU8(dst, currentTvPidProfile->hold.deadband);
+        sbufWriteU16(dst, currentTvPidProfile->hold.max_rate);
         break;
 
     case MSP_DEBUG_CONFIG:
@@ -1775,6 +1838,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
           sbufWriteU16(dst, mixerRules(i)->speed);
           sbufWriteU8(dst, mixerRules(i)->curve);
           sbufWriteU8(dst, mixerRules(i)->condition);
+          sbufWriteU8(dst, mixerRules(i)->role);
         }
         break;
 
@@ -2139,6 +2203,12 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->gain_curve[PID_YAW]);
         /* Att Hold max rate */
         sbufWriteU16(dst, currentPidProfile->atthold.max_rate);
+        /* Auto Hover roll deadband */
+        sbufWriteU8(dst, currentPidProfile->autohover.roll_deadband);
+        /* Auto Hover throttle assist */
+        sbufWriteU8(dst, currentPidProfile->autohover.throttle_assist_gain);
+        sbufWriteU8(dst, currentPidProfile->autohover.throttle_assist_max);
+        sbufWriteU16(dst, currentPidProfile->autohover.throttle_assist_trigger_ms);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -2332,6 +2402,90 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             sbufWriteU8(dst, status.stabilityPercent);
         }
         break;
+
+#ifdef USE_SERIAL_RX
+    case MSP2_WING_RX_SERIAL_TRIAL:
+        // action: 0 = poll only, 1 = (re)start a scan, 2 = stop/cancel - always
+        // restores the pre-trial wiring and reports the resulting status either
+        // way, same start/poll/action shape as MSP2_WING_BOARD_AUTO_ALIGN above.
+        if (sbufBytesRemaining(src) >= 1) {
+            const uint8_t action = sbufReadU8(src);
+            if (action == 1) {
+                rxSerialTrialStart();
+            } else if (action == 2) {
+                rxSerialTrialStop();
+            }
+        }
+
+        {
+            const rxSerialTrialStatus_t status = rxSerialTrialGetStatus();
+            sbufWriteU8(dst, status.state);
+            sbufWriteU8(dst, status.comboIndex);
+            sbufWriteU8(dst, status.inverted);
+            sbufWriteU8(dst, status.halfDuplex);
+            sbufWriteU8(dst, status.pinSwap);
+            sbufWriteU16(dst, status.elapsedMs);
+        }
+        break;
+#endif
+
+#ifdef USE_RX_INPUT_BACKUP
+    case MSP2_WING_RX_INPUT_BACKUP_TRIAL:
+        // Same action/status shape as MSP2_WING_RX_SERIAL_TRIAL above, applied
+        // to the backup RX port's own inverted/halfDuplex/pinSwap instead.
+        if (sbufBytesRemaining(src) >= 1) {
+            const uint8_t action = sbufReadU8(src);
+            if (action == 1) {
+                rxInputBackupTrialStart();
+            } else if (action == 2) {
+                rxInputBackupTrialStop();
+            }
+        }
+
+        {
+            const rxInputBackupTrialStatus_t status = rxInputBackupTrialGetStatus();
+            sbufWriteU8(dst, status.state);
+            sbufWriteU8(dst, status.comboIndex);
+            sbufWriteU8(dst, status.inverted);
+            sbufWriteU8(dst, status.halfDuplex);
+            sbufWriteU8(dst, status.pinSwap);
+            sbufWriteU16(dst, status.elapsedMs);
+        }
+        break;
+#endif
+
+#ifdef USE_ESC_SENSOR
+    case MSP2_WING_ESC_SENSOR_TRIAL:
+        // action: 0 = poll only, 1 = (re)start a scan, 2 = stop/cancel - same
+        // start/poll/action shape as MSP2_WING_BOARD_AUTO_ALIGN above, and
+        // the RX wiring auto-detect's MSP2_WING_RX_SERIAL_TRIAL. No
+        // `inverted` field here (ESC telemetry never inverts) - just
+        // halfDuplex/pinSwap.
+        if (sbufBytesRemaining(src) >= 1) {
+            const uint8_t action = sbufReadU8(src);
+            if (action == 1) {
+                escSensorTrialStart();
+            } else if (action == 2) {
+                escSensorTrialStop();
+            }
+        }
+
+        {
+            const escSensorTrialStatus_t status = escSensorTrialGetStatus();
+            sbufWriteU8(dst, status.state);
+            sbufWriteU8(dst, status.comboIndex);
+            sbufWriteU8(dst, status.halfDuplex);
+            sbufWriteU8(dst, status.pinSwap);
+            sbufWriteU16(dst, status.elapsedMs);
+            // Bench-diagnostic fields, temporary - appended (not inserted)
+            // so the wire format stays backward compatible with the
+            // original 6-byte response.
+            sbufWriteU16(dst, status.frameDelta);
+            sbufWriteU8(dst, status.comboCount);
+            sbufWriteU8(dst, status.portOpen);
+        }
+        break;
+#endif
 
 #ifdef USE_RPM_FILTER
     case MSP_RPM_FILTER_V2:
@@ -3028,6 +3182,48 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         validateAndFixServoConfig();
         break;
 
+    case MSP_SET_SERVO_CURVE:
+        i = sbufReadU8(src);
+
+        // Same servo indexing/remap shape as MSP_SET_SERVO_CONFIGURATION above.
+        if (hasBusServosConfigured()) {
+            const uint8_t pwmServoCount = getServoCount();
+            const uint8_t totalCount = pwmServoCount + BUS_SERVO_CHANNELS;
+
+            if (i >= totalCount) {
+                return MSP_RESULT_ERROR;
+            }
+
+            if (i >= pwmServoCount) {
+                i = BUS_SERVO_OFFSET + (i - pwmServoCount);
+            }
+        } else {
+            if (i >= getServoCount()) {
+                return MSP_RESULT_ERROR;
+            }
+        }
+
+        if (i >= MAX_SUPPORTED_SERVOS) {
+            return MSP_RESULT_ERROR;
+        }
+
+        {
+            // count is later used unchecked as an array bound by
+            // evaluateCurvePoints() -- reject anything outside the wire
+            // format's actual valid range, same discipline as
+            // MSP_SET_MIXER_CURVE above.
+            uint8_t pointCount = sbufReadU8(src);
+            if (pointCount < 2 || pointCount > SERVO_CURVE_POINTS) {
+                return MSP_RESULT_ERROR;
+            }
+            servoCurvesMutable(i)->count = pointCount;
+        }
+        for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
+            servoCurvesMutable(i)->points[p].x = sbufReadU16(src);
+            servoCurvesMutable(i)->points[p].y = sbufReadU16(src);
+        }
+        break;
+
     case MSP_SET_SERVO_OVERRIDE:
         i = sbufReadU8(src);
         if (i >= MAX_SUPPORTED_SERVOS) {
@@ -3244,6 +3440,16 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         /* Att Hold max rate */
         if (sbufBytesRemaining(src) >= 2) {
             currentPidProfile->atthold.max_rate = sbufReadU16(src);
+        }
+        /* Auto Hover roll deadband */
+        if (sbufBytesRemaining(src) >= 1) {
+            currentPidProfile->autohover.roll_deadband = sbufReadU8(src);
+        }
+        /* Auto Hover throttle assist */
+        if (sbufBytesRemaining(src) >= 4) {
+            currentPidProfile->autohover.throttle_assist_gain = sbufReadU8(src);
+            currentPidProfile->autohover.throttle_assist_max = sbufReadU8(src);
+            currentPidProfile->autohover.throttle_assist_trigger_ms = sbufReadU16(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);
@@ -3654,42 +3860,62 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             return MSP_RESULT_ERROR;
         }
         for (int i = 0; i < PID_ITEM_COUNT; i++) {
-            tvPidProfileMutable()->pid[i].P = sbufReadU16(src);
-            tvPidProfileMutable()->pid[i].I = sbufReadU16(src);
-            tvPidProfileMutable()->pid[i].D = sbufReadU16(src);
-            tvPidProfileMutable()->pid[i].F = sbufReadU16(src);
-            tvPidProfileMutable()->pid[i].B = sbufReadU16(src);
+            currentTvPidProfile->pid[i].P = sbufReadU16(src);
+            currentTvPidProfile->pid[i].I = sbufReadU16(src);
+            currentTvPidProfile->pid[i].D = sbufReadU16(src);
+            currentTvPidProfile->pid[i].F = sbufReadU16(src);
+            currentTvPidProfile->pid[i].B = sbufReadU16(src);
         }
-        tvPidProfileMutable()->master_gain[PID_ROLL] = sbufReadU16(src);
-        tvPidProfileMutable()->master_gain[PID_PITCH] = sbufReadU16(src);
-        tvPidProfileMutable()->master_gain[PID_YAW] = sbufReadU16(src);
-        tvPidProfileMutable()->iterm_decay_time = sbufReadU8(src);
-        tvPidProfileMutable()->iterm_decay_limit = sbufReadU8(src);
-        tvPidProfileMutable()->iterm_relax_type = sbufReadU8(src);
+        currentTvPidProfile->master_gain[PID_ROLL] = sbufReadU16(src);
+        currentTvPidProfile->master_gain[PID_PITCH] = sbufReadU16(src);
+        currentTvPidProfile->master_gain[PID_YAW] = sbufReadU16(src);
+        currentTvPidProfile->iterm_decay_time = sbufReadU8(src);
+        currentTvPidProfile->iterm_decay_limit = sbufReadU8(src);
+        currentTvPidProfile->iterm_relax_type = sbufReadU8(src);
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->iterm_relax_level[i] = sbufReadU8(src);
-        }
-        for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->iterm_relax_cutoff[i] = sbufReadU8(src);
+            currentTvPidProfile->iterm_relax_level[i] = sbufReadU8(src);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->error_limit[i] = sbufReadU8(src);
+            currentTvPidProfile->iterm_relax_cutoff[i] = sbufReadU8(src);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->dterm_cutoff[i] = sbufReadU8(src);
+            currentTvPidProfile->error_limit[i] = sbufReadU8(src);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->bterm_cutoff[i] = sbufReadU8(src);
+            currentTvPidProfile->dterm_cutoff[i] = sbufReadU8(src);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            tvPidProfileMutable()->gyro_cutoff[i] = sbufReadU8(src);
+            currentTvPidProfile->bterm_cutoff[i] = sbufReadU8(src);
         }
-        tvPidProfileMutable()->hold.gain = sbufReadU8(src);
-        tvPidProfileMutable()->hold.deadband = sbufReadU8(src);
-        tvPidProfileMutable()->hold.max_rate = sbufReadU16(src);
-        tvPidLoadProfile(tvPidProfile());
-        tvHoldInit(tvPidProfile());
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            currentTvPidProfile->gyro_cutoff[i] = sbufReadU8(src);
+        }
+        currentTvPidProfile->hold.gain = sbufReadU8(src);
+        currentTvPidProfile->hold.deadband = sbufReadU8(src);
+        currentTvPidProfile->hold.max_rate = sbufReadU16(src);
+        tvPidLoadProfile(currentTvPidProfile);
+        tvHoldInit(currentTvPidProfile);
         break;
+
+    case MSP2_WING_SELECT_TV_PROFILE:
+        value = sbufReadU8(src);
+        if (value >= PID_PROFILE_COUNT) {
+            value = 0;
+        }
+        changeTvProfile(value);
+        break;
+
+    case MSP2_WING_COPY_TV_PID_PROFILE: {
+        const uint8_t dstTvProfileIndex = sbufReadU8(src);
+        const uint8_t srcTvProfileIndex = sbufReadU8(src);
+        if (dstTvProfileIndex < PID_PROFILE_COUNT && srcTvProfileIndex < PID_PROFILE_COUNT) {
+            memcpy(tvPidProfilesMutable(dstTvProfileIndex), tvPidProfiles(srcTvProfileIndex), sizeof(tvPidProfile_t));
+            if (!ARMING_FLAG(ARMED) && dstTvProfileIndex == getCurrentTvProfileIndex()) {
+                changeTvProfile(dstTvProfileIndex);
+            }
+        }
+        break;
+    }
 
     case MSP_SET_MIXER_CONFIG:
         mixerConfigMutable()->model_type = sbufReadU8(src);
@@ -3720,6 +3946,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         mixerRulesMutable(i)->speed = sbufReadU16(src);
         mixerRulesMutable(i)->curve = sbufReadU8(src);
         mixerRulesMutable(i)->condition = sbufReadU8(src);
+        mixerRulesMutable(i)->role = sbufReadU8(src);
+        mixerCaptureRuleSign(i);
         break;
 
     case MSP_SET_MIXER_CURVE:

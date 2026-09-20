@@ -171,6 +171,9 @@ typedef enum
     TELEM_FBUS_SENSOR_6                 = 115,
     TELEM_FBUS_SENSOR_7                 = 116,
     TELEM_FBUS_SENSOR_8                 = 117,
+
+    TELEM_TV_PROFILE                    = 118,
+
     TELEM_SENSOR_COUNT
 } sensor_id_e;
 

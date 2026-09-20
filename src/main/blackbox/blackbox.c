@@ -337,6 +337,11 @@ static const blackboxSimpleFieldDefinition_t blackboxGpsHFields[] = {
 // Rarely-updated fields
 static const blackboxSimpleFieldDefinition_t blackboxSlowFields[] = {
     {"flightModeFlags",       -1, UNSIGNED, PREDICT(0),      ENCODING(UNSIGNED_VB)},
+    // rcModeActivationMask (see loadSlowState()) is a boxBitmask_t -- wider than one uint32_t once
+    // CHECKBOX_ITEM_COUNT (currently 42) passes 32 boxes, which BOXAUTOHOVER and several others
+    // already do. This second word carries boxId 32-63 so those modes are actually recoverable
+    // from the log instead of silently vanishing.
+    {"flightModeFlags2",      -1, UNSIGNED, PREDICT(0),      ENCODING(UNSIGNED_VB)},
     {"stateFlags",            -1, UNSIGNED, PREDICT(0),      ENCODING(UNSIGNED_VB)},
 
     {"failsafePhase",         -1, UNSIGNED, PREDICT(0),      ENCODING(TAG2_3S32)},
@@ -448,6 +453,7 @@ typedef struct blackboxGpsState_s {
 // This data is updated really infrequently:
 typedef struct blackboxSlowState_s {
     uint32_t flightModeFlags; // extend this data size (from uint16_t)
+    uint32_t flightModeFlags2; // second word of rcModeActivationMask -- see loadSlowState()
     uint8_t stateFlags;
     uint8_t failsafePhase;
     bool rxSignalReceived;
@@ -462,6 +468,13 @@ static BlackboxState blackboxState = BLACKBOX_STATE_DISABLED;
 static bool blackboxStarted = false;
 
 static uint32_t blackboxLastArmingBeep = 0;
+// Same 32-bit-vs-boxBitmask_t truncation this file's slowHistory.flightModeFlags used to have (see
+// loadSlowState()) -- boxId >= 32 (BOXAUTOHOVER etc.) never trips the FLIGHT_LOG_EVENT_FLIGHTMODE
+// change event below. Left as-is rather than widened alongside the slow frame fix: unlike that
+// generic, self-describing S-frame field, this "E" event's wire format is a hardcoded 2-VB layout
+// in the log viewer's parser, so widening it here would desync event-frame parsing for any log
+// viewer that doesn't also carry a matching change. The periodic slow frame is the field that
+// actually needs to be read to know which modes are active, so it's the one that got fixed.
 static uint32_t blackboxLastFlightModeFlags = 0; // New event tracking of flight modes
 static uint8_t  blackboxLastAirborneState = 0;
 
@@ -1092,6 +1105,7 @@ static void writeSlowFrame(void)
     blackboxWrite('S');
 
     blackboxWriteUnsignedVB(slowHistory.flightModeFlags);
+    blackboxWriteUnsignedVB(slowHistory.flightModeFlags2);
     blackboxWriteUnsignedVB(slowHistory.stateFlags);
 
     /*
@@ -1108,7 +1122,15 @@ static void writeSlowFrame(void)
  */
 static void loadSlowState(blackboxSlowState_t *slow)
 {
-    memcpy(&slow->flightModeFlags, &rcModeActivationMask, sizeof(slow->flightModeFlags)); //was flightModeFlags;
+    // rcModeActivationMask is a boxBitmask_t, i.e. bits[(CHECKBOX_ITEM_COUNT + 31) / 32] uint32_t
+    // words -- currently 2 words (CHECKBOX_ITEM_COUNT=42), not 1. A memcpy sized to
+    // slow->flightModeFlags alone silently dropped every boxId >= 32 (BOXAUTOHOVER among them);
+    // assign both words explicitly instead so a future memcpy-by-sizeof mistake can't reintroduce
+    // that silently. The assert catches the case where CHECKBOX_ITEM_COUNT grows past 64 boxes and
+    // a third word would be needed.
+    STATIC_ASSERT(ARRAYLEN(rcModeActivationMask.bits) == 2, blackboxSlowState_flightModeFlags_words_mismatch);
+    slow->flightModeFlags = rcModeActivationMask.bits[0];
+    slow->flightModeFlags2 = rcModeActivationMask.bits[1];
     slow->stateFlags = stateFlags;
     slow->failsafePhase = failsafePhase();
     slow->rxSignalReceived = rxIsReceivingSignal();

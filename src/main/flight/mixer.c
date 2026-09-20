@@ -27,6 +27,7 @@
 #include "build/build_config.h"
 
 #include "common/axis.h"
+#include "common/curve.h"
 #include "common/filter.h"
 #include "common/maths.h"
 
@@ -39,6 +40,7 @@
 #include "fc/rc_modes.h"
 #include "fc/rc.h"
 
+#include "flight/autohover.h"
 #include "flight/pid.h"
 #include "flight/tv_pid.h"
 #include "flight/imu.h"
@@ -67,8 +69,6 @@ typedef struct {
     int16_t         override[MIXER_INPUT_COUNT];
     uint16_t        saturation[MIXER_INPUT_COUNT];
 
-    float           cyclicTotal;
-
     bitmap_t        cyclicMapping;
 
 } mixerData_t;
@@ -86,11 +86,6 @@ float mixerGetInput(uint8_t index)
 float mixerGetOutput(uint8_t index)
 {
     return mixer.output[index];
-}
-
-float getCyclicDeflection(void)
-{
-    return mixer.cyclicTotal;
 }
 
 bool mixerSaturated(uint8_t index)
@@ -215,45 +210,11 @@ static void mixerSetInput(int index, float value)
     mixerApplyInputLimit(index, value);
 }
 
-static void mixerUpdateCyclic(void)
-{
-    const float SR = mixer.input[MIXER_IN_STABILIZED_ROLL];
-    const float SP = mixer.input[MIXER_IN_STABILIZED_PITCH];
-
-    // Total cyclic deflection (combined roll+pitch magnitude, used e.g. by
-    // smartfuel's stick-load sag compensation)
-    mixer.cyclicTotal = sqrtf(sq(SP) + sq(SR));
-}
-
-// Linear interpolation through a curve's (ascending-x) points. Points beyond
-// either end clamp to that end's y. Curves have at most MIXER_CURVE_POINTS
-// (9) points, so a linear scan is negligible cost.
+// Curves have at most MIXER_CURVE_POINTS (9) points, so a linear scan is
+// negligible cost.
 static float mixerEvaluateCurve(const mixerCurve_t *curve, float x)
 {
-    const int n = curve->count;
-
-    if (n < 2)
-        return x;
-
-    const float xs = x * 1000.0f;
-
-    if (xs <= curve->points[0].x)
-        return curve->points[0].y / 1000.0f;
-
-    if (xs >= curve->points[n - 1].x)
-        return curve->points[n - 1].y / 1000.0f;
-
-    for (int i = 0; i < n - 1; i++) {
-        const mixerCurvePoint_t *p0 = &curve->points[i];
-        const mixerCurvePoint_t *p1 = &curve->points[i + 1];
-
-        if (xs >= p0->x && xs <= p1->x) {
-            const float t = (p1->x != p0->x) ? (xs - p0->x) / (float)(p1->x - p0->x) : 0;
-            return (p0->y + t * (p1->y - p0->y)) / 1000.0f;
-        }
-    }
-
-    return x;
+    return evaluateCurvePoints(curve->points, curve->count, x * 1000.0f, x * 1000.0f) / 1000.0f;
 }
 
 static void mixerUpdateRules(void)
@@ -351,11 +312,15 @@ static void mixerUpdateInputs(void)
         mixer.input[MIXER_IN_STABILIZED_YAW]   = getManualDeflection(FD_YAW);
     }
 
-    // Calculate cyclic
-    mixerUpdateCyclic();
-
     // Update throttle (governor holds RPM/throttle per its configured mode when BOXGOVERNOR is engaged)
-    mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, governorApply(getThrottle()));
+    float throttle = getThrottle();
+#ifdef USE_ACC
+    // AUTOHOVER's optional throttle assist (disabled by default) is added here, before governorApply,
+    // so any governor-side slew/ceiling still applies on top as a second layer of limiting. It's a
+    // no-op (returns 0) whenever the mode is inactive or the assist isn't configured/triggered.
+    throttle = constrainf(throttle + autoHoverThrottleBoost(), 0.0f, 1.0f);
+#endif
+    mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, governorApply(throttle));
 }
 
 void mixerUpdate(timeUs_t currentTimeUs)
@@ -397,6 +362,8 @@ void INIT_CODE validateAndFixMixerConfig(void)
             rule->offset    = constrain(rule->offset, MIXER_INPUT_MIN, MIXER_INPUT_MAX);
             rule->weight    = constrain(rule->weight, MIXER_WEIGHT_MIN, MIXER_WEIGHT_MAX);
             rule->weightNeg = constrain(rule->weightNeg, MIXER_WEIGHT_MIN, MIXER_WEIGHT_MAX);
+            rule->role      = constrain(rule->role, 0, MIXER_RULE_ROLE_COUNT - 1);
+            mixerCaptureRuleSign(i);
         }
         else {
             rule->oper      = 0;
@@ -408,6 +375,102 @@ void INIT_CODE validateAndFixMixerConfig(void)
         }
     }
 
+}
+
+/*
+ * Remembers the pilot-configured sign of each rule's weight (Reverse in the
+ * mixer table, or a negative weight via CLI), independent of mixerRule_t
+ * itself -- applyRoleWeight() below needs this because it continuously
+ * overwrites weight with a live-scaled *magnitude*, and that magnitude
+ * legitimately passes through exactly 0 (the low end of an adjustment's
+ * range, or a freshly wizard-generated compensation rule before it's
+ * tuned). 0 has no sign, so deriving "positive or negative" from weight's
+ * own live value -- as an earlier version of this did -- loses the
+ * pilot's configured polarity the moment it crosses zero, and silently
+ * defaults back to positive on the next nonzero write, with no user
+ * action at all. Captured fresh from the actual configurator/CLI-supplied
+ * value every time one writes a rule (see msp.c's MSP_SET_MIXER_RULE and
+ * cli.c's `mixer rule` handlers), plus once at boot here for whatever was
+ * last persisted to EEPROM -- never from applyRoleWeight()'s own writes.
+ */
+static int8_t mixerRuleSign[MIXER_RULE_COUNT];
+
+void mixerCaptureRuleSign(uint8_t index)
+{
+    if (index < MIXER_RULE_COUNT) {
+        mixerRuleSign[index] = (mixerRules(index)->weight >= 0) ? 1 : -1;
+    }
+}
+
+/*
+ * Reads or writes the weight *magnitude* of every active rule tagged with a
+ * given mixerRuleRole_e, for RC adjustment functions (fc/rc_adjustments.c)
+ * that need to live-tune a rule without a fixed index -- nothing in this
+ * codebase reserves fixed rule slots (pg/mixer.h), and the rule table is
+ * freely reordered by the configurator's rule editor, so a tag is the
+ * only stable handle. `oper` gates "active" the same way it does
+ * everywhere else a rule's liveness is checked (mixerUpdateRules(),
+ * configurator's isNullRule(), the LUA suite's isEmpty()).
+ *
+ * Deliberately never touches a rule's sign, only its magnitude -- each
+ * matching rule keeps whatever polarity it was configured with (via
+ * mixerRuleSign[], not weight's own live value -- see that comment), and
+ * *value only ever scales |weight|. This is what makes Reverse mean
+ * anything once an adjustment is live: an earlier version of this wrote
+ * the adjustment's own raw value straight into the first matching rule,
+ * silently overwriting whatever sign the pilot had configured on the very
+ * next tick. Per-rule sign preservation also happens to be exactly what a
+ * differential-thrust-yaw pair needs (the two rules are tagged the same
+ * role but opposite sign by design -- one motor speeds up, the other
+ * slows down) and what several same-signed flap-compensation rules on a
+ * v-tail/flying-wing need, without treating either case specially.
+ */
+static bool applyRoleWeight(uint8_t role, int *value, bool write)
+{
+    bool found = false;
+
+    for (int i = 0; i < MIXER_RULE_COUNT; i++) {
+        mixerRule_t *rule = mixerRulesMutable(i);
+        if (!rule->oper || rule->role != role) {
+            continue;
+        }
+
+        if (write) {
+            const int magnitude = ABS(*value);
+            rule->weight    = (mixerRuleSign[i] >= 0) ? magnitude : -magnitude;
+            rule->weightNeg = rule->weight;
+        } else if (!found) {
+            *value = ABS(rule->weight);
+        }
+
+        found = true;
+    }
+
+    return found;
+}
+
+int get_ADJUSTMENT_FLAP_COMPENSATION_GAIN(void)
+{
+    int value = 0;
+    applyRoleWeight(MIXER_RULE_ROLE_FLAP_COMPENSATION, &value, false);
+    return value;
+}
+
+void set_ADJUSTMENT_FLAP_COMPENSATION_GAIN(int value)
+{
+    applyRoleWeight(MIXER_RULE_ROLE_FLAP_COMPENSATION, &value, true);
+}
+
+int get_ADJUSTMENT_DIFF_THRUST_YAW_GAIN(void)
+{
+    int value = 0;
+    applyRoleWeight(MIXER_RULE_ROLE_DIFFERENTIAL_THRUST_YAW, &value, false);
+    return value;
+}
+
+void set_ADJUSTMENT_DIFF_THRUST_YAW_GAIN(int value)
+{
+    applyRoleWeight(MIXER_RULE_ROLE_DIFFERENTIAL_THRUST_YAW, &value, true);
 }
 
 static void INIT_CODE setMapping(uint8_t in, uint8_t out)

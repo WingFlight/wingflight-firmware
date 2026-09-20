@@ -162,6 +162,16 @@ Multiple changes (#314) (#353).
 - `tail_rotor_mode` (U8) is removed. Payload is now just `model_type` (U8).
   Breaking wire change, same as `MSP_MIXER_CONFIG` above.
 
+### MSP_SERVO_TRIM
+
+New MSP command (233) returning the live, runtime-only servo trim in us set by
+continuous (mapped) `SERVO_TRIM_*` adjustments. It is never saved and starts from
+zero at boot, so a client can show that a trim is in effect even though the servo
+center is unchanged. Returns: U8 count, then one S16 per servo, in the same order
+and count as `MSP_SERVO_CONFIGURATIONS`. Read-only, and small enough to fit the
+MSP response buffers at any servo count. The API version is not bumped: firmware
+without it answers the command as unsupported, which is how a client tells.
+
 ### MSP_BUS_SERVO_CONFIG
 
 New MSP command (152) to retrieve BUS servo source configuration (18 channels).
@@ -528,6 +538,20 @@ Support for the IBUS2 protocol for control link and basic telemetry using the ib
 
 ## Bug Fixes
 
+### Continuous servo trim no longer changes the saved servo center
+
+A continuous ("Absolute") `SERVO_TRIM_ROLL/PITCH/YAW` adjustment, where a pot or
+channel position is the trim, used to be written into the servo center and saved.
+After a reboot the pot applied itself again on top of its own saved result, and a
+bad reading (e.g. a channel that was not valid yet at boot) left a wrong center
+behind.
+
+It is now a runtime-only offset added at the servo output. It starts from zero at
+boot, follows the pot, is never saved, and is limited to 20% of the servo's scale
+(the larger of `rneg`/`rpos`). Switch-stepped adjustments and `BOXAUTOTRIM` still
+edit the servo center as before, and auto trim leaves the pot's part out of the
+center it saves. No MSP or configuration changes.
+
 ### Servo trim (SERVO_TRIM_*) could snap on a boot-time or reacquired RX link
 
 The mapped/continuous ("Absolute") in-flight adjustment mode had no debounce
@@ -538,7 +562,7 @@ reacquired following a brief dropout, could snap a servo's trimmed center
 before the pilot had any control over it.
 
 `SERVO_TRIM_ROLL/PITCH/YAW` adjustments now require the RX link to have been
-continuously valid for 300 ms before they are evaluated at all, and the
+continuously valid for 1000 ms (was 300 ms) before they are evaluated at all, and the
 continuous/mapped mode now uses the same +-2 / 100 ms channel-stability
 debounce that stepped mode already had. Other adjustment functions (PID
 gains, rates, etc.) are unaffected.

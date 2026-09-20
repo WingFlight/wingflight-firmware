@@ -79,6 +79,17 @@ typedef struct {
     uint8_t  gain;                 // Correction strength back to the held vertical attitude/heading
     uint8_t  max_angle;            // Max degrees the stick may deflect the target off vertical/held heading
     uint16_t max_rate;             // deg/s clamp on the commanded attitude-capture rate (safety limit)
+    uint8_t  roll_deadband;        // Percent roll stick deflection below which roll freezes and corrects
+                                    // back to the last captured value (disturbance rejection, e.g. torque
+                                    // roll); above which roll is a free pass-through (pirouette control) --
+                                    // mirrors atthold's deadband, but scoped to just this one axis
+    uint8_t  throttle_assist_gain; // Percent-of-throttle-range added per second while pitch correction
+                                    // stays saturated (see throttle_assist_trigger_ms). 0 disables the
+                                    // whole feature -- manual throttle only, the historical behavior.
+    uint8_t  throttle_assist_max;  // Hard ceiling, percent of throttle range, on the added boost -- never
+                                    // exceeded regardless of how long the trigger condition persists.
+    uint16_t throttle_assist_trigger_ms; // Milliseconds the pitch correction must stay saturated at
+                                    // max_rate before the boost starts ramping in (filters single gusts).
 } pidAutoHoverMode_t;
 
 typedef struct {

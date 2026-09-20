@@ -21,10 +21,11 @@
 #include "pg/pid.h"
 
 // Config for the independent Thrust Vector PID loop (FEATURE_THRUST_VECTOR).
-// A deliberately trimmed-down sibling of pidProfile_t: no pid_mode, master_gain/
-// gain_curve, fw_tpa, trainer, or cross-axis relax -- those are all main-loop
-// flight-mode concerns that don't apply to a raw vectoring actuator loop. Single
-// config (no multi-profile switching).
+// A deliberately trimmed-down sibling of pidProfile_t: no pid_mode, gain_curve,
+// fw_tpa, trainer, or cross-axis relax -- those are all main-loop flight-mode
+// concerns that don't apply to a raw vectoring actuator loop. PID_PROFILE_COUNT
+// independently switchable profiles, mirroring pidProfiles -- see
+// currentTvPidProfile/changeTvProfile() in config/config.c.
 //
 // The one exception is `hold`: an independent attitude/heading hold, engaged by
 // its own switch (BOXTVHOLD) rather than the main loop's ANGLE/AUTOHOVER/ATTHOLD
@@ -33,7 +34,7 @@
 // flight/tv_hold.c -- it deliberately re-derives atthold.c's quaternion
 // track/freeze algorithm as a second, independent instance rather than sharing
 // state with the main loop's atthold.
-typedef struct {
+typedef struct tvPidProfile_s {
 
     pidf_t   pid[PID_ITEM_COUNT];
 
@@ -60,4 +61,6 @@ typedef struct {
 
 } tvPidProfile_t;
 
-PG_DECLARE(tvPidProfile_t, tvPidProfile);
+PG_DECLARE_ARRAY(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles);
+
+void resetTvPidProfile(tvPidProfile_t *tvPidProfile);

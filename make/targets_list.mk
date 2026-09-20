@@ -22,21 +22,7 @@ UNIFIED_TARGETS := \
 	STM32G47X  \
 	STM32H743  \
 
-# Legacy targets are targets that have been replaced by Unified Target configurations
-LEGACY_TARGETS := \
-    DEVEBOXH743 \
-    MATEKF405 \
-    MATEKF411 \
-    MATEKF722 \
-    MATEKH743 \
-    NUCLEOF722 \
-    NUCLEOH743 \
-
-CI_TARGETS := $(UNIFIED_TARGETS) \
-    MATEKF405 \
-    MATEKF411 \
-    MATEKF722 \
-    MATEKH743 \
+CI_TARGETS := $(UNIFIED_TARGETS)
 
 TARGETS_TOTAL := $(words $(CI_TARGETS))
 TARGET_GROUPS := 3

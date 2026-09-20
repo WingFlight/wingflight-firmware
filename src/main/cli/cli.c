@@ -28,6 +28,30 @@
 
 #include "platform.h"
 
+// MinGW/MSYS toolchains used for native Windows SITL builds lack the GNU/BSD
+// strcasestr() extension that is available on the Linux/macOS and ARM/newlib
+// toolchains used for the other targets.
+#if defined(_WIN32) || defined(__MINGW32__)
+static const char *strcasestr(const char *haystack, const char *needle)
+{
+    if (!*needle) {
+        return haystack;
+    }
+    for (; *haystack; haystack++) {
+        const char *h = haystack;
+        const char *n = needle;
+        while (*h && *n && tolower((unsigned char)*h) == tolower((unsigned char)*n)) {
+            h++;
+            n++;
+        }
+        if (!*n) {
+            return haystack;
+        }
+    }
+    return NULL;
+}
+#endif
+
 // FIXME remove this for targets that don't need a CLI.  Perhaps use a no-op macro when USE_CLI is not enabled
 // signal that we're in cli mode
 bool cliMode = false;
@@ -116,6 +140,7 @@ bool cliMode = false;
 #include "flight/position.h"
 #include "flight/servos.h"
 #include "flight/motors.h"
+#include "flight/tv_pid.h"
 
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/beeper.h"
@@ -196,6 +221,7 @@ static bool configIsInCopy = false;
 #define CURRENT_PROFILE_INDEX -1
 static int8_t pidProfileIndexToUse = CURRENT_PROFILE_INDEX;
 static int8_t rateProfileIndexToUse = CURRENT_PROFILE_INDEX;
+static int8_t tvProfileIndexToUse = CURRENT_PROFILE_INDEX;
 
 #ifdef USE_CLI_BATCH
 static bool commandBatchActive = false;
@@ -403,6 +429,7 @@ typedef enum dumpFlags_e {
     HIDE_UNUSED = (1 << 6),
     HARDWARE_ONLY = (1 << 7),
     BARE = (1 << 8),
+    DUMP_TV_PROFILE = (1 << 9),
 } dumpFlags_t;
 
 typedef bool printFn(dumpFlags_t dumpMask, bool equalsDefault, const char *format, ...);
@@ -541,6 +568,16 @@ static void cliPrintErrorVa(const char *cmdName, const char *format, va_list va)
     if (cliErrorWriter) {
         cliPrintInternal(cliErrorWriter, "###ERROR IN ");
         cliPrintInternal(cliErrorWriter, cmdName);
+#if defined(USE_CUSTOM_DEFAULTS)
+        // Custom-defaults replay (see cliProcessCustomDefaults()) runs with
+        // cliWriter suppressed, so a failing line's own command echo never
+        // appears -- only this error does, with nothing to say where it came
+        // from. Tag it so it doesn't look like it fired out of context (e.g.
+        // right after typing `defaults`, with no obvious connection to it).
+        if (processingCustomDefaults) {
+            cliPrintInternal(cliErrorWriter, " (custom defaults)");
+        }
+#endif
         cliPrintInternal(cliErrorWriter, ": ");
 
         tfp_format(cliErrorWriter, cliPutp, format, va);
@@ -840,6 +877,11 @@ static uint8_t getRateProfileIndexToUse(void)
     return rateProfileIndexToUse == CURRENT_PROFILE_INDEX ? getCurrentControlRateProfileIndex() : rateProfileIndexToUse;
 }
 
+static uint8_t getTvProfileIndexToUse(void)
+{
+    return tvProfileIndexToUse == CURRENT_PROFILE_INDEX ? getCurrentTvProfileIndex() : tvProfileIndexToUse;
+}
+
 
 static uint16_t getValueOffset(const clivalue_t *value)
 {
@@ -851,6 +893,8 @@ static uint16_t getValueOffset(const clivalue_t *value)
         return value->offset + sizeof(pidProfile_t) * getPidProfileIndexToUse();
     case PROFILE_RATE_VALUE:
         return value->offset + sizeof(controlRateConfig_t) * getRateProfileIndexToUse();
+    case PROFILE_TV_VALUE:
+        return value->offset + sizeof(tvPidProfile_t) * getTvProfileIndexToUse();
     }
     return 0;
 }
@@ -1467,7 +1511,7 @@ static void cliSerial(const char *cmdName, char *cmdline)
 static void cbCtrlLine(void *context, uint16_t ctrl)
 {
 #ifdef USE_PINIO
-    int contextValue = (int)(long)context;
+    int contextValue = (int)(intptr_t)context;
     if (contextValue) {
         pinioSet(contextValue - 1, !(ctrl & CTRL_LINE_STATE_DTR));
     } else
@@ -2452,7 +2496,7 @@ static void printMixerInputs(dumpFlags_t dumpMask, const mixerInput_t *inputs, c
 
 static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, const mixerRule_t *defaults, const char *headingStr)
 {
-    const char *format = "mixer rule %u %s %s %s %d %d %d %d %d %d";
+    const char *format = "mixer rule %u %s %s %s %d %d %d %d %d %d %d";
     bool equalsDefault = false;
 
     if (defaults) {
@@ -2477,7 +2521,8 @@ static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, cons
                                  def->weightNeg,
                                  def->speed,
                                  def->curve,
-                                 def->condition
+                                 def->condition,
+                                 def->role
             );
         }
         if (rule->oper) {
@@ -2490,7 +2535,8 @@ static void printMixerRules(dumpFlags_t dumpMask, const mixerRule_t *rules, cons
                               rule->weightNeg,
                               rule->speed,
                               rule->curve,
-                              rule->condition
+                              rule->condition,
+                              rule->role
             );
         }
     }
@@ -2664,8 +2710,8 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 }
             }
         }
-        else if (count == 7 || count == 8 || count == 9 || count == 10 || count == 11) {
-            enum { FUNC=0, RULE, OPER, INPUT, OUTPUT, WEIGHT, OFFSET, WEIGHTNEG, SPEED, CURVE, CONDITION, ARGS_COUNT };
+        else if (count == 7 || count == 8 || count == 9 || count == 10 || count == 11 || count == 12) {
+            enum { FUNC=0, RULE, OPER, INPUT, OUTPUT, WEIGHT, OFFSET, WEIGHTNEG, SPEED, CURVE, CONDITION, ROLE, ARGS_COUNT };
             int vals[ARGS_COUNT];
             for (int i=1; i<count; i++)
                 vals[i] = atoi(args[i]);
@@ -2681,7 +2727,7 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 if (strcasecmp(args[OUTPUT], mixerOutputNames[i]) == 0)
                     vals[OUTPUT] = i;
             }
-            // weightNeg defaults to weight (symmetric) when omitted; speed/curve/condition default to off
+            // weightNeg defaults to weight (symmetric) when omitted; speed/curve/condition/role default to off
             if (count == 7) {
                 vals[WEIGHTNEG] = vals[WEIGHT];
             }
@@ -2694,6 +2740,9 @@ static void cliMixer(const char *cmdName, char *cmdline)
             if (count < 11) {
                 vals[CONDITION] = 0;
             }
+            if (count < 12) {
+                vals[ROLE] = 0;
+            }
             if (vals[RULE] >= 0 && vals[RULE] < MIXER_RULE_COUNT &&
                 vals[OPER] >= MIXER_OP_NUL && vals[OPER] < MIXER_OP_COUNT &&
                 vals[INPUT] >= 0 && vals[INPUT] < MIXER_INPUT_COUNT &&
@@ -2703,7 +2752,8 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 vals[WEIGHTNEG] >= MIXER_WEIGHT_MIN && vals[WEIGHTNEG] <= MIXER_WEIGHT_MAX &&
                 vals[SPEED] >= SERVO_SPEED_MIN && vals[SPEED] <= SERVO_SPEED_MAX &&
                 vals[CURVE] >= 0 && vals[CURVE] <= MIXER_CURVE_COUNT &&
-                vals[CONDITION] >= 0 && vals[CONDITION] <= LOGIC_CONDITION_COUNT)
+                vals[CONDITION] >= 0 && vals[CONDITION] <= LOGIC_CONDITION_COUNT &&
+                vals[ROLE] >= 0 && vals[ROLE] < MIXER_RULE_ROLE_COUNT)
             {
                 mixerRule_t *mix = mixerRulesMutable(vals[RULE]);
                 mix->oper      = vals[OPER];
@@ -2715,6 +2765,8 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 mix->speed     = vals[SPEED];
                 mix->curve     = vals[CURVE];
                 mix->condition = vals[CONDITION];
+                mix->role      = vals[ROLE];
+                mixerCaptureRuleSign(vals[RULE]);
             } else {
                 cliShowArgumentRangeError(cmdName, NULL, 0, 0);
             }
@@ -4335,6 +4387,7 @@ static void cliDumpGyroRegisters(const char *cmdName, char *cmdline)
 #endif
 
 
+#if defined(USE_DSHOT) || defined(USE_ESCSERIAL)
 static int parseOutputIndex(const char *cmdName, char *pch, bool allowAllEscs) {
     int outputIndex = atoi(pch);
     if (outputIndex > 0 && outputIndex <= getMotorCount()) {
@@ -4347,6 +4400,7 @@ static int parseOutputIndex(const char *cmdName, char *pch, bool allowAllEscs) {
     }
     return outputIndex - 1;
 }
+#endif // USE_DSHOT || USE_ESCSERIAL
 
 #if defined(USE_DSHOT)
 static void cliDshotProg(const char *cmdName, char *cmdline)
@@ -4618,6 +4672,22 @@ static void cliRateProfile(const char *cmdName, char *cmdline)
     }
 }
 
+static void cliTvProfile(const char *cmdName, char *cmdline)
+{
+    if (isEmpty(cmdline)) {
+        cliPrintLinef("tv_profile %d", getTvProfileIndexToUse());
+        return;
+    } else {
+        const int i = atoi(cmdline);
+        if (i >= 0 && i < PID_PROFILE_COUNT) {
+            changeTvProfile(i);
+            cliTvProfile(cmdName, "");
+        } else {
+            cliPrintErrorLinef(cmdName, "PROFILE OUTSIDE OF [0..%d]", PID_PROFILE_COUNT - 1);
+        }
+    }
+}
+
 static void cliDumpPidProfile(const char *cmdName, uint8_t pidProfileIndex, dumpFlags_t dumpMask)
 {
     if (pidProfileIndex >= PID_PROFILE_COUNT) {
@@ -4654,6 +4724,25 @@ static void cliDumpRateProfile(const char *cmdName, uint8_t rateProfileIndex, du
     dumpAllValues(cmdName, PROFILE_RATE_VALUE, dumpMask, rateProfileStr);
 
     rateProfileIndexToUse = CURRENT_PROFILE_INDEX;
+}
+
+static void cliDumpTvProfile(const char *cmdName, uint8_t tvProfileIndex, dumpFlags_t dumpMask)
+{
+    if (tvProfileIndex >= PID_PROFILE_COUNT) {
+        // Faulty values
+        return;
+    }
+
+    tvProfileIndexToUse = tvProfileIndex;
+
+    cliPrintLinefeed();
+    cliTvProfile(cmdName, "");
+
+    char tvProfileStr[13];
+    tfp_sprintf(tvProfileStr, "tv_profile %d", tvProfileIndex);
+    dumpAllValues(cmdName, PROFILE_TV_VALUE, dumpMask, tvProfileStr);
+
+    tvProfileIndexToUse = CURRENT_PROFILE_INDEX;
 }
 
 #ifdef USE_CLI_BATCH
@@ -4913,6 +5002,7 @@ STATIC_UNIT_TESTED void cliGet(const char *cmdName, char *cmdline)
 
     pidProfileIndexToUse = getCurrentPidProfileIndex();
     rateProfileIndexToUse = getCurrentControlRateProfileIndex();
+    tvProfileIndexToUse = getCurrentTvProfileIndex();
 
     backupAndResetConfigs(true);
 
@@ -4934,6 +5024,10 @@ STATIC_UNIT_TESTED void cliGet(const char *cmdName, char *cmdline)
                 cliRateProfile(cmdName, "");
 
                 break;
+            case PROFILE_TV_VALUE:
+                cliTvProfile(cmdName, "");
+
+                break;
             default:
 
                 break;
@@ -4949,6 +5043,7 @@ STATIC_UNIT_TESTED void cliGet(const char *cmdName, char *cmdline)
 
     pidProfileIndexToUse = CURRENT_PROFILE_INDEX;
     rateProfileIndexToUse = CURRENT_PROFILE_INDEX;
+    tvProfileIndexToUse = CURRENT_PROFILE_INDEX;
 
     if (!matchedCommands) {
         cliPrintErrorLinef(cmdName, "INVALID NAME");
@@ -5358,7 +5453,7 @@ static void cliStatus(const char *cmdName, char *cmdline)
     cliPrint("Arming disable flags:");
     armingDisableFlags_e flags = getArmingDisableFlags();
     while (flags) {
-        const int bitpos = ffs(flags) - 1;
+        const int bitpos = __builtin_ffs(flags) - 1;
         flags &= ~(1 << bitpos);
         cliPrintf(" %s", armingDisableFlagNames[bitpos]);
     }
@@ -6747,6 +6842,8 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
         dumpMask = DUMP_PROFILE; // only
     } else if ((options = checkCommand(cmdline, "rates"))) {
         dumpMask = DUMP_RATES; // only
+    } else if ((options = checkCommand(cmdline, "tv_profile"))) {
+        dumpMask = DUMP_TV_PROFILE; // only
     } else if ((options = checkCommand(cmdline, "hardware"))) {
         dumpMask = DUMP_MASTER | HARDWARE_ONLY;   // Show only hardware related settings (useful to generate unified target configs).
     } else if ((options = checkCommand(cmdline, "all"))) {
@@ -6890,6 +6987,20 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
                     cliPrintHashLine("restore original rateprofile selection");
 
                     cliRateProfile(cmdName, "");
+                }
+
+                rateProfileIndexToUse = CURRENT_PROFILE_INDEX;
+
+                for (uint32_t tvProfileIndex = 0; tvProfileIndex < PID_PROFILE_COUNT; tvProfileIndex++) {
+                    cliDumpTvProfile(cmdName, tvProfileIndex, dumpMask);
+                }
+
+                tvProfileIndexToUse = systemConfig_Copy.tvProfileIndex;
+
+                if (!(dumpMask & BARE)) {
+                    cliPrintHashLine("restore original tv_profile selection");
+
+                    cliTvProfile(cmdName, "");
 
                     cliPrintHashLine("save configuration");
                     cliPrint("save");
@@ -6898,17 +7009,21 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
 #endif
                 }
 
-                rateProfileIndexToUse = CURRENT_PROFILE_INDEX;
+                tvProfileIndexToUse = CURRENT_PROFILE_INDEX;
             } else {
                 cliDumpPidProfile(cmdName, systemConfig_Copy.pidProfileIndex, dumpMask);
 
                 cliDumpRateProfile(cmdName, systemConfig_Copy.activeRateProfile, dumpMask);
+
+                cliDumpTvProfile(cmdName, systemConfig_Copy.tvProfileIndex, dumpMask);
             }
         }
     } else if (dumpMask & DUMP_PROFILE) {
         cliDumpPidProfile(cmdName, systemConfig_Copy.pidProfileIndex, dumpMask);
     } else if (dumpMask & DUMP_RATES) {
         cliDumpRateProfile(cmdName, systemConfig_Copy.activeRateProfile, dumpMask);
+    } else if (dumpMask & DUMP_TV_PROFILE) {
+        cliDumpTvProfile(cmdName, systemConfig_Copy.tvProfileIndex, dumpMask);
     }
 
 #ifdef USE_CLI_BATCH
@@ -7179,6 +7294,7 @@ const clicmd_t cmdTable[] = {
 #endif
     CLI_COMMAND_DEF("profile", "change profile", "[<index>]", cliProfile),
     CLI_COMMAND_DEF("rateprofile", "change rate profile", "[<index>]", cliRateProfile),
+    CLI_COMMAND_DEF("tv_profile", "change thrust vector profile", "[<index>]", cliTvProfile),
     CLI_COMMAND_DEF("setpoint_info", "show setpoint smoothing operational settings", NULL,cliSetpointInfo),
 #ifdef USE_RESOURCE_MGMT
     CLI_COMMAND_DEF("resource", "show/set resources", "<> | <resource name> <index> [<pin>|none] | show [all]", cliResource),

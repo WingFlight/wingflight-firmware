@@ -48,6 +48,8 @@
 #include "io/gps.h"
 #include "io/ledstrip.h"
 
+#include "config/config.h"
+
 #include "fc/rc_modes.h"
 #include "fc/rc_adjustments.h"
 #include "fc/runtime_config.h"
@@ -347,6 +349,8 @@ int telemetrySensorValue(sensor_id_e id)
             return 0;
         case TELEM_BATTERY_PROFILE:
             return getCurrentBatteryProfileIndex() + 1;
+        case TELEM_TV_PROFILE:
+            return getCurrentTvProfileIndex() + 1;
 
         case TELEM_ADJFUNC:
             return getAdjustmentsRangeName() ?
@@ -537,6 +541,7 @@ bool telemetrySensorActive(sensor_id_e id)
 
         case TELEM_PID_PROFILE:
         case TELEM_RATES_PROFILE:
+        case TELEM_TV_PROFILE:
             return true;
 
         case TELEM_BATTERY_PROFILE:

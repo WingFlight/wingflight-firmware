@@ -20,6 +20,7 @@
 #include "config/config.h"
 
 #include "pg/servos.h"
+#include "pg/servo_curve.h"
 #include "pg/adjustments.h"
 
 #define DEFAULT_SERVO_FLAGS      0
@@ -27,7 +28,7 @@
 #define DEFAULT_SERVO_MIN     -700
 #define DEFAULT_SERVO_MAX      700
 #define DEFAULT_SERVO_SCALE    500
-#define DEFAULT_SERVO_RATE     150
+#define DEFAULT_SERVO_RATE      50
 #define DEFAULT_SERVO_SPEED      0
 
 #define SERVO_LIMIT_MIN      -1000
@@ -54,6 +55,14 @@ void servoShutdown(void);
 
 void validateAndFixServoConfig(void);
 void servoTrimCommit(void);
+
+// Runtime-only trim from continuous SERVO_TRIM_* adjustments (see servos.c).
+// A servo's runtime trim is limited to this share of its scale (rneg/rpos, whichever
+// is larger).
+#define SERVO_TRIM_LIMIT_PERCENT     20
+int getServoAxisRuntimeTrim(int axis);
+void setServoAxisRuntimeTrim(int axis, int value);
+float getServoRuntimeTrim(uint8_t servo);
 
 ADJFUN_DECLARE(SERVO_TRIM_ROLL)
 ADJFUN_DECLARE(SERVO_TRIM_PITCH)

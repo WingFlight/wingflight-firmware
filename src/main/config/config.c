@@ -20,6 +20,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 
@@ -58,6 +59,8 @@
 #include "flight/motors.h"
 #include "flight/servos.h"
 #include "flight/position.h"
+#include "flight/tv_pid.h"
+#include "flight/tv_hold.h"
 
 #include "io/beeper.h"
 #include "io/gps.h"
@@ -82,6 +85,7 @@
 #include "pg/freq.h"
 #include "pg/system.h"
 #include "pg/pilot.h"
+#include "pg/tv_pid.h"
 
 #include "rx/rx.h"
 #include "rx/rx_spi.h"
@@ -105,6 +109,7 @@ static bool rebootRequired = false;  // set if a config change requires a reboot
 static bool eepromWriteInProgress = false;
 
 pidProfile_t *currentPidProfile;
+tvPidProfile_t *currentTvPidProfile;
 
 #ifndef RX_SPI_DEFAULT_PROTOCOL
 #define RX_SPI_DEFAULT_PROTOCOL 0
@@ -123,6 +128,16 @@ uint8_t getCurrentPidProfileIndex(void)
 static void loadPidProfile(void)
 {
     currentPidProfile = pidProfilesMutable(systemConfig()->pidProfileIndex);
+}
+
+uint8_t getCurrentTvProfileIndex(void)
+{
+    return systemConfig()->tvProfileIndex;
+}
+
+static void loadTvProfile(void)
+{
+    currentTvPidProfile = tvPidProfilesMutable(systemConfig()->tvProfileIndex);
 }
 
 uint8_t getCurrentControlRateProfileIndex(void)
@@ -148,11 +163,14 @@ static void activateConfig(void)
 {
     loadPidProfile();
     loadControlRateProfile();
+    loadTvProfile();
 
     initRcProcessing();
     adjustmentRangeInit();
 
     pidChangeProfile(currentPidProfile);
+    tvPidLoadProfile(currentTvPidProfile);
+    tvHoldInit(currentTvPidProfile);
 
     rcControlsInit();
 
@@ -196,6 +214,13 @@ static void validateAndFixPositionConfig(void)
 
 static void validateAndFixConfig(void)
 {
+#ifdef SIMULATOR_BUILD
+    // The Configurator offers every feature, but SITL compiles many of them out
+    // and the checks below silently clear those - which on SITL looks exactly
+    // like "save didn't persist". Say so on the console.
+    const uint32_t requestedFeatures = featureConfig()->enabledFeatures;
+#endif
+
     if (!isSerialConfigValid(serialConfig())) {
         pgResetFn_serialConfig(serialConfigMutable());
     }
@@ -471,6 +496,13 @@ static void validateAndFixConfig(void)
     featureDisableImmediate(FEATURE_RSSI_ADC);
 #endif
 
+#ifdef SIMULATOR_BUILD
+    const uint32_t droppedFeatures = requestedFeatures & ~featureConfig()->enabledFeatures;
+    if (droppedFeatures) {
+        fprintf(stderr, "[config] features 0x%08x not supported by this build (or its config) - disabled, not saved\n", (unsigned)droppedFeatures);
+    }
+#endif
+
 #ifdef USE_RPM_FILTER
     validateAndFixRPMFilterConfig();
 #endif
@@ -499,6 +531,7 @@ static void validateAndFixConfig(void)
 #endif
 
     bool configuredMotorProtocolDshot = checkMotorProtocolDshot(&motorConfig()->dev);
+    UNUSED(configuredMotorProtocolDshot);
 #if defined(USE_DSHOT)
     // If using DSHOT protocol disable unsynched PWM as it's meaningless
     if (configuredMotorProtocolDshot) {
@@ -730,6 +763,11 @@ void validateAndFixGyroConfig(void)
         systemConfigMutable()->pidProfileIndex = 0;
     }
     loadPidProfile();
+
+    if (systemConfig()->tvProfileIndex >= PID_PROFILE_COUNT) {
+        systemConfigMutable()->tvProfileIndex = 0;
+    }
+    loadTvProfile();
 }
 
 bool readEEPROM(void)
@@ -847,6 +885,21 @@ void changePidProfile(uint8_t pidProfileIndex)
     }
 
     beeperConfirmationBeeps(pidProfileIndex + 1);
+}
+
+void changeTvProfile(uint8_t tvProfileIndex)
+{
+    // The config switch will cause a big enough delay in the current task to upset the scheduler
+    schedulerIgnoreTaskExecTime();
+
+    if (tvProfileIndex < PID_PROFILE_COUNT) {
+        systemConfigMutable()->tvProfileIndex = tvProfileIndex;
+        loadTvProfile();
+        tvPidLoadProfile(currentTvPidProfile);
+        tvHoldInit(currentTvPidProfile);
+    }
+
+    beeperConfirmationBeeps(tvProfileIndex + 1);
 }
 
 bool isSystemConfigured(void)
