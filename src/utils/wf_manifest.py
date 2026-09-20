@@ -157,6 +157,7 @@ class Dwarf(object):
         self.dwarf = elf.elf.get_dwarf_info()
         self.variables = {}   # name -> (die, cu)
         self.structs = {}     # struct/union name -> (die, cu), first definition wins
+        self._typedefs = {}   # typedef name -> (die, cu), for anonymous structs
 
         for cu in self.dwarf.iter_CUs():
             for die in cu.get_top_DIE().iter_children():
@@ -171,6 +172,13 @@ class Dwarf(object):
                     identifier = name_of(die)
                     if identifier and 'DW_AT_byte_size' in die.attributes:
                         self.structs.setdefault(identifier, (die, cu))
+                elif die.tag == 'DW_TAG_typedef':
+                    # `typedef struct { ... } foo_t;` leaves the struct itself
+                    # anonymous, so it is only reachable by the typedef name.
+                    # Index those too, or such a type looks absent entirely.
+                    identifier = name_of(die)
+                    if identifier:
+                        self._typedefs.setdefault(identifier, (die, cu))
 
     def resolve(self, die, cu):
         """Follow DW_AT_type once."""
@@ -301,8 +309,16 @@ class Dwarf(object):
         return any(v < 0 for v in self.enumerators(die).values())
 
     def struct_layout(self, identifier):
-        """Member name -> (offset, size) for a named struct."""
+        """Member name -> (offset, size) for a named struct or typedef."""
         entry = self.structs.get(identifier)
+        if entry is None:
+            # `typedef struct { ... } foo_t;` leaves the struct anonymous, so
+            # it is reachable only through the typedef.
+            typedef = self._typedefs.get(identifier)
+            if typedef is not None:
+                resolved = self.type_of(*typedef)
+                if resolved[0] is not None and 'DW_AT_byte_size' in resolved[0].attributes:
+                    entry = resolved
         if entry is None:
             raise SystemExit('%s not found in debug info' % identifier)
         die, cu = entry
@@ -426,6 +442,61 @@ def read_lookup_tables(elf, dwarf):
         tables.append(labels)
         index += 1
     return tables
+
+
+def read_resource_table(elf, dwarf):
+    """Which parameter group holds which pin assignment.
+
+    `resource MOTOR 1 A09` is not runtime state, which is what makes it
+    reproducible off-board: resourceTable maps an owner to a group and an
+    offset inside it, and the pin bytes themselves are ordinary parameter group
+    contents a client can already read. So the client needs the table and the
+    owner names, and can format the rest itself.
+    """
+    table = elf.symbols.get('resourceTable')
+    names = elf.symbols.get('ownerNames')
+    if table is None or names is None:
+        return []
+
+    layout, record_size = dwarf.struct_layout('cliResourceValue_t')
+    endian = '<' if elf.little_endian else '>'
+    scalar = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
+
+    # ownerNames is indexed by the owner enum; read as far as the table needs.
+    def owner_name(index):
+        pointer = elf.read_pointer(names + index * elf.pointer_size)
+        return elf.read_cstring(pointer) if pointer else None
+
+    entries = []
+    index = 0
+    while True:
+        record = elf.read_at(table + index * record_size, record_size)
+        if record is None or len(record) < record_size:
+            break
+
+        def field(member, record=record):
+            offset, size = layout[member]
+            return struct.unpack_from(endian + scalar[size], record, offset)[0]
+
+        owner = field('owner')
+        pgn = field('pgn')
+        # The array is not length-prefixed. A zero pgn is not a real group, so
+        # it marks the end as reliably as anything available.
+        if pgn == 0:
+            break
+
+        entries.append({
+            'owner': owner,
+            'name': owner_name(owner),
+            'pgn': pgn,
+            'stride': field('stride'),
+            'off': field('offset'),
+            # maxIndex 0 means a single pin rather than an array, which is what
+            # RESOURCE_VALUE_MAX_INDEX() encoded in the firmware.
+            'count': field('maxIndex') or 1,
+        })
+        index += 1
+    return entries
 
 
 def read_value_table(elf, dwarf, tables):
@@ -649,7 +720,8 @@ def main(argv):
                          if name.endswith('_System') or name.endswith('_SystemArray')}
 
     wanted = set(address_to_symbol.values())
-    wanted.update(('pgRegistry_s', 'clivalue_s', 'lookupTableEntry_s'))
+    wanted.update(('pgRegistry_s', 'clivalue_s', 'lookupTableEntry_s',
+                   'cliResourceValue_t'))
     dwarf = Dwarf(elf, wanted)
     groups = read_registry(elf, dwarf)
 
@@ -677,6 +749,7 @@ def main(argv):
 
     manifest['pgs'].sort(key=lambda pg: pg['pgn'])
     manifest['settings'] = read_value_table(elf, dwarf, read_lookup_tables(elf, dwarf))
+    manifest['resources'] = read_resource_table(elf, dwarf)
     manifest['build']['id'] = build_id(manifest)
 
     leaves = sum(count_leaves(pg['fields']) for pg in manifest['pgs'])
