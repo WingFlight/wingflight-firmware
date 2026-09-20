@@ -96,6 +96,12 @@ float tvHoldApply(int axis, float pidSetpoint)
 
     DEBUG_AXIS(TVHOLD, axis, 0, setpoint);
 
+    int16_t holdDebug[QUATHOLD_DEBUG_COUNT];
+    quatHoldGetDebug(&tvHold, axis, holdDebug);
+    for (int i = 0; i < QUATHOLD_DEBUG_COUNT; i++) {
+        DEBUG_AXIS(TVHOLD, axis, 1 + i, holdDebug[i]);
+    }
+
     return setpoint;
 }
 

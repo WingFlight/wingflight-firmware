@@ -119,7 +119,10 @@ void quatHoldSetState(quatHold_t *hold, bool state)
             hold->SettleTime[i] = 0.0f;
             hold->StallTime[i] = 0.0f;
             hold->BleedTime[i] = 0.0f;
+            hold->ErrorDeg[i] = 0.0f;
         }
+        hold->RecaptureCount = 0;
+        hold->LastRecaptureAxis = -1;
     }
 
     hold->Active = state;
@@ -137,6 +140,16 @@ float quatHoldIDecayScale(const quatHold_t *hold, int axis)
     }
 
     return QUATHOLD_HOLD_I_DECAY_SCALE;
+}
+
+void quatHoldGetDebug(const quatHold_t *hold, int axis, int16_t out[QUATHOLD_DEBUG_COUNT])
+{
+    out[0] = lrintf(constrainf(hold->ErrorDeg[axis] * 10.0f, -32767.0f, 32767.0f));
+    out[1] = lrintf(hold->StallTime[axis] * 1000.0f);
+    out[2] = lrintf(hold->BleedTime[axis] * 1000.0f);
+    out[3] = hold->RecaptureCount;
+    out[4] = hold->LastRecaptureAxis;
+    out[5] = (hold->Tracking[FD_ROLL] ? 1 : 0) | (hold->Tracking[FD_PITCH] ? 2 : 0) | (hold->Tracking[FD_YAW] ? 4 : 0);
 }
 
 float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
@@ -202,6 +215,10 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
             (2.0f * qError.z) / M_RADf,
         };
 
+        for (int i = 0; i < 3; i++) {
+            hold->ErrorDeg[i] = errorDeg[i];
+        }
+
         // Stall detection uses the raw error (before the pre-airborne attenuation below), since
         // that's the true distance from the held attitude. Sends a stalled axis back through the
         // tracking path -- which re-aims just that axis's target at the current attitude -- and
@@ -216,6 +233,8 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
                     hold->SettleTime[i] = 0.0f;
                     hold->StallTime[i] = 0.0f;
                     hold->BleedTime[i] = HOLD_STALL_BLEED_S;
+                    hold->RecaptureCount = (hold->RecaptureCount + 1) & 0x7FFF;
+                    hold->LastRecaptureAxis = i;
                 }
             } else {
                 hold->StallTime[i] = 0.0f;

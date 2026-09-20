@@ -92,6 +92,12 @@ float attHoldApply(int axis, float pidSetpoint)
 
     DEBUG_AXIS(ATTHOLD, axis, 0, setpoint);
 
+    int16_t holdDebug[QUATHOLD_DEBUG_COUNT];
+    quatHoldGetDebug(&attHold, axis, holdDebug);
+    for (int i = 0; i < QUATHOLD_DEBUG_COUNT; i++) {
+        DEBUG_AXIS(ATTHOLD, axis, 1 + i, holdDebug[i]);
+    }
+
     return setpoint;
 }
 
