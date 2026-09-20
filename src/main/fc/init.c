@@ -40,7 +40,6 @@
 #include "config/config_eeprom.h"
 #include "config/feature.h"
 
-#include "cli/cli.h"
 
 #include "drivers/accgyro/accgyro.h"
 #include "drivers/adc.h"

@@ -26,7 +26,12 @@
 
 #define USE_UNIFIED_TARGET
 
-#define USE_CUSTOM_DEFAULTS
+// USE_CUSTOM_DEFAULTS is gone with the CLI, and could not have survived it.
+// Custom defaults are stored as CLI command text and applied by replaying them
+// through the parser -- resolving `set <name> = <value>` needs the name table
+// in cli/settings.c, which is exactly what this work removes. A board config
+// is applied over the wire by the configurator instead, which is how the
+// configs in the wingflight-targets repo are written anyway.
 
 #define USE_BEEPER
 

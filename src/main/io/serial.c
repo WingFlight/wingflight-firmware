@@ -26,7 +26,6 @@
 
 #include "build/build_config.h"
 
-#include "cli/cli.h"
 
 #include "common/utils.h"
 

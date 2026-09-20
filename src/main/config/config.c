@@ -30,7 +30,6 @@
 
 #include "build/debug.h"
 
-#include "cli/cli.h"
 
 #include "common/sensor_alignment.h"
 

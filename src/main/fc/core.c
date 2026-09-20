@@ -30,7 +30,6 @@
 
 #include "build/debug.h"
 
-#include "cli/cli.h"
 
 #include "common/axis.h"
 #include "common/filter.h"
@@ -771,9 +770,7 @@ void processRxModes(timeUs_t currentTimeUs)
     }
 #endif // USE_SERVOS
 
-    if (!cliMode) {
-        processRcAdjustments();
-    }
+    processRcAdjustments();
 
     if (sensors(SENSOR_ACC)) {
 #ifdef USE_GPS_RESCUE
@@ -1096,7 +1093,7 @@ static void subTaskFilterUpdate(timeUs_t currentTimeUs)
 static void subTaskBlackboxUpdate(timeUs_t currentTimeUs)
 {
 #ifdef USE_BLACKBOX
-    if (!cliMode && blackboxConfig()->device) {
+    if (blackboxConfig()->device) {
         blackboxUpdate(currentTimeUs);
     }
 #else
