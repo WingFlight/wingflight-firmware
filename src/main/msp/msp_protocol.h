@@ -329,4 +329,20 @@
 // MSP2_WING_RX_INPUT_BACKUP_TRIAL above, which claimed those two from master
 // independently on a sibling branch.
 #define MSP2_WING_ESC_SENSOR_TRIAL            0x5F14
+
+// Generic parameter addressing. These address configuration by
+// (pgn, offset, length) against the parameter group registry instead of by a
+// hand-written opcode per field, which is what lets cli/settings.c and the MSP
+// config catalogue stop being linked into flash. See
+// parameter-addressing-design.md.
+//
+// Deliberately started at 0x5F20 rather than 0x5F15: the block above grows one
+// opcode at a time as features land, and this group should stay contiguous.
+#define MSP2_WING_BUILD_ID                    0x5F20
+#define MSP2_WING_PG_LIST                     0x5F21
+#define MSP2_WING_PARAM_READ                  0x5F22
+#define MSP2_WING_PARAM_WRITE                 0x5F23
+#define MSP2_WING_PG_DEFAULT                  0x5F24
+#define MSP2_WING_MANIFEST_READ               0x5F25
+
 #define MSP_V2_FRAME                         255

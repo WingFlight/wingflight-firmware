@@ -110,6 +110,7 @@
 #include "io/vtx.h"
 
 #include "msp/msp_box.h"
+#include "msp/msp_param.h"
 #include "msp/msp_protocol.h"
 #include "msp/msp_protocol_v2_betaflight.h"
 #include "msp/msp_protocol_v2_rotorflight.h"
@@ -4441,6 +4442,7 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
 mspResult_e mspFcProcessCommand(mspDescriptor_t srcDesc, mspPacket_t *cmd, mspPacket_t *reply, mspPostProcessFnPtr *mspPostProcessFn)
 {
     int ret = MSP_RESULT_ACK;
+    mspResult_e paramResult = MSP_RESULT_ERROR;
     sbuf_t *dst = &reply->buf;
     sbuf_t *src = &cmd->buf;
     const int16_t cmdMSP = cmd->cmd;
@@ -4453,6 +4455,8 @@ mspResult_e mspFcProcessCommand(mspDescriptor_t srcDesc, mspPacket_t *cmd, mspPa
         ret = MSP_RESULT_ACK;
     } else if ((ret = mspFcProcessOutCommandWithArg(srcDesc, cmdMSP, src, dst, mspPostProcessFn)) != MSP_RESULT_CMD_UNKNOWN) {
         /* ret */;
+    } else if (mspParamCommand(cmdMSP, src, dst, &paramResult)) {
+        ret = paramResult;
     } else if (cmdMSP == MSP_SET_PASSTHROUGH) {
         mspFcSetPassthroughCommand(dst, src, mspPostProcessFn);
         ret = MSP_RESULT_ACK;
