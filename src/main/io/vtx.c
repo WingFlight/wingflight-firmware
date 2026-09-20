@@ -25,7 +25,6 @@
 
 #if defined(USE_VTX_COMMON)
 
-#include "cli/cli.h"
 
 #include "common/maths.h"
 #include "common/time.h"
@@ -235,10 +234,6 @@ static bool vtxProcessStateUpdate(vtxDevice_t *vtxDevice)
 void vtxUpdate(timeUs_t currentTimeUs)
 {
     static uint8_t currentSchedule = 0;
-
-    if (cliMode) {
-        return;
-    }
 
     vtxDevice_t *vtxDevice = vtxCommonDevice();
     if (vtxDevice) {

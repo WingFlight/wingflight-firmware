@@ -8,8 +8,6 @@ COMMON_SRC = \
             $(addprefix pg/, $(notdir $(wildcard $(SRC_DIR)/pg/*.c))) \
             $(addprefix common/,$(notdir $(wildcard $(SRC_DIR)/common/*.c))) \
             $(addprefix config/,$(notdir $(wildcard $(SRC_DIR)/config/*.c))) \
-            cli/cli.c \
-            cli/settings.c \
             config/config.c \
             drivers/adc.c \
             drivers/dshot.c \
@@ -293,8 +291,6 @@ SPEED_OPTIMISED_SRC := $(SPEED_OPTIMISED_SRC) \
 SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
             $(shell find $(SRC_DIR) -name '*_init.c') \
             bus_bst_stm32f30x.c \
-            cli/cli.c \
-            cli/settings.c \
             drivers/accgyro/accgyro_fake.c \
             drivers/barometer/barometer_bmp085.c \
             drivers/barometer/barometer_bmp280.c \
@@ -441,4 +437,25 @@ ifneq ($(OLC_DIR),)
 INCLUDE_DIRS += $(OLC_DIR)
 SRC += $(OLC_DIR)/olc.c
 SIZE_OPTIMISED_SRC += $(OLC_DIR)/olc.c
+endif
+
+# The settings table is build-time metadata, not firmware. It describes every
+# setting's name, range and enum labels, and is the source the manifest
+# generator reads them from -- so it is compiled into the manifest build, which
+# is never flashed, and left out of the firmware entirely. That is what lets
+# the names exist without costing flash. See docs/parameter-addressing-design.md.
+#
+# Appended to SRC rather than COMMON_SRC: SRC absorbs COMMON_SRC earlier in
+# this file, so adding it there at this point would be silently ignored.
+#
+# --undefined is needed because nothing *calls* into this table any more: with
+# the CLI gone it has no referent in the firmware, so --gc-sections drops it
+# before the generator can read it. These pull it back in by name. They apply
+# only to the manifest build, which is never flashed.
+ifeq ($(MANIFEST_BUILD),yes)
+SRC += manifest/settings.c
+SIZE_OPTIMISED_SRC += manifest/settings.c
+EXTRA_LD_FLAGS += -Wl,--undefined=valueTable \
+                  -Wl,--undefined=valueTableEntryCount \
+                  -Wl,--undefined=lookupTables
 endif

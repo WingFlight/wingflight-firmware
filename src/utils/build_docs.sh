@@ -7,7 +7,6 @@ doc_files=(
 	'Safety.md'
 	'Installation.md'
 	'Configuration.md'
-	'Cli.md'
 	'Serial.md'
 	'Rx.md'
 	'Spektrum bind.md'

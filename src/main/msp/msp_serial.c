@@ -26,7 +26,6 @@
 
 #include "build/debug.h"
 
-#include "cli/cli.h"
 
 #include "common/streambuf.h"
 #include "common/utils.h"
@@ -425,10 +424,6 @@ static void mspEvaluateNonMspData(mspPort_t * mspPort, uint8_t receivedChar)
 {
    if (receivedChar == serialConfig()->reboot_character) {
         mspPort->pendingRequest = MSP_PENDING_BOOTLOADER_ROM;
-#ifdef USE_CLI
-   } else if (receivedChar == '#') {
-        mspPort->pendingRequest = MSP_PENDING_CLI;
-#endif
 #if defined(USE_FLASH_BOOT_LOADER)
    } else if (receivedChar == 'F') {
         mspPort->pendingRequest = MSP_PENDING_BOOTLOADER_FLASH;
@@ -451,12 +446,6 @@ static void mspProcessPendingRequest(mspPort_t * mspPort)
 #if defined(USE_FLASH_BOOT_LOADER)
     case MSP_PENDING_BOOTLOADER_FLASH:
         systemReset(RESET_BOOTLOADER_REQUEST_FLASH);
-        break;
-#endif
-
-#ifdef USE_CLI
-    case MSP_PENDING_CLI:
-        cliEnter(mspPort->port);
         break;
 #endif
 

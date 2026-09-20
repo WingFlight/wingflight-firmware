@@ -26,7 +26,6 @@
 
 #include "build/debug.h"
 
-#include "cli/cli.h"
 
 #include "common/color.h"
 #include "common/utils.h"
@@ -144,13 +143,6 @@ static void taskHandleSerial(timeUs_t currentTimeUs)
     DEBUG_SET(DEBUG_USB, 1, usbVcpIsConnected());
 #endif
 
-#ifdef USE_CLI
-    // in cli mode, all serial stuff goes to here. enter cli mode by sending #
-    if (cliMode) {
-        cliProcess();
-        return;
-    }
-#endif
     bool evaluateMspData = ARMING_FLAG(ARMED) ? MSP_SKIP_NON_MSP_DATA : MSP_EVALUATE_NON_MSP_DATA;
     mspSerialProcess(evaluateMspData, mspFcProcessCommand, mspFcProcessReply);
 }
@@ -288,7 +280,7 @@ void taskUpdateRangefinder(timeUs_t currentTimeUs)
 #ifdef USE_TELEMETRY
 static void taskTelemetry(timeUs_t currentTimeUs)
 {
-    if (!cliMode && featureIsEnabled(FEATURE_TELEMETRY)) {
+    if (featureIsEnabled(FEATURE_TELEMETRY)) {
         subTaskTelemetryPollSensors(currentTimeUs);
 
         telemetryProcess(currentTimeUs);

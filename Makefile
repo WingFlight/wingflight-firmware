@@ -601,11 +601,16 @@ MANIFEST_JSON       := $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET)_manifest.json
 BUILD_ID_HEADER     := $(OBJECT_DIR)/$(TARGET)/wf_build_id.h
 WF_MANIFEST_TOOL    := $(ROOT)/src/utils/wf_manifest.py
 
+# Without this, `make manifest` matches the src/main/manifest *directory* and
+# does nothing. The Makefile declares no other phony targets, but these three
+# are the ones that collide with a real path.
+.PHONY: manifest manifests manifest_check
+
 ## manifest          : generate the parameter manifest and build ID for $(TARGET)
 manifest:
 	$(V0) $(MAKE) $(JFLAG) DEBUG=INFO EXTRA_FLAGS="$(EXTRA_FLAGS) -Wno-error" \
 	      OPTIMISATION_BASE="-ffast-math -fmerge-all-constants" \
-	      OBJECT_DIR="$(MANIFEST_OBJECT_DIR)" $(MANIFEST_ELF)
+	      OBJECT_DIR="$(MANIFEST_OBJECT_DIR)" MANIFEST_BUILD=yes $(MANIFEST_ELF)
 	$(V1) $(PYTHON) $(WF_MANIFEST_TOOL) $(MANIFEST_ELF) $(MANIFEST_JSON) \
 	      --build-id-header $(BUILD_ID_HEADER)
 

@@ -35,7 +35,6 @@
 #include "build/debug.h"
 #include "build/version.h"
 
-#include "cli/cli.h"
 
 #include "common/axis.h"
 #include "common/bitarray.h"

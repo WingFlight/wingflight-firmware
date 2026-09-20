@@ -30,7 +30,6 @@
 
 #include "build/debug.h"
 
-#include "cli/cli.h"
 
 #include "common/axis.h"
 #include "common/filter.h"
@@ -735,8 +734,7 @@ void processRxModes(timeUs_t currentTimeUs)
     }
 #endif // USE_SERVOS
 
-    if (!cliMode &&
-        !(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED)))
+    if (!(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED)))
     {
         processRcAdjustments();
     }
@@ -1055,7 +1053,7 @@ static void subTaskFilterUpdate(timeUs_t currentTimeUs)
 static void subTaskBlackboxUpdate(timeUs_t currentTimeUs)
 {
 #ifdef USE_BLACKBOX
-    if (!cliMode && blackboxConfig()->device) {
+    if (blackboxConfig()->device) {
         blackboxUpdate(currentTimeUs);
     }
 #else
