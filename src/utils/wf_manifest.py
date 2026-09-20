@@ -505,6 +505,54 @@ def read_resource_table(elf, dwarf):
     return entries
 
 
+def read_dmaopt_table(elf, dwarf):
+    """Which parameter group holds which DMA option.
+
+    The same shape as the resource table -- a device name, a group, and an
+    offset inside it -- so `dma ADC 1 0` is reproducible off-board too. The
+    per-pin lines (`dma pin A02 0`) do not need this: they come from
+    timerIOConfig's own dmaopt byte.
+    """
+    table = elf.symbols.get('dmaoptEntryTable')
+    if table is None:
+        return []
+
+    try:
+        layout, record_size = dwarf.struct_layout('dmaoptEntry_s')
+    except SystemExit:
+        return []
+
+    endian = '<' if elf.little_endian else '>'
+    scalar = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
+
+    entries = []
+    index = 0
+    while True:
+        record = elf.read_at(table + index * record_size, record_size)
+        if record is None or len(record) < record_size:
+            break
+
+        def field(member, record=record):
+            offset, size = layout[member]
+            return struct.unpack_from(endian + scalar[size], record, offset)[0]
+
+        device_pointer = elf.read_pointer(table + index * record_size + layout['device'][0])
+        device = elf.read_cstring(device_pointer) if device_pointer else None
+        pgn = field('pgn')
+        if not device or not pgn:
+            break
+
+        entries.append({
+            'device': device,
+            'pgn': pgn,
+            'stride': field('stride'),
+            'off': field('offset'),
+            'count': field('maxIndex') or 1,
+        })
+        index += 1
+    return entries
+
+
 def read_timer_hardware(elf, dwarf):
     """The pin-to-timer map, for rendering `timer A09 AF1`.
 
@@ -763,7 +811,7 @@ def main(argv):
 
     wanted = set(address_to_symbol.values())
     wanted.update(('pgRegistry_s', 'clivalue_s', 'lookupTableEntry_s',
-                   'cliResourceValue_t', 'timerHardware_s'))
+                   'cliResourceValue_t', 'timerHardware_s', 'dmaoptEntry_s'))
     dwarf = Dwarf(elf, wanted)
     groups = read_registry(elf, dwarf)
 
@@ -793,6 +841,7 @@ def main(argv):
     manifest['settings'] = read_value_table(elf, dwarf, read_lookup_tables(elf, dwarf))
     manifest['resources'] = read_resource_table(elf, dwarf)
     manifest['timers'] = read_timer_hardware(elf, dwarf)
+    manifest['dmaopts'] = read_dmaopt_table(elf, dwarf)
     manifest['build']['id'] = build_id(manifest)
 
     leaves = sum(count_leaves(pg['fields']) for pg in manifest['pgs'])

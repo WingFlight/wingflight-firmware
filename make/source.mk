@@ -477,5 +477,6 @@ EXTRA_LD_FLAGS += -Wl,--undefined=valueTable \
                   -Wl,--undefined=valueTableEntryCount \
                   -Wl,--undefined=lookupTables \
                   -Wl,--undefined=resourceTable \
-                  -Wl,--undefined=ownerNames
+                  -Wl,--undefined=ownerNames \
+                  -Wl,--undefined=dmaoptEntryTable
 endif
