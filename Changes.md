@@ -98,6 +98,34 @@ generic per-motor RPM/gear-ratio handling now, not heli-specific:
 
 ## MSP Changes
 
+### Heli-only placeholder bytes removed (MSP API 22.3)
+
+The always-zero bytes left over from Rotorflight are dropped from the wire, so
+every field after each one moves up. This is a breaking layout change for the
+messages below, and the MSP API version is bumped from 22.2 to 22.3 so clients
+can tell the two layouts apart. Read and write use the same new layout.
+
+- `MSP_RC_TUNING` / `MSP_SET_RC_TUNING`: `rates_type` (first byte), the collective
+  block (`rcRates`, `rcExpo`, `sRates`, `response_time` U8 each, `accel_limit` U16),
+  the collective `setpoint_boost_gain`/`cutoff` pair, and the trailing
+  `cyclic_ring`/`cyclic_polar`. 11 bytes.
+- `MSP_PID_PROFILE` / `MSP_SET_PID_PROFILE`: the three error-decay placeholders,
+  `error_rotation`, the eight yaw stop-gain/precomp/collective-FF placeholders,
+  the three cyclic cross-coupling bytes, and the two yaw inertia precomp bytes.
+  17 bytes.
+- `MSP_PID_TUNING` / `MSP_SET_PID_TUNING`: the trailing two U16 `O` terms. 4 bytes.
+- `MSP_SETPOINT`: the trailing collective S16. 2 bytes.
+- `MSP_TELEMETRY_CONFIG` / `MSP_SET_TELEMETRY_CONFIG`: the U32 `enableSensors`
+  after `halfDuplex`. 4 bytes.
+- `MSP_ESC_SENSOR_CONFIG` / `MSP_SET_ESC_SENSOR_CONFIG`: the U32 HW4 parameters
+  after `current_offset`. 4 bytes.
+- `MSP_RC_CONFIG` / `MSP_SET_RC_CONFIG`: the U16 `rc_arm_throttle` after
+  `rc_deflection`. 2 bytes.
+- `MSP_SENSOR_CONFIG` / `MSP_SET_SENSOR_CONFIG`: the U16 `gyro_offset_yaw` after
+  `gyroCalibrationDuration`. 2 bytes.
+
+`MSP_STATUS` still carries its two compat placeholder bytes.
+
 ### MSP_PID_PROFILE
 
 - appended `cross_axis_relax_strength`, `cross_axis_relax_level`,
