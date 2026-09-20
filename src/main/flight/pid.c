@@ -250,7 +250,7 @@ int get_ADJUSTMENT_ROLL_D_GAIN(void)
 void set_ADJUSTMENT_ROLL_D_GAIN(int value)
 {
     currentPidProfile->pid[PID_ROLL].D = value;
-    pid.coef[PID_ROLL].Kd = ROLL_D_TERM_SCALE * value * (pid.pidMode == 4 ? 0.2f : 1.0f);
+    pid.coef[PID_ROLL].Kd = ROLL_D_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_YAW_D_GAIN(void)
@@ -305,7 +305,7 @@ int get_ADJUSTMENT_PITCH_B_GAIN(void)
 void set_ADJUSTMENT_PITCH_B_GAIN(int value)
 {
     currentPidProfile->pid[PID_PITCH].B = value;
-    pid.coef[PID_PITCH].Kb = PITCH_B_TERM_SCALE * value * (pid.pidMode == 4 ? 10 : 1);
+    pid.coef[PID_PITCH].Kb = PITCH_B_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_ROLL_B_GAIN(void)
@@ -316,7 +316,7 @@ int get_ADJUSTMENT_ROLL_B_GAIN(void)
 void set_ADJUSTMENT_ROLL_B_GAIN(int value)
 {
     currentPidProfile->pid[PID_ROLL].B = value;
-    pid.coef[PID_ROLL].Kb = ROLL_B_TERM_SCALE * value * (pid.pidMode == 4 ? 0.2f : 1.0f);
+    pid.coef[PID_ROLL].Kb = ROLL_B_TERM_SCALE * value;
 }
 
 int get_ADJUSTMENT_YAW_B_GAIN(void)
