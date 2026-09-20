@@ -609,10 +609,15 @@ manifest:
 	$(V1) $(PYTHON) $(WF_MANIFEST_TOOL) $(MANIFEST_ELF) $(MANIFEST_JSON) \
 	      --build-id-header $(BUILD_ID_HEADER)
 
-## manifest_check    : check the generated manifest against the CLI settings table
+# Checks the manifest two ways: against valueTable, which is the firmware's
+# other description of the same settings, and against the shipping LTO build,
+# which is the binary the manifest actually has to describe. Builds both, so
+# this is the slow one -- it is a CI gate, not something to run per edit.
+## manifest_check    : check the generated manifest against the CLI table and the shipping build
 manifest_check: manifest
+	$(V0) $(MAKE) $(JFLAG) $(TARGET_ELF)
 	$(V1) $(PYTHON) $(ROOT)/src/utils/wf_manifest_check.py \
-	      $(MANIFEST_ELF) $(MANIFEST_JSON)
+	      $(MANIFEST_ELF) $(MANIFEST_JSON) --shipping-elf $(TARGET_ELF)
 
 unbrick_$(TARGET): $(TARGET_HEX)
 	$(V0) stty -F $(SERIAL_DEVICE) raw speed 115200 -crtscts cs8 -parenb -cstopb -ixon

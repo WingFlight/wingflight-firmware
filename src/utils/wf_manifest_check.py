@@ -248,11 +248,58 @@ def locate(group, offset, span, mode):
     return 'no field at offset %d in %s' % (offset, group['symbol'])
 
 
+def compare_registries(manifest, shipping_elf, dwarf):
+    """Check the shipping firmware's registry against the manifest's.
+
+    The manifest is extracted from a non-LTO build, because LTO collapses the
+    per-compilation-unit DWARF it needs. The firmware people actually flash is
+    the LTO build. Nothing automatically guarantees those two describe the same
+    configuration layout, and if they diverge the manifest is wrong for the
+    binary it claims to describe -- offsets that read and write the wrong
+    fields.
+
+    What can be checked: every group's number, version, element count and size,
+    which is all of .pg_registry that is not a link-time address. What cannot:
+    field offsets inside a group, since the LTO build has no per-CU DWARF to
+    read them from. Those are fixed by the ABI rather than by the optimiser, so
+    equal group sizes across both builds is a sound proxy -- a struct whose
+    layout changed would have to keep exactly the same total size to slip
+    through, which a real divergence essentially never does.
+
+    A release build carries no debug info at all, so the pgRegistry_t record
+    layout is taken from the manifest build's DWARF. That is not a shortcut:
+    the two builds share a target and therefore an ABI, and if they did not,
+    the group sizes compared below would not line up either.
+    """
+    elf = wf_manifest.Elf(shipping_elf)
+    groups = wf_manifest.read_registry(elf, dwarf)
+
+    shipped = {g['pgn']: g for g in groups}
+    described = {pg['pgn']: pg for pg in manifest['pgs']}
+
+    problems = []
+    for pgn in sorted(set(shipped) | set(described)):
+        here, there = described.get(pgn), shipped.get(pgn)
+        if there is None:
+            problems.append('pgn %d is in the manifest but not in the firmware' % pgn)
+        elif here is None:
+            problems.append('pgn %d is in the firmware but not in the manifest' % pgn)
+        else:
+            for field in ('version', 'size', 'length'):
+                if here[field] != there[field]:
+                    problems.append('pgn %d: manifest %s=%s, firmware %s=%s'
+                                    % (pgn, field, here[field], field, there[field]))
+    return problems, len(groups)
+
+
 def main(argv):
     parser = argparse.ArgumentParser(
         description="Check a manifest against the CLI's settings table.")
     parser.add_argument('elf', help='the same ELF the manifest was built from')
     parser.add_argument('manifest', help='manifest JSON')
+    parser.add_argument('--shipping-elf', metavar='ELF',
+                        help='also check the manifest against the LTO build '
+                             'that actually ships')
     parser.add_argument('--verbose', action='store_true',
                         help='also list settings that matched')
     args = parser.parse_args(argv[1:])
@@ -310,6 +357,16 @@ def main(argv):
         return 1
 
     print('the manifest agrees with valueTable on every setting')
+
+    if args.shipping_elf:
+        divergence, count = compare_registries(manifest, args.shipping_elf, dwarf)
+        if divergence:
+            sys.stderr.write('\nThe manifest does not describe the shipping build:\n')
+            for problem in divergence:
+                sys.stderr.write('  %s\n' % problem)
+            return 1
+        print('and describes the shipping build: %d groups agree' % count)
+
     return 0
 
 

@@ -485,12 +485,20 @@ Without these the design decays back into hand-maintained tables.
   This gate found three bugs in the generator itself on its first run
   (multi-dimensional arrays truncated to their last dimension, anonymous union
   members leaking into field paths), which is the argument for having it.
-- **LTO consistency.** LTO collapses per-CU DWARF: on an LTO `DEBUG=INFO` build
-  the extractor resolved 0 of 77 groups, on a non-LTO build 77 of 77. So
-  manifest generation runs as a separate `-fno-lto -g3` job. Make it a **hard
-  gate** that `.pg_registry` bytes and every PG's size and version match
-  byte-for-byte between that build and the shipping one — struct layout is
-  optimisation-independent, but the build must prove it rather than assume it.
+- **LTO consistency.** LTO collapses per-CU DWARF: on an LTO build the
+  extractor resolves 0 of 77 groups, on a non-LTO one 77 of 77. So manifest
+  generation runs as a separate non-LTO `DEBUG=INFO` build, and
+  `manifest_check --shipping-elf` then proves the two agree rather than
+  assuming it. Currently 77 of 77 groups match on STM32F411.
+
+  Note the design draft said to compare `.pg_registry` *byte for byte*; that
+  cannot work, because the records hold link-time addresses which differ
+  between any two builds. What is compared is every group's number, version,
+  element count and size — all of the registry that is not an address. Field
+  offsets *inside* a group cannot be checked against the shipping build at
+  all, since it has no DWARF to read them from; they are fixed by the ABI
+  rather than by the optimiser, and a struct that changed layout while keeping
+  its exact total size is not a realistic divergence.
 - **No regrowth.** Fail the build if a `settings.c`-shaped hand-maintained
   descriptor table reappears.
 - **Annotation completeness.** Fail if a registered field has no resolvable
