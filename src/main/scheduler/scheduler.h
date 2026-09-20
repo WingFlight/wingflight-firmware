@@ -143,9 +143,6 @@ typedef enum {
 #ifdef USE_SRXL2_ESC
     TASK_SRXL2_ESC,
 #endif
-#ifdef USE_CAMERA_CONTROL
-    TASK_CAMCTRL,
-#endif
 
 #ifdef USE_RCDEVICE
     TASK_RCDEVICE,

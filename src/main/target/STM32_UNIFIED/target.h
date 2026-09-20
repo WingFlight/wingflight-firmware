@@ -123,7 +123,6 @@
 #undef USE_CRSF_V3
 
 #undef USE_RCDEVICE
-#undef USE_CAMERA_CONTROL
 
 #undef USE_RX_FRSKY_SPI_D
 #undef USE_RX_FRSKY_SPI_X

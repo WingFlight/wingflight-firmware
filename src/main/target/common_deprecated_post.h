@@ -148,6 +148,3 @@
 #error "Use DSHOT_DMAR_ON or DSHOT_DMAR_OFF instead of boolean values for ENABLE_DSHOT_DMAR"
 #endif
 
-#ifdef CAMERA_CONTROL_PIN
-#error "The CAMERA_CONTROL_PIN define in target.h is deprecated. Use timerHardware[] array entry with TIM_USE_CAMERA_CONTROL"
-#endif

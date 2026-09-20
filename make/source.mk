@@ -73,7 +73,6 @@ COMMON_SRC = \
             sensors/voltage.c \
             target/config_helper.c \
             fc/init.c \
-            drivers/camera_control.c \
             drivers/accgyro/gyro_sync.c \
             drivers/castle_telemetry_decode.c \
             drivers/pwm_output.c \

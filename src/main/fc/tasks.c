@@ -34,7 +34,6 @@
 #include "config/feature.h"
 
 #include "drivers/accgyro/accgyro.h"
-#include "drivers/camera_control.h"
 #include "drivers/compass/compass.h"
 #include "drivers/sensor.h"
 #include "drivers/serial.h"
@@ -322,16 +321,6 @@ static void taskSportMaster(timeUs_t currentTimeUs)
 }
 #endif
 
-#ifdef USE_CAMERA_CONTROL
-static void taskCameraControl(uint32_t currentTime)
-{
-    if (ARMING_FLAG(ARMED)) {
-        return;
-    }
-
-    cameraControlProcess(currentTime);
-}
-#endif
 
 #define DEFINE_TASK(taskNameParam, subTaskNameParam, checkFuncParam, taskFuncParam, desiredPeriodParam, staticPriorityParam) {  \
     .taskName = taskNameParam, \
@@ -413,9 +402,6 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_RCDEVICE] = DEFINE_TASK("RCDEVICE", NULL, NULL, rcdeviceUpdate, TASK_PERIOD_HZ(20), TASK_PRIORITY_MEDIUM),
 #endif
 
-#ifdef USE_CAMERA_CONTROL
-    [TASK_CAMCTRL] = DEFINE_TASK("CAMCTRL", NULL, NULL, taskCameraControl, TASK_PERIOD_HZ(5), TASK_PRIORITY_LOW),
-#endif
 
 #ifdef USE_ADC_INTERNAL
     [TASK_ADC_INTERNAL] = DEFINE_TASK("ADCINTERNAL", NULL, NULL, adcInternalProcess, TASK_PERIOD_HZ(1), TASK_PRIORITY_LOWEST),
@@ -586,9 +572,6 @@ void tasksInit(void)
 #endif
 
 
-#ifdef USE_CAMERA_CONTROL
-    setTaskEnabled(TASK_CAMCTRL, true);
-#endif
 
 #ifdef USE_RCDEVICE
     setTaskEnabled(TASK_RCDEVICE, rcdeviceIsEnabled());

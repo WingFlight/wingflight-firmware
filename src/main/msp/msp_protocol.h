@@ -146,7 +146,7 @@
 #define MSP_SET_PID_PROFILE                  95
 #define MSP_SENSOR_CONFIG                    96
 #define MSP_SET_SENSOR_CONFIG                97
-#define MSP_CAMERA_CONTROL                   98
+// #define MSP_CAMERA_CONTROL                   98
 #define MSP_SET_ARMING_DISABLED              99
 
 #define MSP_STATUS                           101

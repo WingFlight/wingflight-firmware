@@ -119,7 +119,7 @@
 #define PG_DASHBOARD_CONFIG         519
 #define PG_SPI_PIN_CONFIG           520
 #define PG_ESCSERIAL_CONFIG         521
-#define PG_CAMERA_CONTROL_CONFIG    522
+//#define PG_CAMERA_CONTROL_CONFIG    522 removed (camera control)
 #define PG_RX_CC2500_SPI_CONFIG     523
 //#define PG_MAX7456_CONFIG           524 removed (OSD)
 #define PG_FLYSKY_CONFIG            525

@@ -49,7 +49,6 @@
 #include "drivers/bus_quadspi.h"
 #include "drivers/bus_spi.h"
 #include "drivers/buttons.h"
-#include "drivers/camera_control.h"
 #include "drivers/compass/compass.h"
 #include "drivers/dma.h"
 #include "drivers/exti.h"
@@ -652,9 +651,6 @@ void init(void)
 #endif
 
 
-#ifdef USE_CAMERA_CONTROL
-    cameraControlInit();
-#endif
 
 #ifdef USE_ADC
     adcInit(adcConfig());
