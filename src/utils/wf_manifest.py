@@ -103,12 +103,18 @@ class Elf(object):
         self.pointer_size = self.elf.elfclass // 8
 
         self.symbols = {}
+        self.symbol_sizes = {}
         for section in self.elf.iter_sections():
             if section.header['sh_type'] not in ('SHT_SYMTAB', 'SHT_DYNSYM'):
                 continue
             for symbol in section.iter_symbols():
-                if symbol.name and symbol['st_info']['type'] == 'STT_OBJECT':
-                    self.symbols[symbol.name] = symbol['st_value']
+                if not symbol.name:
+                    continue
+                # fullTimerHardware is emitted as STT_FUNC on some builds
+                # because it lands in .text; accept both rather than miss it.
+                if symbol['st_info']['type'] in ('STT_OBJECT', 'STT_FUNC'):
+                    self.symbols.setdefault(symbol.name, symbol['st_value'])
+                    self.symbol_sizes.setdefault(symbol.name, symbol['st_size'])
 
     def section_data(self, name):
         section = self.elf.get_section_by_name(name)
@@ -499,6 +505,42 @@ def read_resource_table(elf, dwarf):
     return entries
 
 
+def read_timer_hardware(elf, dwarf):
+    """The pin-to-timer map, for rendering `timer A09 AF1`.
+
+    This is the one piece of a board config that really is target hardware
+    rather than configuration: which alternate function a pin needs for a given
+    timer. It is a const table in the image, so it extracts like any other --
+    the firmware does not have to grow an opcode to report it.
+
+    Only what the CLI printed is kept: the pin and its alternate function, in
+    array order, because timerGetByTagAndIndex() selects the Nth entry matching
+    a tag and the client has to be able to do the same.
+    """
+    address = elf.symbols.get('fullTimerHardware')
+    size = elf.symbol_sizes.get('fullTimerHardware')
+    if not address or not size:
+        return []
+
+    try:
+        layout, record_size = dwarf.struct_layout('timerHardware_s')
+    except SystemExit:
+        return []
+    if not record_size or 'tag' not in layout or 'alternateFunction' not in layout:
+        return []
+
+    tag_offset = layout['tag'][0]
+    af_offset = layout['alternateFunction'][0]
+
+    entries = []
+    for index in range(size // record_size):
+        record = elf.read_at(address + index * record_size, record_size)
+        if record is None or len(record) < record_size:
+            break
+        entries.append({'tag': record[tag_offset], 'af': record[af_offset]})
+    return entries
+
+
 def read_value_table(elf, dwarf, tables):
     """Decode valueTable -- the CLI's names, ranges and enum labels.
 
@@ -721,7 +763,7 @@ def main(argv):
 
     wanted = set(address_to_symbol.values())
     wanted.update(('pgRegistry_s', 'clivalue_s', 'lookupTableEntry_s',
-                   'cliResourceValue_t'))
+                   'cliResourceValue_t', 'timerHardware_s'))
     dwarf = Dwarf(elf, wanted)
     groups = read_registry(elf, dwarf)
 
@@ -750,6 +792,7 @@ def main(argv):
     manifest['pgs'].sort(key=lambda pg: pg['pgn'])
     manifest['settings'] = read_value_table(elf, dwarf, read_lookup_tables(elf, dwarf))
     manifest['resources'] = read_resource_table(elf, dwarf)
+    manifest['timers'] = read_timer_hardware(elf, dwarf)
     manifest['build']['id'] = build_id(manifest)
 
     leaves = sum(count_leaves(pg['fields']) for pg in manifest['pgs'])
