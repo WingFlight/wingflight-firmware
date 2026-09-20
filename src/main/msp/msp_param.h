@@ -43,12 +43,18 @@
 // config for the duration of a dump/diff (see backupConfigs()), so writing
 // defaults into it would corrupt a CLI session running on another port.
 //
-// A group larger than this cannot answer MSP2_WING_PG_DEFAULT. That is a build
-// error waiting to happen rather than a runtime condition, so the manifest CI
-// check asserts max(pgSize) <= MSP_PARAM_STAGING_SIZE; the runtime guard below
-// exists so the failure is a clean error rather than a stack smash if the two
-// ever drift.
-#define MSP_PARAM_STAGING_SIZE 512
+// Sized from the real registry: the largest group on STM32F411 is
+// servoCurves (pgn 1017) at 988 bytes, followed by adjustmentRanges at 672.
+// A group larger than this cannot answer MSP2_WING_PG_DEFAULT, which is a
+// build error waiting to happen rather than a runtime condition -- so the
+// manifest CI check asserts max(pgSize) <= MSP_PARAM_STAGING_SIZE, and the
+// runtime guard in msp_param.c makes the failure a clean error rather than a
+// buffer overrun if the two ever drift.
+//
+// This is a transitional cost. It is pure addition today, on top of the
+// per-group _Copy shadows in pg.h; when cli.c goes and those shadows go with
+// it, this one buffer replaces all of them and the net is a large RAM win.
+#define MSP_PARAM_STAGING_SIZE 1024
 
 // Handles the MSP2_WING_PARAM_* opcodes. Returns false if cmdMSP is not one of
 // them, leaving the caller to try the next handler.

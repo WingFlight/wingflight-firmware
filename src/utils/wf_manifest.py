@@ -339,22 +339,74 @@ def count_leaves(fields):
     return total
 
 
+def validate(manifest):
+    """Check that every field actually fits inside the group that holds it.
+
+    The registry and the DWARF type graph are two independent descriptions of
+    the same memory, produced by different parts of the build. Nothing forces
+    them to agree, and if they disagree the manifest hands the configurator
+    offsets that read or write past the end of a parameter group. Catching that
+    here costs nothing and is the difference between a build failure and a
+    corrupted config on someone's aircraft.
+    """
+    problems = []
+
+    def span_of(field):
+        if field['kind'] == 'repeat':
+            return field['stride'] * field['count']
+        if field['kind'] == 'array':
+            return field['elem_size'] * field['count']
+        return field.get('size') or 0
+
+    def check(fields, limit, prefix):
+        for field in fields:
+            end = field['off'] + span_of(field)
+            if end > limit:
+                problems.append('%s%s ends at %d, past the %d it lives in'
+                                % (prefix, field['name'] or '[]', end, limit))
+            if field['kind'] == 'repeat':
+                # Nested offsets are relative to one element, not the array.
+                check(field['fields'], field['stride'],
+                      '%s%s[].' % (prefix, field['name']))
+
+    for pg in manifest['pgs']:
+        check(pg['fields'], pg['size'], '%s.' % (pg['symbol'] or pg['pgn']))
+
+        # An array group should be exactly its elements, end to end.
+        if pg['length'] > 1:
+            covering = [f for f in pg['fields']
+                        if f['kind'] in ('repeat', 'array') and f['off'] == 0]
+            if covering and span_of(covering[0]) != pg['size']:
+                problems.append('%s: %d elements of %d do not fill the %d the '
+                                'registry reports'
+                                % (pg['symbol'], covering[0]['count'],
+                                   covering[0].get('stride') or covering[0].get('elem_size'),
+                                   pg['size']))
+    return problems
+
+
 def canonical(manifest):
     """Stable bytes for hashing: sorted keys, no incidental whitespace."""
     return json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode('utf-8')
 
 
 def build_id(manifest):
-    """The build ID is the hash of the manifest with the ID field left out.
+    """The build ID is the hash of the described layout, and nothing else.
 
     Hashing the output rather than the inputs is what makes a candidate
     manifest checkable: there is no question of whether every input that
     affects struct layout was accounted for, because the manifest is the
     layout. If it hashes to what the board reports, it is the right one.
+
+    The `build` block is deliberately excluded. It carries the build date and
+    time, so hashing it would give every rebuild a new ID even when not one
+    struct moved -- which would churn the configurator's manifest cache for no
+    reason and mean a fresh manifest had to be published for every build.
+    Two builds that describe the same layout *should* collide here: the
+    manifest is then interchangeable between them, which is the point.
     """
-    without_id = dict(manifest)
-    without_id['build'] = {k: v for k, v in manifest['build'].items() if k != 'id'}
-    return hashlib.sha256(canonical(without_id)).hexdigest()[:BUILD_ID_BYTES * 2]
+    layout = {key: value for key, value in manifest.items() if key != 'build'}
+    return hashlib.sha256(canonical(layout)).hexdigest()[:BUILD_ID_BYTES * 2]
 
 
 def read_build_info(elf):
@@ -435,6 +487,17 @@ def main(argv):
     if unresolved:
         sys.stderr.write('\nWarning: %d group(s) had no DWARF type: %s\n'
                          % (len(unresolved), ', '.join(sorted(unresolved))))
+
+    problems = validate(manifest)
+    if problems:
+        sys.stderr.write('\nThe registry and the debug info disagree:\n')
+        for problem in problems:
+            sys.stderr.write('  %s\n' % problem)
+        return 1
+
+    largest = max(pg['size'] for pg in manifest['pgs'])
+    print('largest group: %d bytes (%s)' % (
+        largest, next(pg['symbol'] for pg in manifest['pgs'] if pg['size'] == largest)))
 
     with open(argv[2], 'w') as out:
         json.dump(manifest, out, indent=1, sort_keys=True)

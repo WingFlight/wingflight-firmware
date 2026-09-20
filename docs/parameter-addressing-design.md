@@ -148,6 +148,14 @@ compiler version, packing), because the manifest *is* the layout. If it hashes
 to what the board reports, it is correct by construction. 64 bits is ample —
 this is a collision guard, not a security boundary.
 
+The hash covers the described layout **only**. The manifest's `build` block
+(target, version, git revision, date, time) is excluded, because hashing the
+timestamp would give every rebuild a new ID even when not one struct moved —
+churning the configurator's cache for nothing and forcing a fresh manifest to
+be published per build rather than per layout change. Two builds that describe
+the same layout are *meant* to collide here: the manifest is interchangeable
+between them, which is the whole point of keying on layout.
+
 The `BUILD_ID` reply carries, alongside the hash:
 
 | field | purpose |
@@ -456,6 +464,15 @@ Without these the design decays back into hand-maintained tables.
   descriptor table reappears.
 - **Annotation completeness.** Fail if a registered field has no resolvable
   name.
+- **Registry vs. debug info.** The generator already refuses to emit a manifest
+  whose fields do not fit the group sizes the registry reports (`validate()` in
+  `wf_manifest.py`). These are two independent descriptions of the same memory
+  and nothing forces them to agree; a disagreement hands the configurator
+  offsets that write past the end of a group.
+- **Staging buffer covers the largest group.** Assert
+  `max(pgSize) <= MSP_PARAM_STAGING_SIZE`. Measured on STM32F411: 988 bytes
+  (`servoCurves`, pgn 1017), against a 1024-byte buffer. A group that outgrows
+  it silently loses `PG_DEFAULT`, and with it client-side `diff`.
 - **Frozen subset golden test.** Record the exact reply bytes for every opcode
   in §8.1 against a known config, and fail on any diff. These opcodes exist
   solely for tools that cannot be updated, so "still compiles" is not the bar —
