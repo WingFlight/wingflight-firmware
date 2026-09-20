@@ -42,10 +42,19 @@ jobs:
     - name: Build HEX files for unified targets
       run: make unified FC_VER_SUFFIX="${{ env.GIT_PRE }}" FLASH_CONFIG_ERASE=yes
 
+    # The configurator needs one of these per firmware build to know what the
+    # settings in it are called and where they live; a hex published without
+    # its manifest is a board the configurator cannot configure. See
+    # docs/parameter-addressing-design.md.
+    - name: Generate parameter manifests
+      run: |
+        pip install pyelftools
+        make manifests FC_VER_SUFFIX="${{ env.GIT_PRE }}"
+
     - name: Create Release
       run: |
         .github/scripts/extract-release-notes.py "${{ env.GIT_VER }}" Releases.md > Notes.md
-        gh release create ${{ env.GIT_TAG }} --notes-file Notes.md --title "Wingflight ${{ env.GH_TYPE }} ${{ env.GIT_VER }}" obj/*.hex
+        gh release create ${{ env.GIT_TAG }} --notes-file Notes.md --title "Wingflight ${{ env.GH_TYPE }} ${{ env.GIT_VER }}" obj/*.hex obj/*_manifest.json
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -65,6 +74,7 @@ jobs:
         git clone --depth 1 "https://x-access-token:${ARTIFACTS_REPO_TOKEN}@github.com/WingFlight/wingflight-artifacts.git" artifacts-repo
         mkdir -p "artifacts-repo/firmware/${{ env.GIT_TAG }}"
         cp obj/*.hex "artifacts-repo/firmware/${{ env.GIT_TAG }}/"
+        cp obj/*_manifest.json "artifacts-repo/firmware/${{ env.GIT_TAG }}/"
         cd artifacts-repo
         git config user.name "wingflight-artifacts[bot]"
         git config user.email "wingflight-artifacts[bot]@users.noreply.github.com"

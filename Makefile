@@ -613,6 +613,13 @@ manifest:
 # other description of the same settings, and against the shipping LTO build,
 # which is the binary the manifest actually has to describe. Builds both, so
 # this is the slow one -- it is a CI gate, not something to run per edit.
+## manifests         : generate manifests for all Unified Targets
+manifests:
+	$(V0) for target in $(UNIFIED_TARGETS); do \
+	    echo "Generating manifest for $$target" && \
+	    $(MAKE) manifest TARGET=$$target || exit 1; \
+	done
+
 ## manifest_check    : check the generated manifest against the CLI table and the shipping build
 manifest_check: manifest
 	$(V0) $(MAKE) $(JFLAG) $(TARGET_ELF)
