@@ -44,6 +44,20 @@ jobs:
         name: wingflight-${{ env.GIT_VER }}
         path: wingflight*.hex
 
+  # The unit test suite has been in the tree without anything running it, so
+  # nothing noticed when a test stopped building. It runs under clang, which is
+  # what src/test/Makefile defaults to.
+  unit-tests:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Run the unit test suite
+      run: make test
+
   # The manifest is what the configurator uses to turn a setting name into a
   # (pgn, offset), so it has to keep agreeing both with the CLI's own table and
   # with the binary that ships. One target is enough to catch a change to the
