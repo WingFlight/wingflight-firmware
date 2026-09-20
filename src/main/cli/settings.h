@@ -79,9 +79,6 @@ typedef enum {
 #ifdef USE_RX_FRSKY_SPI
     TABLE_RX_FRSKY_SPI_A1_SOURCE,
 #endif
-#ifdef USE_RANGEFINDER
-    TABLE_RANGEFINDER_HARDWARE,
-#endif
 #ifdef USE_GYRO_OVERFLOW_CHECK
     TABLE_GYRO_OVERFLOW_CHECK,
 #endif
@@ -230,7 +227,6 @@ extern const char * const lookupTableBaroHardware[];
 extern const char * const lookupTableMagHardware[];
 //extern const uint8_t lookupTableMagHardwareEntryCount;
 
-extern const char * const lookupTableRangefinderHardware[];
 
 extern const char * const lookupTableLedstripColors[];
 

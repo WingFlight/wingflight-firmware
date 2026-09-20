@@ -69,9 +69,9 @@ typedef enum {
     DEBUG_DUAL_GYRO_DIFF,
     DEBUG_SBUS,
     DEBUG_FPORT,
-    DEBUG_RANGEFINDER,
-    DEBUG_RANGEFINDER_QUALITY,
-    DEBUG_LIDAR_TF,
+    DEBUG_RANGEFINDER,          // unused (rangefinder removed) -- slot kept so later debug modes keep their numbers
+    DEBUG_RANGEFINDER_QUALITY,  // unused (rangefinder removed) -- slot kept
+    DEBUG_LIDAR_TF,             // unused (rangefinder removed) -- slot kept
     DEBUG_ADC_INTERNAL,
     DEBUG_GOVERNOR,
     DEBUG_SDIO,

@@ -105,7 +105,7 @@
 #define MSP_SET_SERIAL_CONFIG                55
 #define MSP_VOLTAGE_METER_CONFIG             56
 #define MSP_SET_VOLTAGE_METER_CONFIG         57
-#define MSP_SONAR_ALTITUDE                   58
+// #define MSP_SONAR_ALTITUDE                   58
 #define MSP_DEBUG_CONFIG                     59
 #define MSP_SET_DEBUG_CONFIG                 60
 #define MSP_ARMING_CONFIG                    61

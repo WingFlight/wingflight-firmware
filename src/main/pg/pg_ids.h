@@ -113,7 +113,7 @@
 //#define PG_DISPLAY_PORT_MAX7456_CONFIG 513 removed (OSD)
 //#define PG_VCD_CONFIG               514 removed (OSD)
 //#define PG_VTX_CONFIG               515 removed (VTX)
-#define PG_SONAR_CONFIG             516
+//#define PG_SONAR_CONFIG             516 removed (rangefinder)
 #define PG_ESC_SENSOR_CONFIG        517
 #define PG_I2C_CONFIG               518
 #define PG_DASHBOARD_CONFIG         519
@@ -124,7 +124,7 @@
 //#define PG_MAX7456_CONFIG           524 removed (OSD)
 #define PG_FLYSKY_CONFIG            525
 #define PG_TIME_CONFIG              526
-#define PG_RANGEFINDER_CONFIG       527 // iNav
+//#define PG_RANGEFINDER_CONFIG       527 removed (rangefinder)
 //#define PG_TRICOPTER_CONFIG         528
 #define PG_PINIO_CONFIG             529
 #define PG_PINIOBOX_CONFIG          530

@@ -162,8 +162,6 @@ COMMON_SRC = \
             blackbox/blackbox_io.c \
             drivers/display_ug2864hsweg01.c \
             drivers/light_ws2811strip.c \
-            drivers/rangefinder/rangefinder_hcsr04.c \
-            drivers/rangefinder/rangefinder_lidartf.c \
             drivers/serial_escserial.c \
             io/dashboard.c \
             io/displayport_oled.c \
@@ -172,7 +170,6 @@ COMMON_SRC = \
             io/gps.c \
             io/ledstrip.c \
             sensors/barometer.c \
-            sensors/rangefinder.c \
             telemetry/telemetry.c \
             telemetry/crsf.c \
             telemetry/ghst.c \

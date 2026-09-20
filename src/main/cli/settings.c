@@ -118,7 +118,6 @@
 #include "sensors/compass.h"
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
-#include "sensors/rangefinder.h"
 
 #include "telemetry/frsky_hub.h"
 #include "telemetry/ibus_shared.h"
@@ -152,11 +151,6 @@ const char * const lookupTableBaroHardware[] = {
 // sync with magSensor_e
 const char * const lookupTableMagHardware[] = {
     "AUTO", "NONE", "HMC5883", "AK8975", "AK8963", "QMC5883", "LIS3MDL", "MAG_MPU925X_AK8963"
-};
-#endif
-#if defined(USE_SENSOR_NAMES) || defined(USE_RANGEFINDER)
-const char * const lookupTableRangefinderHardware[] = {
-    "NONE", "HCSR04", "TFMINI", "TF02"
 };
 #endif
 
@@ -543,9 +537,6 @@ const lookupTableEntry_t lookupTables[] = {
     LOOKUP_TABLE_ENTRY(lookupTableBusType),
 #ifdef USE_RX_FRSKY_SPI
     LOOKUP_TABLE_ENTRY(lookupTableFrskySpiA1Source),
-#endif
-#ifdef USE_RANGEFINDER
-    LOOKUP_TABLE_ENTRY(lookupTableRangefinderHardware),
 #endif
 #ifdef USE_GYRO_OVERFLOW_CHECK
     LOOKUP_TABLE_ENTRY(lookupTableGyroOverflowCheck),
@@ -1283,10 +1274,6 @@ const clivalue_t valueTable[] = {
     { "camera_control_inverted", VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, inverted) },
 #endif
 
-// PG_RANGEFINDER_CONFIG
-#ifdef USE_RANGEFINDER
-    { "rangefinder_hardware", VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_RANGEFINDER_HARDWARE }, PG_RANGEFINDER_CONFIG, offsetof(rangefinderConfig_t, rangefinder_hardware) },
-#endif
 
 // PG_PINIO_CONFIG
 #ifdef USE_PINIO

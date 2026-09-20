@@ -90,7 +90,6 @@
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
 #include "sensors/sensors.h"
-#include "sensors/rangefinder.h"
 
 #include "telemetry/telemetry.h"
 #include "telemetry/crsf.h"
@@ -286,20 +285,6 @@ static void taskUpdateMag(timeUs_t currentTimeUs)
 }
 #endif
 
-#if defined(USE_RANGEFINDER)
-void taskUpdateRangefinder(timeUs_t currentTimeUs)
-{
-    UNUSED(currentTimeUs);
-
-    if (!sensors(SENSOR_RANGEFINDER)) {
-        return;
-    }
-
-    rangefinderUpdate();
-
-    rangefinderProcess(getCosTiltAngle());
-}
-#endif
 
 #ifdef USE_TELEMETRY
 static void taskTelemetry(timeUs_t currentTimeUs)
@@ -425,9 +410,6 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_PINIOBOX] = DEFINE_TASK("PINIOBOX", NULL, NULL, pinioBoxUpdate, TASK_PERIOD_HZ(20), TASK_PRIORITY_LOWEST),
 #endif
 
-#ifdef USE_RANGEFINDER
-    [TASK_RANGEFINDER] = DEFINE_TASK("RANGEFINDER", NULL, NULL, taskUpdateRangefinder, TASK_PERIOD_HZ(10), TASK_PRIORITY_LOWEST),
-#endif
 
 #ifdef USE_CRSF_V3
     [TASK_SPEED_NEGOTIATION] = DEFINE_TASK("SPEED_NEGOTIATION", NULL, NULL, speedNegotiationProcess, TASK_PERIOD_HZ(100), TASK_PRIORITY_LOW),
@@ -516,11 +498,6 @@ void tasksInit(void)
     }
 #endif
 
-#ifdef USE_RANGEFINDER
-    if (sensors(SENSOR_RANGEFINDER)) {
-        setTaskEnabled(TASK_RANGEFINDER, featureIsEnabled(FEATURE_RANGEFINDER));
-    }
-#endif
 
     setTaskEnabled(TASK_RX, true);
 

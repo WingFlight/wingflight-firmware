@@ -39,5 +39,5 @@ changes; delete it to re-apply the defaults.
 
 "Save and reboot" writes `eeprom.bin` and then **exits** SITL (there is no
 in-process restart). Features SITL doesn't compile in (LED_STRIP, OSD, SOFTSERIAL,
-RANGEFINDER, DYN_NOTCH, RPM_FILTER, ...) are cleared when you save, and SITL prints
+DYN_NOTCH, RPM_FILTER, ...) are cleared when you save, and SITL prints
 `[config] features 0x... not supported by this build` on stderr.

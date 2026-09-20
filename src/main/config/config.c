@@ -446,9 +446,6 @@ static void validateAndFixConfig(void)
     featureDisableImmediate(FEATURE_SOFTSERIAL);
 #endif
 
-#ifndef USE_RANGEFINDER
-    featureDisableImmediate(FEATURE_RANGEFINDER);
-#endif
 
 #ifndef USE_TELEMETRY
     featureDisableImmediate(FEATURE_TELEMETRY);

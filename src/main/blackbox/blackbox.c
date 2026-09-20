@@ -85,7 +85,6 @@
 #include "sensors/compass.h"
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
-#include "sensors/rangefinder.h"
 
 #define BLACKBOX_SHUTDOWN_TIMEOUT_MILLIS 200
 

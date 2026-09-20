@@ -253,7 +253,6 @@
 #undef USE_SDCARD
 #undef USE_SDCARD_SPI
 
-#undef USE_RANGEFINDER
 
 #undef USE_GPS
 #undef USE_MAG

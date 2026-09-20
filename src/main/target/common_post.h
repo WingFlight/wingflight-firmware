@@ -325,14 +325,6 @@
 #undef USE_UNIFIED_TARGET
 #endif
 
-#if !defined(USE_RANGEFINDER)
-#undef USE_RANGEFINDER_HCSR04
-#undef USE_RANGEFINDER_SRF10
-#undef USE_RANGEFINDER_HCSR04_I2C
-#undef USE_RANGEFINDER_VL53L0X
-#undef USE_RANGEFINDER_UIB
-#undef USE_RANGEFINDER_TF
-#endif
 
 // TODO: Remove this once HAL support is fixed for ESCSERIAL
 #ifdef STM32F7

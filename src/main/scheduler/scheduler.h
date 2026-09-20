@@ -119,9 +119,6 @@ typedef enum {
 #ifdef USE_BARO
     TASK_BARO,
 #endif
-#ifdef USE_RANGEFINDER
-    TASK_RANGEFINDER,
-#endif
 #ifdef USE_DASHBOARD
     TASK_DASHBOARD,
 #endif

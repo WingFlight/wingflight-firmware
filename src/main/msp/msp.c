@@ -147,7 +147,6 @@
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
 #include "sensors/gyro_init.h"
-#include "sensors/rangefinder.h"
 
 #include "telemetry/msp_shared.h"
 #include "telemetry/telemetry.h"
@@ -938,7 +937,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
                               sensors(SENSOR_BARO) << 1 |
                               sensors(SENSOR_MAG) << 2 |
                               sensors(SENSOR_GPS) << 3 |
-                              sensors(SENSOR_RANGEFINDER) << 4 |
                               sensors(SENSOR_GYRO) << 5);
 
             boxBitmask_t flightModeFlags;
@@ -1526,14 +1524,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, getEstimatedVarioCms());
 #else
         sbufWriteU16(dst, 0);
-#endif
-        break;
-
-    case MSP_SONAR_ALTITUDE:
-#if defined(USE_RANGEFINDER)
-        sbufWriteU32(dst, rangefinderGetLatestAltitude());
-#else
-        sbufWriteU32(dst, 0);
 #endif
         break;
 
