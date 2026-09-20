@@ -56,17 +56,30 @@
 #define WF_BUILD_ID_LENGTH 8
 
 /*
- * Hash of the build manifest, which the client uses to pick the manifest that
- * describes this exact firmware.
+ * Hash of the parameter manifest describing this build's config layout, which
+ * the client uses to pick the manifest that matches the board in front of it.
  *
- * Still a placeholder: wiring the generated value into the build is a separate
- * change (the generator has to run against the linked ELF, and the result then
- * has to get back into the binary). Until then this stays zero and the reply
- * clears MSP_PARAM_CAP_BUILD_ID_VALID, so a client can tell "not bound yet"
- * from "bound to something I should go and find" instead of chasing a manifest
- * whose hash is eight zero bytes.
+ * `make TARGET=<t> manifest` generates the manifest and drops wf_build_id.h
+ * into the target's object directory; an ordinary build then picks it up. A
+ * build made without that step has no ID, reports MSP_PARAM_CAP_BUILD_ID_VALID
+ * clear, and a client can tell "not bound to a manifest" from "bound to one I
+ * should go and find" rather than chasing a hash of eight zero bytes.
+ *
+ * Plain `make` therefore still works with no extra step, which matters: the
+ * manifest build is a second, non-LTO compile of the whole tree and making
+ * every developer pay for it on every build would be a poor trade.
  */
-static const uint8_t wfBuildId[WF_BUILD_ID_LENGTH] = { 0 };
+#if defined(__has_include)
+#  if __has_include("wf_build_id.h")
+#    include "wf_build_id.h"
+#  endif
+#endif
+
+#ifndef WF_BUILD_ID_BYTES
+#define WF_BUILD_ID_BYTES 0, 0, 0, 0, 0, 0, 0, 0
+#endif
+
+static const uint8_t wfBuildId[WF_BUILD_ID_LENGTH] = { WF_BUILD_ID_BYTES };
 
 #ifdef USE_EMBEDDED_MANIFEST
 extern const uint8_t __wf_manifest_start[];
