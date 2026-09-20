@@ -106,7 +106,7 @@ typedef enum {
     DEBUG_GYRO_SAMPLE,
     DEBUG_RX_TIMING,
     DEBUG_D_LPF,
-    DEBUG_VTX_TRAMP,
+    DEBUG_VTX_TRAMP,    // unused (VTX removed) -- slot kept so later debug modes keep their numbers
     DEBUG_GHST,
     DEBUG_SCHEDULER_DETERMINISM,
     DEBUG_TIMING_ACCURACY,

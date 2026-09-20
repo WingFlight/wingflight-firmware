@@ -136,8 +136,8 @@
 // #define MSP_SET_OSD_CONFIG                 85
 // #define MSP_OSD_CHAR_READ                  86
 // #define MSP_OSD_CHAR_WRITE                 87
-#define MSP_VTX_CONFIG                       88
-#define MSP_SET_VTX_CONFIG                   89
+// #define MSP_VTX_CONFIG                       88
+// #define MSP_SET_VTX_CONFIG                   89
 #define MSP_ADVANCED_CONFIG                  90
 #define MSP_SET_ADVANCED_CONFIG              91
 #define MSP_FILTER_CONFIG                    92
@@ -185,8 +185,8 @@
 
 #define MSP_GPS_RESCUE                       135
 #define MSP_GPS_RESCUE_PIDS                  136
-#define MSP_VTXTABLE_BAND                    137
-#define MSP_VTXTABLE_POWERLEVEL              138
+// #define MSP_VTXTABLE_BAND                    137
+// #define MSP_VTXTABLE_POWERLEVEL              138
 #define MSP_MOTOR_TELEMETRY                  139
 
 // 142, 143 reserved (heli governor removed, do not reuse)
@@ -280,8 +280,8 @@
 #define MSP_SET_GPS_CONFIG                   223
 #define MSP_SET_GPS_RESCUE                   225
 #define MSP_SET_GPS_RESCUE_PIDS              226
-#define MSP_SET_VTXTABLE_BAND                227
-#define MSP_SET_VTXTABLE_POWERLEVEL          228
+// #define MSP_SET_VTXTABLE_BAND                227
+// #define MSP_SET_VTXTABLE_POWERLEVEL          228
 
 #define MSP_MULTIPLE_MSP                     230
 #define MSP_SERVO_CURVES                     231

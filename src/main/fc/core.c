@@ -87,8 +87,6 @@
 #include "io/serial.h"
 #include "io/servos.h"
 #include "io/statusindicator.h"
-#include "io/vtx_control.h"
-#include "io/vtx_rtc6705.h"
 
 #include "msp/msp_serial.h"
 
@@ -623,15 +621,6 @@ void tryArm(void)
     }
 }
 
-#ifdef USE_VTX_CONTROL
-static bool canUpdateVTX(void)
-{
-#ifdef USE_VTX_RTC6705
-    return vtxRTC6705CanUpdate();
-#endif
-    return true;
-}
-#endif
 
 
 /*
@@ -930,13 +919,6 @@ void processRxModes(timeUs_t currentTimeUs)
     }
 #endif
 
-#ifdef USE_VTX_CONTROL
-    vtxUpdateActivatedChannel();
-
-    if (canUpdateVTX()) {
-        handleVTXControlButton();
-    }
-#endif
 }
 
 #ifdef USE_TELEMETRY

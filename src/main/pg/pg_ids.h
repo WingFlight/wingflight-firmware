@@ -80,7 +80,7 @@
 //#define PG_VTX_CONFIG 54 // CF 1.x
 #define PG_GPS_RESCUE 55 // struct OK
 #define PG_POSITION 56
-#define PG_VTX_IO_CONFIG 57
+//#define PG_VTX_IO_CONFIG 57 removed (VTX)
 #define PG_GPS_NAV 58
 
 // Driver configuration
@@ -92,7 +92,7 @@
 #define PG_CURRENT_SENSOR_ADC_CONFIG 256
 //#define PG_CURRENT_SENSOR_VIRTUAL_CONFIG 257
 #define PG_VOLTAGE_SENSOR_ADC_CONFIG 258
-#define PG_VTX_SETTINGS_CONFIG 259
+//#define PG_VTX_SETTINGS_CONFIG 259 removed (VTX)
 
 
 // betaflight specific parameter group ids start at 500
@@ -112,7 +112,7 @@
 //#define PG_DISPLAY_PORT_MSP_CONFIG  512 removed (OSD)
 //#define PG_DISPLAY_PORT_MAX7456_CONFIG 513 removed (OSD)
 //#define PG_VCD_CONFIG               514 removed (OSD)
-#define PG_VTX_CONFIG               515
+//#define PG_VTX_CONFIG               515 removed (VTX)
 #define PG_SONAR_CONFIG             516
 #define PG_ESC_SENSOR_CONFIG        517
 #define PG_I2C_CONFIG               518
@@ -143,7 +143,7 @@
 #define PG_SERIAL_UART_CONFIG       543
 #define PG_RPM_FILTER_CONFIG        544
 #define PG_LED_STRIP_STATUS_MODE_CONFIG 545 // Used to hold the configuration for the LED_STRIP status mode (not built on targets with limited flash)
-#define PG_VTX_TABLE_CONFIG         546
+//#define PG_VTX_TABLE_CONFIG         546 removed (VTX)
 #define PG_STATS_CONFIG             547
 #define PG_QUADSPI_CONFIG           548
 #define PG_TIMER_UP_CONFIG          549 // used to store dmaopt for TIMx_UP channel

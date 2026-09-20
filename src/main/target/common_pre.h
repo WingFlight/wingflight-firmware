@@ -303,13 +303,6 @@ extern uint8_t _dmaram_end__;
 #define USE_LED_STRIP
 #endif
 
-#if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 11))
-#define USE_VTX_COMMON
-#define USE_VTX_CONTROL
-#define USE_VTX_SMARTAUDIO
-#define USE_VTX_TRAMP
-#endif
-
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 10))
 #define USE_CAMERA_CONTROL
 #define USE_ESC_SENSOR
@@ -349,8 +342,6 @@ extern uint8_t _dmaram_end__;
 #define USE_SPEKTRUM_REAL_RSSI
 #define USE_SPEKTRUM_FAKE_RSSI
 #define USE_SPEKTRUM_RSSI_PERCENT_CONVERSION
-#define USE_SPEKTRUM_VTX_CONTROL
-#define USE_SPEKTRUM_VTX_TELEMETRY
 #define USE_PIN_PULL_UP_DOWN
 #endif
 #endif
@@ -391,7 +382,6 @@ extern uint8_t _dmaram_end__;
 #define USE_LED_STRIP_STATUS_MODE
 #define USE_VARIO
 #define USE_ESC_SENSOR_TELEMETRY
-#define USE_VTX_TABLE
 #define USE_PERSISTENT_STATS
 #define USE_PROFILE_NAMES
 #define USE_SERIALRX_SRXL2     // Spektrum SRXL2 protocol

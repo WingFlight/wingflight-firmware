@@ -145,7 +145,7 @@ typedef enum {
     LED_OVERLAY_THROTTLE,
     LED_OVERLAY_LARSON_SCANNER,
     LED_OVERLAY_BLINK,
-    LED_OVERLAY_VTX,
+    LED_OVERLAY_VTX,    // reserved (VTX removed) -- kept so later overlay ids keep their bit positions
     LED_OVERLAY_INDICATOR,
     LED_OVERLAY_WARNING,
     LED_OVERLAY_FLICKER,

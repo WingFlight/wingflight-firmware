@@ -94,9 +94,6 @@ typedef enum {
 #ifdef USE_MULTI_GYRO
     TABLE_GYRO,
 #endif
-#ifdef USE_VTX_COMMON
-    TABLE_VTX_LOW_POWER_DISARM,
-#endif
     TABLE_GYRO_HARDWARE,
 #ifdef USE_SDCARD
     TABLE_SDCARD_MODE,

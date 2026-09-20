@@ -63,8 +63,8 @@ typedef enum {
     BOXCAMERA1,
     BOXCAMERA2,
     BOXCAMERA3,
-    BOXVTXPITMODE,
-    BOXVTXCONTROLDISABLE,
+    BOXVTXPITMODE,      // reserved (VTX removed) -- kept to avoid renumbering later ids
+    BOXVTXCONTROLDISABLE, // reserved (VTX removed) -- kept to avoid renumbering later ids
     BOXSTICKCOMMANDDISABLE,
     BOXGOVERNOR,        // governor engage switch (repurposed from removed heli governor fallback box)
     BOXGOVSUSPEND,      // reserved (heli governor removed) -- kept to avoid renumbering later ids

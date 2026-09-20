@@ -49,7 +49,6 @@
 #include "io/usb_cdc_hid.h"
 #include "io/dashboard.h"
 #include "io/gps.h"
-#include "io/vtx_control.h"
 
 #include "pg/arming.h"
 #include "pg/rx.h"
@@ -331,20 +330,6 @@ void processRcStickPositions(void)
     }
 #endif
 
-#ifdef USE_VTX_CONTROL
-    if (rcSticks ==  COL_HI + YAW_LO + PIT_CE + ROL_HI) {
-        vtxIncrementBand();
-    }
-    if (rcSticks ==  COL_HI + YAW_LO + PIT_CE + ROL_LO) {
-        vtxDecrementBand();
-    }
-    if (rcSticks ==  COL_HI + YAW_HI + PIT_CE + ROL_HI) {
-        vtxIncrementChannel();
-    }
-    if (rcSticks ==  COL_HI + YAW_HI + PIT_CE + ROL_LO) {
-        vtxDecrementChannel();
-    }
-#endif
 
 #ifdef USE_CAMERA_CONTROL
     if (rcSticks == COL_CE + YAW_HI + PIT_CE + ROL_CE) {

@@ -40,8 +40,6 @@
 #include "drivers/mco.h"
 #include "drivers/pinio.h"
 #include "drivers/sdio.h"
-#include "drivers/vtx_common.h"
-#include "drivers/vtx_table.h"
 #include "drivers/crsf_sensors.h"
 
 #include "config/config.h"
@@ -67,9 +65,6 @@
 #include "io/gps.h"
 #include "io/ledstrip.h"
 #include "io/serial.h"
-#include "io/vtx.h"
-#include "io/vtx_control.h"
-#include "io/vtx_rtc6705.h"
 
 #include "pg/adc.h"
 #include "pg/beeper.h"
@@ -93,7 +88,6 @@
 #include "pg/rx_spi_cc2500.h"
 #include "pg/rx_spi_expresslrs.h"
 #include "pg/sdcard.h"
-#include "pg/vtx_io.h"
 #include "pg/usb.h"
 #include "pg/scheduler.h"
 #include "pg/sdio.h"
@@ -384,11 +378,6 @@ static const char * const lookupTableNavLoiterDirection[] = {
 };
 #endif
 
-#ifdef USE_VTX_COMMON
-static const char * const lookupTableVtxLowPowerDisarm[] = {
-    "OFF", "ON", "UNTIL_FIRST_ARM"
-};
-#endif
 
 #ifdef USE_SDCARD
 static const char * const lookupTableSdcardMode[] = {
@@ -569,9 +558,6 @@ const lookupTableEntry_t lookupTables[] = {
 #endif
 #ifdef USE_MULTI_GYRO
     LOOKUP_TABLE_ENTRY(lookupTableGyro),
-#endif
-#ifdef USE_VTX_COMMON
-    LOOKUP_TABLE_ENTRY(lookupTableVtxLowPowerDisarm),
 #endif
     LOOKUP_TABLE_ENTRY(lookupTableGyroHardware),
 #ifdef USE_SDCARD
@@ -1256,32 +1242,6 @@ const clivalue_t valueTable[] = {
     { PARAM_NAME_DEBUG_AXIS,        VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 255 }, PG_SYSTEM_CONFIG, offsetof(systemConfig_t, debug_axis) },
 #ifdef USE_OVERCLOCK
     { "cpu_overclock",              VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OVERCLOCK }, PG_SYSTEM_CONFIG, offsetof(systemConfig_t, cpu_overclock) },
-#endif
-
-// PG_VTX_CONFIG
-#ifdef USE_VTX_COMMON
-    { "vtx_band",                   VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, VTX_TABLE_MAX_BANDS }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, band) },
-    { "vtx_channel",                VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, VTX_TABLE_MAX_CHANNELS }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, channel) },
-    { "vtx_power",                  VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, VTX_TABLE_MAX_POWER_LEVELS - 1 }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, power) },
-    { "vtx_low_power_disarm",       VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_VTX_LOW_POWER_DISARM }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, lowPowerDisarm) },
-    { "vtx_softserial_alt",         VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, softserialAlt) },
-#ifdef VTX_SETTINGS_FREQCMD
-    { "vtx_freq",                   VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, VTX_SETTINGS_MAX_FREQUENCY_MHZ }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, freq) },
-    { "vtx_pit_mode_freq",          VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, VTX_SETTINGS_MAX_FREQUENCY_MHZ }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, pitModeFreq) },
-#endif
-#endif
-
-// PG_VTX_CONFIG
-#if defined(USE_VTX_CONTROL) && defined(USE_VTX_COMMON)
-    { "vtx_halfduplex",             VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_VTX_CONFIG, offsetof(vtxConfig_t, halfDuplex) },
-#ifdef USE_SERIAL_PINSWAP
-    { "vtx_pinswap",                VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_VTX_CONFIG, offsetof(vtxConfig_t, pinSwap) },
-#endif
-#endif
-
-// PG_VTX_IO
-#ifdef USE_VTX_RTC6705
-    { "vtx_spi_bus",                VAR_UINT8  | HARDWARE_VALUE | MASTER_VALUE, .config.minmaxUnsigned = { 0, SPIDEV_COUNT }, PG_VTX_IO_CONFIG, offsetof(vtxIOConfig_t, spiDevice) },
 #endif
 
 #ifdef USE_ESC_SENSOR

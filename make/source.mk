@@ -142,7 +142,6 @@ COMMON_SRC = \
             rx/sbus_channels.c \
             rx/spektrum.c \
             rx/srxl2.c \
-            io/spektrum_vtx_control.c \
             io/spektrum_rssi.c \
             rx/sumd.c \
             rx/sumh.c \
@@ -166,8 +165,6 @@ COMMON_SRC = \
             drivers/rangefinder/rangefinder_hcsr04.c \
             drivers/rangefinder/rangefinder_lidartf.c \
             drivers/serial_escserial.c \
-            drivers/vtx_common.c \
-            drivers/vtx_table.c \
             io/dashboard.c \
             io/displayport_oled.c \
             io/rcdevice_cam.c \
@@ -194,11 +191,6 @@ COMMON_SRC = \
             telemetry/ibus_shared.c \
             telemetry/sensors.c \
             sensors/esc_sensor.c \
-            io/vtx.c \
-            io/vtx_rtc6705.c \
-            io/vtx_smartaudio.c \
-            io/vtx_tramp.c \
-            io/vtx_control.c \
 
 COMMON_DEVICE_SRC = \
             $(CMSIS_SRC) \
@@ -323,9 +315,6 @@ SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
             drivers/serial_tcp.c \
             drivers/serial_uart_pinconfig.c \
             drivers/serial_usb_vcp.c \
-            drivers/vtx_rtc6705_soft_spi.c \
-            drivers/vtx_rtc6705.c \
-            drivers/vtx_common.c \
             fc/init.c \
             fc/board_info.c \
             config/config_eeprom.c \
@@ -340,12 +329,6 @@ SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
             io/serial_4way_stk500v2.c \
             io/usb_cdc_hid.c \
             msp/msp_serial.c \
-            io/vtx.c \
-            io/vtx_rtc6705.c \
-            io/vtx_smartaudio.c \
-            io/vtx_tramp.c \
-            io/vtx_control.c \
-            io/spektrum_vtx_control.c \
             rx/rx_bind.c
 
 # Gyro driver files that only contain initialization and configuration code - not runtime code

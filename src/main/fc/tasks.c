@@ -42,7 +42,6 @@
 #include "drivers/srxl2_esc.h"
 #include "drivers/stack_check.h"
 #include "drivers/usb_io.h"
-#include "drivers/vtx_common.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
 #include "drivers/fbus_sensor.h"
@@ -68,10 +67,8 @@
 #include "io/ledstrip.h"
 #include "io/piniobox.h"
 #include "io/serial.h"
-#include "io/vtx_tramp.h" // Will be gone
 #include "io/rcdevice_cam.h"
 #include "io/usb_cdc_hid.h"
-#include "io/vtx.h"
 
 #include "msp/msp.h"
 #include "msp/msp_serial.h"
@@ -411,9 +408,6 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_SRXL2_ESC] = DEFINE_TASK("SRXL2_ESC", NULL, NULL, srxl2escDriverTask, TASK_PERIOD_HZ(SRXL2_ESC_DRIVER_TASK_FREQ_HZ), TASK_PRIORITY_HIGH),
 #endif
 
-#ifdef USE_VTX_CONTROL
-    [TASK_VTXCTRL] = DEFINE_TASK("VTXCTRL", NULL, NULL, vtxUpdate, TASK_PERIOD_HZ(5), TASK_PRIORITY_LOWEST),
-#endif
 
 #ifdef USE_RCDEVICE
     [TASK_RCDEVICE] = DEFINE_TASK("RCDEVICE", NULL, NULL, rcdeviceUpdate, TASK_PERIOD_HZ(20), TASK_PRIORITY_MEDIUM),
@@ -591,11 +585,6 @@ void tasksInit(void)
     pinioBoxTaskControl();
 #endif
 
-#ifdef USE_VTX_CONTROL
-#if defined(USE_VTX_RTC6705) || defined(USE_VTX_SMARTAUDIO) || defined(USE_VTX_TRAMP)
-    setTaskEnabled(TASK_VTXCTRL, true);
-#endif
-#endif
 
 #ifdef USE_CAMERA_CONTROL
     setTaskEnabled(TASK_CAMCTRL, true);

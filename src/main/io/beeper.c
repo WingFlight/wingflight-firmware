@@ -38,10 +38,10 @@
 
 #include "config/config.h"
 #include "fc/core.h"
+#include "fc/rc_modes.h"
 #include "fc/runtime_config.h"
 
 #include "io/statusindicator.h"
-#include "io/vtx_control.h"
 
 #ifdef USE_GPS
 #include "io/gps.h"

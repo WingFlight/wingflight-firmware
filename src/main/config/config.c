@@ -66,7 +66,6 @@
 #include "io/gps.h"
 #include "io/ledstrip.h"
 #include "io/serial.h"
-#include "io/vtx.h"
 
 #include "msp/msp_box.h"
 
@@ -81,7 +80,6 @@
 #include "pg/rx.h"
 #include "pg/rx_spi.h"
 #include "pg/sdcard.h"
-#include "pg/vtx_table.h"
 #include "pg/freq.h"
 #include "pg/system.h"
 #include "pg/pilot.h"
@@ -558,22 +556,6 @@ static void validateAndFixConfig(void)
 #endif // USE_DSHOT_TELEMETRY
 #endif // USE_DSHOT
 
-#if defined(USE_VTX_COMMON) && defined(USE_VTX_TABLE)
-    // reset vtx band, channel, power if outside range specified by vtxtable
-    if (vtxSettingsConfig()->channel > vtxTableConfig()->channels) {
-        vtxSettingsConfigMutable()->channel = 0;
-        if (vtxSettingsConfig()->band > 0) {
-            vtxSettingsConfigMutable()->freq = 0; // band/channel determined frequency can't be valid anymore
-        }
-    }
-    if (vtxSettingsConfig()->band > vtxTableConfig()->bands) {
-        vtxSettingsConfigMutable()->band = 0;
-        vtxSettingsConfigMutable()->freq = 0; // band/channel determined frequency can't be valid anymore
-    }
-    if (vtxSettingsConfig()->power > vtxTableConfig()->powerLevels) {
-        vtxSettingsConfigMutable()->power = 0;
-    }
-#endif
 
     validateAndFixRatesSettings();  // constrain the various rates settings to limits imposed by the rates type
 
