@@ -453,9 +453,11 @@ endif
 # before the generator can read it. These pull it back in by name. They apply
 # only to the manifest build, which is never flashed.
 ifeq ($(MANIFEST_BUILD),yes)
-SRC += manifest/settings.c
-SIZE_OPTIMISED_SRC += manifest/settings.c
+SRC += manifest/settings.c manifest/resources.c
+SIZE_OPTIMISED_SRC += manifest/settings.c manifest/resources.c
 EXTRA_LD_FLAGS += -Wl,--undefined=valueTable \
                   -Wl,--undefined=valueTableEntryCount \
-                  -Wl,--undefined=lookupTables
+                  -Wl,--undefined=lookupTables \
+                  -Wl,--undefined=resourceTable \
+                  -Wl,--undefined=ownerNames
 endif
