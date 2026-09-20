@@ -450,15 +450,48 @@ window with no working CLI at all. Revised:
    its own translation unit (`msp/msp_compat.c`) so that "the catalogue" and
    "the compatibility shim" are separable by file rather than by `#if` — the
    deletion then cannot take a frozen opcode with it by accident.
-6. **Live data.** `wfLive_t` and subscriptions; delete `mspProcessOutCommand`.
-   Deliberately last: it is 1,371 lines / 79 opcodes that are mostly telemetry
-   rather than config, it is not where the flash pressure is, and its RAM cost
-   is still unmeasured. Gate it on that measurement rather than assuming the net
-   is small.
-
 Steps 1–3 are purely additive and reversible. Step 5 is the first irreversible
 one and it happens after the configurator has been running on the new path for a
 release.
+
+There is no step 6. An earlier draft had one — `wfLive_t` plus a subscription
+model, deleting `mspProcessOutCommand` — and it has been dropped. See §11.1.
+
+### 11.1 Live data is out of scope
+
+Sensor and status data does not move to addressed access, and the MSP opcodes
+that serve it are not being deleted. This is a decision, not an omission.
+
+The mechanism does not reach it. Everything here is built on `.pg_registry`,
+and live values are not in it: `acc`, `attitude` and `rcData` are plain globals
+with no parameter group and therefore no pgn for `PARAM_READ` to address. That
+follows from what a parameter group is — the things saved to EEPROM and reset
+to defaults. A gyro reading is neither.
+
+Three further reasons it should not be forced to fit:
+
+- **Much of it is computed, not stored.** `MSP_RAW_IMU` rescales by
+  `acc.dev.acc_1G` as it builds the reply; there is no byte range that *is*
+  the answer.
+- **The access pattern is the opposite.** Config is read once at connect and
+  written rarely; live data is polled every frame for a handful of values, so
+  one opcode returning a packed frame beats a request per field.
+- **There are no stable offsets to describe.** Config struct layout is fixed by
+  the ABI and checked by CI (§12). Live globals move freely between builds with
+  nothing pinning them.
+
+And the case for doing it was weak. Of the 79 opcodes in
+`mspProcessOutCommand`, 46 are live or status and 33 are config-shaped; only
+that config third is in scope for deletion. The live half is not where the
+flash is, its replacement would still need hand-written marshalling for the
+computed values, and `wfLive_t` was unmeasured RAM added to a target already
+carrying 118 KB of bss. It was also the part with the widest blast radius —
+radio telemetry and third-party ground stations poll these opcodes.
+
+If live-data flash ever does become a problem, the incremental option is this
+same trick applied narrowly: a small `(id → address, size)` table for the
+values that really are plain globals, with bespoke cases kept for the computed
+ones. That is additive and needs no new protocol.
 
 ## 12. CI gates
 
@@ -545,17 +578,17 @@ concretely, so it is a known cost rather than a surprise:
   What matters for compatibility is the wire shape of §8.1, which is why that
   gets a golden test rather than a version number.
 
-**Still open:** whether step 6 also removes the live-data opcodes
-(`MSP_ATTITUDE`, `MSP_BATTERY_STATE`, `MSP_STATUS` …). Those are what radio-side
-telemetry and third-party ground stations actually poll, they are cheap to keep,
-and keeping them is orthogonal to the config fork. Recommend scoping the fork to
-the config catalogue and leaving the live-data subset alone until there is a
-measured reason not to.
+**Decided:** the fork does *not* touch the live-data opcodes (`MSP_ATTITUDE`,
+`MSP_BATTERY_STATE`, `MSP_STATUS`, `MSP_RAW_IMU` …). They are what radio-side
+telemetry and third-party ground stations poll, they are cheap to keep, and
+keeping them is orthogonal to the config fork. See §11.1.
+
+So the fork's scope is exactly: the hand-written MSP *config* catalogue, minus
+the frozen subset in §8.1. Anything that reports state rather than settings
+stays.
 
 ## 14. Remaining open items
 
-- **`wfLive_t` RAM cost** — unmeasured. Most fields alias data that already
-  exists; the computed ones are the real cost. Measure before step 6.
 - **`MSP_MULTIPLE_MSP`** — not config, not live data. Confirm it does not reach
   into the catalogue being deleted. (`MSP_PASSTHROUGH_*` and 4-way ESC are no
   longer open: they are frozen by §8.1.)
