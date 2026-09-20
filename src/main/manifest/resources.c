@@ -139,6 +139,7 @@
 #include "drivers/resource.h"
 #include "pg/bus_spi.h"
 #include "pg/pin_pull_up_down.h"
+#include "pg/serial_uart.h"
 
 
 #if defined(USE_RESOURCE_MGMT)
@@ -299,3 +300,60 @@ const cliResourceValue_t resourceTable[] = {
 };
 
 #endif // USE_RESOURCE_MGMT
+
+
+/*
+ * Which parameter group holds which DMA option, and what the CLI called it.
+ *
+ * Same story as the resource table above: an owner, a group, and an offset
+ * inside it. Kept here so `dma ADC 1 0` can be produced off-board.
+ */
+
+#ifdef USE_DMA_SPEC
+
+typedef struct dmaoptEntry_s {
+    char *device;
+    dmaPeripheral_e peripheral;
+    pgn_t pgn;
+    uint8_t stride;
+    uint8_t offset;
+    uint8_t maxIndex;
+    uint32_t presenceMask;
+} dmaoptEntry_t;
+
+#define MASK_IGNORED (0)
+
+// Handy macros for keeping the table tidy.
+// DEFS : Single entry
+// DEFA : Array of uint8_t (stride = 1)
+// DEFW : Wider stride case; array of structs.
+
+#define DEFS(device, peripheral, pgn, type, member) \
+    { device, peripheral, pgn, 0,               offsetof(type, member), 0, MASK_IGNORED }
+
+#define DEFA(device, peripheral, pgn, type, member, max, mask) \
+    { device, peripheral, pgn, sizeof(uint8_t), offsetof(type, member), max, mask }
+
+#define DEFW(device, peripheral, pgn, type, member, max, mask) \
+    { device, peripheral, pgn, sizeof(type), offsetof(type, member), max, mask }
+
+dmaoptEntry_t dmaoptEntryTable[] = {
+    DEFW("SPI_MOSI", DMA_PERIPH_SPI_MOSI, PG_SPI_PIN_CONFIG,     spiPinConfig_t,     txDmaopt, SPIDEV_COUNT,                    MASK_IGNORED),
+    DEFW("SPI_MISO", DMA_PERIPH_SPI_MISO, PG_SPI_PIN_CONFIG,     spiPinConfig_t,     rxDmaopt, SPIDEV_COUNT,                    MASK_IGNORED),
+    // SPI_TX/SPI_RX for backwards compatibility with unified configs defined for 4.2.x
+    DEFW("SPI_TX",   DMA_PERIPH_SPI_MOSI, PG_SPI_PIN_CONFIG,     spiPinConfig_t,     txDmaopt, SPIDEV_COUNT,                    MASK_IGNORED),
+    DEFW("SPI_RX",   DMA_PERIPH_SPI_MISO, PG_SPI_PIN_CONFIG,     spiPinConfig_t,     rxDmaopt, SPIDEV_COUNT,                    MASK_IGNORED),
+    DEFA("ADC",      DMA_PERIPH_ADC,      PG_ADC_CONFIG,         adcConfig_t,        dmaopt,   ADCDEV_COUNT,                    MASK_IGNORED),
+    DEFS("SDIO",     DMA_PERIPH_SDIO,     PG_SDIO_CONFIG,        sdioConfig_t,       dmaopt),
+    DEFW("UART_TX",  DMA_PERIPH_UART_TX,  PG_SERIAL_UART_CONFIG, serialUartConfig_t, txDmaopt, UARTDEV_CONFIG_MAX,              MASK_IGNORED),
+    DEFW("UART_RX",  DMA_PERIPH_UART_RX,  PG_SERIAL_UART_CONFIG, serialUartConfig_t, rxDmaopt, UARTDEV_CONFIG_MAX,              MASK_IGNORED),
+#if defined(STM32H7) || defined(STM32G4)
+    DEFW("TIMUP",    DMA_PERIPH_TIMUP,    PG_TIMER_UP_CONFIG,    timerUpConfig_t,    dmaopt,   HARDWARE_TIMER_DEFINITION_COUNT, TIMUP_TIMERS),
+#endif
+};
+
+#undef DEFS
+#undef DEFA
+#undef DEFW
+
+#endif // USE_DMA_SPEC
