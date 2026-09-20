@@ -222,6 +222,12 @@ INCLUDE_DIRS    := $(INCLUDE_DIRS) \
 INCLUDE_DIRS    := $(INCLUDE_DIRS) \
                    $(TARGET_DIR)
 
+# Where 'make manifest' drops the generated wf_build_id.h. Listed last and
+# allowed to be absent: a build without a manifest still compiles, it just has
+# no build ID to report. See docs/parameter-addressing-design.md.
+INCLUDE_DIRS    := $(INCLUDE_DIRS) \
+                   $(OBJECT_DIR)/$(TARGET)
+
 VPATH           := $(VPATH):$(TARGET_DIR)
 
 include $(ROOT)/make/source.mk
@@ -579,6 +585,34 @@ binary:
 
 hex:
 	$(V0) $(MAKE) $(JFLAG) $(TARGET_HEX)
+
+# The manifest is extracted from DWARF, and LTO collapses the per-compilation-
+# unit debug info that the extraction depends on -- on an LTO build not one
+# parameter group resolves. So it gets its own non-LTO build, in its own object
+# directory so it cannot contaminate the shipping one. -Wno-error because
+# warnings that LTO hides (stringop-truncation in pg/board.c) surface without
+# it, and this build is never flashed.
+#
+# Struct layout does not depend on optimisation, but the two builds must be
+# proven to agree rather than assumed to: see 'manifest_check'.
+MANIFEST_OBJECT_DIR := $(ROOT)/obj/manifest
+MANIFEST_ELF        := $(MANIFEST_OBJECT_DIR)/$(FORKNAME)_$(TARGET).elf
+MANIFEST_JSON       := $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET)_manifest.json
+BUILD_ID_HEADER     := $(OBJECT_DIR)/$(TARGET)/wf_build_id.h
+WF_MANIFEST_TOOL    := $(ROOT)/src/utils/wf_manifest.py
+
+## manifest          : generate the parameter manifest and build ID for $(TARGET)
+manifest:
+	$(V0) $(MAKE) $(JFLAG) DEBUG=INFO EXTRA_FLAGS="$(EXTRA_FLAGS) -Wno-error" \
+	      OPTIMISATION_BASE="-ffast-math -fmerge-all-constants" \
+	      OBJECT_DIR="$(MANIFEST_OBJECT_DIR)" $(MANIFEST_ELF)
+	$(V1) $(PYTHON) $(WF_MANIFEST_TOOL) $(MANIFEST_ELF) $(MANIFEST_JSON) \
+	      --build-id-header $(BUILD_ID_HEADER)
+
+## manifest_check    : check the generated manifest against the CLI settings table
+manifest_check: manifest
+	$(V1) $(PYTHON) $(ROOT)/src/utils/wf_manifest_check.py \
+	      $(MANIFEST_ELF) $(MANIFEST_JSON)
 
 unbrick_$(TARGET): $(TARGET_HEX)
 	$(V0) stty -F $(SERIAL_DEVICE) raw speed 115200 -crtscts cs8 -parenb -cstopb -ixon

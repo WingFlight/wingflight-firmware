@@ -141,6 +141,15 @@ defined failure mode.
 SHA-256 of the canonical manifest bytes — computed at build time and compiled
 into the firmware as a constant.
 
+There is no chicken-and-egg problem here, which is worth stating because it
+looks like there should be one. The manifest is extracted from a *separate*
+non-LTO `DEBUG=INFO` build (§12), never from the shipping binary, so the
+shipping build simply consumes the resulting `wf_build_id.h` as an input.
+`make TARGET=<t> manifest` produces both; an ordinary `make` picks the header
+up if it is there and reports `CAP_BUILD_ID_VALID` clear if it is not. No
+two-pass link, and no second full-tree compile forced on every developer for
+every build.
+
 Hashing the output rather than the inputs is what makes this work: any candidate
 manifest can be checked by hashing it and comparing. There is no question of
 "did I account for every input that affects layout" (target, feature flags,
@@ -420,11 +429,13 @@ The earlier plan had an ordering bug: step 2 removed the metadata the on-device
 CLI depends on, but the replacement CLI did not arrive until step 4, leaving a
 window with no working CLI at all. Revised:
 
-1. **Manifest + CI gate.** Rewrite `wf_manifest.py`. Add `WF_BUILD_ID`. Add a CI
-   job that diffs the manifest against `valueTable` and fails on disagreement.
-   No firmware change; while both descriptions exist this is a free regression
-   test that *proves* the manifest before anything relies on it. Publish it as a
-   release asset.
+1. **Manifest + CI gate.** *(done, except release publishing.)*
+   `src/utils/wf_manifest.py` extracts the manifest; `make manifest` builds the
+   non-LTO ELF and emits both `manifest.json` and `wf_build_id.h`;
+   `make manifest_check` diffs it against `valueTable`. While both descriptions
+   exist this is a free regression test that *proves* the manifest before
+   anything relies on it. Still to do: publish the manifest as a release asset,
+   and the LTO-consistency gate below.
 2. **Addressed opcodes, additive.** Add the `0x50xx` block. MSP catalogue and
    `cli.c` untouched. Nothing user-visible changes.
 3. **Configurator on the manifest.** Build the client-side CLI and migrate tabs
@@ -453,7 +464,27 @@ release.
 
 Without these the design decays back into hand-maintained tables.
 
-- **Manifest ⟷ `valueTable` diff** — during steps 1–4, while both exist.
+- **Manifest ⟷ `valueTable` diff** — `make TARGET=<t> manifest_check`, during
+  steps 1–4 while both descriptions exist. `valueTable` is read out of the ELF
+  rather than parsed out of `settings.c`, because the C is thick with
+  preprocessor conditionals and the linked table is what actually ships.
+
+  On STM32F411 this currently matches 461 of 464 settings. The three that do
+  not are a real defect in `settings.c`, listed as known disagreements in
+  `wf_manifest_check.py` so the gate can be adopted now rather than after the
+  backlog is cleared: `align_board_roll`/`pitch`/`yaw` are declared `VAR_INT16`
+  against `int32_t` struct fields, and `cliSetVar()` writes through the
+  declared type, so a negative value — the declared range is `-180..360` —
+  writes only the low half and leaves the high half stale. `get` then reads
+  that low half back and reports the value the user asked for while the
+  firmware uses something else entirely. Inherited from upstream, not
+  introduced here. Fixing it means either a new `VAR_INT32` in
+  `cliValueFlag_e` (bits 0–2 have room) or narrowing the struct, which moves
+  the group layout and needs a PG version bump.
+
+  This gate found three bugs in the generator itself on its first run
+  (multi-dimensional arrays truncated to their last dimension, anonymous union
+  members leaking into field paths), which is the argument for having it.
 - **LTO consistency.** LTO collapses per-CU DWARF: on an LTO `DEBUG=INFO` build
   the extractor resolved 0 of 77 groups, on a non-LTO build 77 of 77. So
   manifest generation runs as a separate `-fno-lto -g3` job. Make it a **hard
