@@ -373,4 +373,21 @@
 // the channel carrying motor 2 (0 = single motor). CLI srxl2esc_* settings.
 #define MSP2_WING_SRXL2_ESC_CONFIG            0x5F35
 #define MSP2_WING_SET_SRXL2_ESC_CONFIG        0x5F36
+
+// Generic parameter addressing. These address configuration by
+// (pgn, offset, length) against the parameter group registry instead of by a
+// hand-written opcode per field, which is what lets cli/settings.c and the MSP
+// config catalogue stop being linked into flash. See
+// parameter-addressing-design.md.
+//
+// One contiguous group in the first block no other command or open branch
+// claims (0x5F1E-0x5F24 are FBUS OTA and the FBUS mux, 0x5F28-0x5F32 open
+// branches, 0x5F33-0x5F34 above).
+#define MSP2_WING_BUILD_ID                    0x5F35
+#define MSP2_WING_PG_LIST                     0x5F36
+#define MSP2_WING_PARAM_READ                  0x5F37
+#define MSP2_WING_PARAM_WRITE                 0x5F38
+#define MSP2_WING_PG_DEFAULT                  0x5F39
+#define MSP2_WING_MANIFEST_READ               0x5F3A
+
 #define MSP_V2_FRAME                         255
