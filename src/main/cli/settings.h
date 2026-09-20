@@ -144,6 +144,11 @@ typedef enum {
     VAR_UINT16 = (2 << VALUE_TYPE_OFFSET),
     VAR_INT16 = (3 << VALUE_TYPE_OFFSET),
     VAR_UINT32 = (4 << VALUE_TYPE_OFFSET),
+    // Signed 32-bit. Note that the range still comes from cliMinMaxConfig_t,
+    // whose bounds are int16_t, so a VAR_INT32 setting can only declare a
+    // range that fits in 16 bits -- enough for every current user, but a
+    // wider one needs a config union member of its own.
+    VAR_INT32 = (5 << VALUE_TYPE_OFFSET),
 
     // value section, bits 3-5 -- widened from 2 to 3 bits (was VALUE_MODE_OFFSET 5)
     // to make room for PROFILE_TV_VALUE alongside the pre-existing four sections.

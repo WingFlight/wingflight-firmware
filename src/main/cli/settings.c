@@ -829,9 +829,9 @@ const clivalue_t valueTable[] = {
     { "failsafe_stick_threshold",   VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 50 }, PG_FAILSAFE_CONFIG, offsetof(failsafeConfig_t, failsafe_stick_threshold) },
 
 // PG_BOARDALIGNMENT_CONFIG
-    { "align_board_roll",           VAR_INT16  | MASTER_VALUE, .config.minmax = { -180, 360 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, rollDegrees) },
-    { "align_board_pitch",          VAR_INT16  | MASTER_VALUE, .config.minmax = { -180, 360 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, pitchDegrees) },
-    { "align_board_yaw",            VAR_INT16  | MASTER_VALUE, .config.minmax = { -180, 360 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, yawDegrees) },
+    { "align_board_roll",           VAR_INT32  | MASTER_VALUE, .config.minmax = { -180, 360 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, rollDegrees) },
+    { "align_board_pitch",          VAR_INT32  | MASTER_VALUE, .config.minmax = { -180, 360 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, pitchDegrees) },
+    { "align_board_yaw",            VAR_INT32  | MASTER_VALUE, .config.minmax = { -180, 360 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, yawDegrees) },
     { "align_board_trim_roll",      VAR_INT16  | MASTER_VALUE, .config.minmax = { -3600, 3600 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, mountTrim.roll) },
     { "align_board_trim_pitch",     VAR_INT16  | MASTER_VALUE, .config.minmax = { -3600, 3600 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, mountTrim.pitch) },
     { "align_board_trim_yaw",       VAR_INT16  | MASTER_VALUE, .config.minmax = { -3600, 3600 }, PG_BOARD_ALIGNMENT, offsetof(boardAlignment_t, mountTrim.yaw) },

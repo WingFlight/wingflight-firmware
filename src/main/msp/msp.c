@@ -1484,9 +1484,12 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 
     case MSP_BOARD_ALIGNMENT_CONFIG:
-        sbufWriteU16(dst, boardAlignment()->rollDegrees);
-        sbufWriteU16(dst, boardAlignment()->pitchDegrees);
-        sbufWriteU16(dst, boardAlignment()->yawDegrees);
+        // Signed: the range is -180..360, and these read back into an int32_t
+        // on the other side. Same two bytes on the wire either way, so this
+        // changes nothing for an existing client.
+        sbufWriteS16(dst, boardAlignment()->rollDegrees);
+        sbufWriteS16(dst, boardAlignment()->pitchDegrees);
+        sbufWriteS16(dst, boardAlignment()->yawDegrees);
         break;
 
     case MSP2_WING_BOARD_MOUNT_TRIM:
@@ -3777,9 +3780,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 #endif
 
     case MSP_SET_BOARD_ALIGNMENT_CONFIG:
-        boardAlignmentMutable()->rollDegrees = sbufReadU16(src);
-        boardAlignmentMutable()->pitchDegrees = sbufReadU16(src);
-        boardAlignmentMutable()->yawDegrees = sbufReadU16(src);
+        // sbufReadU16() into an int32_t cannot produce a negative value: -10
+        // arrives as 0xFFF6 and widens to 65526, which degreesToRadians()
+        // then quietly turns into 6 degrees. Read it signed, as the mount
+        // trim below already does.
+        boardAlignmentMutable()->rollDegrees = sbufReadS16(src);
+        boardAlignmentMutable()->pitchDegrees = sbufReadS16(src);
+        boardAlignmentMutable()->yawDegrees = sbufReadS16(src);
         break;
 
     case MSP2_WING_SET_BOARD_MOUNT_TRIM:

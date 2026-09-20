@@ -59,6 +59,7 @@ TYPE_SIZE = {
     2: 2,   # VAR_UINT16
     3: 2,   # VAR_INT16
     4: 4,   # VAR_UINT32
+    5: 4,   # VAR_INT32
 }
 
 MODE_NAME = {
@@ -70,33 +71,16 @@ MODE_NAME = {
 }
 
 # Settings where valueTable and the struct genuinely disagree, and the manifest
-# is the one telling the truth. Reported as warnings so that this check can be
-# a CI gate today rather than after the backlog is cleared -- but they are
-# real defects, not noise, and the list should only ever get shorter.
+# is the one telling the truth. Reported as warnings rather than failures, so
+# that a known defect does not block the gate -- but they are real defects, not
+# noise, and the list should only ever get shorter.
 #
-# Anything not listed here is a hard failure.
+# Anything not listed here is a hard failure. It is empty, and should stay that
+# way: the three align_board_* settings that were here were a genuine bug
+# (VAR_INT16 declared against int32_t fields) and have been fixed rather than
+# tolerated.
 KNOWN_DISAGREEMENTS = {
-    'align_board_roll':
-        'declared VAR_INT16 but boardAlignment_t.rollDegrees is int32_t',
-    'align_board_pitch':
-        'declared VAR_INT16 but boardAlignment_t.pitchDegrees is int32_t',
-    'align_board_yaw':
-        'declared VAR_INT16 but boardAlignment_t.yawDegrees is int32_t',
 }
-
-# Why those three matter: cliSetVar() writes through the declared type, so
-# `*(int16_t *)ptr = value` touches only the low half of the int32 and leaves
-# the high half whatever it was. The declared range is -180..360, so a negative
-# value is reachable -- and on a little-endian target `set align_board_roll =
-# -10` leaves 0x0000FFF6 in the field, which is 65526 rather than -10, while
-# `get` reads the low half back and cheerfully reports -10.
-#
-# Inherited from upstream rather than introduced here: the field has been
-# int32_t since boardalignment moved to its own parameter group. Fixing it
-# means either adding a VAR_INT32 to cliValueFlag_e (bits 0-2 have room; 5, 6
-# and 7 are free) or narrowing the struct, which changes the group layout and
-# needs a PG version bump. That is a call for whoever owns the CLI, not
-# something to slip into a manifest change.
 
 
 def read_value_table(elf, dwarf):
