@@ -99,7 +99,7 @@ void currentSensorADCRefresh(timeUs_t currentTimeUs)
 
             state->sample = current;
             state->current = filterApply(&state->filter, current);
-            state->capacity += current * udpateDelta;
+            state->capacity += (uint64_t)state->sample * (uint32_t)udpateDelta;
 
             DEBUG_AXIS(CURRENT_SENSOR, i, 0, sample);
             DEBUG_AXIS(CURRENT_SENSOR, i, 1, current);
