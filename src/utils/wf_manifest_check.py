@@ -42,34 +42,6 @@ import sys
 import wf_manifest
 
 
-# cliValueFlag_e in cli/settings.h. Only the type and mode fields matter here:
-# the section bits say which profile a value belongs to, which affects how the
-# CLI reaches it but not where it sits inside its parameter group.
-VALUE_TYPE_MASK = 0x07
-VALUE_MODE_MASK = 0x1C0
-MODE_DIRECT = 0 << 6
-MODE_LOOKUP = 1 << 6
-MODE_ARRAY = 2 << 6
-MODE_BITSET = 3 << 6
-MODE_STRING = 4 << 6
-
-TYPE_SIZE = {
-    0: 1,   # VAR_UINT8
-    1: 1,   # VAR_INT8
-    2: 2,   # VAR_UINT16
-    3: 2,   # VAR_INT16
-    4: 4,   # VAR_UINT32
-    5: 4,   # VAR_INT32
-}
-
-MODE_NAME = {
-    MODE_DIRECT: 'direct',
-    MODE_LOOKUP: 'lookup',
-    MODE_ARRAY: 'array',
-    MODE_BITSET: 'bitset',
-    MODE_STRING: 'string',
-}
-
 # Settings where valueTable and the struct genuinely disagree, and the manifest
 # is the one telling the truth. Reported as warnings rather than failures, so
 # that a known defect does not block the gate -- but they are real defects, not
@@ -83,60 +55,15 @@ KNOWN_DISAGREEMENTS = {
 }
 
 
-def read_value_table(elf, dwarf):
-    """Decode valueTable out of the ELF.
-
-    The record layout comes from DWARF for the same reason the registry's does:
-    clivalue_t is packed, but its field offsets still depend on pointer size,
-    and reading them beats hardcoding a number that is right on exactly one
-    architecture.
-    """
-    layout, record_size = dwarf.struct_layout('clivalue_s')
-
-    table = elf.symbols.get('valueTable')
-    count_symbol = elf.symbols.get('valueTableEntryCount')
-    if table is None or count_symbol is None:
-        raise SystemExit('valueTable not found -- has cli/settings.c been removed? '
-                         'If so, this check has done its job and should go too.')
-
-    raw_count = elf.read_at(count_symbol, 2)
-    count = struct.unpack('<H' if elf.little_endian else '>H', raw_count)[0]
-
-    endian = '<' if elf.little_endian else '>'
-    scalar = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
-
-    entries = []
-    for index in range(count):
-        record = elf.read_at(table + index * record_size, record_size)
-        if record is None or len(record) < record_size:
-            raise SystemExit('valueTable entry %d is not in any loaded section' % index)
-
-        def field(member):
-            offset, size = layout[member]
-            return struct.unpack_from(endian + scalar[size], record, offset)[0]
-
-        entries.append({
-            'name': elf.read_cstring(field('name')) or '<unreadable>',
-            'type': field('type'),
-            'pgn': field('pgn'),
-            'offset': field('offset'),
-            'config': record[layout['config'][0]:layout['config'][0] + layout['config'][1]],
-        })
-    return entries
-
-
 def expected_span(entry):
     """How many bytes the CLI believes this setting occupies."""
-    mode = entry['type'] & VALUE_MODE_MASK
-    base = TYPE_SIZE.get(entry['type'] & VALUE_TYPE_MASK)
-    if base is None:
+    base = entry.get('size')
+    if not base:
         return None
-    if mode == MODE_ARRAY:
-        # cliArrayLengthConfig_t: one uint8_t length.
-        return base * entry['config'][0]
-    if mode == MODE_STRING:
-        # cliStringLengthConfig_t: minlength, maxlength, flags.
-        return entry['config'][1]
+    if entry['mode'] == 'array':
+        return base * entry.get('count', 1)
+    if entry['mode'] == 'string':
+        return entry.get('max_length', 0)
     # BITSET addresses a bit inside a value of the declared type; DIRECT and
     # LOOKUP are the value itself.
     return base
@@ -289,8 +216,10 @@ def main(argv):
     args = parser.parse_args(argv[1:])
 
     elf = wf_manifest.Elf(args.elf)
-    dwarf = wf_manifest.Dwarf(elf, {'clivalue_s'})
-    entries = read_value_table(elf, dwarf)
+    dwarf = wf_manifest.Dwarf(
+        elf, {'clivalue_s', 'lookupTableEntry_s', 'pgRegistry_s'})
+    entries = wf_manifest.read_value_table(
+        elf, dwarf, wf_manifest.read_lookup_tables(elf, dwarf))
 
     with open(args.manifest) as handle:
         manifest = json.load(handle)
@@ -308,8 +237,8 @@ def main(argv):
             continue
 
         span = expected_span(entry)
-        mode = MODE_NAME.get(entry['type'] & VALUE_MODE_MASK, '?')
-        reason = locate(group, entry['offset'], span, mode)
+        mode = entry['mode']
+        reason = locate(group, entry['off'], span, mode)
 
         if reason and entry['name'] in KNOWN_DISAGREEMENTS:
             known.append((entry, reason))
@@ -319,7 +248,7 @@ def main(argv):
             matched += 1
             if args.verbose:
                 print('ok    %-40s pgn=%-5d off=%-5d %s'
-                      % (entry['name'], entry['pgn'], entry['offset'], mode))
+                      % (entry['name'], entry['pgn'], entry['off'], mode))
 
     print('valueTable entries: %d   matched against manifest: %d   known bad: %d'
           % (len(entries), matched, len(known)))
@@ -332,7 +261,7 @@ def main(argv):
                          % (entry['name'], entry['pgn']))
     for entry, mode, span, reason in mismatched:
         sys.stderr.write('  %-40s pgn=%-5d off=%-5d %-7s %s\n'
-                         % (entry['name'], entry['pgn'], entry['offset'], mode, reason))
+                         % (entry['name'], entry['pgn'], entry['off'], mode, reason))
 
     problems = len(missing_group) + len(mismatched)
     if problems:
