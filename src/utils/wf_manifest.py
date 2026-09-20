@@ -368,6 +368,139 @@ def count_leaves(fields):
     return total
 
 
+# cliValueFlag_e in cli/settings.h.
+VALUE_TYPE_MASK = 0x07
+VALUE_SECTION_MASK = 0x38
+VALUE_MODE_MASK = 0x1C0
+
+VALUE_TYPE = {
+    0: ('uint', 1),   # VAR_UINT8
+    1: ('int', 1),    # VAR_INT8
+    2: ('uint', 2),   # VAR_UINT16
+    3: ('int', 2),    # VAR_INT16
+    4: ('uint', 4),   # VAR_UINT32
+    5: ('int', 4),    # VAR_INT32
+}
+
+VALUE_SECTION = {
+    0: 'master', 1: 'profile', 2: 'rate_profile', 3: 'hardware', 4: 'tv_profile',
+}
+
+VALUE_MODE = {
+    0: 'direct', 1: 'lookup', 2: 'array', 3: 'bitset', 4: 'string',
+}
+
+
+def read_lookup_tables(elf, dwarf):
+    """The enum label tables the CLI offers for MODE_LOOKUP settings.
+
+    These are the dropdown contents for anything that is not a plain number,
+    and the firmware is the only place they exist -- so a client that wants to
+    show 'GYRO_HARDWARE_LPF_NORMAL' rather than '0' needs them from here.
+    """
+    table = elf.symbols.get('lookupTables')
+    if table is None:
+        return []
+
+    layout, record_size = dwarf.struct_layout('lookupTableEntry_s')
+    values_offset = layout['values'][0]
+    count_offset = layout['valueCount'][0]
+
+    tables = []
+    index = 0
+    while True:
+        record = elf.read_at(table + index * record_size, record_size)
+        if record is None or len(record) < record_size:
+            break
+        pointer = elf.read_pointer(table + index * record_size + values_offset)
+        count = record[count_offset]
+        # The array is not length-prefixed; it ends where the CLI's
+        # LOOKUP_TABLE_COUNT says, which is not in the binary. A null values
+        # pointer is the reliable end marker.
+        if not pointer or count == 0 or count > 255:
+            break
+        labels = []
+        for slot in range(count):
+            label_pointer = elf.read_pointer(pointer + slot * elf.pointer_size)
+            labels.append(elf.read_cstring(label_pointer) if label_pointer else None)
+        tables.append(labels)
+        index += 1
+    return tables
+
+
+def read_value_table(elf, dwarf, tables):
+    """Decode valueTable -- the CLI's names, ranges and enum labels.
+
+    Field *paths* come from DWARF, but the names people actually type
+    (`gyro_overflow_detect`, not `checkOverflow`) exist only in this table.
+    They are a permanent contract -- CLI-text backups and the presets repo are
+    written against them -- so the manifest has to carry them, and today this
+    is where they live.
+
+    When settings.c goes, this is replaced by annotation records in .wf_meta
+    and the manifest keeps the same shape.
+    """
+    table = elf.symbols.get('valueTable')
+    count_symbol = elf.symbols.get('valueTableEntryCount')
+    if table is None or count_symbol is None:
+        return []
+
+    layout, record_size = dwarf.struct_layout('clivalue_s')
+    endian = '<' if elf.little_endian else '>'
+    scalar = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
+
+    raw_count = elf.read_at(count_symbol, 2)
+    count = struct.unpack(endian + 'H', raw_count)[0]
+
+    settings = []
+    for index in range(count):
+        record = elf.read_at(table + index * record_size, record_size)
+        if record is None or len(record) < record_size:
+            break
+
+        def field(member, record=record):
+            offset, size = layout[member]
+            return struct.unpack_from(endian + scalar[size], record, offset)[0]
+
+        flags = field('type')
+        kind, size = VALUE_TYPE.get(flags & VALUE_TYPE_MASK, ('?', 0))
+        mode = VALUE_MODE.get((flags & VALUE_MODE_MASK) >> 6, '?')
+        config_offset, config_size = layout['config']
+        config = record[config_offset:config_offset + config_size]
+
+        entry = {
+            'name': elf.read_cstring(field('name')),
+            'pgn': field('pgn'),
+            'off': field('offset'),
+            'kind': kind,
+            'size': size,
+            'mode': mode,
+            'section': VALUE_SECTION.get((flags & VALUE_SECTION_MASK) >> 3, '?'),
+        }
+
+        if mode == 'lookup':
+            table_index = config[0] | (config[1] << 8)
+            if table_index < len(tables):
+                entry['values'] = tables[table_index]
+        elif mode == 'array':
+            entry['count'] = config[0]
+        elif mode == 'string':
+            entry['min_length'] = config[0]
+            entry['max_length'] = config[1]
+        elif mode == 'bitset':
+            entry['bit'] = config[0]
+        elif kind == 'uint' and size == 4:
+            entry['min'] = 0
+            entry['max'] = struct.unpack_from(endian + 'I', config, 0)[0]
+        elif kind == 'uint':
+            entry['min'], entry['max'] = struct.unpack_from(endian + 'HH', config, 0)
+        else:
+            entry['min'], entry['max'] = struct.unpack_from(endian + 'hh', config, 0)
+
+        settings.append(entry)
+    return settings
+
+
 def validate(manifest):
     """Check that every field actually fits inside the group that holds it.
 
@@ -516,7 +649,7 @@ def main(argv):
                          if name.endswith('_System') or name.endswith('_SystemArray')}
 
     wanted = set(address_to_symbol.values())
-    wanted.add('pgRegistry_s')
+    wanted.update(('pgRegistry_s', 'clivalue_s', 'lookupTableEntry_s'))
     dwarf = Dwarf(elf, wanted)
     groups = read_registry(elf, dwarf)
 
@@ -543,6 +676,7 @@ def main(argv):
         manifest['pgs'].append(entry)
 
     manifest['pgs'].sort(key=lambda pg: pg['pgn'])
+    manifest['settings'] = read_value_table(elf, dwarf, read_lookup_tables(elf, dwarf))
     manifest['build']['id'] = build_id(manifest)
 
     leaves = sum(count_leaves(pg['fields']) for pg in manifest['pgs'])
