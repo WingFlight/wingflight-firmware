@@ -122,15 +122,19 @@ extern const uint8_t __pg_resetdata_end[];
     uint32_t _name ## _fnv_hash;                                        \
     /* Force external linkage for g++. Catch multi registration */      \
     extern const pgRegistry_t _name ## _Registry;                       \
+    /* Initialiser order follows pgRegistry_s exactly. C does not care, but   \
+     * C++20 requires designated initialisers in declaration order, and the   \
+     * unit tests compile this header as C++ -- clang only warns, gcc refuses. \
+     */                                                                 \
     const pgRegistry_t _name ##_Registry PG_REGISTER_ATTRIBUTES = {     \
         .pgn = _pgn | (_version << 12),                                 \
         .length = 1,                                                    \
         .size = sizeof(_type) | PGR_SIZE_SYSTEM_FLAG,                   \
         .address = (uint8_t*)&_name ## _System,                         \
-        .fnv_hash = &_name ## _fnv_hash,                                \
         .copy = (uint8_t*)&_name ## _Copy,                              \
         .ptr = 0,                                                       \
         _reset,                                                         \
+        .fnv_hash = &_name ## _fnv_hash,                                \
     }                                                                   \
     /**/
 
@@ -154,15 +158,16 @@ extern const uint8_t __pg_resetdata_end[];
     _type _name ## _CopyArray[_length];                                 \
     uint32_t _name ## _fnv_hash;                                        \
     extern const pgRegistry_t _name ##_Registry;                        \
+    /* Declaration order -- see PG_REGISTER_I above. */                 \
     const pgRegistry_t _name ## _Registry PG_REGISTER_ATTRIBUTES = {    \
         .pgn = _pgn | (_version << 12),                                 \
         .length = _length,                                              \
         .size = (sizeof(_type) * _length) | PGR_SIZE_SYSTEM_FLAG,       \
         .address = (uint8_t*)&_name ## _SystemArray,                    \
-        .fnv_hash = &_name ## _fnv_hash,                                \
         .copy = (uint8_t*)&_name ## _CopyArray,                         \
         .ptr = 0,                                                       \
         _reset,                                                         \
+        .fnv_hash = &_name ## _fnv_hash,                                \
     }                                                                   \
     /**/
 
