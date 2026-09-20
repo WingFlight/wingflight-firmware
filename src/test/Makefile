@@ -462,6 +462,19 @@ flashfs_unittest_SRC := \
 flashfs_unittest_DEFINES := \
 		USE_FLASHFS_LOOP
 
+telemetry_sensors_unittest_SRC := \
+        $(USER_DIR)/telemetry/smartport.c \
+        $(USER_DIR)/telemetry/crsf.c \
+        $(USER_DIR)/common/streambuf.c \
+        $(USER_DIR)/common/crc.c \
+        $(USER_DIR)/telemetry/telemetry.c \
+        $(USER_DIR)/rx/frsky_crc.c
+
+telemetry_sensors_unittest_DEFINES := \
+        USE_TELEMETRY \
+        USE_TELEMETRY_CRSF \
+        USE_TELEMETRY_SMARTPORT
+
 setpoint_unittest_SRC := \
         $(USER_DIR)/flight/setpoint.c \
 		$(USER_DIR)/build/debug.c \

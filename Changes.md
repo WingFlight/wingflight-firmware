@@ -4,6 +4,23 @@ This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
 
+## Memory Usage
+
+SmartPort keeps its sensor catalogue in flash and reserves runtime state only
+for the 40 configurable sensor slots, plus the extra GPS coordinate and
+adjustment-value entries. This reduces the sensor table's RAM allocation from
+3,000 to 1,680 bytes on STM32 targets. Sensor IDs, encodings and configurable
+intervals are preserved. See `src/main/telemetry/smartport.c`.
+
+CRSF also keeps its native and custom sensor catalogues in flash. The two
+modes share runtime storage for 40 configured sensors plus the custom discovery
+marker, reducing their sensor arrays from 3,760 to 1,640 bytes on STM32 targets
+(plus a runtime entry count). Native packets, custom discovery and sensor
+encodings are preserved. See `src/main/telemetry/crsf.c`.
+
+The SmartPort longitude flag now uses an unsigned shift, avoiding signed-shift
+undefined behaviour while keeping the same transmitted bits.
+
 ## Flight Performance
 
 Fixed-wing cross-axis relax is added for normal stabilization. When enabled,
