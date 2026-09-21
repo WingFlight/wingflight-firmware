@@ -846,7 +846,9 @@ static void pidApplyMode1(uint8_t axis)
 
   //// I-term
 
-    // Apply error relax
+    // Apply error relax. Cross-axis relax slows the accumulation here and is NOT
+    // applied again to the I output below: scaling the output as well made I drop
+    // immediately when rudder was applied and jump back on release (#112).
     const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax;
 
     // Saturation
@@ -860,7 +862,7 @@ static void pidApplyMode1(uint8_t axis)
     // TRADITIONAL_MODE forces I output to zero without touching axisError's own bookkeeping, so
     // relax/decay keep behaving as configured and I resumes smoothly if the mode is switched off.
     pid.data[axis].I = FLIGHT_MODE(TRADITIONAL_MODE) ? 0.0f
-        : pid.coef[axis].Ki * masterGain * crossAxisRelax * pid.data[axis].axisError;
+        : pid.coef[axis].Ki * masterGain * pid.data[axis].axisError;
 
     // Apply error decay (fixed rate -- no ground/airborne distinction; a plane
     // sitting on its wheels isn't at risk of tipping over from I-term windup

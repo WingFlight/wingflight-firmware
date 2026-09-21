@@ -7,8 +7,9 @@ the APIs or flight performance.
 ## Flight Performance
 
 Fixed-wing cross-axis relax is added for normal stabilization. When enabled,
-yaw/rudder command can attenuate roll and/or pitch P/I/D feedback so
-rudder-induced coupling is not held artificially flat. The feature is
+yaw/rudder command can attenuate roll and/or pitch P and D feedback, and slow
+the I accumulation (the I output itself is not scaled), so rudder-induced
+coupling is not held artificially flat. The feature is
 configured by `cross_axis_relax_strength`,
 `cross_axis_relax_pitch_strength`, `cross_axis_relax_level`, and
 `cross_axis_relax_cutoff`, and defaults to off.
