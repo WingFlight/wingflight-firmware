@@ -6,7 +6,7 @@ Add cell count and cell voltages to battery profiles, so a model can switch betw
 Make the flap compensation and diff thrust yaw adjustments signed (-1000..1000), so compensation can be driven negative without clobbering a rule's Reverse.
 Rework SmartFuel sag compensation to follow motor throttle output instead of roll/pitch stick load, and give motorless models none. smartfuel_sag_gain is now volts per cell (x100) at full throttle.
 Gate the AUTOHOVER throttle assist on the throttle stick and RX signal, so it no longer spins the motor at idle or keeps assisting after link loss.
-Rework the AUTOHOVER entry into vertical: it now levels the wings and holds roll while the target pitch rotates up to vertical at half of autohover_max_rate (pausing whenever the aircraft can't keep up), instead of snapping straight to vertical with roll left free, so torque roll during the pull-up is countered. The default autohover max_rate also drops from 300 to 120 deg/s.
+Remove the AUTOHOVER roll hold, so roll is a free stick pass-through again on entry and in the hover (autohover_roll_deadband is kept for compatibility but no longer does anything), and lower the default autohover max_rate from 300 to 120 deg/s so engaging in forward flight makes a wider turn.
 Bleed wound-up I-term quickly after an ATT HOLD/Thrust Vector hold stall re-capture, instead of taking ~15 s to re-center the surface.
 Log the hold stall state in the ATTHOLD and TVHOLD blackbox debug modes.
 Fix SITL providing only 4 of 8 servo outputs (an existing SITL setup needs a defaults reset to see the extra channels).

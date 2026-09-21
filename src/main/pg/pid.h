@@ -79,7 +79,7 @@ typedef struct {
     uint8_t  gain;                 // Correction strength back to the held vertical attitude/heading
     uint8_t  max_angle;            // Max degrees the stick may deflect the target off vertical/held heading
     uint16_t max_rate;             // deg/s clamp on the commanded attitude-capture rate (safety limit)
-    uint8_t  roll_deadband;        // Percent roll stick deflection below which roll freezes and corrects
+    uint8_t  roll_deadband;        // Unused: AUTOHOVER roll is a free pass-through now. Kept so the profile layout and MSP/CLI stay compatible.
                                     // back to the last captured value (disturbance rejection, e.g. torque
                                     // roll); above which roll is a free pass-through (pirouette control) --
                                     // mirrors atthold's deadband, but scoped to just this one axis

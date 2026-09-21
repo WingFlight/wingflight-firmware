@@ -47,46 +47,6 @@
 
 #include "autohover.h"
 
-// Below this combined pitch+yaw error, the aircraft is considered close enough to vertical that
-// the quaternion error's per-axis decomposition can be trusted for roll-hold tracking (see the
-// nearVerticalTarget comment in autoHoverApply). Not a user-facing tunable -- an internal
-// numerical-stability margin, picked well below the angle range where axis coupling becomes
-// significant while still being loose enough to engage roll-hold shortly before reaching upright.
-#define AUTOHOVER_ROLL_HOLD_ENTRY_DEG 30.0f
-
-// Tighter angle inside which the tracked roll is allowed to freeze (and its settle countdown to
-// run). Between this and AUTOHOVER_ROLL_HOLD_ENTRY_DEG roll only tracks, so the target is never
-// locked while the aircraft is still flaring into vertical. Once frozen, the hold persists until
-// the aircraft leaves the entry angle.
-#define AUTOHOVER_ROLL_LOCK_DEG       10.0f
-
-// After the roll stick returns to center, the held roll keeps free-tracking until roll has actually
-// stopped rotating (below AUTOHOVER_ROLL_SETTLE_RATE) or AUTOHOVER_ROLL_SETTLE_MAX_S has passed,
-// whichever comes first. Freezing at the instant of release would pin the target to a roll the
-// aircraft is still spinning through, and the hold would haul it back past where the pilot let go
-// -- a rubber-band snap-back, unlike normal rate flight where the rate loop just brakes and the
-// attitude stays put. The time cap stops a persistent torque-roll from keeping the hold off
-// forever. Same scheme as atthold.c's ATTHOLD_SETTLE_*.
-#define AUTOHOVER_ROLL_SETTLE_RATE  15.0f   // deg/s
-#define AUTOHOVER_ROLL_SETTLE_MAX_S 0.4f
-
-// Level-then-rotate entry. On engage the target starts at the aircraft's own pitch and heading with
-// the wings level, and the target's pitch is then slewed up to vertical. Roll is held (wings level)
-// for the whole rotation, so torque roll during the pull-up is countered instead of being a bare
-// pass-through, and the attitude error stays small the whole way so the per-axis error terms stay
-// meaningful. Engaging already within AUTOHOVER_RAMP_SKIP_PITCH of vertical skips the rotation.
-#define AUTOHOVER_VERTICAL_PITCH      (-900)  // decidegrees, imuEulerToQuaternion's nose-up vertical
-#define AUTOHOVER_RAMP_SKIP_PITCH     (-600)  // decidegrees
-
-// Rotation speed of the target, as a fraction of autohover.max_rate. Well below 1 so the correction
-// (which is capped at max_rate) always has headroom to keep up.
-#define AUTOHOVER_RAMP_RATE_FRACTION  0.5f
-
-// The rotation pauses while the aircraft is this far out of level in roll, or while the pitch
-// correction is saturated (the airframe isn't keeping up). It resumes when the aircraft catches up,
-// so the target never runs away from an aircraft that can't follow it.
-#define AUTOHOVER_RAMP_ROLL_ERROR_DEG 10.0f
-
 // Absolute, firmware-enforced backstop on the throttle assist ceiling, independent of whatever
 // value autohover.throttle_assist_max happens to hold. The CLI settings table clamps `set` inputs
 // to this same 0-50 range, but MSP's SET_PID_PROFILE handler writes the raw wire byte with no
@@ -100,20 +60,11 @@
 // feature lives at. Roll and yaw become degenerate in Euler terms right at the moment control
 // matters most, so leveling.c's angleModeApply/horizonModeApply cannot simply be re-aimed here.
 //
-// Engaging from level (or any attitude more than AUTOHOVER_RAMP_SKIP_PITCH from vertical) does not
-// snap to vertical: it holds the current pitch and heading with the wings levelled, then slews the
-// target's pitch up to vertical at AUTOHOVER_RAMP_RATE_FRACTION of max_rate, pausing whenever the
-// aircraft falls behind (see the ramp constants above). Roll is therefore held throughout.
-//
-// Pitch and yaw are always attitude-held (they reposition the nose horizontally while vertical).
-// Roll is free while the stick is deflected -- in this vertical attitude the aircraft's roll axis
-// coincides with the world vertical axis, so roll is the pilot's spin/pirouette control, the same
-// role yaw plays in normal nose-level flight (compare angleModeApply/horizonModeApply, which
-// likewise leave yaw unheld). But unlike a bare pass-through, roll is also held once the stick
-// returns to center: the instant it goes idle, the current roll is captured, and disturbance-
-// driven drift away from that captured value (e.g. torque roll) is corrected back -- the same
-// deadband track/freeze pattern atthold.c uses for all three axes, just scoped to roll alone
-// here, since pitch/yaw already have their own always-on vertical-attitude target below.
+// Only pitch and yaw are attitude-held (they reposition the nose horizontally while vertical).
+// Roll is a free rate pass-through, not held -- in this vertical attitude the aircraft's roll
+// axis coincides with the world vertical axis, so roll is the pilot's spin/pirouette control,
+// the same role yaw plays in normal nose-level flight (compare angleModeApply/horizonModeApply,
+// which likewise leave yaw unheld).
 //
 // Known limitations (documented, not fixed here):
 // - Does not subtract accelerometerConfig()->accelerometerTrims like leveling.c/trainer.c do, so a
@@ -140,18 +91,6 @@ typedef struct {
     float   MaxAngle;   // degrees the stick may deflect the target off vertical/held heading
     float   MaxRate;    // deg/s clamp on the commanded attitude-capture rate (safety limit)
     int16_t HeadingTargetDecidegrees;
-    bool    Ramping;                // true while the target is still rotating up to vertical
-    float   PitchTargetDecidegrees; // current target pitch, slewed to AUTOHOVER_VERTICAL_PITCH
-    bool    RollCaptured;          // false until the held roll has snapped to the current attitude
-                                     // at least once since engagement (avoids a snap-to-zero if the
-                                     // roll stick happens to already be centered on engage)
-    bool    RollHolding;            // true while roll is frozen and correcting back to its captured
-                                     // value (not while free-tracking or settling after a release)
-    float   RollSettleTime;         // seconds since the roll stick returned inside the deadband
-    float   RollDeadband;           // fraction (0..1) of roll stick deflection that keeps the held
-                                     // roll tracking current attitude (no correction)
-    float   RollOffsetDecidegrees;  // held roll offset from qBase's canonical roll=0, updated while
-                                     // tracking, frozen (and corrected back to) while idle
     float   ThrottleAssistGain;     // fraction-of-throttle-range added per second while pitch
                                      // correction is saturated (0 = feature disabled)
     float   ThrottleAssistMax;      // hard ceiling, fraction of throttle range, on the added boost
@@ -181,11 +120,6 @@ INIT_CODE void autoHoverInit(const pidProfile_t *pidProfile)
     autoHover.Gain = pidProfile->autohover.gain / 10.0f;
     autoHover.MaxAngle = pidProfile->autohover.max_angle;
     autoHover.MaxRate = pidProfile->autohover.max_rate;
-    // Constrained here, not just at the CLI (settings.c) or MSP boundary -- MSP's
-    // SET_PID_PROFILE handler writes the raw wire byte with no clamping of its own, and an
-    // out-of-range deadband (>100) would make fabsf(getDeflection()) > RollDeadband never true
-    // for normal [-1, 1] stick input, freezing roll hold even at full stick deflection.
-    autoHover.RollDeadband = constrainf(pidProfile->autohover.roll_deadband / 100.0f, 0.0f, 1.0f);
     autoHover.ThrottleAssistGain = pidProfile->autohover.throttle_assist_gain / 100.0f;
     autoHover.ThrottleAssistMax = fminf(pidProfile->autohover.throttle_assist_max / 100.0f,
         AUTOHOVER_THROTTLE_ASSIST_MAX_CEILING);
@@ -199,18 +133,6 @@ void autoHoverSetState(bool state)
 {
     if (state && !autoHover.Active) {
         autoHover.HeadingTargetDecidegrees = attitude.values.yaw;
-        autoHover.RollOffsetDecidegrees = 0.0f;
-        autoHover.RollHolding = false;
-
-        // Rotating up from where the aircraft is: the level-wing target (offset 0) is the roll
-        // reference, so it counts as already captured rather than being re-captured from the
-        // current bank. Engaging already (nearly) vertical has no rotation to do and captures the
-        // current roll as before.
-        const int16_t pitch = attitude.values.pitch;
-        autoHover.Ramping = pitch > AUTOHOVER_RAMP_SKIP_PITCH;
-        autoHover.PitchTargetDecidegrees = autoHover.Ramping ? pitch : AUTOHOVER_VERTICAL_PITCH;
-        autoHover.RollCaptured = autoHover.Ramping;
-        autoHover.RollSettleTime = 0.0f;
     }
 
     if (!state) {
@@ -225,12 +147,11 @@ void autoHoverSetState(bool state)
 }
 
 // True while this axis is actively holding a target, as opposed to being under free stick control.
-// Pitch and yaw always hold while the mode is active; roll only holds once frozen (not while
-// free-tracking, settling after a release, or before the aircraft reaches vertical). pid.c uses
-// this to decide whether I-term decay should be suspended -- see pidApplyMode1.
+// Pitch and yaw always hold while the mode is active; roll is always free. pid.c uses this to decide
+// whether I-term decay should be suspended -- see pidApplyMode1.
 bool autoHoverIsHolding(int axis)
 {
-    return autoHover.Active && (axis != FD_ROLL || autoHover.RollHolding);
+    return autoHover.Active && axis != FD_ROLL;
 }
 
 float autoHoverApply(int axis, float pidSetpoint)
@@ -242,30 +163,26 @@ float autoHoverApply(int axis, float pidSetpoint)
     }
 
     if (axis == FD_ROLL) {
-        // Roll is free while the stick is deflected -- in this vertical attitude the aircraft's
-        // roll axis coincides with the world vertical axis, so roll is the pilot's spin/pirouette
-        // control, the same role yaw plays in normal (nose-level) flight. angleModeApply/
-        // horizonModeApply leave yaw as a raw pass-through for exactly this reason (see
-        // leveling.c); roll gets the same treatment here while active, so a held aileron
-        // deflection produces continuous rotation instead of converging on a bounded offset and
-        // fighting the stick. Once the stick returns to center, roll is captured and held instead
-        // (see rollActive below) -- disturbance-driven drift no longer goes uncorrected.
-        const bool rollStickActive = fabsf(getDeflection(FD_ROLL)) > autoHover.RollDeadband;
+        // Roll (aileron) is deliberately NOT held here. In a 90-degree nose-up hover the
+        // aircraft's roll axis coincides with the world vertical axis, so roll is the
+        // "spin about vertical" (pirouette) axis, not a position-hold axis -- physically the
+        // same role yaw plays in normal (nose-level) flight. angleModeApply/horizonModeApply
+        // leave yaw as a raw pass-through for exactly this reason (see leveling.c); roll gets
+        // the same treatment here. Passing pidSetpoint straight through lets a held aileron
+        // deflection produce continuous rotation instead of converging on a bounded +-MaxAngle
+        // offset and fighting the stick.
+        rate[FD_ROLL] = pidSetpoint;
 
         // Held target: vertical, at the captured heading, plus the pilot's pitch/yaw stick
         // deflection as a small local (body-frame) rotation offset -- same "deflect away from
         // the hold and spring back when centred" feel as angleModeApply, just centred on
-        // vertical instead of level. RollOffsetDecidegrees carries the held roll (0 until the
-        // stick has centered at least once); it's folded straight into qBase, rather than added
-        // as a qStickOffset perturbation like pitch/yaw, because it must survive many loops
-        // frozen at whatever value it last captured, not follow the stick every loop.
+        // vertical instead of level. Roll is intentionally omitted from this offset (see above).
         // Bench-confirmed: +900 here drives the elevator toward nose-down, not nose-up (the
         // stabilisation loop itself is correct -- verified via blackbox, axisP/axisF go strongly
         // positive on engage exactly as intended -- it was just chasing the wrong target). -900
         // is the physically-vertical, nose-up target.
         quaternion qBase;
-        imuEulerToQuaternion((int16_t)lrintf(autoHover.RollOffsetDecidegrees), (int16_t)lrintf(autoHover.PitchTargetDecidegrees),
-                             autoHover.HeadingTargetDecidegrees, &qBase);
+        imuEulerToQuaternion(0, -900, autoHover.HeadingTargetDecidegrees, &qBase);
 
         const float pitchOffset = DEGREES_TO_RADIANS(autoHover.MaxAngle * getDeflection(FD_PITCH));
         const float yawOffset   = DEGREES_TO_RADIANS(autoHover.MaxAngle * getDeflection(FD_YAW));
@@ -320,115 +237,21 @@ float autoHoverApply(int axis, float pidSetpoint)
         // singularity-free across the full 0-180 degree range, unlike an acos/axis-angle
         // decomposition (which needs its own shortest-path check plus a division that blows up as
         // the error angle approaches zero). Magnitude saturates smoothly toward 2.0 rad as the true
-        // error approaches 180 degrees, rather than growing unbounded. Index 0 (roll) measures
-        // error against qBase's held roll offset above rather than a fixed reference -- same
-        // singularity-free trick as pitch/yaw, just aimed at a value that tracks-then-freezes
-        // instead of sitting fixed.
+        // error approaches 180 degrees, rather than growing unbounded. Only pitch/yaw (indices 1
+        // and 2) feed the corrective loop -- errorDeg[0] (roll) is intentionally left unused since
+        // roll is free-running (see above); referencing it here would just reintroduce the P-loop
+        // fighting the pilot's spin.
         float errorDeg[3] = {
-            (2.0f * qError.x) / M_RADf,
+            0.0f,
             (2.0f * qError.y) / M_RADf,
             (2.0f * qError.z) / M_RADf,
         };
 
-        // errorDeg[0] is only a clean, independent measure of roll drift once the aircraft is
-        // already close to the vertical target -- quaternion rotations don't decompose into
-        // independent per-axis components for a large total error (e.g. engaging from level on
-        // the bench, ~90 degrees of pitch away), so at that distance errorDeg[0] picks up
-        // pitch/yaw's error instead of genuine roll drift. Left unguarded, that spurious value
-        // feeds into the persistent RollOffsetDecidegrees integrator below, which shifts qBase's
-        // roll next loop, which changes next loop's error again -- a real, bench-confirmed
-        // runaway feedback loop (heavy servo oscillation, pitch never settling into a clean
-        // nose-up command) with no actual roll disturbance behind it. Computed from the raw,
-        // pre-attenuation error (below) since that's what genuinely reflects how far from
-        // vertical the aircraft still is, on the ground or in the air alike.
-        const float verticalErrorDeg = sqrtf(sq(errorDeg[1]) + sq(errorDeg[2]));
-        const bool nearVerticalTarget = verticalErrorDeg < AUTOHOVER_ROLL_HOLD_ENTRY_DEG;
-
-        // Two-stage lock. Between the entry and lock angles roll only tracks; the freeze (and its
-        // settle countdown) is only allowed once the aircraft is properly vertical. Engaging from
-        // level flares up at MaxRate and torque-rolls through the last few tens of degrees --
-        // starting the settle clock at the entry angle let its time cap expire mid-spin, freezing
-        // the target on a roll the aircraft was still rotating through and hauling it back. Once
-        // holding, the lock is kept until the aircraft leaves the entry angle (hysteresis), so a
-        // gust inside that band doesn't drop the hold.
-        const bool inLockZone = verticalErrorDeg < AUTOHOVER_ROLL_LOCK_DEG;
-
-        bool rollActive;
-
-        if (autoHover.Ramping) {
-            // Wings-level is held for the whole rotation; only the roll stick frees it. None of
-            // the lock-zone/settle logic below applies, since it exists to capture a roll the
-            // aircraft arrived at, whereas here the roll target is known from the start.
-            rollActive = rollStickActive;
-            autoHover.RollSettleTime = 0.0f;
-        } else {
-            rollActive = !autoHover.RollCaptured || rollStickActive || (!autoHover.RollHolding && !inLockZone);
-
-            if (rollStickActive || !inLockZone) {
-                autoHover.RollSettleTime = 0.0f;
-            } else if (!rollActive && !autoHover.RollHolding) {
-                // Stick centered and vertical, but roll is still in free-track from the last
-                // deflection or the approach: keep tracking until it has stopped rotating (or the
-                // settle window runs out), then freeze.
-                autoHover.RollSettleTime += pidGetDT();
-
-                if (fabsf(pidGetAxisData()[FD_ROLL].gyroRate) >= AUTOHOVER_ROLL_SETTLE_RATE
-                    && autoHover.RollSettleTime < AUTOHOVER_ROLL_SETTLE_MAX_S) {
-                    rollActive = true;
-                }
-            }
-        }
-
-        // Raw (pre-attenuation) errors, for pacing the rotation below. It is the aircraft's real
-        // progress that matters, not the reduced-authority ground scaling.
-        const float rawRollErrorDeg = errorDeg[0];
-        const float rawPitchEffort = fabsf(errorDeg[1] * autoHover.Gain);
-
         // Same pre-airborne attenuation angleModeApply/horizonModeApply use, so the switch can be
-        // armed/tested on the ground without snapping at full strength -- reduced authority, not
-        // the zero authority forcing rollActive true unconditionally pre-airborne used to give.
-        // Roll is included here now too: RollCaptured still forces the first post-engage loop to
-        // track regardless of ground state, so there's no snap-to-a-stale-offset risk from
-        // removing that forced-tracking behavior.
+        // armed/tested on the ground without snapping at full strength.
         if (!isAirborne()) {
-            errorDeg[0] *= 0.25f;
             errorDeg[1] *= 0.25f;
             errorDeg[2] *= 0.25f;
-        }
-
-        if (!nearVerticalTarget) {
-            // Still transitioning to vertical -- defer the whole roll-hold state machine (it's
-            // only meant to reject torque roll once already hovering, not guide the initial snap
-            // to vertical) and leave RollCaptured false so the first loop after crossing into
-            // range below tracks (captures current roll) rather than freezing on a stale offset.
-            rate[FD_ROLL] = pidSetpoint;
-            autoHover.RollHolding = false;
-            autoHover.RollCaptured = autoHover.Ramping;
-            autoHover.RollSettleTime = 0.0f;
-        } else if (rollActive) {
-            // Track: keep the held roll offset following the current attitude, so a future freeze
-            // starts from ~zero error instead of snapping. This only ever adds a relative,
-            // singularity-free error term onto the running offset -- it never reads an absolute
-            // Euler roll angle, which would be undefined right at this vertical attitude (the
-            // classic gimbal-lock problem this file's quaternion approach exists to avoid). Wrapped
-            // to +-180 degrees since only qBase's periodic quaternion construction cares about the
-            // value, not any notion of accumulated turn count.
-            autoHover.RollOffsetDecidegrees += errorDeg[0] * 10.0f;
-            if (autoHover.RollOffsetDecidegrees > 1800.0f) {
-                autoHover.RollOffsetDecidegrees -= 3600.0f;
-            } else if (autoHover.RollOffsetDecidegrees < -1800.0f) {
-                autoHover.RollOffsetDecidegrees += 3600.0f;
-            }
-
-            rate[FD_ROLL] = pidSetpoint;
-            autoHover.RollCaptured = true;
-            autoHover.RollHolding = false;
-        } else {
-            // Frozen: correct back toward the captured roll. A scalar clamp, kept separate from
-            // the pitch/yaw vector clamp below -- roll's correction isn't part of that rotation.
-            rate[FD_ROLL] = constrainf(errorDeg[0] * autoHover.Gain, -autoHover.MaxRate, autoHover.MaxRate);
-            autoHover.RollCaptured = true;
-            autoHover.RollHolding = true;
         }
 
         float magnitude = 0.0f;
@@ -442,24 +265,10 @@ float autoHoverApply(int axis, float pidSetpoint)
         // assist below that needs the raw, unscaled commanded pitch effort to judge saturation.
         const float pitchEffort = fabsf(rate[FD_PITCH]);
 
-        // Rotate the target up toward vertical, but only while the aircraft is keeping up: wings
-        // roughly level and the pitch correction not saturated. Otherwise the target waits where
-        // it is, so a stalled or underpowered climb is held rather than run away from -- and the
-        // saturation is what lets the throttle assist below see that the airframe needs help.
-        if (autoHover.Ramping && fabsf(rawRollErrorDeg) < AUTOHOVER_RAMP_ROLL_ERROR_DEG
-            && rawPitchEffort < autoHover.MaxRate) {
-            autoHover.PitchTargetDecidegrees -= AUTOHOVER_RAMP_RATE_FRACTION * autoHover.MaxRate * 10.0f * pidGetDT();
-
-            if (autoHover.PitchTargetDecidegrees <= AUTOHOVER_VERTICAL_PITCH) {
-                autoHover.PitchTargetDecidegrees = AUTOHOVER_VERTICAL_PITCH;
-                autoHover.Ramping = false;
-            }
-        }
-
         // Clamp the vector's magnitude, not each axis independently -- per-axis clamping would
         // distort the rotation axis mid-maneuver (e.g. pitch saturating before yaw), turning a
-        // clean single-axis snap-to-vertical into a curved one. Roll is excluded -- it has its own
-        // scalar clamp above and isn't part of this rotation vector.
+        // clean single-axis snap-to-vertical into a curved one. Roll is excluded -- it's the
+        // pilot's free-running rate command, not part of this corrective vector.
         if (magnitude > autoHover.MaxRate && magnitude > 0.0f) {
             const float scale = autoHover.MaxRate / magnitude;
             rate[FD_PITCH] *= scale;
