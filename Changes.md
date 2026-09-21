@@ -20,6 +20,11 @@ consistent D-term reaction on transients.
 PID Mode 4 is introduced for testing new features (#293). The current default
 PID Mode 3 is maintained for backward compatibility.
 
+`nav_loiter_direction` now orbits the way it says. Loiter and RTH steered the
+wrong way round the target (`CW` orbited anticlockwise and the other way
+round). If you set the opposite value to get the direction you wanted, swap it
+back after updating.
+
 ## Configuration Changes
 
 Added airborne re-arm grace settings `rearm_grace_seconds` and
