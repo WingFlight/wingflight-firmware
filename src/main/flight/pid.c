@@ -535,6 +535,7 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
     if (dstPidProfileIndex < PID_PROFILE_COUNT && srcPidProfileIndex < PID_PROFILE_COUNT &&
         dstPidProfileIndex != srcPidProfileIndex) {
         memcpy(pidProfilesMutable(dstPidProfileIndex), pidProfilesMutable(srcPidProfileIndex), sizeof(pidProfile_t));
+        memcpy(attitudeLimitsMutable(dstPidProfileIndex), attitudeLimits(srcPidProfileIndex), sizeof(attitudeLimits_t));
     }
 }
 

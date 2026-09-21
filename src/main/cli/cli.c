@@ -883,7 +883,7 @@ static uint16_t getValueOffset(const clivalue_t *value)
     case HARDWARE_VALUE:
         return value->offset;
     case PROFILE_VALUE:
-        return value->offset + sizeof(pidProfile_t) * getPidProfileIndexToUse();
+        return value->offset + (value->pgn == PG_ATTITUDE_LIMITS ? sizeof(attitudeLimits_t) : sizeof(pidProfile_t)) * getPidProfileIndexToUse();
     case PROFILE_RATE_VALUE:
         return value->offset + sizeof(controlRateConfig_t) * getRateProfileIndexToUse();
     case PROFILE_TV_VALUE:

@@ -157,3 +157,16 @@ typedef struct pidProfile_s {
 } pidProfile_t;
 
 PG_DECLARE_ARRAY(pidProfile_t, PID_PROFILE_COUNT, pidProfiles);
+
+// Separate storage preserves existing PID profiles. Zero inherits the legacy shared limit.
+typedef struct {
+    uint8_t angle_roll;
+    uint8_t angle_pitch;
+    uint8_t trainer_roll;
+    uint8_t trainer_pitch;
+} attitudeLimits_t;
+
+PG_DECLARE_ARRAY(attitudeLimits_t, PID_PROFILE_COUNT, attitudeLimits);
+
+// Positive axis overrides use the SAFE-style range; zero preserves the legacy shared value.
+uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis);

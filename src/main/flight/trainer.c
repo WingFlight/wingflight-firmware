@@ -54,7 +54,7 @@ typedef int8_t sign_t;
 typedef struct {
     bool        Active;
     float       Gain;
-    float       AngleLimit;
+    float       AngleLimit[2];
     float       LookaheadTime;
 } acroTrainer_t;
 
@@ -74,7 +74,9 @@ void set_ADJUSTMENT_ACRO_TRAINER_GAIN(int value)
 INIT_CODE void acroTrainerInit(const pidProfile_t *pidProfile)
 {
     acroTrainer.Gain = pidProfile->trainer.gain / 10.0f;
-    acroTrainer.AngleLimit = pidProfile->trainer.angle_limit;
+    const attitudeLimits_t *limits = attitudeLimits(getCurrentPidProfileIndex());
+    acroTrainer.AngleLimit[FD_ROLL] = attitudeLimitDegrees(limits->trainer_roll, pidProfile->trainer.angle_limit, FD_ROLL);
+    acroTrainer.AngleLimit[FD_PITCH] = attitudeLimitDegrees(limits->trainer_pitch, pidProfile->trainer.angle_limit, FD_PITCH);
     acroTrainer.LookaheadTime = pidProfile->trainer.lookahead_ms / 1000.0f;
 }
 
@@ -106,7 +108,8 @@ float acroTrainerApply(int axis, float setPoint)
     {
         const rollAndPitchTrims_t *angleTrim = &accelerometerConfig()->accelerometerTrims;
         const float currentAngle = (attitude.raw[axis] - angleTrim->raw[axis]) / 10.0f;
-        const float angleExcess = fabsf(currentAngle) - acroTrainer.AngleLimit;
+        const float angleLimit = acroTrainer.AngleLimit[axis];
+        const float angleExcess = fabsf(currentAngle) - angleLimit;
         float projectedAngle = 0;
         bool limiting = false;
 
@@ -114,7 +117,7 @@ float acroTrainerApply(int axis, float setPoint)
             // Angle exceeds the limit: apply correction proportional to excess angle.
             // The correction is always directed back toward the limit (stateless).
             const sign_t angleSign = Sign(currentAngle);
-            const float correction = limitf((acroTrainer.AngleLimit * angleSign - currentAngle) * acroTrainer.Gain, ACRO_TRAINER_SETPOINT_LIMIT);
+            const float correction = limitf((angleLimit * angleSign - currentAngle) * acroTrainer.Gain, ACRO_TRAINER_SETPOINT_LIMIT);
 
             // Allow pilot input that helps return, block input that drives further out
             if (angleSign > 0) {
@@ -133,8 +136,8 @@ float acroTrainerApply(int axis, float setPoint)
 
             const sign_t projectedAngleSign = Sign(projectedAngle);
             
-            if ((fabsf(projectedAngle) > acroTrainer.AngleLimit) && (projectedAngleSign == Sign(setPoint))) {
-                setPoint = limitf(((acroTrainer.AngleLimit * projectedAngleSign) - projectedAngle) * acroTrainer.Gain, ACRO_TRAINER_SETPOINT_LIMIT);
+            if ((fabsf(projectedAngle) > angleLimit) && (projectedAngleSign == Sign(setPoint))) {
+                setPoint = limitf(((angleLimit * projectedAngleSign) - projectedAngle) * acroTrainer.Gain, ACRO_TRAINER_SETPOINT_LIMIT);
                 limiting = true;
             }
         }

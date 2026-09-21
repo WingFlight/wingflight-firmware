@@ -1079,6 +1079,11 @@ const clivalue_t valueTable[] = {
     { "horizon_tilt_expert_mode",   VAR_UINT8  | PROFILE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_PID_PROFILE, offsetof(pidProfile_t, horizon.tilt_expert_mode) },
 
 #ifdef USE_ACRO_TRAINER
+    // Zero axis overrides inherit angle_level_limit / acro_trainer_angle_limit.
+    { "angle_roll_limit",           VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 90 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, angle_roll) },
+    { "angle_pitch_limit",          VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 75 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, angle_pitch) },
+    { "acro_trainer_roll_limit",    VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 90 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, trainer_roll) },
+    { "acro_trainer_pitch_limit",   VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 75 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, trainer_pitch) },
     { "acro_trainer_angle_limit",   VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 80 }, PG_PID_PROFILE, offsetof(pidProfile_t, trainer.angle_limit) },
     { "acro_trainer_lookahead_ms",  VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, trainer.lookahead_ms) },
     { "acro_trainer_gain",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 25, 255 }, PG_PID_PROFILE, offsetof(pidProfile_t, trainer.gain) },

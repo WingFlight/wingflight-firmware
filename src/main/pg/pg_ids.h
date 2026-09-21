@@ -176,6 +176,7 @@
 #define PG_SERVO_CURVES              1017
 // Appended after master's ids: renumbering the existing ones would change stored configs.
 #define PG_DRIVER_CRSF_SENSORS_CONFIG 1018
+#define PG_ATTITUDE_LIMITS           1019
 
 // OSD configuration -- removed (OSD)
 //#define PG_OSD_FONT_CONFIG 2047

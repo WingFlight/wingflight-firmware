@@ -53,7 +53,7 @@
 
 typedef struct {
     float Gain;
-    float AngleLimit;
+    float AngleLimit[2];
 } level_t;
 
 typedef struct {
@@ -71,7 +71,9 @@ static FAST_DATA_ZERO_INIT horizon_t horizon;
 INIT_CODE void levelingInit(const pidProfile_t *pidProfile)
 {
     level.Gain = pidProfile->angle.level_strength / 10.0f;
-    level.AngleLimit = pidProfile->angle.level_limit;
+    const attitudeLimits_t *limits = attitudeLimits(getCurrentPidProfileIndex());
+    level.AngleLimit[FD_ROLL] = attitudeLimitDegrees(limits->angle_roll, pidProfile->angle.level_limit, FD_ROLL);
+    level.AngleLimit[FD_PITCH] = attitudeLimitDegrees(limits->angle_pitch, pidProfile->angle.level_limit, FD_PITCH);
 
     horizon.Gain = pidProfile->horizon.level_strength / 10.0f;
     horizon.Transition = pidProfile->horizon.transition;
@@ -118,7 +120,8 @@ static inline float getLevelModeDeflection(uint8_t axis)
 static float calcLevelErrorAngle(int axis)
 {
     const rollAndPitchTrims_t *angleTrim = &accelerometerConfig()->accelerometerTrims;
-    float angle = level.AngleLimit * getLevelModeDeflection(axis);
+    const float angleLimit = level.AngleLimit[axis];
+    float angle = angleLimit * getLevelModeDeflection(axis);
 
 #ifdef USE_GPS_RESCUE
     angle += gpsRescueAngle[axis] / 100.0f; // ANGLE IS IN CENTIDEGREES
@@ -126,7 +129,7 @@ static float calcLevelErrorAngle(int axis)
 #ifdef USE_GPS_NAV
     angle += navAngle[axis] / 100.0f; // ANGLE IS IN CENTIDEGREES
 #endif
-    angle = constrainf(angle, -level.AngleLimit, level.AngleLimit);
+    angle = constrainf(angle, -angleLimit, angleLimit);
 
     float currentAngle = ((attitude.raw[axis] - angleTrim->raw[axis]) / 10.0f);
 

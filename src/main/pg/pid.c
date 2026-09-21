@@ -129,3 +129,14 @@ void pgResetFn_pidProfiles(pidProfile_t *pidProfiles)
         resetPidProfile(&pidProfiles[i]);
     }
 }
+
+PG_REGISTER_ARRAY(attitudeLimits_t, PID_PROFILE_COUNT, attitudeLimits, PG_ATTITUDE_LIMITS, 0);
+
+uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis)
+{
+    if (!override) {
+        return legacy;
+    }
+    const uint8_t maximum = axis == PID_ROLL ? 90 : 75;
+    return override < 10 ? 10 : (override > maximum ? maximum : override);
+}

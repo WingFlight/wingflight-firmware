@@ -2150,6 +2150,11 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->autohover.throttle_assist_gain);
         sbufWriteU8(dst, currentPidProfile->autohover.throttle_assist_max);
         sbufWriteU16(dst, currentPidProfile->autohover.throttle_assist_trigger_ms);
+        /* API 22.4: optional per-axis attitude limits. Zero inherits the shared limit. */
+        sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->angle_roll);
+        sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->angle_pitch);
+        sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->trainer_roll);
+        sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->trainer_pitch);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -3114,6 +3119,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
     case MSP_SET_RESET_CURR_PID:
         resetPidProfile(currentPidProfile);
+        memset(attitudeLimitsMutable(getCurrentPidProfileIndex()), 0, sizeof(attitudeLimits_t));
         break;
 
     case MSP_SET_SENSOR_ALIGNMENT:
@@ -3275,6 +3281,14 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->autohover.throttle_assist_gain = sbufReadU8(src);
             currentPidProfile->autohover.throttle_assist_max = sbufReadU8(src);
             currentPidProfile->autohover.throttle_assist_trigger_ms = sbufReadU16(src);
+        }
+        /* Older clients omit this extension and must not erase the axis limits. */
+        if (sbufBytesRemaining(src) >= 4) {
+            attitudeLimits_t *limits = attitudeLimitsMutable(getCurrentPidProfileIndex());
+            limits->angle_roll = sbufReadU8(src);
+            limits->angle_pitch = sbufReadU8(src);
+            limits->trainer_roll = sbufReadU8(src);
+            limits->trainer_pitch = sbufReadU8(src);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

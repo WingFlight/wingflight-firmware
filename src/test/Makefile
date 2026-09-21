@@ -413,6 +413,7 @@ trainer_unittest_SRC := \
 		$(USER_DIR)/common/filter.c \
 		$(USER_DIR)/common/maths.c \
 		$(USER_DIR)/flight/trainer.c \
+		$(USER_DIR)/flight/leveling.c \
 		$(USER_DIR)/pg/accel.c \
 		$(USER_DIR)/pg/pid.c \
 		$(USER_DIR)/pg/pg.c \
