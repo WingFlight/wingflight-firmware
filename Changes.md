@@ -6,6 +6,21 @@ the APIs or flight performance.
 
 ## Flight Performance
 
+Airborne detection now requires at least 10% pilot roll or pitch input with
+at least 15 degrees/second gyro response in the same direction for 250 ms
+continuously. Each axis and direction qualifies independently. Arming alone,
+static tilt, yaw steering, motor output and altitude do not establish flight.
+Once detected, flight is latched until disarm, preserving full attitude
+correction through hands-off flight and motor-off glides. Ground reduction
+therefore returns on disarm, not automatically after landing while armed.
+The existing armed GPS-rescue/failsafe override and hands-on detection remain.
+Normal rate/manual behavior and TRAINER are unchanged. ANGLE/HORIZON, ATT HOLD,
+TV hold and AUTO HOVER retain their existing airborne-based correction policy.
+Debug AIRBORNE indexes 3 and 5 now show roll/pitch response duration in ms.
+These initial thresholds need bench/flight validation: hand movement can
+imitate a response, and flight without a qualifying input remains undetected.
+See `src/main/flight/airborne.c`.
+
 TRAINER now keeps normal rate-mode I-term decay independently on roll and pitch
 until its envelope limiter changes that axis's rate command. Stronger pilot
 input back into the envelope also retains normal decay. Active limiting still
