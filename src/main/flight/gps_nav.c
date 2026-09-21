@@ -122,7 +122,11 @@ void updateGpsNav(void)
         desiredTrackDdeg = bearingToTargetDdeg;
     } else {
         nav.phase = NAV_PHASE_ORBIT;
-        const int32_t tangentOffsetDdeg = (gpsNavConfig()->loiterDirection == NAV_LOITER_CW) ? 900 : -900;
+        // bearingToTargetDdeg is the bearing FROM the aircraft TO the target. Orbiting clockwise
+        // seen from above keeps the target on the aircraft's right, so the track is 90 degrees to
+        // the LEFT of that bearing (an aircraft south of the target, bearing 0, flies west); anti-
+        // clockwise is 90 degrees to the right.
+        const int32_t tangentOffsetDdeg = (gpsNavConfig()->loiterDirection == NAV_LOITER_CW) ? -900 : 900;
         desiredTrackDdeg = bearingToTargetDdeg + tangentOffsetDdeg;
     }
 
