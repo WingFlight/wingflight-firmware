@@ -12,7 +12,10 @@ after about a second, so ANGLE, HORIZON, ATT HOLD, TV hold and AUTO HOVER ran
 at 25% authority. Now any motor output above 10% counts as flying, and a
 model stays airborne until every motor is below 5% as well as the sticks being
 quiet and the tilt small. A model with no motor is treated as airborne whenever
-it is armed. Motor output is also shown in `debug_mode = AIRBORNE`, index 3.
+it is armed. A barometer adds to this: more than 2 m above the altitude at arm
+counts as flying, and it stays airborne until it is back under 1 m, which also
+covers a hands-off glide with the motor at idle. Motor output and altitude are
+also shown in `debug_mode = AIRBORNE`, indexes 3 and 5.
 
 Fixed-wing cross-axis relax is added for normal stabilization. When enabled,
 yaw/rudder command can attenuate roll and/or pitch P and D feedback, and slow

@@ -37,6 +37,8 @@
 #include "fc/runtime_config.h"
 #include "fc/rc.h"
 
+#include "sensors/sensors.h"
+
 #include "airborne.h"
 
 #define FILTER_CUTOFF                       5.0f
@@ -51,6 +53,11 @@
 // on the way down, so an output hovering at the limit does not flip the state back and forth.
 #define LIFTOFF_MOTOR_OUTPUT                100
 #define LANDING_MOTOR_OUTPUT                 50
+
+// Height above the point where the aircraft was armed (centimeters) that counts as flying, lower
+// on the way down for the same reason as the motor limits above.
+#define LIFTOFF_ALTITUDE_CM                 200
+#define LANDING_ALTITUDE_CM                 100
 
 typedef enum {
     AIRBORNE_STATE_INIT = 0,
@@ -119,6 +126,20 @@ static bool motorSaysAirborne(int threshold)
     return getMotorCount() == 0 || motorOutputPeak() > threshold;
 }
 
+// Whether the barometer says the aircraft is well above where it was armed. The altitude estimate
+// is already relative to the arm point, and it is 0 when there is no usable source. This is
+// evidence for flight only: an aircraft that is not high, or has no barometer, says nothing
+// (a slope launch that flies below its arm point, for instance).
+static bool altitudeSaysAirborne(int thresholdCm)
+{
+#ifdef USE_BARO
+    return sensors(SENSOR_BARO) && getEstimatedAltitudeCm() > thresholdCm;
+#else
+    UNUSED(thresholdCm);
+    return false;
+#endif
+}
+
 static bool liftoff(void)
 {
     return (
@@ -127,7 +148,8 @@ static bool liftoff(void)
             isOverThreshold(airborne.liftoffThreshold) ||
             getCosTiltAngle() < LIFTOFF_COS_ANGLE_THRESHOLD ||
             FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE) ||
-            motorSaysAirborne(LIFTOFF_MOTOR_OUTPUT)
+            motorSaysAirborne(LIFTOFF_MOTOR_OUTPUT) ||
+            altitudeSaysAirborne(LIFTOFF_ALTITUDE_CM)
         )
     );
 }
@@ -140,7 +162,8 @@ static bool touchdown(void)
             isOverThreshold(airborne.landingThreshold) ||
             getCosTiltAngle() < LANDING_COS_ANGLE_THRESHOLD ||
             FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE) ||
-            motorSaysAirborne(LANDING_MOTOR_OUTPUT)
+            motorSaysAirborne(LANDING_MOTOR_OUTPUT) ||
+            altitudeSaysAirborne(LANDING_ALTITUDE_CM)
         )
     );
 }
@@ -177,6 +200,7 @@ void airborneUpdate(const float rc[XYZ_AXIS_COUNT])
     DEBUG(AIRBORNE, 2, peakFilterOutput(&airborne.peakDeflection[FD_YAW]) * 1000);
     DEBUG(AIRBORNE, 3, motorOutputPeak());
     DEBUG(AIRBORNE, 4, getCosTiltAngle() * 1000);
+    DEBUG(AIRBORNE, 5, getEstimatedAltitudeCm());
     DEBUG(AIRBORNE, 6, (liftoff() ? 1 : 0) | (touchdown() ? 2 : 0));
     DEBUG(AIRBORNE, 7, airborne.state);
 }
