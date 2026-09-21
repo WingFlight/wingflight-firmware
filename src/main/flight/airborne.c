@@ -31,6 +31,7 @@
 
 #include "flight/pid.h"
 #include "flight/imu.h"
+#include "flight/motors.h"
 #include "flight/position.h"
 
 #include "fc/runtime_config.h"
@@ -45,6 +46,11 @@
 
 #define LIFTOFF_COS_ANGLE_THRESHOLD        0.80f
 #define LANDING_COS_ANGLE_THRESHOLD        0.90f
+
+// Motor output (getMotorOutput() units, per mille of full output) that counts as flying. Lower
+// on the way down, so an output hovering at the limit does not flip the state back and forth.
+#define LIFTOFF_MOTOR_OUTPUT                100
+#define LANDING_MOTOR_OUTPUT                 50
 
 typedef enum {
     AIRBORNE_STATE_INIT = 0,
@@ -88,6 +94,31 @@ static bool isOverThreshold(const float *threshold)
     );
 }
 
+// The strongest motor output, whichever direction it is turning. 0 with no motors.
+static int motorOutputPeak(void)
+{
+    int peak = 0;
+
+    for (int i = 0; i < getMotorCount(); i++) {
+        const int output = getMotorOutput(i);
+        peak = MAX(peak, output < 0 ? -output : output);
+    }
+
+    return peak;
+}
+
+// Whether the motors say the aircraft is flying. Stick and tilt alone can not tell a wing
+// cruising level with its sticks released from one sitting on the ground, and that is the
+// common case for a hold mode, so a running motor keeps the state airborne.
+//
+// A model with no motor has nothing to go on: treat it as airborne whenever it is armed. Without
+// a propeller the ground authority reduction buys little, and using the throttle channel instead
+// would leave a glider permanently "landed".
+static bool motorSaysAirborne(int threshold)
+{
+    return getMotorCount() == 0 || motorOutputPeak() > threshold;
+}
+
 static bool liftoff(void)
 {
     return (
@@ -95,7 +126,8 @@ static bool liftoff(void)
         (
             isOverThreshold(airborne.liftoffThreshold) ||
             getCosTiltAngle() < LIFTOFF_COS_ANGLE_THRESHOLD ||
-            FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE)
+            FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE) ||
+            motorSaysAirborne(LIFTOFF_MOTOR_OUTPUT)
         )
     );
 }
@@ -107,7 +139,8 @@ static bool touchdown(void)
         (
             isOverThreshold(airborne.landingThreshold) ||
             getCosTiltAngle() < LANDING_COS_ANGLE_THRESHOLD ||
-            FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE)
+            FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE) ||
+            motorSaysAirborne(LANDING_MOTOR_OUTPUT)
         )
     );
 }
@@ -142,6 +175,7 @@ void airborneUpdate(const float rc[XYZ_AXIS_COUNT])
     DEBUG(AIRBORNE, 0, peakFilterOutput(&airborne.peakDeflection[FD_ROLL]) * 1000);
     DEBUG(AIRBORNE, 1, peakFilterOutput(&airborne.peakDeflection[FD_PITCH]) * 1000);
     DEBUG(AIRBORNE, 2, peakFilterOutput(&airborne.peakDeflection[FD_YAW]) * 1000);
+    DEBUG(AIRBORNE, 3, motorOutputPeak());
     DEBUG(AIRBORNE, 4, getCosTiltAngle() * 1000);
     DEBUG(AIRBORNE, 6, (liftoff() ? 1 : 0) | (touchdown() ? 2 : 0));
     DEBUG(AIRBORNE, 7, airborne.state);

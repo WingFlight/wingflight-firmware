@@ -6,6 +6,14 @@ the APIs or flight performance.
 
 ## Flight Performance
 
+Airborne detection now uses the motors as well as the sticks and tilt. Before,
+an aircraft cruising level with its sticks released was counted as landed
+after about a second, so ANGLE, HORIZON, ATT HOLD, TV hold and AUTO HOVER ran
+at 25% authority. Now any motor output above 10% counts as flying, and a
+model stays airborne until every motor is below 5% as well as the sticks being
+quiet and the tilt small. A model with no motor is treated as airborne whenever
+it is armed. Motor output is also shown in `debug_mode = AIRBORNE`, index 3.
+
 Fixed-wing cross-axis relax is added for normal stabilization. When enabled,
 yaw/rudder command can attenuate roll and/or pitch P and D feedback, and slow
 the I accumulation (the I output itself is not scaled), so rudder-induced
