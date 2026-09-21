@@ -275,16 +275,20 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
 
     ADJ_ENTRY(TV_PROFILE,                   1, 6),
 
-    // Magnitude only, 0..1000 -- applyRoleWeight() (flight/mixer.c) never
-    // touches a tagged rule's sign, only scales |weight|, so polarity stays
-    // whatever the rule was configured with (Reverse in the mixer table, or
-    // a negative weight via CLI) regardless of what this adjustment does.
+    // Flap compensation is signed, -1000..1000 -- applyRoleWeight()
+    // (flight/mixer.c) applies it as a scale on top of each tagged rule's
+    // configured polarity (Reverse in the mixer table, or a negative weight
+    // via CLI), so negative values flip the compensation and a model can
+    // need either direction depending on the flap setup.
     // 1000 is already a full 1.0x on the flap input, generous for a
     // compensation trim; MIXER_WEIGHT_MAX itself (pg/mixer.h, 10000) is
     // never a deliberate live-tuning choice, just a typo, like every other
     // gain-style adjustment here.
-    ADJ_ENTRY(FLAP_COMPENSATION_GAIN,      0, 1000),
-    ADJ_ENTRY(DIFF_THRUST_YAW_GAIN,        0, 1000),
+    ADJ_ENTRY(FLAP_COMPENSATION_GAIN,   -1000, 1000),
+    // Signed too, same shared applyRoleWeight() scaling: a negative value
+    // flips the whole differential (both motors' rules together, so they
+    // stay opposite each other).
+    ADJ_ENTRY(DIFF_THRUST_YAW_GAIN,     -1000, 1000),
 
 };
 

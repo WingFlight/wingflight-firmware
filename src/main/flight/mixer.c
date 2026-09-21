@@ -412,18 +412,21 @@ void mixerCaptureRuleSign(uint8_t index)
  * everywhere else a rule's liveness is checked (mixerUpdateRules(),
  * configurator's isNullRule(), the LUA suite's isEmpty()).
  *
- * Deliberately never touches a rule's sign, only its magnitude -- each
- * matching rule keeps whatever polarity it was configured with (via
- * mixerRuleSign[], not weight's own live value -- see that comment), and
- * *value only ever scales |weight|. This is what makes Reverse mean
- * anything once an adjustment is live: an earlier version of this wrote
- * the adjustment's own raw value straight into the first matching rule,
+ * *value is a signed scale applied on top of each matching rule's
+ * configured polarity (via mixerRuleSign[], not weight's own live value --
+ * see that comment): weight = sign * value. Positive values keep the
+ * configured direction, negative values flip it, so one adjustment can
+ * sweep a rule through both directions while Reverse in the mixer table
+ * still means what it says. An earlier version of this wrote the
+ * adjustment's own raw value straight into the first matching rule,
  * silently overwriting whatever sign the pilot had configured on the very
- * next tick. Per-rule sign preservation also happens to be exactly what a
+ * next tick; a later one only ever scaled |weight|, which fixed that but
+ * made negative values impossible. Per-rule sign is still what a
  * differential-thrust-yaw pair needs (the two rules are tagged the same
  * role but opposite sign by design -- one motor speeds up, the other
  * slows down) and what several same-signed flap-compensation rules on a
- * v-tail/flying-wing need, without treating either case specially.
+ * v-tail/flying-wing need: a negative value flips every match together
+ * and their relative polarity is untouched.
  */
 static bool applyRoleWeight(uint8_t role, int *value, bool write)
 {
@@ -436,11 +439,10 @@ static bool applyRoleWeight(uint8_t role, int *value, bool write)
         }
 
         if (write) {
-            const int magnitude = ABS(*value);
-            rule->weight    = (mixerRuleSign[i] >= 0) ? magnitude : -magnitude;
+            rule->weight    = (mixerRuleSign[i] >= 0) ? *value : -*value;
             rule->weightNeg = rule->weight;
         } else if (!found) {
-            *value = ABS(rule->weight);
+            *value = (mixerRuleSign[i] >= 0) ? rule->weight : -rule->weight;
         }
 
         found = true;
