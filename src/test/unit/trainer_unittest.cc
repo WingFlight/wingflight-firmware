@@ -301,3 +301,60 @@ TEST_F(AcroTrainerTest, AxisLimitsFollowSelectedProfileAndKeepLegacyDefaults)
     EXPECT_EQ(attitudeLimits(0)->trainer_pitch, 0);
     EXPECT_EQ(pidProfiles(0)->trainer.angle_limit, 20);
 }
+
+TEST_F(AcroTrainerTest, LimiterStateTracksEachAxisIndependently)
+{
+    setAngle(FD_ROLL, 25);
+    setAngle(FD_PITCH, 10);
+    acroTrainerApply(FD_ROLL, 100);
+    acroTrainerApply(FD_PITCH, 100);
+    EXPECT_TRUE(acroTrainerIsLimiting(FD_ROLL));
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_PITCH));
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_YAW));
+    setAngle(FD_ROLL, 10);
+    EXPECT_FLOAT_EQ(acroTrainerApply(FD_ROLL, 100), 100);
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_ROLL));
+}
+
+TEST_F(AcroTrainerTest, HelpingPilotInputDoesNotRetainLimiterState)
+{
+    for (int sign : {-1, 1}) {
+        setAngle(FD_ROLL, sign * 25);
+        acroTrainerApply(FD_ROLL, sign * 100);
+        EXPECT_TRUE(acroTrainerIsLimiting(FD_ROLL));
+        EXPECT_FLOAT_EQ(acroTrainerApply(FD_ROLL, -sign * 100), -sign * 100);
+        EXPECT_FALSE(acroTrainerIsLimiting(FD_ROLL));
+    }
+}
+
+TEST_F(AcroTrainerTest, LookaheadReportsActualIntervention)
+{
+    for (int sign : {-1, 1}) {
+        setAngle(FD_ROLL, sign * 18);
+        gyro.gyroADCf[FD_ROLL] = sign * 400;
+        acroTrainerApply(FD_ROLL, sign * 400);
+        EXPECT_TRUE(acroTrainerIsLimiting(FD_ROLL));
+        acroTrainerApply(FD_ROLL, -sign * 400);
+        EXPECT_FALSE(acroTrainerIsLimiting(FD_ROLL));
+    }
+}
+
+TEST_F(AcroTrainerTest, ModeExitClearsLimiterStateBeforeReentry)
+{
+    setAngle(FD_ROLL, 25);
+    acroTrainerApply(FD_ROLL, 100);
+    EXPECT_TRUE(acroTrainerIsLimiting(FD_ROLL));
+    acroTrainerSetState(false);
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_ROLL));
+    acroTrainerSetState(true);
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_ROLL));
+}
+
+TEST_F(AcroTrainerTest, ProfileReloadClearsLimiterState)
+{
+    setAngle(FD_PITCH, -25);
+    acroTrainerApply(FD_PITCH, -100);
+    EXPECT_TRUE(acroTrainerIsLimiting(FD_PITCH));
+    acroTrainerInit(pidProfiles(0));
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_PITCH));
+}

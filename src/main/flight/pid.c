@@ -871,7 +871,7 @@ static void pidApplyMode1(uint8_t axis)
     // while landed) -- but suspended while a leveling/attitude-hold layer is
     // actively shaping this axis's setpoint. Those layers (ANGLE/HORIZON/GPS
     // rescue/failsafe/loiter/RTH's shared angleModeApply on roll+pitch, the
-    // acro trainer likewise, and ATTHOLD/AUTOHOVER on an axis that is actually
+    // acro trainer only while limiting, and ATTHOLD/AUTOHOVER on an axis that is actually
     // holding a target) fundamentally need a sustained I-term to hold a
     // corrected attitude against a persistent disturbance once the rate error
     // itself has settled to ~0 -- an unconditional decay quietly erodes exactly
@@ -893,12 +893,12 @@ static void pidApplyMode1(uint8_t axis)
     // slow bleed still lets the hold carry a real steady disturbance (torque
     // roll): the outer attitude loop just re-grows whatever I is needed, at the
     // cost of a small sag -- while anything not actually needed drains away.
-#ifdef USE_ACRO_TRAINER
-    const flightModeFlags_e rollPitchLevelingModes = ANGLE_MODE | HORIZON_MODE | GPS_RESCUE_MODE
-        | FAILSAFE_MODE | LOITER_MODE | RTH_MODE | TRAINER_MODE;
-#else
     const flightModeFlags_e rollPitchLevelingModes = ANGLE_MODE | HORIZON_MODE | GPS_RESCUE_MODE
         | FAILSAFE_MODE | LOITER_MODE | RTH_MODE;
+
+    bool trainerLimitingThisAxis = false;
+#ifdef USE_ACRO_TRAINER
+    trainerLimitingThisAxis = FLIGHT_MODE(TRAINER_MODE) && acroTrainerIsLimiting(axis);
 #endif
 
     bool autoHoverHoldingThisAxis = false;
@@ -909,7 +909,7 @@ static void pidApplyMode1(uint8_t axis)
 #endif
 
     const bool isYaw = (axis == FD_YAW);
-    const bool levelingModeShapingThisAxis = autoHoverHoldingThisAxis
+    const bool levelingModeShapingThisAxis = trainerLimitingThisAxis || autoHoverHoldingThisAxis
         || (!isYaw && FLIGHT_MODE(rollPitchLevelingModes));
 
     if (!levelingModeShapingThisAxis) {

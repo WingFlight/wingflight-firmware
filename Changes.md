@@ -6,6 +6,13 @@ the APIs or flight performance.
 
 ## Flight Performance
 
+TRAINER now keeps normal rate-mode I-term decay independently on roll and pitch
+until its envelope limiter changes that axis's rate command. Stronger pilot
+input back into the envelope also retains normal decay. Active limiting still
+suspends decay to sustain correction (`src/main/flight/trainer.c`,
+`src/main/flight/pid.c`). Mode exit and profile reload clear limiter state.
+
+
 ANGLE and TRAINER now support independent roll and pitch limits per PID profile
 (`src/main/flight/leveling.c`, `src/main/flight/trainer.c`). Explicit roll limits
 use 10–90° and pitch limits 10–75°, matching SAFE's documented configuration
