@@ -37,8 +37,8 @@
 #include "drivers/time.h"
 
 #include "fc/rc.h"
+#include "fc/runtime_config.h"
 
-#include "flight/airborne.h"
 #include "flight/imu.h"
 #include "flight/pid.h"
 #include "flight/setpoint.h"
@@ -53,6 +53,7 @@
 // clamping of its own -- this constant is what actually prevents a stray/malicious/corrupted
 // profile value from raising the ceiling past a sane bound, not just the CLI or configurator UI.
 #define AUTOHOVER_THROTTLE_ASSIST_MAX_CEILING 0.50f
+#define AUTOHOVER_THROTTLE_ASSIST_MIN_THROTTLE 0.40f
 
 // Quaternion-based vertical (90 degree pitch) attitude + heading hold, for 3D "prop hang" hover.
 // Deliberately NOT built on leveling.c's Euler-angle approach -- that computes roll/pitch error
@@ -154,6 +155,12 @@ bool autoHoverIsHolding(int axis)
     return autoHover.Active && axis != FD_ROLL;
 }
 
+static bool throttleAssistAllowed(void)
+{
+    return ARMING_FLAG(ARMED) && rxIsReceivingSignal() && !isThrottleOff()
+        && getThrottle() > AUTOHOVER_THROTTLE_ASSIST_MIN_THROTTLE;
+}
+
 float autoHoverApply(int axis, float pidSetpoint)
 {
     static float rate[3];
@@ -247,9 +254,8 @@ float autoHoverApply(int axis, float pidSetpoint)
             (2.0f * qError.z) / M_RADf,
         };
 
-        // Same pre-airborne attenuation angleModeApply/horizonModeApply use, so the switch can be
-        // armed/tested on the ground without snapping at full strength.
-        if (!isAirborne()) {
+        // Keep bench corrections gentle while disarmed; armed holds always use full authority.
+        if (!ARMING_FLAG(ARMED)) {
             errorDeg[1] *= 0.25f;
             errorDeg[2] *= 0.25f;
         }
@@ -280,14 +286,15 @@ float autoHoverApply(int axis, float pidSetpoint)
         // suggest the airframe can't out-thrust the hold on the pilot's current throttle, not just
         // ride out a single gust. Pitch only, not the combined pitch+yaw vector above -- pitch is
         // the axis fighting gravity in this vertical attitude, so sustained pitch saturation is a
-        // more specific proxy for thrust deficiency than a yaw/heading disturbance would be. Gated
-        // on isAirborne() for the same reason the pre-airborne attenuation above exists -- ground
-        // pitch error (e.g. sitting nose-up on a bench stand) must never drive throttle up.
+        // more specific proxy for thrust deficiency than a yaw/heading disturbance would be. Requires
+        // pilot throttle above 40%; motor output includes this boost and must not gate itself.
+        // This expresses pilot intent, not proof of flight: a ground run-up can enable assist.
         // MaxRate > 0.0f is required, not just ThrottleAssistGain -- with MaxRate at 0 (a valid
         // CLI/MSP value that effectively disables attitude correction), pitchEffort >= 0.0f is
         // true on every loop regardless of actual pitch error, which would trigger the assist
         // continuously even though no real correction is being commanded.
-        if (autoHover.ThrottleAssistGain > 0.0f && autoHover.MaxRate > 0.0f && isAirborne() && pitchEffort >= autoHover.MaxRate) {
+        const bool assistAllowed = throttleAssistAllowed();
+        if (autoHover.ThrottleAssistGain > 0.0f && autoHover.MaxRate > 0.0f && assistAllowed && pitchEffort >= autoHover.MaxRate) {
             if (autoHover.PitchSaturatedSinceMs == 0) {
                 autoHover.PitchSaturatedSinceMs = millis();
             }
@@ -298,11 +305,14 @@ float autoHoverApply(int axis, float pidSetpoint)
         const bool assistTriggered = autoHover.PitchSaturatedSinceMs != 0
             && (millis() - autoHover.PitchSaturatedSinceMs) >= autoHover.ThrottleAssistTriggerMs;
 
-        // Ramped, not stepped, in both directions -- even an instantly-detected trigger can't jump
-        // straight to the ceiling in one loop tick, and releasing decays back out over the same
-        // timescale instead of latching high. slewLimit is the same bounded-rate-of-change helper
-        // governor.c uses for its own throttle target; ThrottleAssistGain is fraction-of-range per
-        // second, so scaling it by pidGetDT() gives the max change allowed this loop tick.
+        // Losing pilot permission clears the boost immediately, independently of mixer call order.
+        if (!assistAllowed) {
+            autoHover.ThrottleAssistPercent = 0.0f;
+            autoHover.PitchSaturatedSinceMs = 0;
+        }
+
+        // While eligible, slew into and out of saturation-driven assist. Gain is fraction of
+        // throttle range per second, so multiplying by pidGetDT() gives the per-loop limit.
         const float assistTarget = assistTriggered ? autoHover.ThrottleAssistMax : 0.0f;
         autoHover.ThrottleAssistPercent = constrainf(
             slewLimit(autoHover.ThrottleAssistPercent, assistTarget, autoHover.ThrottleAssistGain * pidGetDT()),
@@ -316,22 +326,15 @@ float autoHoverApply(int axis, float pidSetpoint)
     return rate[axis];
 }
 
-// 0..1 fraction of throttle range to add on top of the pilot's own throttle command -- 0 whenever
-// the mode is inactive or the assist is disabled/not currently triggered. mixer.c adds this before
-// governorApply() so any governor-side slew/ceiling still applies on top as a second layer.
-//
-// The assist is additive on the pilot's throttle, never a substitute for it, so it is also off
-// whenever the throttle stick is at or below the off-throttle threshold, or the receiver has no
-// signal (a held-on AUTOHOVER switch plus a centred/held stick must not spin the motor up, and
-// the flight-controller failsafe stage 2 is disabled, so nothing else clears it). The ramp is reset, not merely
-// masked, so the assist re-ramps from zero once the stick comes back up instead of stepping in.
+// Additive boost before the governor. Losing eligibility clears both the boost and its timer,
+// so raising pilot throttle above 40% again requires a fresh saturation delay and ramp.
 float autoHoverThrottleBoost(void)
 {
     if (!autoHover.Active) {
         return 0.0f;
     }
 
-    if (isThrottleOff() || !rxIsReceivingSignal()) {
+    if (!throttleAssistAllowed()) {
         autoHover.ThrottleAssistPercent = 0.0f;
         autoHover.PitchSaturatedSinceMs = 0;
         return 0.0f;

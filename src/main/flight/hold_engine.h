@@ -45,7 +45,7 @@ typedef struct {
     float       SettleTime[3]; // per-axis: seconds since that axis's stick returned inside the deadband
     float       StallTime[3];  // per-axis: seconds a frozen axis has had a large error with no motion
     float       BleedTime[3];  // per-axis: seconds of full-rate I decay left after a stall re-capture
-    float       ErrorDeg[3];   // per-axis: attitude error last loop, degrees (before the pre-airborne scaling)
+    float       ErrorDeg[3];   // per-axis: attitude error last loop, degrees (before the disarmed scaling)
     uint16_t    RecaptureCount; // stall re-captures since the mode engaged, all axes
     int8_t      LastRecaptureAxis; // axis of the most recent stall re-capture, -1 if none yet
     float       Gain;          // deg/s of correction rate per degree of attitude error

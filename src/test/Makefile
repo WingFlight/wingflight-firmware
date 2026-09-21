@@ -409,6 +409,13 @@ pid_unittest_SRC :=  \
 		$(USER_DIR)/pg/mixer.c \
 		$(USER_DIR)/pg/rates.c
 
+stabilization_authority_unittest_SRC := \
+        $(USER_DIR)/common/maths.c \
+        $(USER_DIR)/flight/autohover.c \
+        $(USER_DIR)/flight/hold_engine.c \
+        $(USER_DIR)/flight/leveling.c \
+        $(USER_DIR)/pg/accel.c
+
 trainer_unittest_SRC := \
 		$(USER_DIR)/common/filter.c \
 		$(USER_DIR)/common/maths.c \

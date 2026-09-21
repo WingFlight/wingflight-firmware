@@ -6,6 +6,20 @@ the APIs or flight performance.
 
 ## Flight Performance
 
+ANGLE, HORIZON, ATT HOLD, TV hold and AUTO HOVER now use full attitude-correction
+strength whenever armed, including hands-off glides. The 25% bench reduction
+applies only while disarmed, rather than depending on the helicopter-derived
+airborne estimate (`src/main/flight/leveling.c`, `src/main/flight/hold_engine.c`,
+`src/main/flight/autohover.c`).
+AUTO HOVER throttle assist requires pilot throttle strictly above 40%, arming,
+a live RX signal and throttle above the off-throttle threshold. Losing any of
+these conditions clears the boost and saturation timer immediately; re-entry
+requires a fresh delay and ramp. The threshold uses pilot throttle before boost,
+so assist cannot sustain its own eligibility. This can permit assist during an
+armed ground run-up with AUTO HOVER selected; it is not a flight detector.
+The legacy airborne estimate remains for Blackbox diagnostics only; hands-on
+stick detection is unchanged.
+
 Fixed-wing cross-axis relax is added for normal stabilization. When enabled,
 yaw/rudder command can attenuate roll and/or pitch P and D feedback, and slow
 the I accumulation (the I output itself is not scaled), so rudder-induced

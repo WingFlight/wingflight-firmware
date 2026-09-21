@@ -26,7 +26,8 @@
 #include "common/axis.h"
 #include "common/maths.h"
 
-#include "flight/airborne.h"
+#include "fc/runtime_config.h"
+
 #include "flight/imu.h"
 #include "flight/pid.h"
 #include "flight/setpoint.h"
@@ -162,11 +163,6 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
     // per PID loop iteration, not once per axis call -- do that work on the first axis touched
     // each iteration and cache it, same pattern autoHoverApply uses for its pitch/yaw correction.
     if (axis == FD_ROLL) {
-        // Deliberately not gated on isAirborne() -- see the pre-airborne attenuation below
-        // instead. Forcing tracking (pure passthrough) whenever grounded, as this used to, meant
-        // a hold gave zero correction authority on the bench no matter how long you sat there,
-        // unlike angleModeApply/horizonModeApply/autoHoverApply's pitch+yaw, which all still
-        // correct pre-airborne, just at reduced strength.
         const pidAxisData_t *pidData = pidGetAxisData();
         const float dT = pidGetDT();
 
@@ -219,7 +215,7 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
             hold->ErrorDeg[i] = errorDeg[i];
         }
 
-        // Stall detection uses the raw error (before the pre-airborne attenuation below), since
+        // Stall detection uses the raw error (before the disarmed attenuation below), since
         // that's the true distance from the held attitude. Sends a stalled axis back through the
         // tracking path -- which re-aims just that axis's target at the current attitude -- and
         // lets the normal settle logic above hand it back to frozen a loop or two later.
@@ -241,13 +237,8 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
             }
         }
 
-        // Same pre-airborne attenuation angleModeApply/horizonModeApply/autoHoverApply's pitch+yaw
-        // use, so the mode can be armed/tested on the ground without snapping at full strength --
-        // reduced authority, not the zero authority a hard isAirborne() gate on tracking used to
-        // give (see above). Applied to all three axes uniformly, unlike autohover.c, since here
-        // there's no single "always-on" axis to treat differently -- all three go through the same
-        // track/freeze machinery.
-        if (!isAirborne()) {
+        // Keep bench corrections gentle while disarmed; armed holds always use full authority.
+        if (!ARMING_FLAG(ARMED)) {
             errorDeg[0] *= 0.25f;
             errorDeg[1] *= 0.25f;
             errorDeg[2] *= 0.25f;
