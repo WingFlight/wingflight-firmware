@@ -1872,6 +1872,8 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, failsafeConfig()->failsafe_switch_mode);
         sbufWriteU16(dst, failsafeConfig()->failsafe_throttle_low_delay);
         sbufWriteU8(dst, failsafeConfig()->failsafe_procedure);
+        // Appended field -- older clients that only read the six bytes above are unaffected.
+        sbufWriteU16(dst, failsafeConfig()->failsafe_recovery_delay);
         break;
 
     case MSP_RXFAIL_CONFIG:
@@ -3709,6 +3711,11 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         failsafeConfigMutable()->failsafe_switch_mode = sbufReadU8(src);
         failsafeConfigMutable()->failsafe_throttle_low_delay = sbufReadU16(src);
         failsafeConfigMutable()->failsafe_procedure = sbufReadU8(src);
+        // Appended field -- older clients that only send the six bytes above leave this
+        // untouched, same pattern used elsewhere in this function (e.g. MSP_SET_TELEMETRY_CONFIG).
+        if (sbufBytesRemaining(src) >= 2) {
+            failsafeConfigMutable()->failsafe_recovery_delay = sbufReadU16(src);
+        }
         break;
 
     case MSP_SET_RXFAIL_CONFIG:

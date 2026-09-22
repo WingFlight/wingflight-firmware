@@ -844,3 +844,15 @@ weren't gated). Now gated behind `ifeq ($(CC),clang)`. Also fixed a latent MinGW
 in `gps_nav_unittest.cc`'s own test stub: `M_PI` isn't standard C++ and needs a platform-specific
 feature-test macro that MinGW's `<cmath>` doesn't define by default -- replaced with a local
 literal.
+
+### MSP_FAILSAFE_CONFIG / MSP_SET_FAILSAFE_CONFIG gain `failsafe_recovery_delay`
+
+Found while wiring up Configurator/Lua-suite UI for the failsafe stage-2 work above: this MSP
+pair only ever carried six of the seven `failsafeConfig_t` fields (`failsafe_delay`,
+`failsafe_off_delay`, `failsafe_throttle`, `failsafe_switch_mode`, `failsafe_throttle_low_delay`,
+`failsafe_procedure`) -- `failsafe_recovery_delay` (how long a recovered RX link must stay good
+before re-arming is allowed, `failsafeState.rxDataRecoveryPeriod`) was CLI-only, with no MSP
+path at all. Appended as a 7th field (U16) on both messages. `MSP_SET_FAILSAFE_CONFIG` only reads
+it when present (`sbufBytesRemaining(src) >= 2`, same pattern used elsewhere in `msp.c`, e.g.
+`MSP_SET_TELEMETRY_CONFIG`), so older clients that only send the original six fields are
+unaffected.
