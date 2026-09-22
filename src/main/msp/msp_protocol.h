@@ -331,4 +331,9 @@
 #define MSP2_WING_ESC_SENSOR_TRIAL            0x5F14
 // 0x5F15: CRSF Sensors link diagnostics (0x5F10-0x5F14 are taken by the entries above).
 #define MSP2_WING_CRSF_SENSORS_STATUS         0x5F15
+// gpsNavConfig_t (PG_GPS_NAV) had no MSP command at all before this -- CLI-only
+// (nav_rth_altitude, nav_loiter_radius, nav_max_bank_angle, nav_max_pitch_angle,
+// nav_min_sats, nav_bearing_kp, nav_altitude_kp, nav_loiter_direction).
+#define MSP2_WING_GPS_NAV_CONFIG              0x5F16
+#define MSP2_WING_SET_GPS_NAV_CONFIG          0x5F17
 #define MSP_V2_FRAME                         255

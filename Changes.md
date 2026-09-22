@@ -856,3 +856,14 @@ path at all. Appended as a 7th field (U16) on both messages. `MSP_SET_FAILSAFE_C
 it when present (`sbufBytesRemaining(src) >= 2`, same pattern used elsewhere in `msp.c`, e.g.
 `MSP_SET_TELEMETRY_CONFIG`), so older clients that only send the original six fields are
 unaffected.
+
+### New MSP command: `gpsNavConfig` (BOXRTH/BOXLOITER/GPS-rescue tuning)
+
+`gpsNavConfig_t` (`PG_GPS_NAV` -- `nav_rth_altitude`, `nav_loiter_radius`, `nav_loiter_direction`,
+`nav_max_bank_angle`, `nav_max_pitch_angle`, `nav_min_sats`, `nav_bearing_kp`, `nav_altitude_kp`)
+had no MSP command at all -- CLI-only, so `BOXRTH`/`BOXLOITER` and, since the change above,
+`FAILSAFE_PROCEDURE_GPS_RESCUE`, were all untunable from the Configurator or the Lua suite even
+though they were flyable. New MSPv2 pair, `MSP2_WING_GPS_NAV_CONFIG`/
+`MSP2_WING_SET_GPS_NAV_CONFIG` (`0x5F16`/`0x5F17`, next free ID after
+`MSP2_WING_CRSF_SENSORS_STATUS`), one flat 12-byte record matching `gpsNavConfig_t`'s field order
+exactly. No existing MSP surface changed.
