@@ -17,6 +17,9 @@
 
 #pragma once
 
+#include <stdbool.h>
+#include <stdint.h>
+
 #include "common/axis.h"
 
 #include "pg/gps_nav.h"
@@ -27,3 +30,4 @@ void navLoiterStart(void);
 void navRthStart(void);
 void navStop(void);
 void updateGpsNav(void);
+bool navCanRTH(void);

@@ -89,6 +89,7 @@ void failsafeCheckDataFailurePeriod(void);
 failsafePhase_e failsafePhase(void);
 bool failsafeIsMonitoring(void);
 bool failsafeIsActive(void);
+float failsafeGetThrottle(void);
 bool failsafeIsReceivingRxData(void);
 void failsafeOnRxSuspend(uint32_t suspendPeriod);
 void failsafeOnRxResume(void);

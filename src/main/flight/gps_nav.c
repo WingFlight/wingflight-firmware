@@ -26,6 +26,8 @@
 #include "common/axis.h"
 #include "common/maths.h"
 
+#include "fc/runtime_config.h"
+
 #include "pg/gps.h"
 #include "pg/gps_nav.h"
 
@@ -55,6 +57,17 @@ int32_t navAngle[ANGLE_INDEX_COUNT] = { 0, 0 };
 static bool navIsHealthy(void)
 {
     return gpsIsHealthy() && gpsSol.numSat >= gpsNavConfig()->minSats;
+}
+
+// Whether a return-to-home is even meaningful right now: needs a healthy GPS fix (same bar
+// as any other nav start) and an actual recorded home position. Without the latter,
+// navRthStart() would fly toward GPS_home = {0,0} -- "null island" -- since navBegin() itself
+// only gates on navIsHealthy(), not on STATE(GPS_FIX_HOME). Exported so callers that want to
+// start an RTH (or decide whether one is possible before falling back to something else, e.g.
+// failsafe.c) don't have to duplicate either check.
+bool navCanRTH(void)
+{
+    return navIsHealthy() && STATE(GPS_FIX_HOME);
 }
 
 static void navBegin(int32_t lat, int32_t lon, int32_t altitudeCm)

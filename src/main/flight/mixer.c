@@ -41,6 +41,7 @@
 #include "fc/rc.h"
 
 #include "flight/autohover.h"
+#include "flight/failsafe.h"
 #include "flight/pid.h"
 #include "flight/tv_pid.h"
 #include "flight/imu.h"
@@ -296,30 +297,41 @@ static void mixerUpdateInputs(void)
         mixerSetInput(MIXER_IN_STABILIZED_TV_YAW, tvPidGetOutput(PID_YAW));
     }
 
-    // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels, bypassing the
-    // rates/expo curve as well as PID - direct radio to surfaces. Takes priority over MANUAL
-    // if both happen to be active at once.
-    if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
-        mixer.input[MIXER_IN_STABILIZED_ROLL]  = mixer.input[MIXER_IN_RC_CHANNEL_ROLL];
-        mixer.input[MIXER_IN_STABILIZED_PITCH] = mixer.input[MIXER_IN_RC_CHANNEL_PITCH];
-        // Yaw command is reversed in setpoint.c relative to raw RC (unlike other axes);
-        // keep the same reversal here so passthrough yaw direction matches stabilized.
-        mixer.input[MIXER_IN_STABILIZED_YAW]   = -mixer.input[MIXER_IN_RC_CHANNEL_YAW];
-        // No raw RC channel is mapped to the independent TV axes, so the only safe
-        // bypass is neutral: zero the TV stabilized inputs rather than leave any
-        // TV-driven actuator still under PID stabilization during a passthrough bailout.
-        mixer.input[MIXER_IN_STABILIZED_TV_ROLL]  = 0;
-        mixer.input[MIXER_IN_STABILIZED_TV_PITCH] = 0;
-        mixer.input[MIXER_IN_STABILIZED_TV_YAW]   = 0;
-    }
-    // BOXMANUAL mode: replace stabilized inputs with the same rates/expo-shaped setpoint the
-    // PID rate loop targets, but skip the gyro-corrected PID output itself - same stick feel as
-    // stabilized flight, no stabilization. getManualDeflection() already matches the stabilized
-    // sign convention (yaw included), so no extra reversal is needed here.
-    else if (IS_RC_MODE_ACTIVE(BOXMANUAL)) {
-        mixer.input[MIXER_IN_STABILIZED_ROLL]  = getManualDeflection(FD_ROLL);
-        mixer.input[MIXER_IN_STABILIZED_PITCH] = getManualDeflection(FD_PITCH);
-        mixer.input[MIXER_IN_STABILIZED_YAW]   = getManualDeflection(FD_YAW);
+    // BOXPASSTHROUGH/BOXMANUAL bypass PID/leveling entirely, taking whatever the RC channel
+    // currently reads. During a real signal loss, aux/mode channels hold their last value
+    // (RX_FAILSAFE_MODE_HOLD is the default for them -- see rx.c), so a switch that happened to
+    // be left engaged the moment the link dropped would otherwise keep commanding raw/stale
+    // stick position straight to the surfaces for as long as failsafe is active, defeating the
+    // self-leveling failsafe.c's FAILSAFE_MODE is specifically meant to provide (see
+    // leveling.c's angleModeApply(), which FAILSAFE_MODE/RTH_MODE/GPS_RESCUE_MODE already
+    // trigger). Once failsafe is genuinely active, it takes priority over both regardless of
+    // switch state.
+    if (!failsafeIsActive()) {
+        // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels, bypassing the
+        // rates/expo curve as well as PID - direct radio to surfaces. Takes priority over MANUAL
+        // if both happen to be active at once.
+        if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
+            mixer.input[MIXER_IN_STABILIZED_ROLL]  = mixer.input[MIXER_IN_RC_CHANNEL_ROLL];
+            mixer.input[MIXER_IN_STABILIZED_PITCH] = mixer.input[MIXER_IN_RC_CHANNEL_PITCH];
+            // Yaw command is reversed in setpoint.c relative to raw RC (unlike other axes);
+            // keep the same reversal here so passthrough yaw direction matches stabilized.
+            mixer.input[MIXER_IN_STABILIZED_YAW]   = -mixer.input[MIXER_IN_RC_CHANNEL_YAW];
+            // No raw RC channel is mapped to the independent TV axes, so the only safe
+            // bypass is neutral: zero the TV stabilized inputs rather than leave any
+            // TV-driven actuator still under PID stabilization during a passthrough bailout.
+            mixer.input[MIXER_IN_STABILIZED_TV_ROLL]  = 0;
+            mixer.input[MIXER_IN_STABILIZED_TV_PITCH] = 0;
+            mixer.input[MIXER_IN_STABILIZED_TV_YAW]   = 0;
+        }
+        // BOXMANUAL mode: replace stabilized inputs with the same rates/expo-shaped setpoint the
+        // PID rate loop targets, but skip the gyro-corrected PID output itself - same stick feel as
+        // stabilized flight, no stabilization. getManualDeflection() already matches the stabilized
+        // sign convention (yaw included), so no extra reversal is needed here.
+        else if (IS_RC_MODE_ACTIVE(BOXMANUAL)) {
+            mixer.input[MIXER_IN_STABILIZED_ROLL]  = getManualDeflection(FD_ROLL);
+            mixer.input[MIXER_IN_STABILIZED_PITCH] = getManualDeflection(FD_PITCH);
+            mixer.input[MIXER_IN_STABILIZED_YAW]   = getManualDeflection(FD_YAW);
+        }
     }
 
     // Update throttle (governor holds RPM/throttle per its configured mode when BOXGOVERNOR is engaged)
@@ -330,6 +342,18 @@ static void mixerUpdateInputs(void)
     // no-op (returns 0) whenever the mode is inactive or the assist isn't configured/triggered.
     throttle = constrainf(throttle + autoHoverThrottleBoost(), 0.0f, 1.0f);
 #endif
+    // While any failsafe procedure is active (auto-land, drop, or GPS rescue -- not just the
+    // rescue case), command failsafe_throttle instead of whatever rcInput[THROTTLE] currently
+    // reads. That's normally the RX's own per-channel fallback, which by default cuts the
+    // motor -- fine for a plain glide-down, but a GPS rescue flying home needs real cruise
+    // power. failsafe_throttle already existed as a CLI/MSP setting (documented "throttle level
+    // used for landing") but was never wired into the flight code; its default (1000us = off)
+    // keeps existing configs' behaviour unchanged unless the user raises it. Once failsafe.c
+    // actually disarms (FAILSAFE_LANDED), motors.c's own independent ARMING_FLAG(ARMED) gate
+    // zeroes motor output regardless of this value, so no extra phase-gating is needed here.
+    if (failsafeIsActive()) {
+        throttle = failsafeGetThrottle();
+    }
     mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, governorApply(throttle));
 }
 
