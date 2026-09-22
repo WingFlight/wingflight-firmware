@@ -141,6 +141,13 @@ generic per-motor RPM/gear-ratio handling now, not heli-specific:
   `motor2speed`. This changes the log field/column names, so blackbox log
   tooling needs to follow.
 
+Renamed the RC adjustment function `ADJUSTMENT_GOV_HEADSPEED` ->
+`ADJUSTMENT_GOV_RPM` (numeric id 80 unchanged) for the same reason -- the
+governor now targets a plain RPM value (`governor_rpm`), not a
+helicopter-specific "headspeed". This id has no `get_`/`set_` implementation
+in `rc_adjustments.c` yet, so it's an identifier-only rename with no wire or
+runtime effect.
+
 
 ## MSP Changes
 
