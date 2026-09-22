@@ -135,13 +135,24 @@ static inline void mixerApplyInputLimit(int index, float value)
     const float in_min = in->min / 1000.0f;
     const float in_max = in->max / 1000.0f;
 
-    // Constrain and saturate
+    // Constrain and saturate. +-Inf are still correctly caught below even
+    // under -ffast-math (see constrainf() in common/maths.h). A NaN input
+    // (a bad sensor read, a PID/setpoint computation gone wrong, a
+    // misconfigured rc.c deadband/deflection pair, ...) fails every
+    // comparison and would otherwise fall through to the final `else` and
+    // reach every servo/motor fed from this input untouched -- isfinitef()
+    // catches that remaining case without changing how Inf is already
+    // handled. isnan() itself can't be used for this; see isfinitef().
     if (value > in_max) {
         mixer.input[index] = in_max;
         mixerSaturateInput(index);
     }
     else if (value < in_min) {
         mixer.input[index] = in_min;
+        mixerSaturateInput(index);
+    }
+    else if (!isfinitef(value)) {
+        mixer.input[index] = 0;
         mixerSaturateInput(index);
     }
     else {
@@ -232,6 +243,13 @@ static void mixerUpdateRules(void)
             if (mixerRules(i)->speed > 0) {
                 out = slewLimit(mixer.ruleOutput[i], out, 1200.0f * pidGetDT() / mixerRules(i)->speed);
             }
+
+            // Guard before this feeds back into ruleOutput: a NaN stored here
+            // would poison every future slewLimit() call on this rule forever
+            // (NaN - NaN is still NaN), and would otherwise reach mixer.output[]
+            // -- and from there every servo/motor -- untouched.
+            if (!isfinitef(out))
+                out = 0;
             mixer.ruleOutput[i] = out;
 
             switch (mixerRules(i)->oper)
