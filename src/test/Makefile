@@ -510,17 +510,21 @@ COMMON_FLAGS = \
 	-Wall \
 	-Wextra \
 	-Werror \
-	-Wno-error=unused-command-line-argument \
 	-ggdb3 \
 	-O0 \
 	-DUNIT_TEST \
 	-isystem $(GTEST_DIR)/include \
 	-isystem $(GMOCK_DIR)/include \
 	-MMD -MP \
-	-Wno-c99-extensions \
-	-Wno-reorder \
 	-pipe \
 	-Wno-missing-field-initializers
+
+ifeq ($(CC),clang)
+COMMON_FLAGS += \
+	-Wno-error=unused-command-line-argument \
+	-Wno-c99-extensions \
+	-Wno-reorder
+endif
 
 CC_VERSION = $(shell $(CC) -dumpversion)
 CXX_VERSION = $(shell $(CXX) -dumpversion)

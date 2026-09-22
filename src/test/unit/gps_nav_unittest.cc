@@ -24,6 +24,7 @@
 
 extern "C" {
 #include "common/axis.h"
+#include "fc/runtime_config.h"
 #include "flight/gps_nav.h"
 #include "io/gps.h"
 #include "pg/gps_nav.h"
@@ -35,7 +36,11 @@ extern "C" {
 gpsSolutionData_t gpsSol;
 int32_t GPS_home[2];
 bool gpsIsHealthy(void) { return true; }
-int getEstimatedAltitudeCm(void) { return 0; }
+// STATE(GPS_FIX_HOME) (navCanRTH()) reads this global directly, same as the real firmware.
+uint8_t stateFlags = 0;
+// Settable by tests directly, same pattern as gpsSol.llh.lat/lon below.
+int32_t stubAltitudeCm = 0;
+int getEstimatedAltitudeCm(void) { return stubAltitudeCm; }
 
 // Same contract as io/gps.c: the bearing FROM the current position TO the destination, in
 // centidegrees clockwise from north, in [0, 36000). Positions are 1e-7 degrees. Flat-earth with
@@ -46,7 +51,10 @@ void GPS_distance_cm_bearing(int32_t *currentLat1, int32_t *currentLon1, int32_t
     const double north = *destinationLat2 - *currentLat1;
     const double east = *destinationLon2 - *currentLon1;
     *dist = static_cast<uint32_t>(std::sqrt(north * north + east * east) * 1.1119);
-    double degrees = std::atan2(east, north) * 180.0 / M_PI;
+    // M_PI isn't standard C++ (only guaranteed under platform-specific feature-test macros,
+    // e.g. missing by default on MinGW's <cmath>), so use a literal instead.
+    constexpr double kPi = 3.14159265358979323846;
+    double degrees = std::atan2(east, north) * 180.0 / kPi;
     if (degrees < 0) {
         degrees += 360.0;
     }
@@ -151,6 +159,65 @@ TEST_F(GpsNavLoiterTest, TheApproachIgnoresTheLoiterDirection)
     const Side farSouth = { "150 m south", -150 * UNITS_PER_METER, 0, WEST };
     EXPECT_EQ(0, rollAt(farSouth, NAV_LOITER_CW, NORTH));
     EXPECT_EQ(0, rollAt(farSouth, NAV_LOITER_CCW, NORTH));
+}
+
+// Altitude hold sign (regression test for H-3, see Flight Dynamics tech reference). Pitch in
+// this codebase's convention is positive NOSE-DOWN, same as attitude.raw[]/navAngle[] throughout
+// (see gps_nav.c's own comment, cross-referenced against autohover.c's bench-confirmed +900 =
+// nose-down / -900 = nose-up). Below target altitude must command a negative (nose-up, climb)
+// pitch target; above target must command positive (nose-down, descend).
+class GpsNavAltitudeTest : public ::testing::Test {
+  protected:
+    void SetUp() override
+    {
+        pgResetAll();
+        gpsNavConfigMutable()->minSats = 6;
+        gpsNavConfigMutable()->maxPitchAngleDeg = 15;
+        gpsNavConfigMutable()->altitudeKp = 100; // 1.0 deg pitch per meter of altitude error
+        gpsNavConfigMutable()->rthAltitudeM = 50;
+        gpsSol.numSat = 12;
+        gpsSol.llh.lat = 0;
+        gpsSol.llh.lon = 0;
+        GPS_home[GPS_LATITUDE] = 0;
+        GPS_home[GPS_LONGITUDE] = 0;
+        stubAltitudeCm = 0;
+    }
+
+    // Starts an RTH toward GPS_home (0,0) with the configured rthAltitudeM as target, then
+    // reports the current altitude as currentAltitudeM and returns the resulting pitch command
+    // in centidegrees.
+    int32_t pitchAt(int32_t currentAltitudeM)
+    {
+        navRthStart();
+        stubAltitudeCm = currentAltitudeM * 100;
+        updateGpsNav();
+        return navAngle[AI_PITCH];
+    }
+};
+
+TEST_F(GpsNavAltitudeTest, BelowTargetCommandsNoseUp)
+{
+    // 50 m target, aircraft at 30 m: 20 m below, needs to climb -> negative (nose-up) pitch.
+    EXPECT_LT(pitchAt(30), 0);
+}
+
+TEST_F(GpsNavAltitudeTest, AboveTargetCommandsNoseDown)
+{
+    // 50 m target, aircraft at 70 m: 20 m above, needs to descend -> positive (nose-down) pitch.
+    EXPECT_GT(pitchAt(70), 0);
+}
+
+TEST_F(GpsNavAltitudeTest, AtTargetCommandsLevelPitch)
+{
+    EXPECT_EQ(0, pitchAt(50));
+}
+
+TEST_F(GpsNavAltitudeTest, PitchIsClampedToMaxPitchAngleDeg)
+{
+    // Grossly below target: clamped to -maxPitchAngleDeg (15 deg = 1500 centidegrees).
+    EXPECT_EQ(-1500, pitchAt(-1000));
+    // Grossly above target: clamped to +maxPitchAngleDeg.
+    EXPECT_EQ(1500, pitchAt(1000));
 }
 
 } // namespace

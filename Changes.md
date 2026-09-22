@@ -819,3 +819,28 @@ explicitly defers to failsafe.c for the duration of its own GPS-rescue phase.
 No unit test coverage exists for failsafe, leveling, airborne detection, or GPS navigation --
 verified with a full build and by tracing the state machine for each `failsafe_procedure`/
 `failsafe_switch_mode` combination; bench-test (props off) before trusting this in the field.
+
+### GPS RTH/loiter altitude hold was commanding the wrong pitch direction
+
+`updateGpsNav()`'s altitude term (`gps_nav.c`) computed `pitchDdeg = altitudeKp * (targetAltitude -
+currentAltitude)` and fed it straight into the pitch target, positive when below target. Pitch in
+this codebase's convention is positive **nose-down** (bench-confirmed in `autohover.c`: `+900`
+drives the elevator toward nose-down, `-900` is the physically-vertical nose-up target -- the same
+convention `attitude.raw[]`/`navAngle[]` use throughout, see `leveling.c`'s
+`calcLevelErrorAngle()`). So being below target altitude commanded nose-**down**, diving further
+away from it, and being above target commanded nose-up, climbing further away -- actively
+divergent, not just ineffective. This affected both `BOXRTH`/`BOXLOITER` (already live) and the
+new GPS-rescue failsafe procedure above, which now depends on this same code with no pilot able to
+intervene. The roll/bearing term was unaffected (already fixed in #139); only the pitch/altitude
+term was inverted. Fixed by negating it. Added `GpsNavAltitudeTest` to `gps_nav_unittest.cc`
+(below/above/at target, and clamping to `maxPitchAngleDeg`); confirmed the new tests fail without
+the fix and pass with it.
+
+Also: `src/test/Makefile` unconditionally passed a few clang-only warning flags
+(`-Wno-c99-extensions`, `-Wno-reorder`, `-Wno-error=unused-command-line-argument`) that GCC
+rejects as unrecognized under `-Werror`, breaking `make test CC=gcc CXX=g++` on a machine without
+clang installed (the comment right above them already said they were clang-specific; they just
+weren't gated). Now gated behind `ifeq ($(CC),clang)`. Also fixed a latent MinGW portability gap
+in `gps_nav_unittest.cc`'s own test stub: `M_PI` isn't standard C++ and needs a platform-specific
+feature-test macro that MinGW's `<cmath>` doesn't define by default -- replaced with a local
+literal.
