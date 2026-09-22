@@ -400,11 +400,6 @@ static inline float limitSpeed(float old, float new, float speed)
     return new;
  }
 
- static inline float limitRatio(float old, float new, float ratio)
- {
-    return old + (new - old) * ratio;
- }
-
 #ifdef USE_SERVO_GEOMETRY_CORRECTION
 float geometryCorrection(float pos)
 {
@@ -421,7 +416,6 @@ float geometryCorrection(float pos)
 void servoUpdate(void)
 {
     float input[MAX_SUPPORTED_SERVOS];
-    float cyclic_ratio = 1;
 
     for (int i = 0; i < servoCount; i++)
     {
@@ -447,13 +441,6 @@ void servoUpdate(void)
             input[i] += evaluateCurvePoints(curve->points, curve->count,
                                              input[i] * 1000.0f, 0.0f) / 1000.0f;
         }
-
-        if (servo->speed && mixerIsCyclicServo(i)) {
-            const float limit = 1200 * pidGetDT() / servo->speed;
-            const float speed = fabsf(input[i] - servoInput[i]);
-            if (speed > limit)
-                cyclic_ratio = fminf(cyclic_ratio, limit / speed);
-        }
     }
 
     for (int i = 0; i < servoCount; i++)
@@ -461,12 +448,12 @@ void servoUpdate(void)
         const servoParam_t *servo = servoParams(i);
         float pos = input[i];
 
-        if (servo->speed > 0) {
-            if (mixerIsCyclicServo(i))
-                pos = limitRatio(servoInput[i], pos, cyclic_ratio);
-            else
-                pos = limitSpeed(servoInput[i], pos, servo->speed);
-        }
+        // Each servo is speed-limited independently. Wing surfaces (aileron,
+        // elevator, rudder, ...) move on their own hinges, unlike a
+        // helicopter swashplate, so one servo running into its speed limit
+        // must never slow down an unrelated surface.
+        if (servo->speed > 0)
+            pos = limitSpeed(servoInput[i], pos, servo->speed);
 
         servoInput[i] = pos;
 

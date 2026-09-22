@@ -44,10 +44,6 @@ static serialPort_t *sbusOutPort = NULL;
 // Storage for speed limiting (similar to servoInput in servos.c)
 static FAST_DATA_ZERO_INIT float sbusServoInput[SBUS_OUT_CHANNELS];
 
-// Cached cyclic ratio (calculated once per update cycle)
-static FAST_DATA_ZERO_INIT float sbusCyclicRatio = 1.0f;
-static FAST_DATA_ZERO_INIT bool sbusCyclicRatioValid = false;
-
 static void sbusOutPrepareSbusFrame(sbusOutFrame_t *frame,
                                     uint16_t *channels)
 {
@@ -113,58 +109,6 @@ static inline float sbusLimitSpeed(float old, float new, float speed)
     return new;
 }
 
-// Helper function similar to limitRatio in servos.c
-static inline float sbusLimitRatio(float old, float new, float ratio)
-{
-    return old + (new - old) * ratio;
-}
-
-// Calculate cyclic ratio for all channels (called once per update cycle)
-static void sbusOutCalculateCyclicRatio(void)
-{
-    float cyclic_ratio = 1.0f;
-    
-    for (int ch = 0; ch < SBUS_OUT_CHANNELS; ch++)
-    {
-        const uint8_t servoIndex = BUS_SERVO_OFFSET + ch;
-
-        if (servoIndex >= MAX_SUPPORTED_SERVOS)
-            continue;
-
-        // Cloned channels mirror the PWM output verbatim (see
-        // sbusOutGetValueMixer) and never consult their own servoParams, so
-        // their speed/cyclic setting shouldn't factor into the shared ratio.
-        if (busServoConfig()->cloneFromPwm && ch < getServoCount())
-            continue;
-
-        const servoParam_t *servo = servoParams(servoIndex);
-
-        // Get normalized mixer output (-1.0 to 1.0), or servo override when disarmed
-        float input;
-        if (!ARMING_FLAG(ARMED) && hasServoOverride(servoIndex))
-            input = getServoOverride(servoIndex) / 1000.0f;
-        else
-            input = mixerGetServoOutput(servoIndex);
-
-#ifdef USE_SERVO_GEOMETRY_CORRECTION
-        // Apply geometry correction if enabled for this servo
-        if (servo->flags & SERVO_FLAG_GEO_CORR)
-            input = geometryCorrection(input);
-#endif
-
-        // Calculate cyclic ratio for speed limiting (if this is a cyclic servo)
-        if (servo->speed && mixerIsCyclicServo(servoIndex)) {
-            const float limit = 1200 * pidGetDT() / servo->speed;
-            const float speed = fabsf(input - sbusServoInput[ch]);
-            if (speed > limit)
-                cyclic_ratio = fminf(cyclic_ratio, limit / speed);
-        }
-    }
-    
-    sbusCyclicRatio = cyclic_ratio;
-    sbusCyclicRatioValid = true;
-}
-
 // Process a single SBUS mixer channel with same logic as servoUpdate()
 // Returns processed value in microseconds
 float sbusOutGetValueMixer(uint8_t channel)
@@ -205,18 +149,12 @@ float sbusOutGetValueMixer(uint8_t channel)
 
     float pos = input;
 
-    // Apply speed limiting
-    if (servo->speed > 0) {
-        if (mixerIsCyclicServo(servoIndex)) {
-            // Use cached cyclic ratio (must be calculated first via sbusOutCalculateCyclicRatio)
-            if (!sbusCyclicRatioValid)
-                sbusOutCalculateCyclicRatio();
-            pos = sbusLimitRatio(sbusServoInput[channel], pos, sbusCyclicRatio);
-        }
-        else {
-            pos = sbusLimitSpeed(sbusServoInput[channel], pos, servo->speed);
-        }
-    }
+    // Apply speed limiting. Each SBUS channel is limited independently, same
+    // as servoUpdate() in servos.c -- there is no swashplate to keep in
+    // plane on a fixed-wing airframe, so one channel's overrun must not
+    // couple into another, unrelated surface.
+    if (servo->speed > 0)
+        pos = sbusLimitSpeed(sbusServoInput[channel], pos, servo->speed);
 
     // Store input for next iteration
     sbusServoInput[channel] = pos;
@@ -241,16 +179,9 @@ float sbusOutGetValueMixer(uint8_t channel)
 // Process all SBUS mixer channels (batch version for sbusOutUpdate)
 void sbusOutProcessMixerChannels(float output[SBUS_OUT_CHANNELS])
 {
-    // Calculate cyclic ratio once for all channels
-    sbusOutCalculateCyclicRatio();
-    
-    // Process each channel
     for (int ch = 0; ch < SBUS_OUT_CHANNELS; ch++) {
         output[ch] = sbusOutGetValueMixer(ch);
     }
-    
-    // Invalidate cyclic ratio for next update cycle
-    sbusCyclicRatioValid = false;
 }
 
 static uint16_t sbusOutConvertToSbus(uint8_t channel, float pwm)

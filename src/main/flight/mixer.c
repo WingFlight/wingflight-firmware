@@ -69,8 +69,6 @@ typedef struct {
     int16_t         override[MIXER_INPUT_COUNT];
     uint16_t        saturation[MIXER_INPUT_COUNT];
 
-    bitmap_t        cyclicMapping;
-
 } mixerData_t;
 
 static FAST_DATA_ZERO_INIT mixerData_t mixer;
@@ -126,12 +124,6 @@ bool isMixerOverrideActive(void)
     }
     return false;
 }
-
-bool mixerIsCyclicServo(uint8_t index)
-{
-    return (mixer.cyclicMapping & BIT(MIXER_SERVO_OFFSET + index));
-}
-
 
 /** Internal functions **/
 
@@ -478,21 +470,11 @@ void set_ADJUSTMENT_DIFF_THRUST_YAW_GAIN(int value)
 static void INIT_CODE setMapping(uint8_t in, uint8_t out)
 {
     mixer.mapping[out] = BIT(in);
-
-    if (in == MIXER_IN_STABILIZED_ROLL || in == MIXER_IN_STABILIZED_PITCH ||
-        in == MIXER_IN_RC_COMMAND_ROLL || in == MIXER_IN_RC_COMMAND_PITCH) {
-        mixer.cyclicMapping |= BIT(out);
-    }
 }
 
 static void INIT_CODE addMapping(uint8_t in, uint8_t out)
 {
     mixer.mapping[out] |= BIT(in);
-
-    if (in == MIXER_IN_STABILIZED_ROLL || in == MIXER_IN_STABILIZED_PITCH ||
-        in == MIXER_IN_RC_COMMAND_ROLL || in == MIXER_IN_RC_COMMAND_PITCH) {
-        mixer.cyclicMapping |= BIT(out);
-    }
 }
 
 #define addServoMapping(INDEX,SERVO)    addMapping((INDEX), MIXER_SERVO_OFFSET + (SERVO))

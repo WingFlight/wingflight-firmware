@@ -693,3 +693,22 @@ stability debounce's live-tracking issue.
 
 The attitiude sensors where found to be out by a factor of 10.  The scaling
 in the firmware has been adjusted to set these correctly. (#313)
+
+### Servo `speed` limiting no longer couples independent wing surfaces
+
+`servoUpdate()` (PWM) and the SBUS-out mixer path shared a Rotorflight-heritage
+"cyclic" mode: any servo fed by stabilized/RC roll or pitch was synchronized
+with every other such servo, so that one overrunning its `speed` limit scaled
+*all* of them down together to keep a helicopter swashplate in plane. On a
+fixed-wing airframe roll and pitch feed independent, unrelated surfaces (e.g.
+left aileron and elevator), so a slow aileron servo incorrectly slowed the
+elevator too. `DEFAULT_SERVO_SPEED` is 0, so this only showed up once a pilot
+configured a nonzero `servo_speed`. (#109)
+
+Each servo (and each SBUS-out channel) is now speed-limited independently, in
+both `src/main/flight/servos.c` and `src/main/drivers/sbus_output.c`. The
+swashplate-coupling logic, `mixerIsCyclicServo()` and the mixer's
+`cyclicMapping` bitmap, is removed entirely -- Wingflight targets fixed-wing
+airframes only and has no cyclic/swashplate output to keep synchronized. No
+MSP or CLI changes; `servo_speed` behaves the same for servos that were never
+coupled, and now behaves correctly for the roll/pitch-fed ones that were.
