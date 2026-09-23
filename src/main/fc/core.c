@@ -354,13 +354,19 @@ void updateArmingStatus(void)
         }
 
 #ifdef USE_GPS_RESCUE
-        if (gpsRescueIsConfigured()) {
+        // gpsRescueIsConfigured() only catches the legacy trigger (failsafe_procedure ==
+        // FAILSAFE_PROCEDURE_GPS_RESCUE, or BOXGPSRESCUE mapped). On this fork BOXGPSRESCUE
+        // is just an alias for BOXRTH -- both drive the same fixed-wing RTH_MODE /
+        // navRthStart() path (see the USE_GPS_NAV block below) -- so a craft wired with only
+        // BOXRTH, the natural fixed-wing choice, got no prearm GPS-fix protection at all.
+        // Treat BOXRTH being mapped the same as gpsRescueIsConfigured().
+        if (gpsRescueIsConfigured() || isModeActivationConditionPresent(BOXRTH)) {
             if (gpsRescueConfig()->allowArmingWithoutFix || STATE(GPS_FIX) || ARMING_FLAG(WAS_EVER_ARMED)) {
                 unsetArmingDisabled(ARMING_DISABLED_GPS);
             } else {
                 setArmingDisabled(ARMING_DISABLED_GPS);
             }
-            if (IS_RC_MODE_ACTIVE(BOXGPSRESCUE)) {
+            if (IS_RC_MODE_ACTIVE(BOXGPSRESCUE) || IS_RC_MODE_ACTIVE(BOXRTH)) {
                 setArmingDisabled(ARMING_DISABLED_RESC);
             } else {
                 unsetArmingDisabled(ARMING_DISABLED_RESC);
