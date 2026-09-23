@@ -83,13 +83,12 @@ float governorApply(float throttle)
     // entirely while failsafe is active so the (near-zero) failsafe throttle passes straight through,
     // same as every other flight mode.
     //
-    // failsafeIsActive() alone is not enough to catch this on a real dropped link: it only reflects
-    // failsafeUpdateState()'s phase machine, which is gated behind failsafeIsMonitoring() --
-    // currently permanently false because failsafeStartMonitoring() is a stub (see failsafe.c).
-    // rxIsReceivingSignal() is driven straight from rx.c's per-cycle channel validity check
-    // (detectAndApplySignalLossBehaviour), independent of that stub, and goes false immediately for
-    // both a real signal loss and a BOXFAILSAFE switch -- so it's checked first here. failsafeIsActive()
-    // is kept as a second, belt-and-suspenders trigger so this still works once monitoring is restored.
+    // failsafeIsActive() alone is not quite enough to catch this the instant a real link drops: it
+    // only reflects failsafeUpdateState()'s phase machine, which first waits out rx.c's own ~100ms
+    // hold (detectAndApplySignalLossBehaviour) before failsafeIsMonitoring() sees a bad signal and
+    // starts the phase machine. rxIsReceivingSignal() is driven straight from that same per-cycle
+    // channel validity check, so it's checked first here to close that ~100ms gap. failsafeIsActive()
+    // is kept as a second, belt-and-suspenders trigger once the phase machine has actually engaged.
     const bool failsafeActive = !rxIsReceivingSignal() || failsafeIsActive();
 
     if (!IS_RC_MODE_ACTIVE(BOXGOVERNOR) || failsafeActive) {
