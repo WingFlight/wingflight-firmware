@@ -102,6 +102,7 @@ class GpsNavLoiterTest : public ::testing::Test {
         gpsSol.numSat = 12;
         gpsSol.llh.lat = 0;
         gpsSol.llh.lon = 0;
+        stateFlags = GPS_FIX; // navIsHealthy() requires a fix, not just numSat/link health
     }
 
     // Start loitering about the origin, then put the aircraft on `side` flying `course`.
@@ -181,6 +182,7 @@ class GpsNavAltitudeTest : public ::testing::Test {
         GPS_home[GPS_LATITUDE] = 0;
         GPS_home[GPS_LONGITUDE] = 0;
         stubAltitudeCm = 0;
+        stateFlags = GPS_FIX; // navIsHealthy() requires a fix, not just numSat/link health
     }
 
     // Starts an RTH toward GPS_home (0,0) with the configured rthAltitudeM as target, then
@@ -218,6 +220,71 @@ TEST_F(GpsNavAltitudeTest, PitchIsClampedToMaxPitchAngleDeg)
     EXPECT_EQ(-1500, pitchAt(-1000));
     // Grossly above target: clamped to +maxPitchAngleDeg.
     EXPECT_EQ(1500, pitchAt(1000));
+}
+
+// navIsHealthy()/nav.active health handling. UBLOX PVT sets gpsSol.numSat from the frame's
+// numSV field unconditionally, independent of whether that frame carried a valid 3D fix (see
+// gps.c's UBLOX_parse_gps()), so a receiver can report a healthy satellite count with
+// STATE(GPS_FIX) false. Regression tests for that gap, and for the switch-latch bug where a
+// temporary health loss left nav permanently disengaged until the pilot cycled the mode switch.
+class GpsNavHealthTest : public ::testing::Test {
+  protected:
+    void SetUp() override
+    {
+        pgResetAll();
+        gpsNavConfigMutable()->loiterRadiusM = 75;
+        gpsNavConfigMutable()->minSats = 6;
+        gpsNavConfigMutable()->maxBankAngleDeg = 30;
+        gpsNavConfigMutable()->bearingKp = 100;
+        gpsSol.numSat = 12;
+        gpsSol.llh.lat = 0;
+        gpsSol.llh.lon = 0;
+        stateFlags = GPS_FIX;
+    }
+
+    // Puts the aircraft 40 m south of the loiter target, inside the radius, flying the wrong
+    // way around a clockwise orbit -- the same "grossly wrong" setup GpsNavLoiterTest uses, so a
+    // healthy update always commands a full-scale (nonzero, saturated) roll correction here.
+    void placeAircraftForNonzeroRoll()
+    {
+        gpsNavConfigMutable()->loiterDirection = NAV_LOITER_CW;
+        gpsSol.llh.lat = -40 * 90; // UNITS_PER_METER inlined: 1e-7 deg/m at the equator
+        gpsSol.llh.lon = 0;
+        gpsSol.groundCourse = EAST; // opposite of the CW tangent (WEST) at this position
+    }
+};
+
+TEST_F(GpsNavHealthTest, HealthySatCountWithNoFixCommandsNothing)
+{
+    navLoiterStart();
+    placeAircraftForNonzeroRoll();
+
+    stateFlags = 0; // numSat stays 12 (well above minSats): link/sat-count alone must not pass
+    updateGpsNav();
+
+    EXPECT_EQ(0, navAngle[AI_ROLL]);
+}
+
+TEST_F(GpsNavHealthTest, ResumesTowardOriginalTargetAfterFixIsReacquired)
+{
+    navLoiterStart();
+    placeAircraftForNonzeroRoll();
+
+    updateGpsNav();
+    const int32_t healthyRoll = navAngle[AI_ROLL];
+    ASSERT_NE(0, healthyRoll) << "test setup should command a nonzero correction when healthy";
+
+    // Fix lost mid-session (switch/mode stays engaged -- core.c never calls navLoiterStart()
+    // again while the pilot leaves the switch on).
+    stateFlags = 0;
+    updateGpsNav();
+    EXPECT_EQ(0, navAngle[AI_ROLL]) << "should command nothing while unhealthy, not a stale value";
+
+    // Fix reacquired, aircraft hasn't moved, switch was never touched (no navLoiterStart() call
+    // here): nav must resume toward the original target on its own.
+    stateFlags = GPS_FIX;
+    updateGpsNav();
+    EXPECT_EQ(healthyRoll, navAngle[AI_ROLL]);
 }
 
 } // namespace

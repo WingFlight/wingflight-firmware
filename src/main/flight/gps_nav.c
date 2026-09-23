@@ -56,7 +56,13 @@ int32_t navAngle[ANGLE_INDEX_COUNT] = { 0, 0 };
 
 static bool navIsHealthy(void)
 {
-    return gpsIsHealthy() && gpsSol.numSat >= gpsNavConfig()->minSats;
+    // gpsIsHealthy() only means GPS frames are being received -- it says nothing about whether
+    // the last one was actually a fix. UBLOX PVT in particular sets gpsSol.numSat from
+    // _buffer.pvt.numSV unconditionally, independent of fixType/NAV_STATUS_FIX_VALID (see
+    // gps.c's UBLOX_parse_gps()), so a receiver can report a healthy satellite count with no
+    // valid fix at all. Without this, nav would keep commanding bank/pitch toward
+    // gpsSol.llh.lat/lon even while that position is stale or invalid.
+    return gpsIsHealthy() && STATE(GPS_FIX) && gpsSol.numSat >= gpsNavConfig()->minSats;
 }
 
 // Whether a return-to-home is even meaningful right now: needs a healthy GPS fix (same bar
@@ -117,7 +123,14 @@ void updateGpsNav(void)
     }
 
     if (!navIsHealthy()) {
-        navStop();
+        // Zero the commanded bank/pitch (falls back to plain Angle-mode leveling) but leave
+        // nav.active/target set, rather than navStop()-ing outright: core.c's RTH_MODE/LOITER_MODE
+        // switch-latch (wasRthActive/wasLoiterActive) only calls navRthStart()/navLoiterStart()
+        // again on the switch's off->on edge, so a hard stop here would leave nav permanently
+        // disengaged -- commanding nothing -- until the pilot cycles the switch, even after GPS
+        // recovers. This resumes toward the original target the moment health returns.
+        navAngle[AI_ROLL] = 0;
+        navAngle[AI_PITCH] = 0;
         return;
     }
 

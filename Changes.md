@@ -836,6 +836,29 @@ term was inverted. Fixed by negating it. Added `GpsNavAltitudeTest` to `gps_nav_
 (below/above/at target, and clamping to `maxPitchAngleDeg`); confirmed the new tests fail without
 the fix and pass with it.
 
+### GPS RTH/Loiter could navigate on a stale position, and wouldn't resume after a fix drop
+
+Two bugs found in code review of the GPS Navigation work above, both in `gps_nav.c`:
+
+- `navIsHealthy()` checked `gpsIsHealthy()` (GPS frames are being received) and satellite count,
+  but not `STATE(GPS_FIX)`. `gpsIsHealthy()` says nothing about whether the last frame was
+  actually a fix, and UBLOX PVT sets `gpsSol.numSat` from the frame's `numSV` field
+  unconditionally, independent of `fixType`/`NAV_STATUS_FIX_VALID` -- so a receiver could report a
+  healthy satellite count with no valid fix at all, and RTH/Loiter would keep commanding bank/pitch
+  toward `gpsSol.llh.lat/lon` using that stale or invalid position. Fixed by requiring
+  `STATE(GPS_FIX)` too.
+- When GPS did become unhealthy, `updateGpsNav()` called `navStop()`, but `fc/core.c`'s
+  `wasRthActive`/`wasLoiterActive` switch-latch only calls `navRthStart()`/`navLoiterStart()`
+  again on the mode switch's off->on edge -- so once `nav.active` was cleared, it stayed cleared
+  (RTH_MODE/LOITER_MODE remained flagged "on", but nav commanded nothing) until the pilot cycled
+  the switch, even after GPS recovered. Fixed by zeroing the commanded bank/pitch on a health loss
+  instead of stopping nav outright, so it resumes toward the original target the moment health
+  returns, with no pilot action needed.
+
+Added `GpsNavHealthTest` to `gps_nav_unittest.cc` (healthy satellite count with no fix commands
+nothing; nav resumes toward the original target after a fix is lost and reacquired, without
+restarting).
+
 Also: `src/test/Makefile` unconditionally passed a few clang-only warning flags
 (`-Wno-c99-extensions`, `-Wno-reorder`, `-Wno-error=unused-command-line-argument`) that GCC
 rejects as unrecognized under `-Werror`, breaking `make test CC=gcc CXX=g++` on a machine without
