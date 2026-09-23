@@ -9,18 +9,17 @@ the APIs or flight performance.
 The following receiver and telemetry protocols are no longer compiled in
 (`src/main/target/common_pre.h`):
 
-- RX: ImmersionRC GHOST (`USE_SERIALRX_GHST`, and with it `USE_TELEMETRY_GHST`),
-  CPPM (`USE_PPM`) and MSP RX (`USE_RX_MSP`).
+- RX: ImmersionRC GHOST (`USE_SERIALRX_GHST`, and with it `USE_TELEMETRY_GHST`)
+  and CPPM (`USE_PPM`).
 - Telemetry: FrSky Hub (`USE_TELEMETRY_FRSKY_HUB`), MAVLink
   (`USE_TELEMETRY_MAVLINK`) and LTM (`USE_TELEMETRY_LTM`).
 
 FrSky SmartPort telemetry is kept because F.PORT, F.PORT2 and FBUS telemetry
-and MSP over telemetry depend on it.
+and MSP over telemetry depend on it. MSP RX is also kept.
 
-The source files, the `serialrx_provider` values, the `FEATURE_RX_PPM` /
-`FEATURE_RX_MSP` bits and the serial port function bits are unchanged, so IDs
-stay stable. `FEATURE_RX_PPM` and `FEATURE_RX_MSP` are cleared at boot
-(`src/main/config/config.c`). A port still set to a removed telemetry function
+The source files, the `serialrx_provider` values, the `FEATURE_RX_PPM` bit and
+the serial port function bits are unchanged, so IDs stay stable.
+`FEATURE_RX_PPM` is cleared at boot (`src/main/config/config.c`). A port still set to a removed telemetry function
 stays configured but idle. A `serialrx_provider` still set to GHST leaves the
 receiver unconfigured. The FrSky Hub CLI settings (`frsky_default_lat`,
 `frsky_default_long`, `frsky_gps_format`, `frsky_unit`, `frsky_vfas_precision`)

@@ -350,6 +350,7 @@ extern uint8_t _dmaram_end__;
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 1))
 #define USE_BOARD_INFO
 #define USE_RTC_TIME
+#define USE_RX_MSP
 #define USE_CRSF_LINK_STATISTICS
 #define USE_RX_RSSI_DBM
 #endif
