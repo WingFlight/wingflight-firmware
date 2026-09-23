@@ -882,3 +882,23 @@ existing GPS block `0x1121`-`0x112A`) and `smartport.c` (appId `0x5124`, next fr
 `ARMING_DISABLE_FLAGS`, which also covers FPort/FPort2 -- `smartport.c` already serves
 `FSSP_MSPC_FRAME_FPORT` frames on the same sensor table). Not added to any other telemetry
 protocol.
+
+### GPS RESCUE switch removed (was a redundant alias for GPS RTH)
+
+`BOXGPSRESCUE` and `BOXRTH` drove the identical fixed-wing RTH controller
+(`navRthStart()`/`gps_nav.c`) -- the old multirotor hover-descent GPS Rescue algorithm was
+disconnected from both switches earlier (see "Flight-controller failsafe stage 2" above). Two
+switches for the same behavior was confusing, and the prearm GPS-fix check only recognized the
+legacy `BOXGPSRESCUE`/failsafe-procedure trigger, so a craft wired with only `BOXRTH` -- the
+natural fixed-wing choice -- got no GPS-fix protection at all (already fixed separately).
+
+`BOXGPSRESCUE` is now retired: `msp_box.c` no longer registers it (permanentId 46 reserved, not
+reused), so it no longer appears in the Modes tab or any MSP box list. The `boxId_e` enum slot is
+kept and marked reserved (`fc/rc_modes.h`), matching this codebase's existing convention for
+retired boxes (`BOXRESCUE`, `BOXOSD`, `BOXVTXPITMODE`, etc.) -- no renumbering, so existing saved
+configs aren't affected. Any leftover `BOXGPSRESCUE` mode-activation-condition from an older
+config is now cleared unconditionally on load.
+
+The Failsafe tab's Stage 2 "GPS Rescue" *procedure* (`FAILSAFE_PROCEDURE_GPS_RESCUE`) is
+unaffected -- it's a separate config value that also drives the RTH controller automatically on
+signal loss, and still works exactly as before.

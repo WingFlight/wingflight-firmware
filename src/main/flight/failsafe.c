@@ -321,7 +321,7 @@ void failsafeUpdateState(void)
                         case FAILSAFE_PROCEDURE_GPS_RESCUE:
                             if (navCanRTH()) {
                                 // Fly home and orbit using the same fixed-wing RTH controller
-                                // BOXRTH/BOXGPSRESCUE use (navRthStart()/updateGpsNav(), see
+                                // BOXRTH uses (navRthStart()/updateGpsNav(), see
                                 // gps_nav.c) -- not gps_rescue.c's multirotor hover-throttle
                                 // descent, which is neither meaningful nor safe here. RTH_MODE
                                 // (not GPS_RESCUE_MODE) is what actually engages it; the existing

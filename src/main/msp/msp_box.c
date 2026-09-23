@@ -95,7 +95,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     BOXITEM(BOXUSER4, "USER4", 43),
 //    BOXITEM(BOXPIDAUDIO, "PID AUDIO", 44),
     BOXITEM(BOXPARALYZE, "PARALYZE", 45),
-    BOXITEM(BOXGPSRESCUE, "GPS RESCUE", 46),
+//    BOXITEM(BOXGPSRESCUE, "GPS RESCUE", 46), // reserved (redundant alias for BOXRTH removed)
     // permanentId 61/62 also reserved below, near BOXTHRUSTVECTOR -- kept out of numeric order here
     // since these predate the AUTOHOVER/MANUAL/AUTOTRIM/THRUSTVECTOR cluster; see the matching note there
     BOXITEM(BOXLOITER, "GPS LOITER", 61),
@@ -114,6 +114,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     BOXITEM(BOXAUTOHOVER, "AUTO HOVER", 58),
     BOXITEM(BOXMANUAL, "MANUAL", 59),
     BOXITEM(BOXAUTOTRIM, "AUTO TRIM", 60),
+    // permanentId 46 is BOXGPSRESCUE "GPS RESCUE" (see above) -- reserved, do not reuse
     // permanentId 61 is BOXLOITER "GPS LOITER" (see above, near BOXGPSRESCUE) -- do not reuse
     // permanentId 62 is BOXRTH "GPS RTH" (see above, near BOXGPSRESCUE) -- do not reuse
     BOXITEM(BOXTHRUSTVECTOR, "THRUST VECTOR", 63),
@@ -220,9 +221,6 @@ void initActiveBoxIds(void)
 
 #ifdef USE_GPS
     if (featureIsEnabled(FEATURE_GPS)) {
-#ifdef USE_GPS_RESCUE
-        BME(BOXGPSRESCUE);
-#endif
 #ifdef USE_GPS_NAV
         BME(BOXLOITER);
         BME(BOXRTH);

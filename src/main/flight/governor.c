@@ -102,7 +102,7 @@ float governorApply(float throttle)
     // full power outside the (tiny, handover-bounded) idle-hold region below -- defeating the point
     // of a dedicated idle-up switch for safe ground arming/starting.
     //
-    // The isModeActivationConditionPresent() check (same guard used for BOXTELEMETRY/BOXGPSRESCUE/
+    // The isModeActivationConditionPresent() check (same guard used for BOXTELEMETRY/BOXRTH/
     // BOXPREARM elsewhere) is what keeps this from being a footgun: governor_mode is a global gain/
     // curve setup and can legitimately be left at RPM/THROTTLE/RPM_RANGE by someone who never wires
     // up a governor switch at all (e.g. relying on governor_handover alone with the box permanently

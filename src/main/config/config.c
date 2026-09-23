@@ -344,10 +344,13 @@ static void validateAndFixConfig(void)
             failsafeConfigMutable()->failsafe_procedure = FAILSAFE_PROCEDURE_DROP_IT;
         }
 #endif
+    }
 
-        if (isModeActivationConditionPresent(BOXGPSRESCUE)) {
-            removeModeActivationCondition(BOXGPSRESCUE);
-        }
+    // BOXGPSRESCUE was a redundant switch alias for BOXRTH and has been retired (fc/rc_modes.h) --
+    // unconditionally (not just when GPS is unconfigured) clear any leftover assignment from an
+    // older config so it doesn't sit around as a dead switch mapping.
+    if (isModeActivationConditionPresent(BOXGPSRESCUE)) {
+        removeModeActivationCondition(BOXGPSRESCUE);
     }
 
 #if defined(USE_ESC_SENSOR)

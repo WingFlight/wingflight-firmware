@@ -666,7 +666,9 @@ float gpsRescueGetThrottle(void)
 
 bool gpsRescueIsConfigured(void)
 {
-    return failsafeConfig()->failsafe_procedure == FAILSAFE_PROCEDURE_GPS_RESCUE || isModeActivationConditionPresent(BOXGPSRESCUE);
+    // BOXGPSRESCUE (the switch) was a redundant alias for BOXRTH and has been retired -- see
+    // fc/core.c's arming check, which now checks BOXRTH directly alongside this function.
+    return failsafeConfig()->failsafe_procedure == FAILSAFE_PROCEDURE_GPS_RESCUE;
 }
 
 bool gpsRescueIsAvailable(void)
