@@ -876,7 +876,8 @@ The only existing way to see GPS fix state over CRSF/S.Port was `armdisableflags
 live answer. Added `TELEM_GPS_FIX_TYPE` (custom-telemetry sensor id 119, next free id after
 `TELEM_TV_PROFILE`; ids 92-94 stay reserved, heli rescue/governor removed, not reused): `0` = no
 fix, `1` = fix, `2` = fix + home captured, read straight off `STATE(GPS_FIX)`/`STATE(GPS_FIX_HOME)`
-every time it's polled. Registered in both `crsf.c` (appId `0x112B`, next free id after the
+every time it's polled. Registered in both `crsf.c` (appId `0x112C` -- `0x112B` is taken by the Lua
+suite's synthetic GPS Longitude sensor split out of `0x1125` GPS Coord -- after the
 existing GPS block `0x1121`-`0x112A`) and `smartport.c` (appId `0x5124`, next free id after
 `ARMING_DISABLE_FLAGS`, which also covers FPort/FPort2 -- `smartport.c` already serves
 `FSSP_MSPC_FRAME_FPORT` frames on the same sensor table). Not added to any other telemetry
