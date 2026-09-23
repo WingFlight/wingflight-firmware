@@ -174,6 +174,11 @@ typedef enum
 
     TELEM_TV_PROFILE                    = 118,
 
+    TELEM_GPS_FIX_TYPE                  = 119, // 0 = no fix, 1 = fix, 2 = fix + home captured;
+                                                // distinct from ARMING_DISABLE_FLAGS' GPS bit, which
+                                                // only reflects the pre-arm check and stops updating
+                                                // once WAS_EVER_ARMED (see fc/core.c)
+
     TELEM_SENSOR_COUNT
 } sensor_id_e;
 

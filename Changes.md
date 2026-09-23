@@ -867,3 +867,17 @@ though they were flyable. New MSPv2 pair, `MSP2_WING_GPS_NAV_CONFIG`/
 `MSP2_WING_SET_GPS_NAV_CONFIG` (`0x5F16`/`0x5F17`, next free ID after
 `MSP2_WING_CRSF_SENSORS_STATUS`), one flat 12-byte record matching `gpsNavConfig_t`'s field order
 exactly. No existing MSP surface changed.
+
+### New custom-telemetry sensor: GPS fix type
+
+The only existing way to see GPS fix state over CRSF/S.Port was `armdisableflags`' GPS bit
+(`ARMING_DISABLED_GPS`) -- and that bit permanently clears the first time the model is ever armed
+(`WAS_EVER_ARMED`), so it stops reflecting reality right when GPS Rescue/RTH actually needs a
+live answer. Added `TELEM_GPS_FIX_TYPE` (custom-telemetry sensor id 119, next free id after
+`TELEM_TV_PROFILE`; ids 92-94 stay reserved, heli rescue/governor removed, not reused): `0` = no
+fix, `1` = fix, `2` = fix + home captured, read straight off `STATE(GPS_FIX)`/`STATE(GPS_FIX_HOME)`
+every time it's polled. Registered in both `crsf.c` (appId `0x112B`, next free id after the
+existing GPS block `0x1121`-`0x112A`) and `smartport.c` (appId `0x5124`, next free id after
+`ARMING_DISABLE_FLAGS`, which also covers FPort/FPort2 -- `smartport.c` already serves
+`FSSP_MSPC_FRAME_FPORT` frames on the same sensor table). Not added to any other telemetry
+protocol.
