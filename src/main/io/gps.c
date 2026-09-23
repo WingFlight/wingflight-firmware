@@ -807,6 +807,16 @@ void gpsUpdate(timeUs_t currentTimeUs)
             gpsSol.numSat = crsfGps.satellites;
             gpsSetFixState(crsfGps.satellites > 0);
             GPS_update |= GPS_MSP_UPDATE;
+        } else {
+            // CRSF GPS never runs through the gpsPort/gpsNewData path, so it
+            // never engages the GPS_STATE_RECEIVING_DATA communication-lost
+            // watchdog below. crsfSensorsGetGpsData() already returns false
+            // once its own data has gone stale (crsf_sensors.c's
+            // sensorTimeoutMs) -- e.g. the GPS unit was unplugged -- so mirror
+            // that here instead of leaving GPS_FIX latched from the last
+            // frame we ever received.
+            gpsSol.numSat = 0;
+            gpsSetFixState(false);
         }
     }
 
