@@ -237,7 +237,6 @@ extern uint8_t _dmaram_end__;
 #define USE_SERIAL_PASSTHROUGH
 #define USE_GYRO_REGISTER_DUMP  // Adds gyroregisters command to cli to dump configured register values
 #define USE_IMU_CALC
-#define USE_PPM
 
 // ---- Wingflight fork identifier ------------------------------------------
 // Activates WINGFLIGHT_AIRPLANE code paths in all builds of this firmware fork.
@@ -246,7 +245,6 @@ extern uint8_t _dmaram_end__;
 // --------------------------------------------------------------------------
 #define USE_SERIAL_RX
 #define USE_SERIALRX_CRSF       // Team Black Sheep Crossfire protocol
-#define USE_SERIALRX_GHST       // ImmersionRC Ghost Protocol
 #define USE_SERIALRX_IBUS       // FlySky and Turnigy receivers
 #define USE_SERIALRX_IBUS2      // FlySky AFHDS3 receivers
 #define USE_SERIALRX_SBUS       // Frsky and Futaba receivers
@@ -284,7 +282,6 @@ extern uint8_t _dmaram_end__;
 #define USE_RESOURCE_MGMT
 #define USE_SERVOS
 #define USE_TELEMETRY
-#define USE_TELEMETRY_FRSKY_HUB
 #define USE_TELEMETRY_SMARTPORT
 #endif
 
@@ -295,7 +292,6 @@ extern uint8_t _dmaram_end__;
 #define USE_SERIALRX_FBUS       // FrSky FBUS/FPORT2
 #define USE_SMARTFUEL
 #define USE_TELEMETRY_CRSF
-#define USE_TELEMETRY_GHST
 #define USE_TELEMETRY_SRXL
 
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 12))
@@ -347,7 +343,6 @@ extern uint8_t _dmaram_end__;
 
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 2))
 #define USE_TELEMETRY_HOTT
-#define USE_TELEMETRY_LTM
 #define USE_SERIALRX_SUMH       // Graupner legacy protocol
 #define USE_SERIALRX_XBUS       // JR
 #endif
@@ -355,7 +350,6 @@ extern uint8_t _dmaram_end__;
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 1))
 #define USE_BOARD_INFO
 #define USE_RTC_TIME
-#define USE_RX_MSP
 #define USE_CRSF_LINK_STATISTICS
 #define USE_RX_RSSI_DBM
 #endif
@@ -376,7 +370,6 @@ extern uint8_t _dmaram_end__;
 #define USE_TELEMETRY_IBUS2
 #define USE_TELEMETRY_IBUS_EXTENDED
 #define USE_TELEMETRY_JETIEXBUS
-#define USE_TELEMETRY_MAVLINK
 #define USE_SIGNATURE
 #define USE_LED_STRIP_STATUS_MODE
 #define USE_VARIO
