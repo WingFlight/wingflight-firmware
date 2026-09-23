@@ -91,7 +91,6 @@ bool cliMode = false;
 #include "drivers/dshot_command.h"
 #include "drivers/dshot_dpwm.h"
 #include "drivers/pwm_output_dshot_shared.h"
-#include "drivers/camera_control.h"
 #include "drivers/compass/compass.h"
 #include "drivers/display.h"
 #include "drivers/dma.h"
@@ -106,7 +105,6 @@ bool cliMode = false;
 #include "pg/logic_condition.h"
 #include "drivers/light_led.h"
 #include "drivers/motor.h"
-#include "drivers/rangefinder/rangefinder_hcsr04.h"
 #include "drivers/resource.h"
 #include "drivers/sdcard.h"
 #include "drivers/sensor.h"
@@ -267,7 +265,7 @@ static const char * const featureNames[] = {
     [ 6] = "SOFTSERIAL",
     [ 7] = "GPS",
     [ 8] = "",
-    [ 9] = "RANGEFINDER",
+    [ 9] = "",
     [10] = "TELEMETRY",
     [11] = "",
     [12] = "",
@@ -381,13 +379,13 @@ static const rxFailsafeChannelMode_e rxFailsafeModesTable[RX_FAILSAFE_TYPE_COUNT
 #if defined(USE_SENSOR_NAMES)
 // sync this with sensors_e
 static const char *const sensorTypeNames[] = {
-    "GYRO", "ACC", "BARO", "MAG", "RANGEFINDER", "GPS", "GPS+MAG", NULL
+    "GYRO", "ACC", "BARO", "MAG", "", "GPS", "GPS+MAG", NULL
 };
 
-#define SENSOR_NAMES_MASK (SENSOR_GYRO | SENSOR_ACC | SENSOR_BARO | SENSOR_MAG | SENSOR_RANGEFINDER)
+#define SENSOR_NAMES_MASK (SENSOR_GYRO | SENSOR_ACC | SENSOR_BARO | SENSOR_MAG)
 
 static const char * const *sensorHardwareNames[] = {
-    lookupTableGyroHardware, lookupTableAccHardware, lookupTableBaroHardware, lookupTableMagHardware, lookupTableRangefinderHardware
+    lookupTableGyroHardware, lookupTableAccHardware, lookupTableBaroHardware, lookupTableMagHardware
 };
 #endif // USE_SENSOR_NAMES
 
@@ -885,7 +883,7 @@ static uint16_t getValueOffset(const clivalue_t *value)
     case HARDWARE_VALUE:
         return value->offset;
     case PROFILE_VALUE:
-        return value->offset + sizeof(pidProfile_t) * getPidProfileIndexToUse();
+        return value->offset + (value->pgn == PG_ATTITUDE_LIMITS ? sizeof(attitudeLimits_t) : sizeof(pidProfile_t)) * getPidProfileIndexToUse();
     case PROFILE_RATE_VALUE:
         return value->offset + sizeof(controlRateConfig_t) * getRateProfileIndexToUse();
     case PROFILE_TV_VALUE:
@@ -3555,12 +3553,6 @@ static void cliFeature(const char *cmdName, char *cmdline)
                     break;
                 }
 #endif
-#ifndef USE_RANGEFINDER
-                if (feature & FEATURE_RANGEFINDER) {
-                    cliPrintLine("unavailable");
-                    break;
-                }
-#endif
                 if (remove) {
                     featureConfigClear(feature);
                     cliPrint("Disabled");
@@ -5221,10 +5213,6 @@ const cliResourceValue_t resourceTable[] = {
 #if defined(USE_PWM)
     DEFA( OWNER_PWMINPUT,      PG_PWM_CONFIG, pwmConfig_t, ioTags[0], PWM_INPUT_PORT_COUNT ),
 #endif
-#ifdef USE_RANGEFINDER_HCSR04
-    DEFS( OWNER_SONAR_TRIGGER, PG_SONAR_CONFIG, sonarConfig_t, triggerTag ),
-    DEFS( OWNER_SONAR_ECHO,    PG_SONAR_CONFIG, sonarConfig_t, echoTag ),
-#endif
 #ifdef USE_LED_STRIP
     DEFS( OWNER_LED_STRIP,     PG_LED_STRIP_CONFIG, ledStripConfig_t, ioTag ),
 #endif
@@ -5251,9 +5239,6 @@ const cliResourceValue_t resourceTable[] = {
 #endif
 #ifdef USE_ESCSERIAL
     DEFS( OWNER_ESCSERIAL,     PG_ESCSERIAL_CONFIG, escSerialConfig_t, ioTag ),
-#endif
-#ifdef USE_CAMERA_CONTROL
-    DEFS( OWNER_CAMERA_CONTROL, PG_CAMERA_CONTROL_CONFIG, cameraControlConfig_t, ioTag ),
 #endif
 #ifdef USE_ADC
     DEFS( OWNER_ADC_BATT,      PG_ADC_CONFIG, adcConfig_t, vbat.ioTag ),

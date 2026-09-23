@@ -40,7 +40,7 @@ typedef enum {
     BOXATTHOLD,         // ATT HOLD: quaternion-based hold of whatever attitude the stick was released at
     BOXALTHOLD,
     BOXRESCUE,          // reserved (heli rescue removed) -- kept to avoid renumbering later ids
-    BOXGPSRESCUE,
+    BOXGPSRESCUE,       // reserved (redundant alias for BOXRTH removed) -- kept to avoid renumbering later ids
     BOXLOITER,          // GPS LOITER: hold position (and altitude) around the point engaged at
     BOXRTH,             // GPS RTH: fly to and loiter above the home position. See flight/gps_nav.c
     BOXFAILSAFE,

@@ -322,6 +322,8 @@ int telemetrySensorValue(sensor_id_e id)
             return GPS_directionToHome;
         case TELEM_GPS_DATE_TIME:
             return 0;
+        case TELEM_GPS_FIX_TYPE:
+            return STATE(GPS_FIX_HOME) ? 2 : (STATE(GPS_FIX) ? 1 : 0);
 
         case TELEM_LOAD:
             return millis();
@@ -520,6 +522,7 @@ bool telemetrySensorActive(sensor_id_e id)
         case TELEM_GPS_GROUNDSPEED:
         case TELEM_GPS_HOME_DISTANCE:
         case TELEM_GPS_HOME_DIRECTION:
+        case TELEM_GPS_FIX_TYPE:
             return true;
 
         case TELEM_GPS_PDOP:

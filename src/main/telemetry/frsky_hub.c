@@ -503,8 +503,8 @@ void processFrSkyHubTelemetry(timeUs_t currentTimeUs)
     }
 #endif
 
-#if defined(USE_BARO) || defined(USE_RANGEFINDER) || defined(USE_GPS)
-    if (sensors(SENSOR_BARO | SENSOR_RANGEFINDER) | sensors(SENSOR_GPS)) {
+#if defined(USE_BARO) || defined(USE_GPS)
+    if (sensors(SENSOR_BARO) | sensors(SENSOR_GPS)) {
         // Sent every 125ms
         // Send vertical speed for opentx. ID_VERT_SPEED
         // Unit is cm/s

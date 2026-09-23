@@ -25,7 +25,6 @@ typedef enum {
     SENSOR_INDEX_ACC,
     SENSOR_INDEX_BARO,
     SENSOR_INDEX_MAG,
-    SENSOR_INDEX_RANGEFINDER,
     SENSOR_INDEX_COUNT
 } sensorIndex_e;
 
@@ -49,8 +48,7 @@ typedef enum {
     SENSOR_ACC = 1 << 1,
     SENSOR_BARO = 1 << 2,
     SENSOR_MAG = 1 << 3,
-    SENSOR_SONAR = 1 << 4,
-    SENSOR_RANGEFINDER = 1 << 4,
+    // 1 << 4 was the rangefinder -- unused (rangefinder removed), kept so later sensors keep their bits
     SENSOR_GPS = 1 << 5,
     SENSOR_GPSMAG = 1 << 6
 } sensors_e;

@@ -26,6 +26,8 @@
 #include "common/axis.h"
 #include "common/maths.h"
 
+#include "fc/runtime_config.h"
+
 #include "pg/gps.h"
 #include "pg/gps_nav.h"
 
@@ -54,7 +56,24 @@ int32_t navAngle[ANGLE_INDEX_COUNT] = { 0, 0 };
 
 static bool navIsHealthy(void)
 {
-    return gpsIsHealthy() && gpsSol.numSat >= gpsNavConfig()->minSats;
+    // gpsIsHealthy() only means GPS frames are being received -- it says nothing about whether
+    // the last one was actually a fix. UBLOX PVT in particular sets gpsSol.numSat from
+    // _buffer.pvt.numSV unconditionally, independent of fixType/NAV_STATUS_FIX_VALID (see
+    // gps.c's UBLOX_parse_gps()), so a receiver can report a healthy satellite count with no
+    // valid fix at all. Without this, nav would keep commanding bank/pitch toward
+    // gpsSol.llh.lat/lon even while that position is stale or invalid.
+    return gpsIsHealthy() && STATE(GPS_FIX) && gpsSol.numSat >= gpsNavConfig()->minSats;
+}
+
+// Whether a return-to-home is even meaningful right now: needs a healthy GPS fix (same bar
+// as any other nav start) and an actual recorded home position. Without the latter,
+// navRthStart() would fly toward GPS_home = {0,0} -- "null island" -- since navBegin() itself
+// only gates on navIsHealthy(), not on STATE(GPS_FIX_HOME). Exported so callers that want to
+// start an RTH (or decide whether one is possible before falling back to something else, e.g.
+// failsafe.c) don't have to duplicate either check.
+bool navCanRTH(void)
+{
+    return navIsHealthy() && STATE(GPS_FIX_HOME);
 }
 
 static void navBegin(int32_t lat, int32_t lon, int32_t altitudeCm)
@@ -104,7 +123,14 @@ void updateGpsNav(void)
     }
 
     if (!navIsHealthy()) {
-        navStop();
+        // Zero the commanded bank/pitch (falls back to plain Angle-mode leveling) but leave
+        // nav.active/target set, rather than navStop()-ing outright: core.c's RTH_MODE/LOITER_MODE
+        // switch-latch (wasRthActive/wasLoiterActive) only calls navRthStart()/navLoiterStart()
+        // again on the switch's off->on edge, so a hard stop here would leave nav permanently
+        // disengaged -- commanding nothing -- until the pilot cycles the switch, even after GPS
+        // recovers. This resumes toward the original target the moment health returns.
+        navAngle[AI_ROLL] = 0;
+        navAngle[AI_PITCH] = 0;
         return;
     }
 
@@ -122,7 +148,11 @@ void updateGpsNav(void)
         desiredTrackDdeg = bearingToTargetDdeg;
     } else {
         nav.phase = NAV_PHASE_ORBIT;
-        const int32_t tangentOffsetDdeg = (gpsNavConfig()->loiterDirection == NAV_LOITER_CW) ? 900 : -900;
+        // bearingToTargetDdeg is the bearing FROM the aircraft TO the target. Orbiting clockwise
+        // seen from above keeps the target on the aircraft's right, so the track is 90 degrees to
+        // the LEFT of that bearing (an aircraft south of the target, bearing 0, flies west); anti-
+        // clockwise is 90 degrees to the right.
+        const int32_t tangentOffsetDdeg = (gpsNavConfig()->loiterDirection == NAV_LOITER_CW) ? -900 : 900;
         desiredTrackDdeg = bearingToTargetDdeg + tangentOffsetDdeg;
     }
 
@@ -136,7 +166,13 @@ void updateGpsNav(void)
     const int32_t altitudeErrorM = (nav.targetAltitudeCm - getEstimatedAltitudeCm()) / 100;
     const float altitudeKp = gpsNavConfig()->altitudeKp / 100.0f;
     const float maxPitchDdeg = gpsNavConfig()->maxPitchAngleDeg * 10.0f;
-    const float pitchDdeg = constrainf(altitudeKp * altitudeErrorM, -maxPitchDdeg, maxPitchDdeg);
+    // altitudeErrorM is positive when below target (need to climb). Pitch in this codebase's
+    // convention is positive NOSE-DOWN (bench-confirmed in autohover.c: +900 drives the elevator
+    // toward nose-down, -900 is the physically-vertical nose-up target -- same convention
+    // attitude.raw[]/navAngle[] use throughout, see leveling.c's calcLevelErrorAngle()), so
+    // climbing needs a NEGATIVE pitch target. Negate here, rather than folding the sign into
+    // altitudeKp, so a positive altitudeKp in the config still reads as "more correction".
+    const float pitchDdeg = constrainf(-altitudeKp * altitudeErrorM, -maxPitchDdeg, maxPitchDdeg);
     navAngle[AI_PITCH] = lrintf(pitchDdeg * 10.0f); // decidegrees -> centidegrees
 }
 

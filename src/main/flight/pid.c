@@ -535,6 +535,7 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
     if (dstPidProfileIndex < PID_PROFILE_COUNT && srcPidProfileIndex < PID_PROFILE_COUNT &&
         dstPidProfileIndex != srcPidProfileIndex) {
         memcpy(pidProfilesMutable(dstPidProfileIndex), pidProfilesMutable(srcPidProfileIndex), sizeof(pidProfile_t));
+        memcpy(attitudeLimitsMutable(dstPidProfileIndex), attitudeLimits(srcPidProfileIndex), sizeof(attitudeLimits_t));
     }
 }
 
@@ -846,7 +847,9 @@ static void pidApplyMode1(uint8_t axis)
 
   //// I-term
 
-    // Apply error relax
+    // Apply error relax. Cross-axis relax slows the accumulation here and is NOT
+    // applied again to the I output below: scaling the output as well made I drop
+    // immediately when rudder was applied and jump back on release (#112).
     const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax;
 
     // Saturation
@@ -860,7 +863,7 @@ static void pidApplyMode1(uint8_t axis)
     // TRADITIONAL_MODE forces I output to zero without touching axisError's own bookkeeping, so
     // relax/decay keep behaving as configured and I resumes smoothly if the mode is switched off.
     pid.data[axis].I = FLIGHT_MODE(TRADITIONAL_MODE) ? 0.0f
-        : pid.coef[axis].Ki * masterGain * crossAxisRelax * pid.data[axis].axisError;
+        : pid.coef[axis].Ki * masterGain * pid.data[axis].axisError;
 
     // Apply error decay (fixed rate -- no ground/airborne distinction; a plane
     // sitting on its wheels isn't at risk of tipping over from I-term windup
@@ -868,7 +871,7 @@ static void pidApplyMode1(uint8_t axis)
     // while landed) -- but suspended while a leveling/attitude-hold layer is
     // actively shaping this axis's setpoint. Those layers (ANGLE/HORIZON/GPS
     // rescue/failsafe/loiter/RTH's shared angleModeApply on roll+pitch, the
-    // acro trainer likewise, and ATTHOLD/AUTOHOVER on an axis that is actually
+    // acro trainer only while limiting, and ATTHOLD/AUTOHOVER on an axis that is actually
     // holding a target) fundamentally need a sustained I-term to hold a
     // corrected attitude against a persistent disturbance once the rate error
     // itself has settled to ~0 -- an unconditional decay quietly erodes exactly
@@ -890,12 +893,12 @@ static void pidApplyMode1(uint8_t axis)
     // slow bleed still lets the hold carry a real steady disturbance (torque
     // roll): the outer attitude loop just re-grows whatever I is needed, at the
     // cost of a small sag -- while anything not actually needed drains away.
-#ifdef USE_ACRO_TRAINER
-    const flightModeFlags_e rollPitchLevelingModes = ANGLE_MODE | HORIZON_MODE | GPS_RESCUE_MODE
-        | FAILSAFE_MODE | LOITER_MODE | RTH_MODE | TRAINER_MODE;
-#else
     const flightModeFlags_e rollPitchLevelingModes = ANGLE_MODE | HORIZON_MODE | GPS_RESCUE_MODE
         | FAILSAFE_MODE | LOITER_MODE | RTH_MODE;
+
+    bool trainerLimitingThisAxis = false;
+#ifdef USE_ACRO_TRAINER
+    trainerLimitingThisAxis = FLIGHT_MODE(TRAINER_MODE) && acroTrainerIsLimiting(axis);
 #endif
 
     bool autoHoverHoldingThisAxis = false;
@@ -906,7 +909,7 @@ static void pidApplyMode1(uint8_t axis)
 #endif
 
     const bool isYaw = (axis == FD_YAW);
-    const bool levelingModeShapingThisAxis = autoHoverHoldingThisAxis
+    const bool levelingModeShapingThisAxis = trainerLimitingThisAxis || autoHoverHoldingThisAxis
         || (!isYaw && FLIGHT_MODE(rollPitchLevelingModes));
 
     if (!levelingModeShapingThisAxis) {

@@ -55,7 +55,7 @@
 #define MSP_PROTOCOL_VERSION                 0
 
 #define API_VERSION_MAJOR                    22
-#define API_VERSION_MINOR                    2
+#define API_VERSION_MINOR                    4
 #define API_VERSION_LENGTH                   2
 
 #define FLIGHT_CONTROLLER_IDENTIFIER_LENGTH  4
@@ -105,7 +105,7 @@
 #define MSP_SET_SERIAL_CONFIG                55
 #define MSP_VOLTAGE_METER_CONFIG             56
 #define MSP_SET_VOLTAGE_METER_CONFIG         57
-#define MSP_SONAR_ALTITUDE                   58
+// #define MSP_SONAR_ALTITUDE                   58
 #define MSP_DEBUG_CONFIG                     59
 #define MSP_SET_DEBUG_CONFIG                 60
 #define MSP_ARMING_CONFIG                    61
@@ -146,7 +146,7 @@
 #define MSP_SET_PID_PROFILE                  95
 #define MSP_SENSOR_CONFIG                    96
 #define MSP_SET_SENSOR_CONFIG                97
-#define MSP_CAMERA_CONTROL                   98
+// #define MSP_CAMERA_CONTROL                   98
 #define MSP_SET_ARMING_DISABLED              99
 
 #define MSP_STATUS                           101
@@ -331,4 +331,9 @@
 #define MSP2_WING_ESC_SENSOR_TRIAL            0x5F14
 // 0x5F15: CRSF Sensors link diagnostics (0x5F10-0x5F14 are taken by the entries above).
 #define MSP2_WING_CRSF_SENSORS_STATUS         0x5F15
+// gpsNavConfig_t (PG_GPS_NAV) had no MSP command at all before this -- CLI-only
+// (nav_rth_altitude, nav_loiter_radius, nav_max_bank_angle, nav_max_pitch_angle,
+// nav_min_sats, nav_bearing_kp, nav_altitude_kp, nav_loiter_direction).
+#define MSP2_WING_GPS_NAV_CONFIG              0x5F16
+#define MSP2_WING_SET_GPS_NAV_CONFIG          0x5F17
 #define MSP_V2_FRAME                         255

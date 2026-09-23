@@ -113,18 +113,18 @@
 //#define PG_DISPLAY_PORT_MAX7456_CONFIG 513 removed (OSD)
 //#define PG_VCD_CONFIG               514 removed (OSD)
 //#define PG_VTX_CONFIG               515 removed (VTX)
-#define PG_SONAR_CONFIG             516
+//#define PG_SONAR_CONFIG             516 removed (rangefinder)
 #define PG_ESC_SENSOR_CONFIG        517
 #define PG_I2C_CONFIG               518
 #define PG_DASHBOARD_CONFIG         519
 #define PG_SPI_PIN_CONFIG           520
 #define PG_ESCSERIAL_CONFIG         521
-#define PG_CAMERA_CONTROL_CONFIG    522
+//#define PG_CAMERA_CONTROL_CONFIG    522 removed (camera control)
 #define PG_RX_CC2500_SPI_CONFIG     523
 //#define PG_MAX7456_CONFIG           524 removed (OSD)
 #define PG_FLYSKY_CONFIG            525
 #define PG_TIME_CONFIG              526
-#define PG_RANGEFINDER_CONFIG       527 // iNav
+//#define PG_RANGEFINDER_CONFIG       527 removed (rangefinder)
 //#define PG_TRICOPTER_CONFIG         528
 #define PG_PINIO_CONFIG             529
 #define PG_PINIOBOX_CONFIG          530
@@ -176,6 +176,7 @@
 #define PG_SERVO_CURVES              1017
 // Appended after master's ids: renumbering the existing ones would change stored configs.
 #define PG_DRIVER_CRSF_SENSORS_CONFIG 1018
+#define PG_ATTITUDE_LIMITS           1019
 
 // OSD configuration -- removed (OSD)
 //#define PG_OSD_FONT_CONFIG 2047

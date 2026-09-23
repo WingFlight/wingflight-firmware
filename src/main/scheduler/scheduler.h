@@ -119,9 +119,6 @@ typedef enum {
 #ifdef USE_BARO
     TASK_BARO,
 #endif
-#ifdef USE_RANGEFINDER
-    TASK_RANGEFINDER,
-#endif
 #ifdef USE_DASHBOARD
     TASK_DASHBOARD,
 #endif
@@ -142,9 +139,6 @@ typedef enum {
 #endif
 #ifdef USE_SRXL2_ESC
     TASK_SRXL2_ESC,
-#endif
-#ifdef USE_CAMERA_CONTROL
-    TASK_CAMCTRL,
 #endif
 
 #ifdef USE_RCDEVICE

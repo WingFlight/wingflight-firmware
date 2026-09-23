@@ -53,8 +53,9 @@ typedef int8_t sign_t;
 
 typedef struct {
     bool        Active;
+    bool        Limiting[2];
     float       Gain;
-    float       AngleLimit;
+    float       AngleLimit[2];
     float       LookaheadTime;
 } acroTrainer_t;
 
@@ -73,14 +74,26 @@ void set_ADJUSTMENT_ACRO_TRAINER_GAIN(int value)
 
 INIT_CODE void acroTrainerInit(const pidProfile_t *pidProfile)
 {
+    memset(acroTrainer.Limiting, 0, sizeof(acroTrainer.Limiting));
     acroTrainer.Gain = pidProfile->trainer.gain / 10.0f;
-    acroTrainer.AngleLimit = pidProfile->trainer.angle_limit;
+    const attitudeLimits_t *limits = attitudeLimits(getCurrentPidProfileIndex());
+    acroTrainer.AngleLimit[FD_ROLL] = attitudeLimitDegrees(limits->trainer_roll, pidProfile->trainer.angle_limit, FD_ROLL);
+    acroTrainer.AngleLimit[FD_PITCH] = attitudeLimitDegrees(limits->trainer_pitch, pidProfile->trainer.angle_limit, FD_PITCH);
     acroTrainer.LookaheadTime = pidProfile->trainer.lookahead_ms / 1000.0f;
 }
 
 void acroTrainerSetState(bool state)
 {
     acroTrainer.Active = state;
+    if (!state) {
+        memset(acroTrainer.Limiting, 0, sizeof(acroTrainer.Limiting));
+    }
+}
+
+bool acroTrainerIsLimiting(int axis)
+{
+    return acroTrainer.Active && (axis == FD_ROLL || axis == FD_PITCH)
+        && acroTrainer.Limiting[axis];
 }
 
 static inline sign_t Sign(float x)
@@ -106,15 +119,16 @@ float acroTrainerApply(int axis, float setPoint)
     {
         const rollAndPitchTrims_t *angleTrim = &accelerometerConfig()->accelerometerTrims;
         const float currentAngle = (attitude.raw[axis] - angleTrim->raw[axis]) / 10.0f;
-        const float angleExcess = fabsf(currentAngle) - acroTrainer.AngleLimit;
+        const float angleLimit = acroTrainer.AngleLimit[axis];
+        const float angleExcess = fabsf(currentAngle) - angleLimit;
         float projectedAngle = 0;
-        bool limiting = false;
+        const float pilotSetPoint = setPoint;
 
         if (angleExcess > 0) {
             // Angle exceeds the limit: apply correction proportional to excess angle.
             // The correction is always directed back toward the limit (stateless).
             const sign_t angleSign = Sign(currentAngle);
-            const float correction = limitf((acroTrainer.AngleLimit * angleSign - currentAngle) * acroTrainer.Gain, ACRO_TRAINER_SETPOINT_LIMIT);
+            const float correction = limitf((angleLimit * angleSign - currentAngle) * acroTrainer.Gain, ACRO_TRAINER_SETPOINT_LIMIT);
 
             // Allow pilot input that helps return, block input that drives further out
             if (angleSign > 0) {
@@ -122,8 +136,6 @@ float acroTrainerApply(int axis, float setPoint)
             } else {
                 setPoint = fmaxf(setPoint, correction);
             }
-
-            limiting = true;
         }
         else {
             // Within limits: project the angle based on current angle and gyro rate.
@@ -133,14 +145,17 @@ float acroTrainerApply(int axis, float setPoint)
 
             const sign_t projectedAngleSign = Sign(projectedAngle);
             
-            if ((fabsf(projectedAngle) > acroTrainer.AngleLimit) && (projectedAngleSign == Sign(setPoint))) {
-                setPoint = limitf(((acroTrainer.AngleLimit * projectedAngleSign) - projectedAngle) * acroTrainer.Gain, ACRO_TRAINER_SETPOINT_LIMIT);
-                limiting = true;
+            if ((fabsf(projectedAngle) > angleLimit) && (projectedAngleSign == Sign(setPoint))) {
+                setPoint = limitf(((angleLimit * projectedAngleSign) - projectedAngle) * acroTrainer.Gain, ACRO_TRAINER_SETPOINT_LIMIT);
             }
         }
 
+        // Helping stick input can pass through even outside the envelope. Only
+        // retain I while the limiter actually changes this axis's rate command.
+        acroTrainer.Limiting[axis] = setPoint != pilotSetPoint;
+
         DEBUG_AXIS(ACRO_TRAINER, axis, 0, currentAngle * 10);
-        DEBUG_AXIS(ACRO_TRAINER, axis, 1, limiting);
+        DEBUG_AXIS(ACRO_TRAINER, axis, 1, acroTrainer.Limiting[axis]);
         DEBUG_AXIS(ACRO_TRAINER, axis, 2, setPoint);
         DEBUG_AXIS(ACRO_TRAINER, axis, 3, projectedAngle * 10);
     }

@@ -32,6 +32,8 @@
 
 void acroTrainerInit(const pidProfile_t *pidProfile);
 void acroTrainerSetState(bool state);
+// True only when the last apply changed this axis's rate command.
+bool acroTrainerIsLimiting(int axis);
 
 float acroTrainerApply(int axis, float setPoint);
 

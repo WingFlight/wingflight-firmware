@@ -34,7 +34,6 @@
 #include "config/feature.h"
 
 #include "drivers/accgyro/accgyro.h"
-#include "drivers/camera_control.h"
 #include "drivers/compass/compass.h"
 #include "drivers/sensor.h"
 #include "drivers/serial.h"
@@ -90,7 +89,6 @@
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
 #include "sensors/sensors.h"
-#include "sensors/rangefinder.h"
 
 #include "telemetry/telemetry.h"
 #include "telemetry/crsf.h"
@@ -286,20 +284,6 @@ static void taskUpdateMag(timeUs_t currentTimeUs)
 }
 #endif
 
-#if defined(USE_RANGEFINDER)
-void taskUpdateRangefinder(timeUs_t currentTimeUs)
-{
-    UNUSED(currentTimeUs);
-
-    if (!sensors(SENSOR_RANGEFINDER)) {
-        return;
-    }
-
-    rangefinderUpdate();
-
-    rangefinderProcess(getCosTiltAngle());
-}
-#endif
 
 #ifdef USE_TELEMETRY
 static void taskTelemetry(timeUs_t currentTimeUs)
@@ -322,16 +306,6 @@ static void taskSportMaster(timeUs_t currentTimeUs)
 }
 #endif
 
-#ifdef USE_CAMERA_CONTROL
-static void taskCameraControl(uint32_t currentTime)
-{
-    if (ARMING_FLAG(ARMED)) {
-        return;
-    }
-
-    cameraControlProcess(currentTime);
-}
-#endif
 
 #define DEFINE_TASK(taskNameParam, subTaskNameParam, checkFuncParam, taskFuncParam, desiredPeriodParam, staticPriorityParam) {  \
     .taskName = taskNameParam, \
@@ -413,9 +387,6 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_RCDEVICE] = DEFINE_TASK("RCDEVICE", NULL, NULL, rcdeviceUpdate, TASK_PERIOD_HZ(20), TASK_PRIORITY_MEDIUM),
 #endif
 
-#ifdef USE_CAMERA_CONTROL
-    [TASK_CAMCTRL] = DEFINE_TASK("CAMCTRL", NULL, NULL, taskCameraControl, TASK_PERIOD_HZ(5), TASK_PRIORITY_LOW),
-#endif
 
 #ifdef USE_ADC_INTERNAL
     [TASK_ADC_INTERNAL] = DEFINE_TASK("ADCINTERNAL", NULL, NULL, adcInternalProcess, TASK_PERIOD_HZ(1), TASK_PRIORITY_LOWEST),
@@ -425,9 +396,6 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_PINIOBOX] = DEFINE_TASK("PINIOBOX", NULL, NULL, pinioBoxUpdate, TASK_PERIOD_HZ(20), TASK_PRIORITY_LOWEST),
 #endif
 
-#ifdef USE_RANGEFINDER
-    [TASK_RANGEFINDER] = DEFINE_TASK("RANGEFINDER", NULL, NULL, taskUpdateRangefinder, TASK_PERIOD_HZ(10), TASK_PRIORITY_LOWEST),
-#endif
 
 #ifdef USE_CRSF_V3
     [TASK_SPEED_NEGOTIATION] = DEFINE_TASK("SPEED_NEGOTIATION", NULL, NULL, speedNegotiationProcess, TASK_PERIOD_HZ(100), TASK_PRIORITY_LOW),
@@ -516,11 +484,6 @@ void tasksInit(void)
     }
 #endif
 
-#ifdef USE_RANGEFINDER
-    if (sensors(SENSOR_RANGEFINDER)) {
-        setTaskEnabled(TASK_RANGEFINDER, featureIsEnabled(FEATURE_RANGEFINDER));
-    }
-#endif
 
     setTaskEnabled(TASK_RX, true);
 
@@ -586,9 +549,6 @@ void tasksInit(void)
 #endif
 
 
-#ifdef USE_CAMERA_CONTROL
-    setTaskEnabled(TASK_CAMCTRL, true);
-#endif
 
 #ifdef USE_RCDEVICE
     setTaskEnabled(TASK_RCDEVICE, rcdeviceIsEnabled());

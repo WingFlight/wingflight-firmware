@@ -164,6 +164,17 @@ gps_conversion_unittest_SRC := \
 		$(USER_DIR)/common/gps_conversion.c
 
 
+gps_nav_unittest_DEFINES := USE_GPS_NAV=
+
+gps_nav_unittest_SRC := \
+		$(USER_DIR)/flight/gps_nav.c \
+		$(USER_DIR)/pg/gps_nav.c \
+		$(USER_DIR)/pg/pg.c \
+		$(USER_DIR)/common/crc.c \
+		$(USER_DIR)/common/maths.c \
+		$(USER_DIR)/common/streambuf.c
+
+
 io_serial_unittest_SRC := \
 		$(USER_DIR)/io/serial.c \
 		$(USER_DIR)/pg/serial.c \
@@ -398,10 +409,16 @@ pid_unittest_SRC :=  \
 		$(USER_DIR)/pg/mixer.c \
 		$(USER_DIR)/pg/rates.c
 
+airborne_unittest_SRC := \
+        $(USER_DIR)/common/filter.c \
+        $(USER_DIR)/common/maths.c \
+        $(USER_DIR)/flight/airborne.c
+
 trainer_unittest_SRC := \
 		$(USER_DIR)/common/filter.c \
 		$(USER_DIR)/common/maths.c \
 		$(USER_DIR)/flight/trainer.c \
+		$(USER_DIR)/flight/leveling.c \
 		$(USER_DIR)/pg/accel.c \
 		$(USER_DIR)/pg/pid.c \
 		$(USER_DIR)/pg/pg.c \
@@ -506,17 +523,21 @@ COMMON_FLAGS = \
 	-Wall \
 	-Wextra \
 	-Werror \
-	-Wno-error=unused-command-line-argument \
 	-ggdb3 \
 	-O0 \
 	-DUNIT_TEST \
 	-isystem $(GTEST_DIR)/include \
 	-isystem $(GMOCK_DIR)/include \
 	-MMD -MP \
-	-Wno-c99-extensions \
-	-Wno-reorder \
 	-pipe \
 	-Wno-missing-field-initializers
+
+ifeq ($(CC),clang)
+COMMON_FLAGS += \
+	-Wno-error=unused-command-line-argument \
+	-Wno-c99-extensions \
+	-Wno-reorder
+endif
 
 CC_VERSION = $(shell $(CC) -dumpversion)
 CXX_VERSION = $(shell $(CXX) -dumpversion)

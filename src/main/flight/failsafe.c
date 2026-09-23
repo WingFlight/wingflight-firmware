@@ -26,6 +26,7 @@
 #include "build/debug.h"
 
 #include "common/axis.h"
+#include "common/maths.h"
 
 #include "pg/failsafe.h"
 #include "pg/rx.h"
@@ -45,6 +46,10 @@
 #include "rx/rx.h"
 
 #include "flight/pid.h"
+
+#ifdef USE_GPS_RESCUE
+#include "flight/gps_nav.h"
+#endif
 
 /*
  * Usage:
@@ -115,10 +120,20 @@ bool failsafeIsActive(void) // real or switch-induced stage 2 failsafe
     return failsafeState.active;
 }
 
+float failsafeGetThrottle(void)
+{
+    // failsafe_throttle is documented and CLI-ranged around the standard absolute 1000-2000 PWM
+    // convention ("specify value between 1000..2000 ... center throttle = 1500", pg/failsafe.h) --
+    // matching every other absolute PWM value in this codebase (servo mid, rc_center, etc.), not
+    // scaled relative to the pilot's own rc_min_throttle/rc_max_throttle/rc_deflection the way
+    // getThrottle() is. The CLI itself allows the full PWM_PULSE_MIN..PWM_PULSE_MAX range, so
+    // clamp the result rather than assume every configured value falls inside 1000..2000.
+    return constrainf(scaleRangef(failsafeConfig()->failsafe_throttle, 1000.0f, 2000.0f, 0.0f, 1.0f), 0.0f, 1.0f);
+}
+
 void failsafeStartMonitoring(void)
 {
-    // RTFL: Keep disabled until code refactored
-    //failsafeState.monitoring = true;
+    failsafeState.monitoring = true;
 }
 
 static bool failsafeShouldHaveCausedLandingByNow(void)
@@ -304,10 +319,40 @@ void failsafeUpdateState(void)
                             break;
 #ifdef USE_GPS_RESCUE
                         case FAILSAFE_PROCEDURE_GPS_RESCUE:
-                            ENABLE_FLIGHT_MODE(GPS_RESCUE_MODE);
-                            failsafeState.phase = FAILSAFE_GPS_RESCUE;
-                            failsafeState.receivingRxDataPeriodPreset = failsafeState.rxDataRecoveryPeriod;
-                            //  allow re-arming 3 seconds after Rx recovery
+                            if (navCanRTH()) {
+                                // Fly home and orbit using the same fixed-wing RTH controller
+                                // BOXRTH uses (navRthStart()/updateGpsNav(), see
+                                // gps_nav.c) -- not gps_rescue.c's multirotor hover-throttle
+                                // descent, which is neither meaningful nor safe here. RTH_MODE
+                                // (not GPS_RESCUE_MODE) is what actually engages it; the existing
+                                // leveling pipeline already sums navAngle[] into every
+                                // angleModeApply() call regardless of which flag triggered it
+                                // (see leveling.c), so no PID/mixer change is needed for attitude.
+                                // Throttle during this phase comes from failsafe_throttle, wired
+                                // up in mixer.c's mixerUpdateInputs() -- deliberately a single
+                                // fixed cruise value, not an altitude-managed correction (see
+                                // Changes.md for what's intentionally out of scope here).
+                                navRthStart();
+                                ENABLE_FLIGHT_MODE(RTH_MODE);
+                                ENABLE_FLIGHT_MODE(FAILSAFE_MODE);
+                                failsafeState.phase = FAILSAFE_GPS_RESCUE;
+                                failsafeState.receivingRxDataPeriodPreset = failsafeState.rxDataRecoveryPeriod;
+                                //  allow re-arming 1 second after Rx recovery
+                                // Same bounded-glide-home budget as AUTO_LANDING: fly home for
+                                // failsafe_off_delay, then hand off to the ordinary motor-off
+                                // self-level glide-down (FAILSAFE_LANDED) rather than attempting
+                                // any kind of managed landing/flare.
+                                failsafeState.landingShouldBeFinishedAt = millis() + failsafeConfig()->failsafe_off_delay * MILLIS_PER_TENTH_SECOND;
+                            } else {
+                                // No GPS fix / no recorded home / not enough satellites: there is
+                                // nothing to rescue toward (navRthStart() would otherwise fly at
+                                // GPS_home == {0,0}, i.e. "null island"). Fall back to the exact
+                                // same behaviour as FAILSAFE_PROCEDURE_AUTO_LANDING.
+                                ENABLE_FLIGHT_MODE(FAILSAFE_MODE);
+                                failsafeState.phase = FAILSAFE_LANDING;
+                                failsafeState.receivingRxDataPeriodPreset = failsafeState.rxDataRecoveryPeriod;
+                                failsafeState.landingShouldBeFinishedAt = millis() + failsafeConfig()->failsafe_off_delay * MILLIS_PER_TENTH_SECOND;
+                            }
                             break;
 #endif
                     }
@@ -341,8 +386,12 @@ void failsafeUpdateState(void)
                 } else {
                     if (armed) {
                         beeperMode = BEEPER_RX_LOST_LANDING;
-                    } else {
-                        // to manually disarm while in GPS Rescue, aux channels must be enabled
+                    }
+                    // Bounded glide-home budget expired (or manual disarm while still in GPS
+                    // Rescue, aux channels enabled) -- hand off to the ordinary motor-off
+                    // self-level glide-down, same as FAILSAFE_LANDING's own timeout. This fork
+                    // does not attempt a managed powered landing/flare (see Changes.md).
+                    if (failsafeShouldHaveCausedLandingByNow() || !armed) {
                         failsafeState.phase = FAILSAFE_LANDED;
                         reprocessState = true;
                     }
@@ -350,6 +399,13 @@ void failsafeUpdateState(void)
                 break;
 #endif
             case FAILSAFE_LANDED:
+#ifdef USE_GPS_RESCUE
+                // Reached from every procedure, not just GPS Rescue -- harmless/idempotent when
+                // RTH was never active (navStop() just zeroes state that was already zero, and
+                // clearing an already-clear flight mode flag is a no-op).
+                navStop();
+                DISABLE_FLIGHT_MODE(RTH_MODE);
+#endif
                 disarm(DISARM_REASON_FAILSAFE);
                 setArmingDisabled(ARMING_DISABLED_FAILSAFE);
                 //  prevent accidently rearming by an intermittent rx link
@@ -381,6 +437,9 @@ void failsafeUpdateState(void)
                 failsafeState.active = false;
 #ifdef USE_GPS_RESCUE
                 DISABLE_FLIGHT_MODE(GPS_RESCUE_MODE);
+                // Harmless/idempotent if RTH was never active -- see FAILSAFE_LANDED above.
+                navStop();
+                DISABLE_FLIGHT_MODE(RTH_MODE);
 #endif
                 DISABLE_FLIGHT_MODE(FAILSAFE_MODE);
                 unsetArmingDisabled(ARMING_DISABLED_FAILSAFE);

@@ -35,7 +35,6 @@
 #include "drivers/bus_i2c.h"
 #include "drivers/bus_spi.h"
 #include "drivers/dshot_command.h"
-#include "drivers/camera_control.h"
 #include "drivers/light_led.h"
 #include "drivers/mco.h"
 #include "drivers/pinio.h"
@@ -118,7 +117,6 @@
 #include "sensors/compass.h"
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
-#include "sensors/rangefinder.h"
 
 #include "telemetry/frsky_hub.h"
 #include "telemetry/ibus_shared.h"
@@ -152,11 +150,6 @@ const char * const lookupTableBaroHardware[] = {
 // sync with magSensor_e
 const char * const lookupTableMagHardware[] = {
     "AUTO", "NONE", "HMC5883", "AK8975", "AK8963", "QMC5883", "LIS3MDL", "MAG_MPU925X_AK8963"
-};
-#endif
-#if defined(USE_SENSOR_NAMES) || defined(USE_RANGEFINDER)
-const char * const lookupTableRangefinderHardware[] = {
-    "NONE", "HCSR04", "TFMINI", "TF02"
 };
 #endif
 
@@ -295,13 +288,6 @@ static const char * const lookupTableGyroHardwareLpf[] = {
 #endif
 };
 
-#ifdef USE_CAMERA_CONTROL
-static const char * const lookupTableCameraControlMode[] = {
-    "HARDWARE_PWM",
-    "SOFTWARE_PWM",
-    "DAC"
-};
-#endif
 
 static const char * const lookupTablePwmProtocol[] = {
     "PWM", "ONESHOT125", "ONESHOT42", "MULTISHOT", "RESERVED",
@@ -537,15 +523,9 @@ const lookupTableEntry_t lookupTables[] = {
     LOOKUP_TABLE_ENTRY(lookupTableLowpassType),
     LOOKUP_TABLE_ENTRY(lookupTableFailsafe),
     LOOKUP_TABLE_ENTRY(lookupTableFailsafeSwitchMode),
-#ifdef USE_CAMERA_CONTROL
-    LOOKUP_TABLE_ENTRY(lookupTableCameraControlMode),
-#endif
     LOOKUP_TABLE_ENTRY(lookupTableBusType),
 #ifdef USE_RX_FRSKY_SPI
     LOOKUP_TABLE_ENTRY(lookupTableFrskySpiA1Source),
-#endif
-#ifdef USE_RANGEFINDER
-    LOOKUP_TABLE_ENTRY(lookupTableRangefinderHardware),
 #endif
 #ifdef USE_GYRO_OVERFLOW_CHECK
     LOOKUP_TABLE_ENTRY(lookupTableGyroOverflowCheck),
@@ -1099,6 +1079,11 @@ const clivalue_t valueTable[] = {
     { "horizon_tilt_expert_mode",   VAR_UINT8  | PROFILE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_PID_PROFILE, offsetof(pidProfile_t, horizon.tilt_expert_mode) },
 
 #ifdef USE_ACRO_TRAINER
+    // Zero axis overrides inherit angle_level_limit / acro_trainer_angle_limit.
+    { "angle_roll_limit",           VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 90 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, angle_roll) },
+    { "angle_pitch_limit",          VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 75 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, angle_pitch) },
+    { "acro_trainer_roll_limit",    VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 90 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, trainer_roll) },
+    { "acro_trainer_pitch_limit",   VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 75 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, trainer_pitch) },
     { "acro_trainer_angle_limit",   VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 80 }, PG_PID_PROFILE, offsetof(pidProfile_t, trainer.angle_limit) },
     { "acro_trainer_lookahead_ms",  VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, trainer.lookahead_ms) },
     { "acro_trainer_gain",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 25, 255 }, PG_PID_PROFILE, offsetof(pidProfile_t, trainer.gain) },
@@ -1273,20 +1258,7 @@ const clivalue_t valueTable[] = {
     { "dashboard_i2c_addr",          VAR_UINT8  | HARDWARE_VALUE, .config.minmaxUnsigned = { I2C_ADDR7_MIN, I2C_ADDR7_MAX }, PG_DASHBOARD_CONFIG, offsetof(dashboardConfig_t, address) },
 #endif
 
-// PG_CAMERA_CONTROL_CONFIG
-#ifdef USE_CAMERA_CONTROL
-    { "camera_control_mode", VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_CAMERA_CONTROL_MODE }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, mode) },
-    { "camera_control_ref_voltage", VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 200, 400 }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, refVoltage) },
-    { "camera_control_key_delay", VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 100, 500 }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, keyDelayMs) },
-    { "camera_control_internal_resistance", VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 10, 1000 }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, internalResistance) },
-    { "camera_control_button_resistance",   VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = CAMERA_CONTROL_KEYS_COUNT, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, buttonResistanceValues) },
-    { "camera_control_inverted", VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, inverted) },
-#endif
 
-// PG_RANGEFINDER_CONFIG
-#ifdef USE_RANGEFINDER
-    { "rangefinder_hardware", VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_RANGEFINDER_HARDWARE }, PG_RANGEFINDER_CONFIG, offsetof(rangefinderConfig_t, rangefinder_hardware) },
-#endif
 
 // PG_PINIO_CONFIG
 #ifdef USE_PINIO

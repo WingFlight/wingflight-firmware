@@ -792,6 +792,7 @@ static const crsfSensorDefinition_t crsfCustomSensorDefinitions[] =
     TLM_SENSOR(GPS_GROUNDSPEED,         0x1128,   200,  3000,    0,     U16),
     TLM_SENSOR(GPS_HOME_DISTANCE,       0x1129,   200,  3000,    0,     U16),
     TLM_SENSOR(GPS_HOME_DIRECTION,      0x112A,   200,  3000,    0,     S16),
+    TLM_SENSOR(GPS_FIX_TYPE,            0x112C,   500,  3000,    0,     U8),
 
     TLM_SENSOR(CPU_LOAD,                0x1141,   500,  3000,    10,    U8),
     TLM_SENSOR(SYS_LOAD,                0x1142,   500,  3000,    10,    U8),

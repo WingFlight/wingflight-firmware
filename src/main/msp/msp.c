@@ -53,7 +53,6 @@
 #include "drivers/accgyro/accgyro.h"
 #include "drivers/bus_i2c.h"
 #include "drivers/bus_spi.h"
-#include "drivers/camera_control.h"
 #include "drivers/compass/compass.h"
 #include "drivers/display.h"
 #include "drivers/dshot.h"
@@ -117,6 +116,7 @@
 #include "pg/board.h"
 #include "pg/dyn_notch.h"
 #include "pg/gyrodev.h"
+#include "pg/gps_nav.h"
 #include "pg/governor.h"
 #include "pg/motor.h"
 #include "pg/rx.h"
@@ -147,7 +147,6 @@
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
 #include "sensors/gyro_init.h"
-#include "sensors/rangefinder.h"
 
 #include "telemetry/msp_shared.h"
 #include "telemetry/telemetry.h"
@@ -795,7 +794,6 @@ static bool mspCommonProcessOutCommand(int16_t cmdMSP, sbuf_t *dst, mspPostProce
         sbufWriteU8(dst, escSensorConfig()->halfDuplex);
         sbufWriteU16(dst, escSensorConfig()->update_hz);
         sbufWriteU16(dst, escSensorConfig()->current_offset);
-        sbufWriteU32(dst, 0); // Was HW4 parameters
         sbufWriteU8(dst, escSensorConfig()->pinSwap);
         sbufWriteS8(dst, escSensorConfig()->voltage_correction);
         sbufWriteS8(dst, escSensorConfig()->current_correction);
@@ -939,7 +937,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
                               sensors(SENSOR_BARO) << 1 |
                               sensors(SENSOR_MAG) << 2 |
                               sensors(SENSOR_GPS) << 3 |
-                              sensors(SENSOR_RANGEFINDER) << 4 |
                               sensors(SENSOR_GYRO) << 5);
 
             boxBitmask_t flightModeFlags;
@@ -1513,7 +1510,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         for (int i = 0; i < 3; i++) {
             sbufWriteS16(dst, lrintf(getSetpoint(i) * 10));
         }
-        sbufWriteS16(dst, 0); // was collective setpoint (heli-only, removed)
         break;
 
     case MSP_ATTITUDE:
@@ -1528,14 +1524,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, getEstimatedVarioCms());
 #else
         sbufWriteU16(dst, 0);
-#endif
-        break;
-
-    case MSP_SONAR_ALTITUDE:
-#if defined(USE_RANGEFINDER)
-        sbufWriteU32(dst, rangefinderGetLatestAltitude());
-#else
-        sbufWriteU32(dst, 0);
 #endif
         break;
 
@@ -1606,7 +1594,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 
     case MSP_RC_TUNING:
-        sbufWriteU8(dst, 0); // was rates_type (now fixed to a single curve, removed)
         for (int i = 0; i < 3; i++) {
             sbufWriteU8(dst, currentControlRateProfile->rcRates[i]);
             sbufWriteU8(dst, currentControlRateProfile->rcExpo[i]);
@@ -1614,24 +1601,13 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             sbufWriteU8(dst, currentControlRateProfile->response_time[i]);
             sbufWriteU16(dst, currentControlRateProfile->accel_limit[i]);
         }
-        // was collective rcRates/rcExpo/sRates/response_time/accel_limit (heli-only, removed)
-        sbufWriteU8(dst, 0);
-        sbufWriteU8(dst, 0);
-        sbufWriteU8(dst, 0);
-        sbufWriteU8(dst, 0);
-        sbufWriteU16(dst, 0);
         for (int i = 0; i < 3; i++) {
             sbufWriteU8(dst, currentControlRateProfile->setpoint_boost_gain[i]);
             sbufWriteU8(dst, currentControlRateProfile->setpoint_boost_cutoff[i]);
         }
-        // was collective setpoint_boost_gain/cutoff (heli-only, removed)
-        sbufWriteU8(dst, 0);
-        sbufWriteU8(dst, 0);
         sbufWriteU8(dst, currentControlRateProfile->yaw_dynamic_ceiling_gain);
         sbufWriteU8(dst, currentControlRateProfile->yaw_dynamic_deadband_gain);
         sbufWriteU8(dst, currentControlRateProfile->yaw_dynamic_deadband_filter);
-        sbufWriteU8(dst, 0); // was cyclic_ring (heli-only, removed)
-        sbufWriteU8(dst, 0); // was cyclic_polar (heli-only, removed)
         break;
 
     case MSP_PID_TUNING:
@@ -1643,9 +1619,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
             sbufWriteU16(dst, currentPidProfile->pid[i].B);
-        }
-        for (int i = 0; i < CYCLIC_AXIS_COUNT; i++) {
-            sbufWriteU16(dst, 0); // was currentPidProfile->pid[i].O
         }
         break;
 
@@ -1900,6 +1873,22 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, failsafeConfig()->failsafe_switch_mode);
         sbufWriteU16(dst, failsafeConfig()->failsafe_throttle_low_delay);
         sbufWriteU8(dst, failsafeConfig()->failsafe_procedure);
+        // Appended field -- older clients that only read the six bytes above are unaffected.
+        sbufWriteU16(dst, failsafeConfig()->failsafe_recovery_delay);
+        break;
+
+    case MSP2_WING_GPS_NAV_CONFIG:
+        // gpsNavConfig_t (PG_GPS_NAV) -- the fixed-wing BOXRTH/BOXLOITER/GPS-rescue
+        // (FAILSAFE_PROCEDURE_GPS_RESCUE) nav controller's tuning, see gps_nav.c.
+        // No MSP command existed for this at all before -- CLI-only (nav_* settings).
+        sbufWriteU16(dst, gpsNavConfig()->loiterRadiusM);
+        sbufWriteU8(dst, gpsNavConfig()->loiterDirection);
+        sbufWriteU16(dst, gpsNavConfig()->rthAltitudeM);
+        sbufWriteU8(dst, gpsNavConfig()->minSats);
+        sbufWriteU8(dst, gpsNavConfig()->maxBankAngleDeg);
+        sbufWriteU8(dst, gpsNavConfig()->maxPitchAngleDeg);
+        sbufWriteU16(dst, gpsNavConfig()->bearingKp);
+        sbufWriteU16(dst, gpsNavConfig()->altitudeKp);
         break;
 
     case MSP_RXFAIL_CONFIG:
@@ -1923,7 +1912,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     case MSP_RC_CONFIG:
         sbufWriteU16(dst, rcControlsConfig()->rc_center);
         sbufWriteU16(dst, rcControlsConfig()->rc_deflection);
-        sbufWriteU16(dst, 0); // rcControlsConfig()->rc_arm_throttle
         sbufWriteU16(dst, rcControlsConfig()->rc_min_throttle);
         sbufWriteU16(dst, rcControlsConfig()->rc_max_throttle);
         sbufWriteU8(dst, rcControlsConfig()->rc_deadband);
@@ -1933,7 +1921,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     case MSP_TELEMETRY_CONFIG:
         sbufWriteU8(dst, telemetryConfig()->telemetry_inverted);
         sbufWriteU8(dst, telemetryConfig()->halfDuplex);
-        sbufWriteU32(dst, 0); // was telemetryConfig()->enableSensors
         sbufWriteU8(dst, telemetryConfig()->pinSwap);
         sbufWriteU8(dst, telemetryConfig()->crsf_telemetry_mode);
         sbufWriteU16(dst, telemetryConfig()->crsf_telemetry_link_rate);
@@ -2122,12 +2109,8 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 
     case MSP_PID_PROFILE:
         sbufWriteU8(dst, currentPidProfile->pid_mode);
-        sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_time_ground (heli-only, removed)
         sbufWriteU8(dst, currentPidProfile->iterm_decay_time);
-        sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_time_yaw
         sbufWriteU8(dst, currentPidProfile->iterm_decay_limit);
-        sbufWriteU8(dst, 0); // was currentPidProfile->error_decay_limit_yaw
-        sbufWriteU8(dst, 1); // was currentPidProfile->error_rotation
         sbufWriteU8(dst, currentPidProfile->error_limit[0]);
         sbufWriteU8(dst, currentPidProfile->error_limit[1]);
         sbufWriteU8(dst, currentPidProfile->error_limit[2]);
@@ -2141,14 +2124,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[0]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[1]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[2]);
-        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_cw_stop_gain
-        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_ccw_stop_gain
-        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_precomp_cutoff
-        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_cyclic_ff_gain
-        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_collective_ff_gain
-        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_collective_dynamic_gain
-        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_collective_dynamic_decay
-        sbufWriteU8(dst, 0); // was currentPidProfile->pitch_collective_ff_gain
         /* Angle mode */
         sbufWriteU8(dst, currentPidProfile->angle.level_strength);
         sbufWriteU8(dst, currentPidProfile->angle.level_limit);
@@ -2157,10 +2132,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         /* Acro trainer */
         sbufWriteU8(dst, currentPidProfile->trainer.gain);
         sbufWriteU8(dst, currentPidProfile->trainer.angle_limit);
-        /* Cyclic cross coupling */
-        sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_gain
-        sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_ratio
-        sbufWriteU8(dst, 0); // was currentPidProfile->cyclic_cross_coupling_cutoff
         /* Att Hold */
         sbufWriteU8(dst, currentPidProfile->atthold.gain);
         sbufWriteU8(dst, currentPidProfile->atthold.deadband);
@@ -2168,9 +2139,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[0]);
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[1]);
         sbufWriteU8(dst, currentPidProfile->bterm_cutoff[2]);
-        /* Inertia precomps */
-        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_inertia_precomp_gain
-        sbufWriteU8(dst, 0); // was currentPidProfile->yaw_inertia_precomp_cutoff
         /* Fixed-wing throttle-based gain attenuation (gain + curve index) */
         sbufWriteU8(dst, currentPidProfile->fw_tpa_gain);
         sbufWriteU8(dst, currentPidProfile->fw_tpa_curve);
@@ -2199,6 +2167,11 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->autohover.throttle_assist_gain);
         sbufWriteU8(dst, currentPidProfile->autohover.throttle_assist_max);
         sbufWriteU16(dst, currentPidProfile->autohover.throttle_assist_trigger_ms);
+        /* API 22.4: optional per-axis attitude limits. Zero inherits the shared limit. */
+        sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->angle_roll);
+        sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->angle_pitch);
+        sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->trainer_roll);
+        sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->trainer_pitch);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -2221,7 +2194,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, gyroConfig()->gyro_high_fsr);
         sbufWriteU8(dst, gyroConfig()->gyroMovementCalibrationThreshold);
         sbufWriteU16(dst, gyroConfig()->gyroCalibrationDuration);
-        sbufWriteU16(dst, 0); // gyroConfig()->gyro_offset_yaw
         sbufWriteU8(dst, gyroConfig()->checkOverflow);
         break;
 
@@ -2853,11 +2825,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
                 currentPidProfile->pid[i].B = sbufReadU16(src);
             }
         }
-        if (sbufBytesRemaining(src) >= 4) {
-            for (int i = 0; i < CYCLIC_AXIS_COUNT; i++) {
-                sbufReadU16(src); // was currentPidProfile->pid[i].O
-            }
-        }
         pidLoadProfile(currentPidProfile);
         break;
 
@@ -2910,7 +2877,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP_SET_RC_TUNING:
-        sbufReadU8(src); // was rates_type (now fixed to a single curve, removed)
         for (int i = 0; i < 3; i++) {
             currentControlRateProfile->rcRates[i] = sbufReadU8(src);
             currentControlRateProfile->rcExpo[i] = sbufReadU8(src);
@@ -2918,29 +2884,19 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentControlRateProfile->response_time[i] = sbufReadU8(src);
             currentControlRateProfile->accel_limit[i] = sbufReadU16(src);
         }
-        // was collective rcRates/rcExpo/sRates/response_time/accel_limit (heli-only, removed)
-        sbufReadU8(src);
-        sbufReadU8(src);
-        sbufReadU8(src);
-        sbufReadU8(src);
-        sbufReadU16(src);
-        if (sbufBytesRemaining(src) >= 8) {
+        if (sbufBytesRemaining(src) >= 6) {
             for (int i = 0; i < 3; i++) {
                 currentControlRateProfile->setpoint_boost_gain[i] =
                     sbufReadU8(src);
                 currentControlRateProfile->setpoint_boost_cutoff[i] =
                     sbufReadU8(src);
             }
-            // was collective setpoint_boost_gain/cutoff (heli-only, removed)
-            sbufReadU8(src);
-            sbufReadU8(src);
         }
         if (sbufBytesRemaining(src) >= 3) {
             currentControlRateProfile->yaw_dynamic_ceiling_gain = sbufReadU8(src);
             currentControlRateProfile->yaw_dynamic_deadband_gain = sbufReadU8(src);
             currentControlRateProfile->yaw_dynamic_deadband_filter= sbufReadU8(src);
         }
-        // was cyclic_ring/cyclic_polar (heli-only, removed); any trailing bytes are ignored
         loadControlRateProfile();
         break;
 
@@ -3180,6 +3136,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
     case MSP_SET_RESET_CURR_PID:
         resetPidProfile(currentPidProfile);
+        memset(attitudeLimitsMutable(getCurrentPidProfileIndex()), 0, sizeof(attitudeLimits_t));
         break;
 
     case MSP_SET_SENSOR_ALIGNMENT:
@@ -3262,12 +3219,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
     case MSP_SET_PID_PROFILE:
         currentPidProfile->pid_mode = sbufReadU8(src);
-        sbufReadU8(src); // was currentPidProfile->error_decay_time_ground (heli-only, removed)
         currentPidProfile->iterm_decay_time = sbufReadU8(src);
-        sbufReadU8(src); // was currentPidProfile->error_decay_time_yaw
         currentPidProfile->iterm_decay_limit = sbufReadU8(src);
-        sbufReadU8(src); // was currentPidProfile->error_decay_limit_yaw
-        sbufReadU8(src); // was currentPidProfile->error_rotation
         currentPidProfile->error_limit[0] = sbufReadU8(src);
         currentPidProfile->error_limit[1] = sbufReadU8(src);
         currentPidProfile->error_limit[2] = sbufReadU8(src);
@@ -3281,14 +3234,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         currentPidProfile->iterm_relax_cutoff[0] = sbufReadU8(src);
         currentPidProfile->iterm_relax_cutoff[1] = sbufReadU8(src);
         currentPidProfile->iterm_relax_cutoff[2] = sbufReadU8(src);
-        sbufReadU8(src); // was currentPidProfile->yaw_cw_stop_gain
-        sbufReadU8(src); // was currentPidProfile->yaw_ccw_stop_gain
-        sbufReadU8(src); // was currentPidProfile->yaw_precomp_cutoff
-        sbufReadU8(src); // was currentPidProfile->yaw_cyclic_ff_gain
-        sbufReadU8(src); // was currentPidProfile->yaw_collective_ff_gain
-        sbufReadU8(src); // was currentPidProfile->yaw_collective_dynamic_gain
-        sbufReadU8(src); // was currentPidProfile->yaw_collective_dynamic_decay
-        sbufReadU8(src); // was currentPidProfile->pitch_collective_ff_gain
         /* Angle mode */
         currentPidProfile->angle.level_strength = sbufReadU8(src);
         currentPidProfile->angle.level_limit = sbufReadU8(src);
@@ -3297,12 +3242,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         /* Acro trainer */
         currentPidProfile->trainer.gain = sbufReadU8(src);
         currentPidProfile->trainer.angle_limit = sbufReadU8(src);
-        /* Cyclic cross coupling -- removed */
-        if (sbufBytesRemaining(src) >= 3) {
-            sbufReadU8(src);
-            sbufReadU8(src);
-            sbufReadU8(src);
-        }
         /* Att Hold */
         if (sbufBytesRemaining(src) >= 2) {
             currentPidProfile->atthold.gain = sbufReadU8(src);
@@ -3313,11 +3252,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->bterm_cutoff[0] = sbufReadU8(src);
             currentPidProfile->bterm_cutoff[1] = sbufReadU8(src);
             currentPidProfile->bterm_cutoff[2] = sbufReadU8(src);
-        }
-        /* Inertia precomps -- removed */
-        if (sbufBytesRemaining(src) >= 2) {
-            sbufReadU8(src);
-            sbufReadU8(src);
         }
         /* Fixed-wing throttle-based gain attenuation (gain + curve index) */
         if (sbufBytesRemaining(src) >= 2) {
@@ -3365,6 +3299,14 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->autohover.throttle_assist_max = sbufReadU8(src);
             currentPidProfile->autohover.throttle_assist_trigger_ms = sbufReadU16(src);
         }
+        /* Older clients omit this extension and must not erase the axis limits. */
+        if (sbufBytesRemaining(src) >= 4) {
+            attitudeLimits_t *limits = attitudeLimitsMutable(getCurrentPidProfileIndex());
+            limits->angle_roll = sbufReadU8(src);
+            limits->angle_pitch = sbufReadU8(src);
+            limits->trainer_roll = sbufReadU8(src);
+            limits->trainer_pitch = sbufReadU8(src);
+        }
         /* Load new values */
         pidLoadProfile(currentPidProfile);
         break;
@@ -3389,7 +3331,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         gyroConfigMutable()->gyro_high_fsr = sbufReadU8(src);
         gyroConfigMutable()->gyroMovementCalibrationThreshold = sbufReadU8(src);
         gyroConfigMutable()->gyroCalibrationDuration = sbufReadU16(src);
-        sbufReadU16(src); // gyroConfigMutable()->gyro_offset_yaw
         gyroConfigMutable()->checkOverflow = sbufReadU8(src);
         validateAndFixGyroConfig();
         break;
@@ -3415,7 +3356,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         escSensorConfigMutable()->halfDuplex = sbufReadU8(src);
         escSensorConfigMutable()->update_hz = sbufReadU16(src);
         escSensorConfigMutable()->current_offset = sbufReadU16(src);
-        sbufReadU32(src); // Was HW4 parameters
         if (sbufBytesRemaining(src) >= 1) {
             escSensorConfigMutable()->pinSwap = sbufReadU8(src);
         }
@@ -3528,18 +3468,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 #endif
 
-#ifdef USE_CAMERA_CONTROL
-    case MSP_CAMERA_CONTROL:
-        {
-            if (ARMING_FLAG(ARMED)) {
-                return MSP_RESULT_ERROR;
-            }
-
-            const uint8_t key = sbufReadU8(src);
-            cameraControlKeyPress(key, 0);
-        }
-        break;
-#endif
 
     case MSP_SET_ARMING_DISABLED:
         {
@@ -3573,6 +3501,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         gpsSol.llh.lon = sbufReadU32(src);
         gpsSol.llh.altCm = sbufReadU16(src) * 100; // alt changed from 1m to 0.01m per lsb since MSP API 1.39 by RTH. Received MSP altitudes in 1m per lsb have to upscaled.
         gpsSol.groundSpeed = sbufReadU16(src);
+        gpsMspDataReceived();                // mark data fresh so gpsUpdate() doesn't consider it stale
         GPS_update |= GPS_MSP_UPDATE;        // MSP data signalisation to GPS functions
         break;
 #endif // USE_GPS
@@ -3798,6 +3727,22 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         failsafeConfigMutable()->failsafe_switch_mode = sbufReadU8(src);
         failsafeConfigMutable()->failsafe_throttle_low_delay = sbufReadU16(src);
         failsafeConfigMutable()->failsafe_procedure = sbufReadU8(src);
+        // Appended field -- older clients that only send the six bytes above leave this
+        // untouched, same pattern used elsewhere in this function (e.g. MSP_SET_TELEMETRY_CONFIG).
+        if (sbufBytesRemaining(src) >= 2) {
+            failsafeConfigMutable()->failsafe_recovery_delay = sbufReadU16(src);
+        }
+        break;
+
+    case MSP2_WING_SET_GPS_NAV_CONFIG:
+        gpsNavConfigMutable()->loiterRadiusM = sbufReadU16(src);
+        gpsNavConfigMutable()->loiterDirection = sbufReadU8(src);
+        gpsNavConfigMutable()->rthAltitudeM = sbufReadU16(src);
+        gpsNavConfigMutable()->minSats = sbufReadU8(src);
+        gpsNavConfigMutable()->maxBankAngleDeg = sbufReadU8(src);
+        gpsNavConfigMutable()->maxPitchAngleDeg = sbufReadU8(src);
+        gpsNavConfigMutable()->bearingKp = sbufReadU16(src);
+        gpsNavConfigMutable()->altitudeKp = sbufReadU16(src);
         break;
 
     case MSP_SET_RXFAIL_CONFIG:
@@ -3826,7 +3771,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
     case MSP_SET_RC_CONFIG:
         rcControlsConfigMutable()->rc_center = sbufReadU16(src);
         rcControlsConfigMutable()->rc_deflection = sbufReadU16(src);
-        sbufReadU16(src); // rcControlsConfigMutable()->rc_arm_throttle
         rcControlsConfigMutable()->rc_min_throttle = sbufReadU16(src);
         rcControlsConfigMutable()->rc_max_throttle = sbufReadU16(src);
         rcControlsConfigMutable()->rc_deadband = sbufReadU8(src);
@@ -3836,7 +3780,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
     case MSP_SET_TELEMETRY_CONFIG:
         telemetryConfigMutable()->telemetry_inverted = sbufReadU8(src);
         telemetryConfigMutable()->halfDuplex = sbufReadU8(src);
-        sbufReadU32(src); // was telemetryConfigMutable()->enableSensors
         if (sbufBytesRemaining(src) >= 1) {
             telemetryConfigMutable()->pinSwap = sbufReadU8(src);
         }

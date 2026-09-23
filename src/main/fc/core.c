@@ -354,13 +354,18 @@ void updateArmingStatus(void)
         }
 
 #ifdef USE_GPS_RESCUE
-        if (gpsRescueIsConfigured()) {
+        // gpsRescueIsConfigured() only catches the failsafe-procedure trigger
+        // (failsafe_procedure == FAILSAFE_PROCEDURE_GPS_RESCUE). BOXGPSRESCUE, the redundant
+        // switch alias for BOXRTH, has been retired -- treat BOXRTH being mapped the same as
+        // gpsRescueIsConfigured() so a craft wired with BOXRTH (the natural fixed-wing choice)
+        // still gets prearm GPS-fix protection.
+        if (gpsRescueIsConfigured() || isModeActivationConditionPresent(BOXRTH)) {
             if (gpsRescueConfig()->allowArmingWithoutFix || STATE(GPS_FIX) || ARMING_FLAG(WAS_EVER_ARMED)) {
                 unsetArmingDisabled(ARMING_DISABLED_GPS);
             } else {
                 setArmingDisabled(ARMING_DISABLED_GPS);
             }
-            if (IS_RC_MODE_ACTIVE(BOXGPSRESCUE)) {
+            if (IS_RC_MODE_ACTIVE(BOXRTH)) {
                 setArmingDisabled(ARMING_DISABLED_RESC);
             } else {
                 unsetArmingDisabled(ARMING_DISABLED_RESC);
@@ -656,7 +661,11 @@ void processRxModes(timeUs_t currentTimeUs)
     // mixTable constrains motor commands, so checking  throttleStatus is enough
     const timeUs_t autoDisarmDelayUs = armingConfig()->auto_disarm_delay * 1e6;
     if (ARMING_FLAG(ARMED)
-        && !FLIGHT_MODE(GPS_RESCUE_MODE)  // disable auto-disarm when GPS Rescue is active
+        // Disable auto-disarm-on-low-throttle while any GPS return-to-home is active (pilot- or
+        // failsafe-triggered): GPS_RESCUE_MODE is never set on this fork (see the USE_GPS_RESCUE
+        // block above), RTH_MODE is what BOXRTH/a GPS-rescue failsafe procedure actually set.
+        // Left checking GPS_RESCUE_MODE too in case that ever changes.
+        && !FLIGHT_MODE(GPS_RESCUE_MODE | RTH_MODE)
     ) {
         if (isUsingSticksForArming()) {
             if (throttleOff) {
@@ -732,13 +741,18 @@ void processRxModes(timeUs_t currentTimeUs)
 
     if (sensors(SENSOR_ACC)) {
 #ifdef USE_GPS_RESCUE
-        if (ARMING_FLAG(ARMED) &&
-            (IS_RC_MODE_ACTIVE(BOXGPSRESCUE) ||
-             (failsafeIsActive() && failsafeConfig()->failsafe_procedure == FAILSAFE_PROCEDURE_GPS_RESCUE))) {
-            ENABLE_FLIGHT_MODE(GPS_RESCUE_MODE);
-        } else {
-            DISABLE_FLIGHT_MODE(GPS_RESCUE_MODE);
-        }
+        // GPS_RESCUE_MODE / gps_rescue.c is a multirotor/heli hover-throttle-learning descent
+        // algorithm: it learns a "hover throttle" from tilt vs. throttle and manages a vertical
+        // descent velocity, neither of which is meaningful -- or safe -- on a fixed-wing
+        // airframe. Nothing wires GPS_RESCUE_MODE on any more: BOXRTH drives the fixed-wing-native
+        // RTH_MODE / navRthStart() path (below, USE_GPS_NAV block), and a failsafe_procedure of
+        // FAILSAFE_PROCEDURE_GPS_RESCUE is handled entirely inside failsafe.c via that same
+        // RTH_MODE path. BOXGPSRESCUE, formerly a redundant switch alias for BOXRTH, has been
+        // retired (fc/rc_modes.h). Keep GPS_RESCUE_MODE explicitly, unconditionally cleared here
+        // (rather than just deleting this block) so updateGPSRescueState() -- still compiled in,
+        // still called every GPS fix -- stays a guaranteed no-op even if something else ever sets
+        // the flag by mistake.
+        DISABLE_FLIGHT_MODE(GPS_RESCUE_MODE);
 #endif
 
 #ifdef USE_GPS_NAV
@@ -746,14 +760,27 @@ void processRxModes(timeUs_t currentTimeUs)
             static bool wasRthActive = false;
             static bool wasLoiterActive = false;
 
-            // RTH takes priority if both switches are active at once
             if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXRTH)) {
                 if (!wasRthActive) {
                     navRthStart();
                 }
                 ENABLE_FLIGHT_MODE(RTH_MODE);
                 wasRthActive = true;
-            } else {
+            }
+#ifdef USE_GPS_RESCUE
+            else if (failsafeIsActive() && failsafePhase() == FAILSAFE_GPS_RESCUE) {
+                // A failsafe-triggered GPS rescue owns RTH_MODE/nav state for the duration of
+                // its own phase (see failsafe.c) -- leave it alone here. This task
+                // (processRxModes, via TASK_RX) and failsafeUpdateState() (the 10ms scheduler
+                // path) are independently scheduled with no guaranteed ordering between them, so
+                // without this, this block would otherwise clobber RTH_MODE back off (and, via
+                // the navStop() call below, stop the rescue's own nav) on every cycle where the
+                // pilot's BOXRTH switch isn't itself engaged -- the normal case during a real
+                // signal loss, where IS_RC_MODE_ACTIVE() above is just reading whatever the aux
+                // channel's RX-fallback/held value happens to be, not pilot intent.
+            }
+#endif
+            else {
                 DISABLE_FLIGHT_MODE(RTH_MODE);
                 wasRthActive = false;
             }

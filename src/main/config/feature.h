@@ -40,7 +40,7 @@ typedef enum {
     FEATURE_SOFTSERIAL             = BIT(6),
     FEATURE_GPS                    = BIT(7),
     FEATURE_UNUSED_8               = BIT(8),
-    FEATURE_RANGEFINDER            = BIT(9),
+    FEATURE_UNUSED_9               = BIT(9),
     FEATURE_TELEMETRY              = BIT(10),
     FEATURE_UNUSED_11              = BIT(11),
     FEATURE_UNUSED_12              = BIT(12),

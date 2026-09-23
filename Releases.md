@@ -1,3 +1,19 @@
+# 0.0.25
+
+Change the MSP API to 22.3, stripping the always-zero heli placeholder bytes from eight MSP messages (MSP_RC_TUNING, MSP_PID_PROFILE, MSP_PID_TUNING, MSP_SETPOINT, MSP_TELEMETRY_CONFIG, MSP_ESC_SENSOR_CONFIG, MSP_RC_CONFIG, MSP_SENSOR_CONFIG). This is a breaking layout change: use the 0.0.25 Configurator and Lua suites with this firmware.
+Add CRSF Sensors support: decode third-party CRSF GPS, battery, barometer, cells and RPM telemetry, with a battery source select and a diagnostic MSP status command.
+Add cell count and cell voltages to battery profiles, so a model can switch between e.g. 3S and 4S or LiPo and LiHV packs.
+Make the flap compensation and diff thrust yaw adjustments signed (-1000..1000), so compensation can be driven negative without clobbering a rule's Reverse.
+Rework SmartFuel sag compensation to follow motor throttle output instead of roll/pitch stick load, and give motorless models none. smartfuel_sag_gain is now volts per cell (x100) at full throttle.
+Gate the AUTOHOVER throttle assist on the throttle stick and RX signal, so it no longer spins the motor at idle or keeps assisting after link loss.
+Remove the AUTOHOVER roll hold, so roll is a free stick pass-through again on entry and in the hover (autohover_roll_deadband is kept for compatibility but no longer does anything), and lower the default autohover max_rate from 300 to 120 deg/s so engaging in forward flight makes a wider turn.
+Bleed wound-up I-term quickly after an ATT HOLD/Thrust Vector hold stall re-capture, instead of taking ~15 s to re-center the surface.
+Log the hold stall state in the ATTHOLD and TVHOLD blackbox debug modes.
+Fix SITL providing only 4 of 8 servo outputs (an existing SITL setup needs a defaults reset to see the extra channels).
+Use integer maths for ADC current capacity accumulation, saving about 2.6 KB of flash on STM32F7X2.
+Remove the VTX, camera control and rangefinder code, none of which was built into any target. MSP_SONAR_ALTITUDE is now unsupported; wire IDs stay reserved.
+Move the remaining user and developer documentation to wingflight-docs, leaving only design notes in the firmware repo.
+
 # 0.0.24
 
 Make continuous (pot/channel-mapped) SERVO_TRIM_* adjustments runtime-only: they no longer rewrite and save the servo center, so a trim can't re-apply itself on top of its own saved result after a reboot or leave a wrong center behind.
