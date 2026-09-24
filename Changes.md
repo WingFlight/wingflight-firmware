@@ -140,6 +140,14 @@ Clients that send only the original fields leave them unchanged.
 
 ## Configuration Changes
 
+The shared roll/pitch stick deadband (a helicopter "cyclic" leftover) is split
+into independent `roll_deadband` and `pitch_deadband` CLI settings, alongside
+the existing `yaw_deadband`. The CLI name `deadband` is gone. The
+`rcControlsConfig` PG version is bumped (1 -> 2), so all its settings
+(`rc_center`, `rc_deflection`, throttle range, deadbands, smoothness,
+thresholds) reset to defaults on upgrade. The blackbox header `deadband` is
+replaced by `roll_deadband` and `pitch_deadband`.
+
 Added airborne re-arm grace settings `rearm_grace_seconds` and
 `rearm_min_armed_seconds`. After the aircraft has been armed for the minimum
 time and has latched in-flight state, an accidental disarm opens a short re-arm
@@ -223,6 +231,13 @@ runtime effect.
 
 
 ## MSP Changes
+
+### MSP_RC_CONFIG / MSP_SET_RC_CONFIG
+
+- The deadbands after `rc_max_throttle` are now `rc_roll_deadband`,
+  `rc_pitch_deadband`, `rc_yaw_deadband` (U8 each). This is a breaking layout
+  change with no API version bump; update the configurator and Lua suite
+  together with the firmware.
 
 ### Heli-only placeholder bytes removed (MSP API 22.3)
 

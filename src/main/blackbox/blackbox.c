@@ -1739,7 +1739,8 @@ static bool blackboxWriteSysinfo(void)
 #endif
 
 
-        BLACKBOX_PRINT_HEADER_LINE("deadband", "%d",                        rcControlsConfig()->rc_deadband);
+        BLACKBOX_PRINT_HEADER_LINE("roll_deadband", "%d",                   rcControlsConfig()->rc_roll_deadband);
+        BLACKBOX_PRINT_HEADER_LINE("pitch_deadband", "%d",                  rcControlsConfig()->rc_pitch_deadband);
         BLACKBOX_PRINT_HEADER_LINE("yaw_deadband", "%d",                    rcControlsConfig()->rc_yaw_deadband);
 
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_GYRO_TO_USE, "%d",            gyroConfig()->gyro_to_use);

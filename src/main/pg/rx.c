@@ -67,14 +67,15 @@ void pgResetFn_rxConfig(rxConfig_t *rxConfig)
 #endif
 }
 
-PG_REGISTER_WITH_RESET_TEMPLATE(rcControlsConfig_t, rcControlsConfig, PG_RC_CONTROLS_CONFIG, 1);
+PG_REGISTER_WITH_RESET_TEMPLATE(rcControlsConfig_t, rcControlsConfig, PG_RC_CONTROLS_CONFIG, 2);
 
 PG_RESET_TEMPLATE(rcControlsConfig_t, rcControlsConfig,
     .rc_center = 1500,
     .rc_deflection = 510,
     .rc_min_throttle = 0,
     .rc_max_throttle = 0,
-    .rc_deadband = 5,
+    .rc_roll_deadband = 5,
+    .rc_pitch_deadband = 5,
     .rc_yaw_deadband = 5,
     .rc_smoothness = 50,
     .rc_threshold = { 25, 25, 25 },

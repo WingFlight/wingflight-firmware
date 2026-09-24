@@ -58,7 +58,8 @@ typedef struct rcControlsConfig_s {
     uint16_t rc_deflection;             // Max stick declection in us, applies to RPYC
     uint16_t rc_min_throttle;           // Throttle channel value for 0%
     uint16_t rc_max_throttle;           // Throttle channel value for 100%
-    uint8_t  rc_deadband;               // A deadband around the stick center for pitch and roll axis
+    uint8_t  rc_roll_deadband;          // A deadband around the stick center for roll axis
+    uint8_t  rc_pitch_deadband;         // A deadband around the stick center for pitch axis
     uint8_t  rc_yaw_deadband;           // A deadband around the stick center for yaw axis
     uint8_t  rc_smoothness;             // Minimum RPYC smoothing level
     uint8_t  rc_threshold[3];           // Threshold for stick activity

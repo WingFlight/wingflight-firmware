@@ -1918,7 +1918,8 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, rcControlsConfig()->rc_deflection);
         sbufWriteU16(dst, rcControlsConfig()->rc_min_throttle);
         sbufWriteU16(dst, rcControlsConfig()->rc_max_throttle);
-        sbufWriteU8(dst, rcControlsConfig()->rc_deadband);
+        sbufWriteU8(dst, rcControlsConfig()->rc_roll_deadband);
+        sbufWriteU8(dst, rcControlsConfig()->rc_pitch_deadband);
         sbufWriteU8(dst, rcControlsConfig()->rc_yaw_deadband);
         break;
 
@@ -3783,7 +3784,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         rcControlsConfigMutable()->rc_deflection = sbufReadU16(src);
         rcControlsConfigMutable()->rc_min_throttle = sbufReadU16(src);
         rcControlsConfigMutable()->rc_max_throttle = sbufReadU16(src);
-        rcControlsConfigMutable()->rc_deadband = sbufReadU8(src);
+        rcControlsConfigMutable()->rc_roll_deadband = sbufReadU8(src);
+        rcControlsConfigMutable()->rc_pitch_deadband = sbufReadU8(src);
         rcControlsConfigMutable()->rc_yaw_deadband = sbufReadU8(src);
         break;
 

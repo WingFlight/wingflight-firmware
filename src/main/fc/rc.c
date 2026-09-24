@@ -225,15 +225,15 @@ void updateRcCommands(void)
 
 INIT_CODE void initRcProcessing(void)
 {
-    rc.deadband[0] = rcControlsConfig()->rc_deadband;
-    rc.deadband[1] = rcControlsConfig()->rc_deadband;
+    rc.deadband[0] = rcControlsConfig()->rc_roll_deadband;
+    rc.deadband[1] = rcControlsConfig()->rc_pitch_deadband;
     rc.deadband[2] = rcControlsConfig()->rc_yaw_deadband;
     rc.deadband[3] = 0;
 
     for (int axis = 0; axis < 4; axis++) {
         rc.center[axis] = rcControlsConfig()->rc_center;
 
-        // rc_deflection and rc_deadband are independently range-checked by the
+        // rc_deflection and the deadbands are independently range-checked by the
         // CLI (deflection >= 250, deadband <= 100), which keeps this positive
         // today, but MSP_SET_RC_CONFIG writes both with no cross-validation
         // at all (see msp.c) and applies live via MSP_EEPROM_WRITE -> readEEPROM()
