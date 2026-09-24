@@ -21,7 +21,10 @@
 #include "pg/pg.h"
 #include "pg/bus_servo.h"
 
-#define FBUS_MASTER_CHANNELS 16
+typedef enum {
+    FBUS_MASTER_CHANNELS_16 = 0,    // 16 analog + 2 digital (CH17, CH18)
+    FBUS_MASTER_CHANNELS_24,        // 24 analog + 2 digital (CH25, CH26)
+} fbusMasterChannels_e;
 
 #define FBUS_MIN 192
 #define FBUS_MAX 1792
@@ -46,6 +49,9 @@ typedef struct fbusMasterConfig_s {
     // List of sensor physical IDs to forward to the receiver (max 8)
     // 0xFF = disabled slot, 0..FBUS_MAX_PHYS_ID = valid physical IDs
     uint8_t forwardedSensors[FBUS_MASTER_MAX_FORWARDED_SENSORS];
+
+    // Control frame size, fbusMasterChannels_e.
+    uint8_t channels;
 
 } fbusMasterConfig_t;
 

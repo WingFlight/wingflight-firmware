@@ -36,8 +36,19 @@
 
 #define MIXER_OUTPUT_COUNT    (1 + MAX_SUPPORTED_SERVOS + MAX_SUPPORTED_MOTORS)
 
+// Mixer output numbers are stored in mixer rules, CLI diffs and backups, so
+// they must not move. S1-S26 come first (outputs 1-26), then the motors
+// (27-30), then the bus servos added for 24-channel F.Bus, S27-S34 (31-38).
+#define MIXER_SERVO_LOW_MAX   26
+#if MAX_SUPPORTED_SERVOS > MIXER_SERVO_LOW_MAX
+#define MIXER_SERVO_LOW_COUNT MIXER_SERVO_LOW_MAX
+#else
+#define MIXER_SERVO_LOW_COUNT MAX_SUPPORTED_SERVOS
+#endif
+
 #define MIXER_SERVO_OFFSET    1
-#define MIXER_MOTOR_OFFSET    (MIXER_SERVO_OFFSET + MAX_SUPPORTED_SERVOS)
+#define MIXER_MOTOR_OFFSET    (MIXER_SERVO_OFFSET + MIXER_SERVO_LOW_COUNT)
+#define MIXER_SERVO_HIGH_OFFSET (MIXER_MOTOR_OFFSET + MAX_SUPPORTED_MOTORS)
 
 #define MIXER_RATE_MIN       -10000
 #define MIXER_RATE_MAX        10000
@@ -91,9 +102,16 @@ bool    isMixerOverrideActive(void);
 
 /** Inline functions **/
 
+static inline uint8_t mixerServoOutputIndex(uint8_t servo)
+{
+    return (servo < MIXER_SERVO_LOW_COUNT) ?
+        MIXER_SERVO_OFFSET + servo :
+        MIXER_SERVO_HIGH_OFFSET + (servo - MIXER_SERVO_LOW_COUNT);
+}
+
 static inline float mixerGetServoOutput(uint8_t index)
 {
-    return mixerGetOutput(MIXER_SERVO_OFFSET + index);
+    return mixerGetOutput(mixerServoOutputIndex(index));
 }
 
 static inline float mixerGetMotorOutput(uint8_t index)
@@ -128,7 +146,7 @@ static inline bool tvPidAxisSaturated(uint8_t index)
 
 static inline void mixerSaturateServoOutput(uint8_t index)
 {
-    mixerSaturateOutput(index + MIXER_SERVO_OFFSET);
+    mixerSaturateOutput(mixerServoOutputIndex(index));
 }
 
 static inline void mixerSaturateMotorOutput(uint8_t index)

@@ -1355,10 +1355,11 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     }
 
     case MSP2_WING_FBUS_MASTER_CONFIG: {
-        sbufWriteU8(dst, 1); // payload version -- only the forwarding slots so far
+        sbufWriteU8(dst, 2); // payload version: 1 = forwarding slots, 2 = + channels
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
             sbufWriteU8(dst, fbusMasterConfig()->forwardedSensors[i]);
         }
+        sbufWriteU8(dst, fbusMasterConfig()->channels);
         break;
     }
 #endif
@@ -4174,6 +4175,9 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
     case MSP2_WING_SET_FBUS_MASTER_CONFIG:
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
             fbusMasterConfigMutable()->forwardedSensors[i] = sbufReadU8(src);
+        }
+        if (sbufBytesRemaining(src) >= 1) {
+            fbusMasterConfigMutable()->channels = sbufReadU8(src) ? FBUS_MASTER_CHANNELS_24 : FBUS_MASTER_CHANNELS_16;
         }
         // Forwarding buffers are only loaded from config at boot -- reload
         // them now so the change is live immediately, without a reboot.

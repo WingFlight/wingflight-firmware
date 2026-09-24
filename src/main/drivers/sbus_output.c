@@ -42,7 +42,8 @@
 static serialPort_t *sbusOutPort = NULL;
 
 // Storage for speed limiting (similar to servoInput in servos.c)
-static FAST_DATA_ZERO_INIT float sbusServoInput[SBUS_OUT_CHANNELS];
+// Shared with F.Bus output, which uses all BUS_SERVO_CHANNELS in 24-channel mode.
+static FAST_DATA_ZERO_INIT float sbusServoInput[BUS_SERVO_CHANNELS];
 
 static void sbusOutPrepareSbusFrame(sbusOutFrame_t *frame,
                                     uint16_t *channels)
@@ -121,7 +122,7 @@ static inline float sbusLimitSpeed(float old, float new, float speed)
 // Returns processed value in microseconds
 float sbusOutGetValueMixer(uint8_t channel)
 {
-    if (channel >= SBUS_OUT_CHANNELS)
+    if (channel >= BUS_SERVO_CHANNELS)
         return 0;
     
     const uint8_t servoIndex = BUS_SERVO_OFFSET + channel;

@@ -28,6 +28,31 @@ receiver unconfigured. The FrSky Hub CLI settings (`frsky_default_lat`,
 and `mavlink_mah_as_heading_divisor` are no longer available.
 
 
+## 24-Channel F.Bus Output (MSP API 22.5)
+
+F.Bus output can send the 24-channel control frame. The new CLI setting
+`fbus_master_channels` (`16` or `24`, default `16`) selects the frame. The 24-channel
+frame carries CH1-24 as analog channels and CH25-26 as the two digital
+channels (`src/main/drivers/fbus_master.c`). SBUS output stays 16 + 2 channels.
+
+Bus servos go from 18 to 26 (`BUS_SERVO_CHANNELS`), so servos are now S1-S34
+and `MSP_STATUS` reports 8 more servos. Bus servo N is always channel N on the
+wire.
+
+Mixer output numbers used before this change do not move, so saved mixer
+rules, CLI diffs and backups keep their meaning: 1-26 are S1-S26, 27-30 are
+M1-M4, and the new bus servos S27-S34 are outputs 31-38
+(`src/main/flight/mixer.h`).
+
+`MSP2_WING_FBUS_MASTER_CONFIG` now reports payload version 2 and appends the
+channel setting (0 = 16, 1 = 24). `MSP2_WING_SET_FBUS_MASTER_CONFIG` accepts it
+as an optional trailing byte.
+
+The 16-channel F.Bus frame used to fill the CH17-18 flag bits from past the end
+of its channel array. It now sends bus servos 17 and 18 as those two digital
+channels, on at 1500us and above.
+
+
 ## Memory Usage
 
 SmartPort keeps its sensor catalogue in flash and reserves runtime state only

@@ -91,7 +91,7 @@ static int axisTrimDirection(int axis, int servo)
 
     for (int r = 0; r < MIXER_RULE_COUNT; r++) {
         const mixerRule_t *rule = mixerRules(r);
-        if (rule->oper && rule->output == (uint8_t)(MIXER_SERVO_OFFSET + servo) &&
+        if (rule->oper && rule->output == mixerServoOutputIndex(servo) &&
             rule->input == axisInput[axis]) {
             const bool flagReversed = servoParams(servo)->flags & SERVO_FLAG_REVERSED;
             const bool weightReversed = (rule->weight != 0 ? rule->weight : rule->weightNeg) < 0;

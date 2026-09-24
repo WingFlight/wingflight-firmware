@@ -82,7 +82,7 @@ static bool isTrimmableServo(int servo)
         const mixerRule_t *rule = mixerRules(i);
 
         if (rule->oper &&
-            rule->output == MIXER_SERVO_OFFSET + servo &&
+            rule->output == mixerServoOutputIndex(servo) &&
             rule->input >= MIXER_IN_STABILIZED_ROLL && rule->input <= MIXER_IN_STABILIZED_YAW) {
             return true;
         }

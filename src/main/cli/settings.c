@@ -244,6 +244,13 @@ static const char * const lookupTableRxInputBackupProvider[] = {
 };
 #endif
 
+#ifdef USE_FBUS_MASTER
+// Keep in sync with pg/fbus_master.h's fbusMasterChannels_e (same order).
+static const char * const lookupTableFbusMasterChannels[] = {
+    "16", "24",
+};
+#endif
+
 #ifdef USE_CRSF_SENSORS
 // Keep in sync with pg/crsf_sensors.h's crsfSensorsBatterySource_e.
 static const char * const lookupTableCrsfSensorsBatterySource[] = {
@@ -506,6 +513,9 @@ const lookupTableEntry_t lookupTables[] = {
 #endif
 #ifdef USE_RX_INPUT_BACKUP
     LOOKUP_TABLE_ENTRY(lookupTableRxInputBackupProvider),
+#endif
+#ifdef USE_FBUS_MASTER
+    LOOKUP_TABLE_ENTRY(lookupTableFbusMasterChannels),
 #endif
 #ifdef USE_RX_SPI
     LOOKUP_TABLE_ENTRY(lookupTableRxSpi),
@@ -1426,6 +1436,7 @@ const clivalue_t valueTable[] = {
     { "fbus_master_telemetry_rate",    VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = {FBUS_MASTER_TELEMETRY_RATE_MIN_HZ, FBUS_MASTER_TELEMETRY_RATE_MAX_HZ}, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, telemetryRate) },
     { "fbus_master_discovery_ms",      VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = {FBUS_MASTER_DISCOVERY_TIME_MIN_MS, FBUS_MASTER_DISCOVERY_TIME_MAX_MS}, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, sensorDiscoveryTimeMs) },
     { "fbus_master_forwarded_sensors", VAR_UINT8 | MASTER_VALUE | MODE_ARRAY, .config.array.length = FBUS_MASTER_MAX_FORWARDED_SENSORS, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, forwardedSensors) },
+    { "fbus_master_channels",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_FBUS_MASTER_CHANNELS }, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, channels) },
 #endif
 
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER) || defined(USE_BUS_SERVO)

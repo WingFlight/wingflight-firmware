@@ -533,7 +533,7 @@ static void INIT_CODE addMapping(uint8_t in, uint8_t out)
     mixer.mapping[out] |= BIT(in);
 }
 
-#define addServoMapping(INDEX,SERVO)    addMapping((INDEX), MIXER_SERVO_OFFSET + (SERVO))
+#define addServoMapping(INDEX,SERVO)    addMapping((INDEX), mixerServoOutputIndex(SERVO))
 #define addMotorMapping(INDEX,MOTOR)    addMapping((INDEX), MIXER_MOTOR_OFFSET + (MOTOR))
 
 void INIT_CODE mixerInit(void)

@@ -362,11 +362,14 @@ static const char * const mixerInputNames[] = {
 #error MAX_SUPPORTED_MOTORS hardcoded to 4 in cli/cli.c
 #endif
 
-// Mixer output names (1 + 26 + 4)
+// Mixer output names (1 + 26 + 4 + 8), in mixer output order -- see flight/mixer.h
 static const char * const mixerOutputNames[] = {
     "-", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14", "S15", "S16", "S17", "S18",
-    "S19", "S20", "S21", "S22", "S23", "S24", "S25", "S26", "M1", "M2", "M3", "M4"
+    "S19", "S20", "S21", "S22", "S23", "S24", "S25", "S26", "M1", "M2", "M3", "M4",
+    "S27", "S28", "S29", "S30", "S31", "S32", "S33", "S34"
 };
+
+STATIC_ASSERT(ARRAYLEN(mixerOutputNames) >= MIXER_OUTPUT_COUNT, mixer_output_names_too_short);
 
 // sync this with rxFailsafeChannelMode_e
 static const char rxFailsafeModeCharacters[] = "ahs";

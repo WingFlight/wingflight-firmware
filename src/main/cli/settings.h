@@ -56,6 +56,9 @@ typedef enum {
 #ifdef USE_RX_INPUT_BACKUP
     TABLE_RX_INPUT_BACKUP_PROVIDER,
 #endif
+#ifdef USE_FBUS_MASTER
+    TABLE_FBUS_MASTER_CHANNELS,
+#endif
 #ifdef USE_RX_SPI
     TABLE_RX_SPI,
 #endif
