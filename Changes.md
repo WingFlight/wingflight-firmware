@@ -53,7 +53,8 @@ M1-M4, and the new bus servos S27-S32 are outputs 31-36
 (`src/main/flight/mixer.h`).
 
 `MSP_MIXER_CONFIG` appends the SBUS count, the F.Bus count and the count the
-configured bus output drives (F.Bus if both are set up, 0 with none).
+configured bus outputs drive (the larger if SBUS and F.Bus are both set up, 0
+with none). SBUS and F.Bus output can run at the same time.
 `MSP_SET_MIXER_CONFIG` accepts the SBUS and F.Bus counts as two optional
 trailing bytes.
 

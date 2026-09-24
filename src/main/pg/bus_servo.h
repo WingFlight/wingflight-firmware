@@ -37,8 +37,8 @@ typedef enum {
 uint8_t busOutChannelCount(uint8_t setting);
 // busOutChannels_e setting for a channel count, BUS_OUT_CHANNELS_COUNT if invalid
 uint8_t busOutChannelSetting(uint8_t count);
-// Analog bus servo channels the configured bus output drives (F.Bus if both
-// are set up), 0 without a bus output
+// Analog bus servo channels the configured bus outputs drive (the larger if
+// SBUS and F.Bus are both set up), 0 without a bus output
 uint8_t getBusServoOutputCount(void);
 
 // Bus servo defaults (S9-S32) - constrained to BUS_SERVO_MIN/MAX range

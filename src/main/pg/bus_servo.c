@@ -61,17 +61,20 @@ uint8_t busOutChannelSetting(uint8_t count)
 
 uint8_t getBusServoOutputCount(void)
 {
+    // SBUS and F.Bus output can run at the same time; bus servo N is channel
+    // N on both, so the count is the larger of the two.
+    uint8_t count = 0;
 #ifdef USE_FBUS_MASTER
     if (findSerialPortConfig(FUNCTION_FBUS_MASTER)) {
-        return busOutChannelCount(fbusMasterConfig()->channels);
+        count = MAX(count, busOutChannelCount(fbusMasterConfig()->channels));
     }
 #endif
 #ifdef USE_SBUS_OUTPUT
     if (findSerialPortConfig(FUNCTION_SBUS_OUT)) {
-        return MIN(busOutChannelCount(sbusOutConfig()->channels), 16);
+        count = MAX(count, MIN(busOutChannelCount(sbusOutConfig()->channels), 16));
     }
 #endif
-    return 0;
+    return count;
 }
 
 // Storage for bus servo outputs (SBUS/FBUS)
