@@ -55,7 +55,8 @@ typedef enum {
     RX_INPUT_BACKUP_CRSF = 6,
 } rxInputBackupProvider_e;
 
-#define RX_INPUT_BACKUP_MAX_CHANNEL 18
+// 24-channel F.Bus/F.Port2 frames decode to 24 analog + 2 digital channels
+#define RX_INPUT_BACKUP_MAX_CHANNEL 26
 
 // Populated by a provider's own Init function (see rx_input_backup_sbus.h for
 // the SBUS example) and consumed only by rx_input_backup.c - not part of the
@@ -74,13 +75,15 @@ typedef struct rxInputBackupOps_s {
     // rx_input_backup.c, since every protocol treats it identically.
     portOptions_e portOptions;
     serialReceiveCallbackPtr isrFn;
-    uint8_t channelCount;       // <= RX_INPUT_BACKUP_MAX_CHANNEL
+    uint8_t channelCount;       // most channels a frame can carry, <= RX_INPUT_BACKUP_MAX_CHANNEL
 
-    // Called once per rxInputBackupPoll() cycle. Returns true and fills
-    // channels[0..channelCount) if a new, valid frame was decoded this call;
-    // returns false (leaving channels untouched) otherwise - no frame pending
-    // yet, or the pending frame was rejected (e.g. dropped/failsafe).
-    bool (*update)(float *channels, uint8_t channelCount);
+    // Called once per rxInputBackupPoll() cycle. If a new, valid frame was
+    // decoded this call, fills channels[0..n) and returns n, the number of
+    // channels that frame carried (<= channelCount; F.Bus frames can carry
+    // 8, 16 or 24). Returns 0 (leaving channels untouched) otherwise - no
+    // frame pending yet, or the pending frame was rejected (e.g.
+    // dropped/failsafe).
+    uint8_t (*update)(float *channels, uint8_t channelCount);
 } rxInputBackupOps_t;
 
 void rxInputBackupInit(void);
@@ -99,7 +102,8 @@ bool rxInputBackupIsEnabled(void);
 // should be trusted as a fallback for the main RX.
 bool rxInputBackupIsActive(void);
 
-// Number of channels the selected provider decodes.
+// Number of channels in the latest valid frame (the provider's maximum
+// before the first frame).
 uint8_t rxInputBackupGetChannelCount(void);
 
 // Currently selected provider (valid once rxInputBackupIsEnabled() is true).

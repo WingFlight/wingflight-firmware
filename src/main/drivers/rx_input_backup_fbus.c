@@ -28,6 +28,7 @@
 #include "build/atomic.h"
 #include "build/build_config.h"
 
+#include "common/maths.h"
 #include "common/utils.h"
 
 #include "drivers/nvic.h"
@@ -49,15 +50,11 @@
 // same reentrant rx/sbus_channels.c decode already shared by every provider in
 // this framework, plus rx/frsky_crc.c's checksum helper fbus.c itself builds on.
 //
-// Scoped to 16-channel frames only: rx/fbus.c also supports 8ch/24ch frame
-// lengths by dispatching to sbusChannelsDecode8ch()/24ch() instead, but this
-// framework's ops.channelCount is fixed once at Init time (before any real
-// frame has been seen), so supporting all three variants here would mean
-// either guessing which one to declare before the first frame arrives, or
-// re-plumbing the generic layer to support a channel count that can change
-// after Init - out of scope for this pass. Adding 8ch/24ch support later is a
-// small, additive change to this same file (one more length-to-decode-function
-// case, exactly mirroring rx/fbus.c's own switch), not a rework.
+// Accepts all three frame lengths rx/fbus.c does - 8, 16 and 24 channels -
+// dispatching to the matching sbusChannelsDecode*() exactly like its own
+// switch. update() returns how many channels the frame carried (10, 18 or 26,
+// counting the two digital channels), so the generic layer knows which ones
+// the current frame actually provides.
 //
 // FBUS and FPort2 share this exact same frame format - rx/fbus.c's own
 // fbusRxInit(rxConfig, rxRuntimeState, isFPORT2) confirms isFPORT2 only ever
@@ -66,13 +63,22 @@
 // this file's one static parser/decoder, differing only in the baud they
 // report back to the generic layer via ops->baudRate.
 
-// Frame layout, no byte-stuffing: [length=24][type=0xFF][23-byte sbusChannels_t]
-// [rssi][checksum], 27 bytes total on the wire. Constants reused verbatim from
-// rx/fbus.c so they match the proven main-RX implementation exactly.
+// Frame layout, no byte-stuffing: [length][type=0xFF][channels][rssi][checksum],
+// length = 13, 24 or 35 for the 8-, 16- and 24-channel frames (16, 27 or 38 bytes
+// on the wire). Constants reused verbatim from rx/fbus.c so
+// they match the proven main-RX implementation exactly.
 #define FBUS_INPUT_PORT_OPTIONS (SERIAL_STOPBITS_1 | SERIAL_PARITY_NO)
+#define FBUS_INPUT_CONTROL_FRAME_LENGTH_8CH 13
 #define FBUS_INPUT_CONTROL_FRAME_LENGTH_16CH 24
+#define FBUS_INPUT_CONTROL_FRAME_LENGTH_24CH 35
 #define FBUS_INPUT_FRAME_TYPE_RC 0xFF
-#define FBUS_INPUT_FRAME_SIZE (FBUS_INPUT_CONTROL_FRAME_LENGTH_16CH + 3) // 27
+// On the wire: length byte + type + channels + rssi + checksum = length + 3
+#define FBUS_INPUT_FRAME_SIZE(length) ((length) + 3)
+#define FBUS_INPUT_FRAME_SIZE_MAX FBUS_INPUT_FRAME_SIZE(FBUS_INPUT_CONTROL_FRAME_LENGTH_24CH) // 38
+
+STATIC_ASSERT(sizeof(sbusChannels8ch_t) + 1 == FBUS_INPUT_CONTROL_FRAME_LENGTH_8CH, fbus_input_8ch_length);
+STATIC_ASSERT(sizeof(sbusChannels_t) + 1 == FBUS_INPUT_CONTROL_FRAME_LENGTH_16CH, fbus_input_16ch_length);
+STATIC_ASSERT(sizeof(sbusChannels24ch_t) + 1 == FBUS_INPUT_CONTROL_FRAME_LENGTH_24CH, fbus_input_24ch_length);
 
 // rx/fbus.c's own inter-byte timeout (FBUS_RX_TIMEOUT) - reused for two
 // distinct purposes here, exactly as the real driver uses it for one: (a) a
@@ -91,21 +97,24 @@
 // no further gap ever appearing (belt-and-braces alongside the per-byte gap
 // watchdog above, matching the SBUS provider's own style of a frameTime
 // ceiling). Sized above FPort2's slower worst-case transmission time for this
-// frame (27 bytes at 115200 baud ~= 2344us) with margin, then reused as-is
-// for FBUS's own faster 460800 baud dispatch too - it only governs recovery
-// latency after something has already gone wrong, not steady-state
-// correctness, so one shared, generously-sized constant is safe for both.
-#define FBUS_INPUT_TIME_NEEDED_PER_FRAME_US 3000
+// frame (the 38-byte 24-channel frame at 115200 baud ~= 3300us) with margin,
+// then reused as-is for FBUS's own faster 460800 baud dispatch too - it only
+// governs recovery latency after something has already gone wrong, not
+// steady-state correctness, so one shared, generously-sized constant is safe
+// for both.
+#define FBUS_INPUT_TIME_NEEDED_PER_FRAME_US 4500
 
 typedef struct fbusInputFrameData_s {
-    uint8_t bytes[FBUS_INPUT_FRAME_SIZE];
+    uint8_t bytes[FBUS_INPUT_FRAME_SIZE_MAX];
+    volatile uint8_t size;          // on-wire size of the frame in progress
     volatile timeUs_t startAtUs;
     volatile timeUs_t lastByteAtUs;
     volatile uint8_t position;
 } fbusInputFrameData_t;
 
 static fbusInputFrameData_t fbusInputFrameData;
-static uint8_t fbusInputPendingFrame[FBUS_INPUT_FRAME_SIZE];
+static uint8_t fbusInputPendingFrame[FBUS_INPUT_FRAME_SIZE_MAX];
+static volatile uint8_t fbusInputPendingFrameSize = 0;
 static volatile bool fbusInputPendingFrameReady = false;
 
 static uint16_t fbusInputChannelData[RX_INPUT_BACKUP_MAX_CHANNEL];
@@ -155,29 +164,33 @@ static FAST_CODE void fbusInputDataReceive(uint16_t c, void *data)
         // gap in practice ever drops to <=120us, every frame would be silently
         // dropped and the link would never come up. Removed to match the
         // proven implementation instead of guessing at extra robustness.)
-        if (c != FBUS_INPUT_CONTROL_FRAME_LENGTH_16CH) {
+        if (c != FBUS_INPUT_CONTROL_FRAME_LENGTH_8CH &&
+            c != FBUS_INPUT_CONTROL_FRAME_LENGTH_16CH &&
+            c != FBUS_INPUT_CONTROL_FRAME_LENGTH_24CH) {
             return;
         }
         fbusInputFrameData.startAtUs = nowUs;
+        fbusInputFrameData.size = FBUS_INPUT_FRAME_SIZE(c);
     }
 
     fbusInputFrameData.bytes[fbusInputFrameData.position++] = (uint8_t)c;
 
     if (fbusInputFrameData.position == 2 && fbusInputFrameData.bytes[1] != FBUS_INPUT_FRAME_TYPE_RC) {
         // Wrong type (OTA, or garbage) - abort immediately rather than collecting
-        // 25 more bytes for a frame we're not going to accept anyway, same as
+        // the rest of a frame we're not going to accept anyway, same as
         // rx/fbus.c's own FS_CONTROL_FRAME_TYPE state does.
         fbusInputFrameData.position = 0;
         return;
     }
 
-    if (fbusInputFrameData.position >= FBUS_INPUT_FRAME_SIZE) {
+    if (fbusInputFrameData.position >= fbusInputFrameData.size) {
         // Snapshot into a separate holding buffer right here, rather than leaving
         // the completed frame sitting in fbusInputFrameData for the consumer to
         // read later - the next frame's first byte (landing back at position 0)
         // could otherwise start overwriting the same buffer being decoded,
         // tearing adjacent 11-bit channel fields across two frames.
-        memcpy(fbusInputPendingFrame, fbusInputFrameData.bytes, FBUS_INPUT_FRAME_SIZE);
+        memcpy(fbusInputPendingFrame, fbusInputFrameData.bytes, fbusInputFrameData.size);
+        fbusInputPendingFrameSize = fbusInputFrameData.size;
         fbusInputPendingFrameReady = true;
         fbusInputFrameData.position = 0;
     }
@@ -185,21 +198,21 @@ static FAST_CODE void fbusInputDataReceive(uint16_t c, void *data)
 
 // Called from the RX task (rx/rx.c, via rx_input_backup.c's poll loop), not an
 // ISR - safe to do the heavier decode/convert work here.
-static bool fbusInputUpdate(float *channels, uint8_t channelCount)
+static uint8_t fbusInputUpdate(float *channels, uint8_t channelCount)
 {
-    uint8_t frame[FBUS_INPUT_FRAME_SIZE];
-    bool haveFrame = false;
+    uint8_t frame[FBUS_INPUT_FRAME_SIZE_MAX];
+    uint8_t frameSize = 0;
 
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
         if (fbusInputPendingFrameReady) {
-            memcpy(frame, fbusInputPendingFrame, FBUS_INPUT_FRAME_SIZE);
+            frameSize = fbusInputPendingFrameSize;
+            memcpy(frame, fbusInputPendingFrame, frameSize);
             fbusInputPendingFrameReady = false;
-            haveFrame = true;
         }
     }
 
-    if (!haveFrame) {
-        return false;
+    if (!frameSize) {
+        return 0;
     }
 
     // Checksum covers everything except the leading length byte (type, payload,
@@ -207,32 +220,58 @@ static bool fbusInputUpdate(float *channels, uint8_t channelCount)
     // frskyCheckSumIsGood((uint8_t *)buffer + 2, buflen - 2), which skips its
     // internal envelope-type tag byte plus the on-wire length byte; this buffer
     // has no such envelope byte, so only the length byte itself is skipped.
-    if (!frskyCheckSumIsGood(&frame[1], FBUS_INPUT_FRAME_SIZE - 1)) {
+    if (!frskyCheckSumIsGood(&frame[1], frameSize - 1)) {
         fbusInputResetParser();
-        return false;
+        return 0;
     }
 
-    // Copied into a genuine sbusChannels_t object rather than pointer-cast
+    // Copied into a genuine sbusChannels*_t object rather than pointer-cast
     // straight out of the uint8_t frame buffer - the latter reads through a
     // type the object was never actually created as, which is undefined
     // behaviour under C11's effective-type rules even though it "works" with
     // this codebase's usual compilers/flags. Matches how the SBUS provider's
     // own sbusInputFrameBuf_t union already gets this right by construction.
-    sbusChannels_t wireChannels;
-    memcpy(&wireChannels, &frame[2], sizeof(wireChannels));
-    const uint8_t frameStatus = sbusChannelsDecode(&fbusInputRxRuntimeState, &wireChannels);
+    // Dispatch on the length byte, like rx/fbus.c's own switch; each decode
+    // fills the analog channels plus the two digital ones after them.
+    uint8_t frameStatus;
+    uint8_t frameChannels;
+    switch (frame[0]) {
+    case FBUS_INPUT_CONTROL_FRAME_LENGTH_8CH: {
+        sbusChannels8ch_t wireChannels;
+        memcpy(&wireChannels, &frame[2], sizeof(wireChannels));
+        frameStatus = sbusChannelsDecode8ch(&fbusInputRxRuntimeState, &wireChannels);
+        frameChannels = 8 + 2;
+        break;
+    }
+    case FBUS_INPUT_CONTROL_FRAME_LENGTH_24CH: {
+        sbusChannels24ch_t wireChannels;
+        memcpy(&wireChannels, &frame[2], sizeof(wireChannels));
+        frameStatus = sbusChannelsDecode24ch(&fbusInputRxRuntimeState, &wireChannels);
+        frameChannels = 24 + 2;
+        break;
+    }
+    default: {
+        sbusChannels_t wireChannels;
+        memcpy(&wireChannels, &frame[2], sizeof(wireChannels));
+        frameStatus = sbusChannelsDecode(&fbusInputRxRuntimeState, &wireChannels);
+        frameChannels = 16 + 2;
+        break;
+    }
+    }
+
     if (frameStatus & (RX_FRAME_DROPPED | RX_FRAME_FAILSAFE)) {
         // Same rationale as the SBUS provider: a dropped/failsafe frame from the
         // satellite itself must not count as a fresh valid frame.
         fbusInputResetParser();
-        return false;
+        return 0;
     }
 
-    for (uint8_t i = 0; i < channelCount; i++) {
+    frameChannels = MIN(frameChannels, channelCount);
+    for (uint8_t i = 0; i < frameChannels; i++) {
         channels[i] = (5.0f * (float)fbusInputChannelData[i] / 8.0f) + 880.0f;
     }
 
-    return true;
+    return frameChannels;
 }
 
 static bool fbusInputInitCommon(rxInputBackupOps_t *ops, uint32_t baudRate)

@@ -73,9 +73,15 @@ Mixer inputs CH19-CH24 are added after the thrust-vector inputs (input numbers
 30-35), so existing input numbers do not move. The mixer's input mapping is
 now 64-bit to fit them (`src/main/flight/mixer.c`).
 
-When the backup receiver takes over, channels it does not carry (for example
-CH19-24 from a 24-channel main receiver) hold their last value instead of
-dropping to minimum (`src/main/rx/rx.c`).
+The backup receiver's F.Bus/F.Port2 decoder accepts the 8-, 16- and
+24-channel frames, like the main receiver
+(`src/main/drivers/rx_input_backup_fbus.c`). A backup provider's `update()`
+now returns how many channels the decoded frame carried, and
+`MSP2_WING_RX_INPUT_BACKUP_STATUS` reports that count. When the backup receiver
+takes over, channels its latest frame does not carry (for example CH19-24 from
+a 16-channel backup frame) hold their last value instead of dropping to minimum
+(`src/main/rx/rx.c`). F.Port (v1) stays at 16 + 2 channels on both receivers:
+its frame has no 24-channel form.
 
 
 ## Memory Usage

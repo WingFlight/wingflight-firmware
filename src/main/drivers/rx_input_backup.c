@@ -65,6 +65,8 @@ static serialPort_t *rxInputBackupPort = NULL;
 static rxInputBackupOps_t rxInputBackupOps;
 
 static float rxInputBackupChannel[RX_INPUT_BACKUP_MAX_CHANNEL];
+// Channels carried by the latest valid frame, 0 before the first one
+static uint8_t rxInputBackupFrameChannelCount = 0;
 static timeMs_t rxInputBackupLastValidFrameMs = 0;
 
 // False until the first genuinely valid frame has been decoded. Without this,
@@ -95,7 +97,9 @@ void rxInputBackupPoll(void)
         return;
     }
 
-    if (rxInputBackupOps.update(rxInputBackupChannel, rxInputBackupOps.channelCount)) {
+    const uint8_t frameChannels = rxInputBackupOps.update(rxInputBackupChannel, rxInputBackupOps.channelCount);
+    if (frameChannels) {
+        rxInputBackupFrameChannelCount = frameChannels;
         rxInputBackupHasValidFrame = true;
         rxInputBackupLastValidFrameMs = millis();
     }
@@ -122,7 +126,7 @@ bool rxInputBackupIsActive(void)
 
 uint8_t rxInputBackupGetChannelCount(void)
 {
-    return rxInputBackupOps.channelCount;
+    return rxInputBackupFrameChannelCount ? rxInputBackupFrameChannelCount : rxInputBackupOps.channelCount;
 }
 
 rxInputBackupProvider_e rxInputBackupGetProvider(void)
@@ -132,7 +136,7 @@ rxInputBackupProvider_e rxInputBackupGetProvider(void)
 
 float rxInputBackupGetChannel(uint8_t channel)
 {
-    if (channel >= rxInputBackupOps.channelCount) {
+    if (channel >= rxInputBackupGetChannelCount()) {
         return 0;
     }
     return rxInputBackupChannel[channel];
@@ -190,6 +194,7 @@ void rxInputBackupInit(void)
 
     rxInputBackupLastValidFrameMs = 0;
     rxInputBackupHasValidFrame = false;
+    rxInputBackupFrameChannelCount = 0;
 
     // Only pinSwap is applied generically here - inverted/halfDuplex are
     // protocol-specific (see rxInputBackupOps_t's own comment) and already

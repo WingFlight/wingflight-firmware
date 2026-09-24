@@ -161,7 +161,7 @@ static FAST_CODE void sbusInputDataReceive(uint16_t c, void *data)
 // safe to do the heavier decode/convert work here. Returns true and fills channels[]
 // only when a fresh, valid frame was decoded this call; the generic layer in
 // rx_input_backup.c owns all freshness/staleness bookkeeping from here on.
-static bool sbusInputUpdate(float *channels, uint8_t channelCount)
+static uint8_t sbusInputUpdate(float *channels, uint8_t channelCount)
 {
     // Snapshot the completed frame into a local copy under a brief interrupt mask,
     // rather than decoding directly out of sbusInputFrameData - which the receive
@@ -182,7 +182,7 @@ static bool sbusInputUpdate(float *channels, uint8_t channelCount)
     }
 
     if (!haveFrame) {
-        return false;
+        return 0;
     }
 
     const uint8_t frameStatus = sbusChannelsDecode(&sbusInputRxRuntimeState, &frame);
@@ -197,14 +197,14 @@ static bool sbusInputUpdate(float *channels, uint8_t channelCount)
         // (rx.c) - suppressing real failsafe in exactly the scenario, both links
         // actually down, that it exists to catch.
         sbusInputResetParser();
-        return false;
+        return 0;
     }
 
     for (uint8_t i = 0; i < channelCount; i++) {
         channels[i] = (5.0f * (float)sbusInputChannelData[i] / 8.0f) + 880.0f;
     }
 
-    return true;
+    return channelCount;
 }
 
 bool rxInputBackupSbusInit(rxInputBackupOps_t *ops)
@@ -224,7 +224,7 @@ bool rxInputBackupSbusInit(rxInputBackupOps_t *ops)
         | (rxInputBackupConfig()->inverted ? SERIAL_NOT_INVERTED : SERIAL_INVERTED)
         | (rxInputBackupConfig()->halfDuplex ? SERIAL_BIDIR : SERIAL_UNIDIR);
     ops->isrFn = sbusInputDataReceive;
-    ops->channelCount = RX_INPUT_BACKUP_MAX_CHANNEL;
+    ops->channelCount = SBUS_MAX_CHANNEL;   // 16 + 2 digital
     ops->update = sbusInputUpdate;
 
     return true;
