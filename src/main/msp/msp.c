@@ -1355,11 +1355,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     }
 
     case MSP2_WING_FBUS_MASTER_CONFIG: {
-        sbufWriteU8(dst, 2); // payload version: 1 = forwarding slots, 2 = + channels
+        sbufWriteU8(dst, 1); // payload version -- only the forwarding slots so far
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
             sbufWriteU8(dst, fbusMasterConfig()->forwardedSensors[i]);
         }
-        sbufWriteU8(dst, fbusMasterConfig()->channels);
         break;
     }
 #endif
@@ -1781,6 +1780,19 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     case MSP_MIXER_CONFIG:
         sbufWriteU8(dst, mixerConfig()->model_type);
         sbufWriteU8(dst, busServoConfig()->cloneFromPwm);
+        // API 22.5: bus output channel counts (8, 12, 16 or 24; 0 when not
+        // built), then the count the configured bus output actually drives
+#ifdef USE_SBUS_OUTPUT
+        sbufWriteU8(dst, busOutChannelCount(sbusOutConfig()->channels));
+#else
+        sbufWriteU8(dst, 0);
+#endif
+#ifdef USE_FBUS_MASTER
+        sbufWriteU8(dst, busOutChannelCount(fbusMasterConfig()->channels));
+#else
+        sbufWriteU8(dst, 0);
+#endif
+        sbufWriteU8(dst, getBusServoOutputCount());
         break;
 
     case MSP_MIXER_INPUTS:
@@ -3605,6 +3617,21 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
     case MSP_SET_MIXER_CONFIG:
         mixerConfigMutable()->model_type = sbufReadU8(src);
         busServoConfigMutable()->cloneFromPwm = sbufReadU8(src);
+        // API 22.5: optional SBUS and F.Bus output channel counts. Takes
+        // effect on the next frame.
+        if (sbufBytesRemaining(src) >= 2) {
+            const uint8_t sbusSetting = busOutChannelSetting(sbufReadU8(src));
+            const uint8_t fbusSetting = busOutChannelSetting(sbufReadU8(src));
+            if (sbusSetting > BUS_OUT_CHANNELS_16 || fbusSetting >= BUS_OUT_CHANNELS_COUNT) {
+                return MSP_RESULT_ERROR;
+            }
+#ifdef USE_SBUS_OUTPUT
+            sbusOutConfigMutable()->channels = sbusSetting;
+#endif
+#ifdef USE_FBUS_MASTER
+            fbusMasterConfigMutable()->channels = fbusSetting;
+#endif
+        }
         break;
 
     case MSP_SET_MIXER_INPUT:
@@ -4175,9 +4202,6 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
     case MSP2_WING_SET_FBUS_MASTER_CONFIG:
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
             fbusMasterConfigMutable()->forwardedSensors[i] = sbufReadU8(src);
-        }
-        if (sbufBytesRemaining(src) >= 1) {
-            fbusMasterConfigMutable()->channels = sbufReadU8(src) ? FBUS_MASTER_CHANNELS_24 : FBUS_MASTER_CHANNELS_16;
         }
         // Forwarding buffers are only loaded from config at boot -- reload
         // them now so the change is live immediately, without a reboot.

@@ -20,8 +20,26 @@
 #include "common/utils.h"
 #include "pg/pg.h"
 
-// SBUS carries 16 analog + 2 digital channels. F.Bus carries 16 + 2 or, in
-// 24-channel mode, 24 analog (fbus_master_channels).
+// SBUS carries 16 analog + 2 digital channels. F.Bus carries 8 analog (8-channel
+// frame), 16 + 2 digital (16-channel frame) or 24 analog (24-channel frame).
+
+// Bus output channel count setting (sbus_out_channels, fbus_master_channels).
+// SBUS offers 8, 12 and 16 only.
+typedef enum {
+    BUS_OUT_CHANNELS_8 = 0,
+    BUS_OUT_CHANNELS_12,
+    BUS_OUT_CHANNELS_16,
+    BUS_OUT_CHANNELS_24,
+    BUS_OUT_CHANNELS_COUNT
+} busOutChannels_e;
+
+// Channel count (8, 12, 16 or 24) for a busOutChannels_e setting
+uint8_t busOutChannelCount(uint8_t setting);
+// busOutChannels_e setting for a channel count, BUS_OUT_CHANNELS_COUNT if invalid
+uint8_t busOutChannelSetting(uint8_t count);
+// Analog bus servo channels the configured bus output drives (F.Bus if both
+// are set up), 0 without a bus output
+uint8_t getBusServoOutputCount(void);
 
 // Bus servo defaults (S9-S32) - constrained to BUS_SERVO_MIN/MAX range
 #define DEFAULT_BUS_SERVO_MIN     -500

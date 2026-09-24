@@ -26,10 +26,12 @@
 
 // Control frame: length, type, channels, rssi, crc. The length byte counts
 // the channels and rssi; the crc covers type, channels and rssi.
+#define FBUS_CONTROL8_LENGTH 0x0D
 #define FBUS_CONTROL16_LENGTH 0x18
 #define FBUS_CONTROL24_LENGTH 0x23
 #define FBUS_CONTROL_TYPE_RC 0xFF
 
+// 8-channel frame: CH1-8 analog; its flags byte is left clear.
 // 16-channel frame: CH1-16 analog + CH17-18 digital (flags byte).
 // 24-channel frame: CH1-24 analog; its flags byte is left clear.
 #define FBUS_MASTER_CHANNELS_16_COUNT 18
@@ -93,6 +95,8 @@ typedef struct {
     uint8_t crc;
 } __attribute__((__packed__)) fbusMasterOtaEnd_t;
 
+STATIC_ASSERT(sizeof(fbusMasterControl8_t) == FBUS_CONTROL8_LENGTH + 3,
+              fbus_master_control8_size_mismatch);
 STATIC_ASSERT(sizeof(fbusMasterControl16_t) == FBUS_CONTROL16_LENGTH + 3,
               fbus_master_control16_size_mismatch);
 STATIC_ASSERT(sizeof(fbusMasterControl24_t) == FBUS_CONTROL24_LENGTH + 3,

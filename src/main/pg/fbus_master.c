@@ -38,7 +38,7 @@ void pgResetFn_fbusMasterConfig(fbusMasterConfig_t *config) {
     config->telemetryRate = 200;
     config->sensorDiscoveryTimeMs = 5000;
     memset(config->forwardedSensors, FBUS_INVALID_PHYSICAL_ID, sizeof(config->forwardedSensors));
-    config->channels = FBUS_MASTER_CHANNELS_16;
+    config->channels = BUS_OUT_CHANNELS_24;
 }
 
 #endif

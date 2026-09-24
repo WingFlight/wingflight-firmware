@@ -32,10 +32,16 @@ and `mavlink_mah_as_heading_divisor` are no longer available.
 
 ### Output
 
-F.Bus output can send the 24-channel control frame. The new CLI setting
-`fbus_master_channels` (`16` or `24`, default `16`) selects the frame. The
-24-channel frame carries CH1-24 as analog channels and no digital channels
-(`src/main/drivers/fbus_master.c`). SBUS output stays 16 + 2 channels.
+Bus output channel counts are set per output:
+
+| Setting | Values | Default | Frame |
+|---|---|---|---|
+| `fbus_master_channels` | `8`, `12`, `16`, `24` | `24` | 8 -> 8-channel, 12/16 -> 16-channel, 24 -> 24-channel F.Bus frame |
+| `sbus_out_channels` | `8`, `12`, `16` | `16` | Always the 16-channel SBUS frame (there is no 24-channel SBUS frame) |
+
+Channels past the count are sent at center. The two digital channels (CH17-18)
+are only sent with a count of 16 (`src/main/drivers/fbus_master.c`,
+`src/main/drivers/sbus_output.c`).
 
 Bus servos go from 18 to 24 (`BUS_SERVO_CHANNELS`), so servos are now S1-S32
 and `MSP_STATUS` reports 6 more servos. Bus servo N is always channel N on the
@@ -46,9 +52,10 @@ rules, CLI diffs and backups keep their meaning: 1-26 are S1-S26, 27-30 are
 M1-M4, and the new bus servos S27-S32 are outputs 31-36
 (`src/main/flight/mixer.h`).
 
-`MSP2_WING_FBUS_MASTER_CONFIG` now reports payload version 2 and appends the
-channel setting (0 = 16, 1 = 24). `MSP2_WING_SET_FBUS_MASTER_CONFIG` accepts it
-as an optional trailing byte.
+`MSP_MIXER_CONFIG` appends the SBUS count, the F.Bus count and the count the
+configured bus output drives (F.Bus if both are set up, 0 with none).
+`MSP_SET_MIXER_CONFIG` accepts the SBUS and F.Bus counts as two optional
+trailing bytes.
 
 The 16-channel F.Bus frame used to fill the CH17-18 flag bits from past the end
 of its channel array. It now sends bus servos 17 and 18 as those two digital

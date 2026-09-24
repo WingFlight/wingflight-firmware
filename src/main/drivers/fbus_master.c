@@ -144,6 +144,28 @@ static int8_t smartportMasterStripPhyIDCheckBits(uint8_t phyID)
     return phyID == phyIDCheck ? smartportPhyID : -1;
 }
 
+// channels[] holds 8 values: CH1-8 analog
+static void fbusMasterPrepareControl8(fbusMasterControl8_t *frame, const uint16_t *channels)
+{
+    memset(frame, 0, sizeof(*frame));
+
+    frame->length = FBUS_CONTROL8_LENGTH;
+    frame->type = FBUS_CONTROL_TYPE_RC;
+
+    frame->channels.chan0 = channels[0];
+    frame->channels.chan1 = channels[1];
+    frame->channels.chan2 = channels[2];
+    frame->channels.chan3 = channels[3];
+    frame->channels.chan4 = channels[4];
+    frame->channels.chan5 = channels[5];
+    frame->channels.chan6 = channels[6];
+    frame->channels.chan7 = channels[7];
+
+    frame->rssi = 100; //ToDo
+
+    frame->crc = frskyCheckSum(&frame->type, sizeof(*frame) - 2);
+}
+
 // channels[] holds FBUS_MASTER_CHANNELS_16_COUNT values: CH1-16 analog, CH17-18 digital
 static void fbusMasterPrepareControl16(fbusMasterControl16_t *frame, const uint16_t *channels)
 {
@@ -388,9 +410,13 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
     // Keep derived FBUS sensor states (timeouts/GPS mirrors) updated.
     fbusSensorUpdate(currentTimeUs);
 
-    const bool is24ch = (fbusMasterConfig()->channels == FBUS_MASTER_CHANNELS_24);
-    const int channelCount = is24ch ? FBUS_MASTER_CHANNELS_24_COUNT : FBUS_MASTER_CHANNELS_16_COUNT;
-    const size_t controlSize = is24ch ? sizeof(fbusMasterControl24_t) : sizeof(fbusMasterControl16_t);
+    // fbus_master_channels: 8 -> 8-channel frame, 12/16 -> 16-channel frame
+    // (at 12, CH13-16 are sent at center), 24 -> 24-channel frame. The
+    // digital channels (CH17-18) are only used with all 16.
+    const int count = busOutChannelCount(fbusMasterConfig()->channels);
+    const int frameChannels = (count <= 8) ? 8 : (count <= 16) ? FBUS_MASTER_CHANNELS_16_COUNT : FBUS_MASTER_CHANNELS_24_COUNT;
+    const size_t controlSize = (count <= 8) ? sizeof(fbusMasterControl8_t) :
+                               (count <= 16) ? sizeof(fbusMasterControl16_t) : sizeof(fbusMasterControl24_t);
 
     // Check TX Buff is free
     if (serialTxBytesFree(fbusMasterPort) <= controlSize + sizeof(fbusMasterDownlink_t)) {
@@ -399,10 +425,16 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
 
     // Start sending.
     uint16_t channels[FBUS_MASTER_CHANNELS_24_COUNT];
-    for (int ch = 0; ch < channelCount; ch++) {
-        float value = fbusMasterGetChannelValue(ch);
-        // Only the 16-channel frame has digital channels (CH17-18)
-        channels[ch] = fbusMasterConvertToSbus(value, !is24ch && ch >= 16);
+    for (int ch = 0; ch < frameChannels; ch++) {
+        const bool digital = (count == 16) && (ch >= 16);
+        const bool used = (ch < count) || digital;
+        if (!used) {
+            channels[ch] = (ch >= 16) ? 0 : fbusMasterConvertToSbus(1500, false);
+            continue;
+        }
+
+        const float value = fbusMasterGetChannelValue(ch);
+        channels[ch] = fbusMasterConvertToSbus(value, digital);
 
         // Store the output value for getServoOutput() to retrieve
         setBusServoOutput(ch, value);
@@ -410,13 +442,17 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
 
     // Control frame followed by the downlink slot, sent as one write
     uint8_t frame[sizeof(fbusMasterControl24_t) + sizeof(fbusMasterDownlink_t)];
-    if (is24ch) {
-        fbusMasterControl24_t control;
-        fbusMasterPrepareControl24(&control, channels);
+    if (count <= 8) {
+        fbusMasterControl8_t control;
+        fbusMasterPrepareControl8(&control, channels);
         memcpy(frame, &control, sizeof(control));
-    } else {
+    } else if (count <= 16) {
         fbusMasterControl16_t control;
         fbusMasterPrepareControl16(&control, channels);
+        memcpy(frame, &control, sizeof(control));
+    } else {
+        fbusMasterControl24_t control;
+        fbusMasterPrepareControl24(&control, channels);
         memcpy(frame, &control, sizeof(control));
     }
 

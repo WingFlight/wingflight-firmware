@@ -191,14 +191,6 @@ float sbusOutGetValueMixer(uint8_t channel)
     return constrainf(pos, BUS_SERVO_MIN_SIGNAL, BUS_SERVO_MAX_SIGNAL);
 }
 
-// Process all SBUS mixer channels (batch version for sbusOutUpdate)
-void sbusOutProcessMixerChannels(float output[SBUS_OUT_CHANNELS])
-{
-    for (int ch = 0; ch < SBUS_OUT_CHANNELS; ch++) {
-        output[ch] = sbusOutGetValueMixer(ch);
-    }
-}
-
 static uint16_t sbusOutConvertToSbus(uint8_t channel, float pwm)
 {
     // For digital channels (16-17), convert to 0 or 1
@@ -223,17 +215,23 @@ void sbusOutUpdate(timeUs_t currentTimeUs)
     if (serialTxBytesFree(sbusOutPort) <= sizeof(sbusOutFrame_t))
         return;
 
-    // Process all mixer channels with servoUpdate() logic
-    float mixerOutputs[SBUS_OUT_CHANNELS];
-    sbusOutProcessMixerChannels(mixerOutputs);
+    // sbus_out_channels: CH1-count carry bus servos, the rest are sent at
+    // center. The digital channels (17-18) are only used with all 16.
+    const int count = MIN(busOutChannelCount(sbusOutConfig()->channels), 16);
 
     // Prepare SBUS frame
     sbusOutFrame_t frame;
     uint16_t channels[SBUS_OUT_CHANNELS];
     for (int ch = 0; ch < SBUS_OUT_CHANNELS; ch++) {
-        float value = mixerOutputs[ch];
+        const bool used = (ch < count) || (count == 16);
+        if (!used) {
+            channels[ch] = (ch >= 16) ? 0 : sbusOutConvertToSbus(ch, 1500);
+            continue;
+        }
+
+        const float value = sbusOutGetValueMixer(ch);
         channels[ch] = sbusOutConvertToSbus(ch, value);
-        
+
         // Store the output value for getServoOutput() to retrieve
         setBusServoOutput(ch, value);
     }

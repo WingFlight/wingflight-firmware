@@ -32,7 +32,12 @@ typedef struct sbusOutConfig_s {
 
     // When ON, the UART output is electrically inverted (S.Bus signal uses
     // inverted logic). When OFF, the output is non-inverted.
-    uint8_t inverted;    
+    uint8_t inverted;
+
+    // Channel count, busOutChannels_e (pg/bus_servo.h): 8, 12 or 16. The frame
+    // is always the 16-channel SBUS frame; channels past the count are sent
+    // at center.
+    uint8_t channels;
 
 } sbusOutConfig_t;
 

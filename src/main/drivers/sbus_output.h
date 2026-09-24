@@ -62,5 +62,3 @@ void sbusOutInit(void);
 float sbusOutGetRX(uint8_t channel);
 float sbusOutGetValueMixer(uint8_t channel);
 
-// Process all mixer channels (called internally by sbusOutUpdate, but can be called externally)
-void sbusOutProcessMixerChannels(float output[SBUS_OUT_CHANNELS]);

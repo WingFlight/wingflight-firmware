@@ -30,6 +30,7 @@ void pgResetFn_sbusOutConfig(sbusOutConfig_t *config) {
     config->frameRate = 50;
     config->pinSwap = 0;
     config->inverted = 1;
+    config->channels = BUS_OUT_CHANNELS_16;
 }
 
 #endif
