@@ -57,7 +57,7 @@ void pgResetFn_servoParams(servoParam_t *instance)
         );
         
         // S1-S8 (indices 0-7) are PWM servos with wider range
-        // S9-S26 (indices 8-25) are BUS servos with constrained range
+        // S9-S32 (indices 8-31) are BUS servos with constrained range
         if (i > 7) {
             instance[i].min = DEFAULT_BUS_SERVO_MIN;
             instance[i].max = DEFAULT_BUS_SERVO_MAX;

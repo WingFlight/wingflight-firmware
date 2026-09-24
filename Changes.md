@@ -15,6 +15,12 @@ state now, so running both no longer steps it twice
 (`src/main/drivers/sbus_output.c`, `src/main/drivers/fbus_master.c`). Bus
 servos with a speed limit set will now move at the configured speed.
 
+The default bus servo scale (`rneg`/`rpos`) is now 500, as for PWM servos,
+instead of 1000. With the ±500us bus servo travel limits, 1000 reached full
+travel at half stick and the rest of the stick did nothing. Only new or reset
+configs get the new default; saved bus servos keep their scale, so set Scale
+neg/pos to 500 on the Servos tab (`src/main/pg/bus_servo.h`).
+
 
 ## Removed Protocols
 
