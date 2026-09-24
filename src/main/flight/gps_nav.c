@@ -102,6 +102,13 @@ bool navCanRTH(void)
     return navIsHealthy() && STATE(GPS_FIX_HOME);
 }
 
+// Loiter's counterpart to navCanRTH(): it only needs a healthy fix, since it holds around the
+// current position rather than a recorded home.
+bool navCanLoiter(void)
+{
+    return navIsHealthy();
+}
+
 static void navBegin(int32_t lat, int32_t lon, int32_t altitudeCm)
 {
     nav.targetLat = lat;

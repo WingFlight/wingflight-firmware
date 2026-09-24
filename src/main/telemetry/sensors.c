@@ -40,10 +40,12 @@
 #include "sensors/esc_sensor.h"
 #include "sensors/adcinternal.h"
 #include "sensors/acceleration.h"
+#include "sensors/sensors.h"
 
 #include "flight/position.h"
 #include "flight/mixer.h"
 #include "flight/imu.h"
+#include "flight/gps_nav.h"
 
 #include "io/gps.h"
 #include "io/ledstrip.h"
@@ -72,6 +74,32 @@
 #endif
 
 /** Sensor functions **/
+
+// See TELEM_FLIGHT_MODE_GPS_UNAVAILABLE_BIT. Mirrors fc/core.c's LOITER/RTH engage rules: RTH
+// wins over LOITER when both switches are on, and neither engages without an accelerometer.
+static uint32_t getTelemetryFlightModeFlags(void)
+{
+    uint32_t flags = flightModeFlags;
+
+#ifdef USE_GPS_NAV
+    uint32_t requested = 0;
+    bool available = false;
+
+    if (IS_RC_MODE_ACTIVE(BOXRTH)) {
+        requested = RTH_MODE;
+        available = navCanRTH();
+    } else if (IS_RC_MODE_ACTIVE(BOXLOITER)) {
+        requested = LOITER_MODE;
+        available = navCanLoiter();
+    }
+
+    if (requested && !(ARMING_FLAG(ARMED) && sensors(SENSOR_ACC) && available)) {
+        flags |= requested | BIT(TELEM_FLIGHT_MODE_GPS_UNAVAILABLE_BIT);
+    }
+#endif
+
+    return flags;
+}
 
 static int getVoltage(voltageMeterId_e id)
 {
@@ -337,7 +365,7 @@ int telemetrySensorValue(sensor_id_e id)
         case TELEM_MODEL_ID:
             return pilotConfig()->modelId;
         case TELEM_FLIGHT_MODE:
-            return flightModeFlags;
+            return getTelemetryFlightModeFlags();
         case TELEM_ARMING_FLAGS:
             return armingFlags;
         case TELEM_ARMING_DISABLE_FLAGS:

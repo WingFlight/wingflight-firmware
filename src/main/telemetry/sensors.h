@@ -30,6 +30,14 @@
 #include "flight/motors.h"
 #include "flight/servos.h"
 
+// Telemetry-only extension of TELEM_FLIGHT_MODE (flightModeFlags uses bits 0-14). Set while the
+// pilot's LOITER or RTH switch is on but that GPS mode can't actually fly -- disarmed, or no
+// usable fix/home -- so the radio can call out an error instead of staying silent or claiming the
+// mode is working. The requested mode's own bit (LOITER_MODE/RTH_MODE) is reported alongside it,
+// even while disarmed, so the receiver knows which mode was asked for. Never set in
+// flightModeFlags itself: flight code keys leveling/nav off those bits.
+#define TELEM_FLIGHT_MODE_GPS_UNAVAILABLE_BIT   15
+
 
 /** Custom telemetry sensor types **/
 
@@ -138,7 +146,7 @@ typedef enum
     TELEM_RT_LOAD                       = 87,
 
     TELEM_MODEL_ID                      = 88,
-    TELEM_FLIGHT_MODE                   = 89,
+    TELEM_FLIGHT_MODE                   = 89,   // flightModeFlags, plus TELEM_FLIGHT_MODE_GPS_UNAVAILABLE_BIT
     TELEM_ARMING_FLAGS                  = 90,
     TELEM_ARMING_DISABLE_FLAGS          = 91,
     // 92 reserved (heli rescue removed, do not reuse)
