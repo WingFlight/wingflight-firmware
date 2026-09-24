@@ -28,20 +28,22 @@ receiver unconfigured. The FrSky Hub CLI settings (`frsky_default_lat`,
 and `mavlink_mah_as_heading_divisor` are no longer available.
 
 
-## 24-Channel F.Bus Output (MSP API 22.5)
+## 24-Channel F.Bus (MSP API 22.5)
+
+### Output
 
 F.Bus output can send the 24-channel control frame. The new CLI setting
-`fbus_master_channels` (`16` or `24`, default `16`) selects the frame. The 24-channel
-frame carries CH1-24 as analog channels and CH25-26 as the two digital
-channels (`src/main/drivers/fbus_master.c`). SBUS output stays 16 + 2 channels.
+`fbus_master_channels` (`16` or `24`, default `16`) selects the frame. The
+24-channel frame carries CH1-24 as analog channels and no digital channels
+(`src/main/drivers/fbus_master.c`). SBUS output stays 16 + 2 channels.
 
-Bus servos go from 18 to 26 (`BUS_SERVO_CHANNELS`), so servos are now S1-S34
-and `MSP_STATUS` reports 8 more servos. Bus servo N is always channel N on the
+Bus servos go from 18 to 24 (`BUS_SERVO_CHANNELS`), so servos are now S1-S32
+and `MSP_STATUS` reports 6 more servos. Bus servo N is always channel N on the
 wire.
 
 Mixer output numbers used before this change do not move, so saved mixer
 rules, CLI diffs and backups keep their meaning: 1-26 are S1-S26, 27-30 are
-M1-M4, and the new bus servos S27-S34 are outputs 31-38
+M1-M4, and the new bus servos S27-S32 are outputs 31-36
 (`src/main/flight/mixer.h`).
 
 `MSP2_WING_FBUS_MASTER_CONFIG` now reports payload version 2 and appends the
@@ -51,6 +53,22 @@ as an optional trailing byte.
 The 16-channel F.Bus frame used to fill the CH17-18 flag bits from past the end
 of its channel array. It now sends bus servos 17 and 18 as those two digital
 channels, on at 1500us and above.
+
+### Input
+
+RC channels go from 18 to 24 (`MAX_SUPPORTED_RC_CHANNEL_COUNT`), so a
+24-channel F.Bus receiver delivers CH19-24. Other receivers are unchanged.
+`MSP_RC` and `MSP_RXFAIL_CONFIG` report up to 24 channels, modes and
+adjustments can use AUX channels up to CH24, and `rxfail` accepts channels up to
+23. Saved failsafe settings for CH1-18 are kept.
+
+Mixer inputs CH19-CH24 are added after the thrust-vector inputs (input numbers
+30-35), so existing input numbers do not move. The mixer's input mapping is
+now 64-bit to fit them (`src/main/flight/mixer.c`).
+
+When the backup receiver takes over, channels it does not carry (for example
+CH19-24 from a 24-channel main receiver) hold their last value instead of
+dropping to minimum (`src/main/rx/rx.c`).
 
 
 ## Memory Usage

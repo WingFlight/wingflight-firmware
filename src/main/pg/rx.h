@@ -24,7 +24,7 @@
 
 #include "pg/pg.h"
 
-#define MAX_SUPPORTED_RC_CHANNEL_COUNT              18
+#define MAX_SUPPORTED_RC_CHANNEL_COUNT              24
 
 typedef struct rxConfig_s {
     uint8_t rcmap[RX_MAPPABLE_CHANNEL_COUNT];  // mapping of radio channels to internal RPYTA+ order

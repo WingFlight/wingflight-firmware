@@ -30,9 +30,10 @@
 #define FBUS_CONTROL24_LENGTH 0x23
 #define FBUS_CONTROL_TYPE_RC 0xFF
 
-// Analog channels, plus the two digital channels carried in the flags byte
+// 16-channel frame: CH1-16 analog + CH17-18 digital (flags byte).
+// 24-channel frame: CH1-24 analog; its flags byte is left clear.
 #define FBUS_MASTER_CHANNELS_16_COUNT 18
-#define FBUS_MASTER_CHANNELS_24_COUNT 26
+#define FBUS_MASTER_CHANNELS_24_COUNT 24
 
 #define FBUS_DOWNLINK_PAYLOAD_SIZE 0x08
 #define FBUS_DOWNLINK_LENGTH 0x0A

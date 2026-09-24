@@ -67,6 +67,13 @@ enum {
     MIXER_IN_STABILIZED_TV_ROLL,
     MIXER_IN_STABILIZED_TV_PITCH,
     MIXER_IN_STABILIZED_TV_YAW,
+    // Added after the thrust-vector inputs so existing input numbers stay put
+    MIXER_IN_RC_CHANNEL_19,
+    MIXER_IN_RC_CHANNEL_20,
+    MIXER_IN_RC_CHANNEL_21,
+    MIXER_IN_RC_CHANNEL_22,
+    MIXER_IN_RC_CHANNEL_23,
+    MIXER_IN_RC_CHANNEL_24,
     MIXER_IN_COUNT
 };
 

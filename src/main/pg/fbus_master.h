@@ -23,7 +23,7 @@
 
 typedef enum {
     FBUS_MASTER_CHANNELS_16 = 0,    // 16 analog + 2 digital (CH17, CH18)
-    FBUS_MASTER_CHANNELS_24,        // 24 analog + 2 digital (CH25, CH26)
+    FBUS_MASTER_CHANNELS_24,        // 24 analog
 } fbusMasterChannels_e;
 
 #define FBUS_MIN 192

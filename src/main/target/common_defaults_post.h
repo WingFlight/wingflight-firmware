@@ -680,7 +680,7 @@
 #endif
 
 #ifndef BUS_SERVO_CHANNELS
-#define BUS_SERVO_CHANNELS 26
+#define BUS_SERVO_CHANNELS 24
 #endif
 
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)

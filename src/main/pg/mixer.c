@@ -139,4 +139,10 @@ void pgResetFn_mixerInputs(mixerInput_t *input)
         input[i].min  = -1000;
         input[i].max  =  1000;
     }
+
+    for (int i = MIXER_IN_RC_CHANNEL_19; i <= MIXER_IN_RC_CHANNEL_24; i++) {
+        input[i].rate =  1000;
+        input[i].min  = -1000;
+        input[i].max  =  1000;
+    }
 }

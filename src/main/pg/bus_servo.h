@@ -21,9 +21,9 @@
 #include "pg/pg.h"
 
 // SBUS carries 16 analog + 2 digital channels. F.Bus carries 16 + 2 or, in
-// 24-channel mode, 24 analog + 2 digital (fbus_master_channels).
+// 24-channel mode, 24 analog (fbus_master_channels).
 
-// Bus servo defaults (S9-S34) - constrained to BUS_SERVO_MIN/MAX range
+// Bus servo defaults (S9-S32) - constrained to BUS_SERVO_MIN/MAX range
 #define DEFAULT_BUS_SERVO_MIN     -500
 #define DEFAULT_BUS_SERVO_MAX      500
 #define DEFAULT_BUS_SERVO_SCALE    1000
@@ -31,7 +31,7 @@
 #define BUS_SERVO_MIN_SIGNAL       1000
 
 // S1-S8 (indices 0-7) are PWM servos
-// S9-S34 (indices 8-33) are BUS servos for SBUS/FBUS
+// S9-S32 (indices 8-31) are BUS servos for SBUS/FBUS
 // Bus servo N is channel N on the wire.
 #define BUS_SERVO_OFFSET 8
 

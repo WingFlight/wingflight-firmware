@@ -177,7 +177,7 @@ static void fbusMasterPrepareControl16(fbusMasterControl16_t *frame, const uint1
     frame->crc = frskyCheckSum(&frame->type, sizeof(*frame) - 2);
 }
 
-// channels[] holds FBUS_MASTER_CHANNELS_24_COUNT values: CH1-24 analog, CH25-26 digital
+// channels[] holds FBUS_MASTER_CHANNELS_24_COUNT values: CH1-24 analog
 static void fbusMasterPrepareControl24(fbusMasterControl24_t *frame, const uint16_t *channels)
 {
     memset(frame, 0, sizeof(*frame));
@@ -209,10 +209,6 @@ static void fbusMasterPrepareControl24(fbusMasterControl24_t *frame, const uint1
     frame->channels.chan21 = channels[21];
     frame->channels.chan22 = channels[22];
     frame->channels.chan23 = channels[23];
-
-    // Same flag bits as the 16-channel frame; rx/fbus.c decodes them as CH25-26
-    frame->channels.flags = channels[24] ? BIT(0) : 0;
-    frame->channels.flags |= channels[25] ? BIT(1) : 0;
 
     frame->rssi = 100; //ToDo
 
@@ -405,7 +401,8 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
     uint16_t channels[FBUS_MASTER_CHANNELS_24_COUNT];
     for (int ch = 0; ch < channelCount; ch++) {
         float value = fbusMasterGetChannelValue(ch);
-        channels[ch] = fbusMasterConvertToSbus(value, ch >= channelCount - 2);
+        // Only the 16-channel frame has digital channels (CH17-18)
+        channels[ch] = fbusMasterConvertToSbus(value, !is24ch && ch >= 16);
 
         // Store the output value for getServoOutput() to retrieve
         setBusServoOutput(ch, value);

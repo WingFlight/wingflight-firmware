@@ -356,17 +356,23 @@ static const char * const mixerInputNames[] = {
     [MIXER_IN_STABILIZED_TV_ROLL]    = "TR",
     [MIXER_IN_STABILIZED_TV_PITCH]   = "TP",
     [MIXER_IN_STABILIZED_TV_YAW]     = "TY",
+    [MIXER_IN_RC_CHANNEL_19]         = "CH19",
+    [MIXER_IN_RC_CHANNEL_20]         = "CH20",
+    [MIXER_IN_RC_CHANNEL_21]         = "CH21",
+    [MIXER_IN_RC_CHANNEL_22]         = "CH22",
+    [MIXER_IN_RC_CHANNEL_23]         = "CH23",
+    [MIXER_IN_RC_CHANNEL_24]         = "CH24",
 };
 
 #if MAX_SUPPORTED_MOTORS != 4
 #error MAX_SUPPORTED_MOTORS hardcoded to 4 in cli/cli.c
 #endif
 
-// Mixer output names (1 + 26 + 4 + 8), in mixer output order -- see flight/mixer.h
+// Mixer output names (1 + 26 + 4 + 6), in mixer output order -- see flight/mixer.h
 static const char * const mixerOutputNames[] = {
     "-", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14", "S15", "S16", "S17", "S18",
     "S19", "S20", "S21", "S22", "S23", "S24", "S25", "S26", "M1", "M2", "M3", "M4",
-    "S27", "S28", "S29", "S30", "S31", "S32", "S33", "S34"
+    "S27", "S28", "S29", "S30", "S31", "S32"
 };
 
 STATIC_ASSERT(ARRAYLEN(mixerOutputNames) >= MIXER_OUTPUT_COUNT, mixer_output_names_too_short);

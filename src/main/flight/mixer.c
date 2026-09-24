@@ -61,13 +61,20 @@
 
 /** Internal data **/
 
+// Mixer inputs no longer fit a 32-bit bitmap_t (RC channels 19-24 pushed
+// the count past 32).
+#define MIXER_INPUT_BIT(x)  ((uint64_t)1 << (x))
+STATIC_ASSERT(MIXER_INPUT_COUNT <= 64, mixer_input_count_exceeds_mapping_bits);
+STATIC_ASSERT(MAX_SUPPORTED_RC_CHANNEL_COUNT == 18 + (MIXER_IN_RC_CHANNEL_24 - MIXER_IN_RC_CHANNEL_19 + 1),
+              mixer_rc_channel_inputs_mismatch);
+
 typedef struct {
 
     float           input[MIXER_INPUT_COUNT];
     float           output[MIXER_OUTPUT_COUNT];
     float           ruleOutput[MIXER_RULE_COUNT];  // per-rule slew state for mixerRule_t.speed
 
-    bitmap_t        mapping[MIXER_OUTPUT_COUNT];
+    uint64_t        mapping[MIXER_OUTPUT_COUNT];   // bit per input, see MIXER_INPUT_BIT
     int16_t         override[MIXER_INPUT_COUNT];
     uint16_t        saturation[MIXER_INPUT_COUNT];
 
@@ -101,7 +108,7 @@ void mixerSaturateInput(uint8_t index)
 void mixerSaturateOutput(uint8_t index)
 {
     for (int i = 1; i < MIXER_INPUT_COUNT; i++) {
-        if (mixer.mapping[index] & BIT(i)) {
+        if (mixer.mapping[index] & MIXER_INPUT_BIT(i)) {
             mixerSaturateInput(i);
         }
     }
@@ -285,8 +292,12 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_RC_COMMAND_THROTTLE, getThrottle());
 
     // RC channels
-    for (int i = 0; i < MAX_SUPPORTED_RC_CHANNEL_COUNT; i++)
-        mixerSetInput(MIXER_IN_RC_CHANNEL_ROLL + i, rcCommand[i] / 500);
+    // CH1-18 are contiguous from MIXER_IN_RC_CHANNEL_ROLL; CH19-24 follow the
+    // thrust-vector inputs.
+    for (int i = 0; i < MAX_SUPPORTED_RC_CHANNEL_COUNT; i++) {
+        const int input = (i < 18) ? MIXER_IN_RC_CHANNEL_ROLL + i : MIXER_IN_RC_CHANNEL_19 + (i - 18);
+        mixerSetInput(input, rcCommand[i] / 500);
+    }
 
     // Stabilised inputs
     mixerSetInput(MIXER_IN_STABILIZED_ROLL, pidGetOutput(PID_ROLL));
@@ -525,12 +536,12 @@ void set_ADJUSTMENT_DIFF_THRUST_YAW_GAIN(int value)
 
 static void INIT_CODE setMapping(uint8_t in, uint8_t out)
 {
-    mixer.mapping[out] = BIT(in);
+    mixer.mapping[out] = MIXER_INPUT_BIT(in);
 }
 
 static void INIT_CODE addMapping(uint8_t in, uint8_t out)
 {
-    mixer.mapping[out] |= BIT(in);
+    mixer.mapping[out] |= MIXER_INPUT_BIT(in);
 }
 
 #define addServoMapping(INDEX,SERVO)    addMapping((INDEX), mixerServoOutputIndex(SERVO))

@@ -38,7 +38,7 @@
 
 // Mixer output numbers are stored in mixer rules, CLI diffs and backups, so
 // they must not move. S1-S26 come first (outputs 1-26), then the motors
-// (27-30), then the bus servos added for 24-channel F.Bus, S27-S34 (31-38).
+// (27-30), then the bus servos added for 24-channel F.Bus, S27-S32 (31-36).
 #define MIXER_SERVO_LOW_MAX   26
 #if MAX_SUPPORTED_SERVOS > MIXER_SERVO_LOW_MAX
 #define MIXER_SERVO_LOW_COUNT MIXER_SERVO_LOW_MAX
