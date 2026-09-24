@@ -1391,7 +1391,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         const bool mainLinkUp = rxIsReceivingSignal();
         const bool linkUp = enabled && rxInputBackupIsActive();
         const bool rxInputBackupIsSource = linkUp && !mainLinkUp;
-        const uint8_t channelCount = rxInputBackupGetChannelCount();
+        // Every main RX channel gets a backup value; channels the backup's
+        // latest frame doesn't carry report stick center, the value a takeover
+        // would apply (rxInputBackupGetChannel()).
+        const uint8_t channelCount = enabled ? MAX(rxInputBackupGetChannelCount(), activeRcChannelCount) : 0;
 
         sbufWriteU8(dst, 3); // payload version
         sbufWriteU8(dst, enabled ? 1 : 0);

@@ -33,6 +33,7 @@
 
 #include "io/serial.h"
 
+#include "pg/rx.h"
 #include "pg/rx_input_backup.h"
 
 #ifdef USE_RX_INPUT_BACKUP_SBUS
@@ -136,8 +137,10 @@ rxInputBackupProvider_e rxInputBackupGetProvider(void)
 
 float rxInputBackupGetChannel(uint8_t channel)
 {
+    // Channels the latest frame doesn't carry (e.g. CH19-24 from a 16-channel
+    // F.Bus frame) read as stick center, so a takeover centers them.
     if (channel >= rxInputBackupGetChannelCount()) {
-        return 0;
+        return rcControlsConfig()->rc_center;
     }
     return rxInputBackupChannel[channel];
 }

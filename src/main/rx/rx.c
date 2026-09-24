@@ -916,11 +916,10 @@ void detectAndApplySignalLossBehaviour(void)
             // without it, a non-default channel map would land backup channels on the
             // wrong flight axis or mode switch the instant a failover happens.
             const uint8_t rawChannel = channel < RX_MAPPABLE_CHANNEL_COUNT ? rxConfig()->rcmap[channel] : channel;
-            // Channels the backup doesn't carry (e.g. CH19-24 from a 24-channel
-            // main RX) hold their last value instead of dropping to minimum.
-            if (rawChannel < rxInputBackupGetChannelCount()) {
-                rcInput[channel] = constrainf(rxInputBackupGetChannel(rawChannel), PWM_PULSE_MIN, PWM_PULSE_MAX);
-            }
+            // Channels the backup's latest frame doesn't carry (e.g. CH19-24 from
+            // a 16-channel frame) come back as stick center - see
+            // rxInputBackupGetChannel().
+            rcInput[channel] = constrainf(rxInputBackupGetChannel(rawChannel), PWM_PULSE_MIN, PWM_PULSE_MAX);
         }
 
         rxFlightChannelsValid = !failsafeAuxSwitch;

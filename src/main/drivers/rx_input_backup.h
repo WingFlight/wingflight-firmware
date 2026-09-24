@@ -110,6 +110,7 @@ uint8_t rxInputBackupGetChannelCount(void);
 rxInputBackupProvider_e rxInputBackupGetProvider(void);
 
 // Channel value in the same convention as rx/rx.c's rcInput[]/rcChannel[] (~880-2012us).
+// Channels the latest frame doesn't carry read as stick center (rc_center).
 float rxInputBackupGetChannel(uint8_t channel);
 
 // Backup-port wiring auto-detect ("trial mode") - same mechanism and
