@@ -60,5 +60,5 @@ void sbusOutInit(void);
 
 // Channel value getters
 float sbusOutGetRX(uint8_t channel);
-float sbusOutGetValueMixer(uint8_t channel);
+float sbusOutGetValueMixer(uint8_t channel, float *lastPos, float dt);
 

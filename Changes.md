@@ -4,6 +4,18 @@ This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
 
+## Bus Servo Speed Limit
+
+The servo `speed` limit on bus servos (SBUS and F.Bus output) now steps by the
+real time since that output's previous frame. It used the PID loop time
+instead, while running only once per output frame, so bus servos with a speed
+set moved far slower than configured (about 20x at the default 50 Hz SBUS
+rate on a 1 kHz loop). SBUS and F.Bus output also keep separate speed-limit
+state now, so running both no longer steps it twice
+(`src/main/drivers/sbus_output.c`, `src/main/drivers/fbus_master.c`). Bus
+servos with a speed limit set will now move at the configured speed.
+
+
 ## Removed Protocols
 
 The following receiver and telemetry protocols are no longer compiled in

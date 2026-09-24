@@ -41,9 +41,10 @@
 
 static serialPort_t *sbusOutPort = NULL;
 
-// Storage for speed limiting (similar to servoInput in servos.c)
-// Shared with F.Bus output, which uses all BUS_SERVO_CHANNELS in 24-channel mode.
-static FAST_DATA_ZERO_INIT float sbusServoInput[BUS_SERVO_CHANNELS];
+// Speed-limit state for SBUS output (similar to servoInput in servos.c). F.Bus
+// output keeps its own, so each output steps only on its own frames.
+static FAST_DATA_ZERO_INIT float sbusServoInput[SBUS_OUT_CHANNELS];
+static timeUs_t sbusOutLastFrameUs = 0;
 
 static void sbusOutPrepareSbusFrame(sbusOutFrame_t *frame,
                                     uint16_t *channels)
@@ -105,9 +106,11 @@ static inline float sbusLimitTravel(uint8_t channel, float pos, float min, float
 }
 
 // Helper function similar to limitSpeed in servos.c
-static inline float sbusLimitSpeed(float old, float new, float speed)
+// dt is the time since this output's previous frame: the limit is applied once
+// per output frame, not once per PID loop like servoUpdate().
+static inline float sbusLimitSpeed(float old, float new, float speed, float dt)
 {
-    float rate = 1200 * pidGetDT() / speed;
+    float rate = 1200 * dt / speed;
     float diff = new - old;
 
     if (diff > rate)
@@ -120,7 +123,9 @@ static inline float sbusLimitSpeed(float old, float new, float speed)
 
 // Process a single SBUS mixer channel with same logic as servoUpdate()
 // Returns processed value in microseconds
-float sbusOutGetValueMixer(uint8_t channel)
+// lastPos is the calling output's speed-limit state for this channel and dt
+// the time since that output's previous frame.
+float sbusOutGetValueMixer(uint8_t channel, float *lastPos, float dt)
 {
     if (channel >= BUS_SERVO_CHANNELS)
         return 0;
@@ -157,7 +162,7 @@ float sbusOutGetValueMixer(uint8_t channel)
 #endif
 
     // Guard the boundary: a NaN here would otherwise sit in
-    // sbusServoInput[channel] and poison every future sbusLimitSpeed() call
+    // *lastPos and poison every future sbusLimitSpeed() call
     // on this channel forever, since NaN - NaN is still NaN.
     if (!isfinitef(input))
         input = 0;
@@ -169,10 +174,10 @@ float sbusOutGetValueMixer(uint8_t channel)
     // plane on a fixed-wing airframe, so one channel's overrun must not
     // couple into another, unrelated surface.
     if (servo->speed > 0)
-        pos = sbusLimitSpeed(sbusServoInput[channel], pos, servo->speed);
+        pos = sbusLimitSpeed(*lastPos, pos, servo->speed, dt);
 
     // Store input for next iteration
-    sbusServoInput[channel] = pos;
+    *lastPos = pos;
 
     // Apply servo reversal
     if (servo->flags & SERVO_FLAG_REVERSED)
@@ -207,7 +212,6 @@ static uint16_t sbusOutConvertToSbus(uint8_t channel, float pwm)
 
 void sbusOutUpdate(timeUs_t currentTimeUs)
 {
-    UNUSED(currentTimeUs);
     if (!sbusOutPort)
         return;
 
@@ -218,6 +222,12 @@ void sbusOutUpdate(timeUs_t currentTimeUs)
     // sbus_out_channels: CH1-count carry bus servos, the rest are sent at
     // center. The digital channels (17-18) are only used with all 16.
     const int count = MIN(busOutChannelCount(sbusOutConfig()->channels), 16);
+    // Time since the previous frame, for the speed limit. The first frame
+    // assumes the configured frame rate; a long gap is capped at 100ms.
+    const float dt = sbusOutLastFrameUs ?
+        constrainf(cmpTimeUs(currentTimeUs, sbusOutLastFrameUs) * 1e-6f, 0.0f, 0.1f) :
+        1.0f / sbusOutConfig()->frameRate;
+    sbusOutLastFrameUs = currentTimeUs;
 
     // Prepare SBUS frame
     sbusOutFrame_t frame;
@@ -229,7 +239,7 @@ void sbusOutUpdate(timeUs_t currentTimeUs)
             continue;
         }
 
-        const float value = sbusOutGetValueMixer(ch);
+        const float value = sbusOutGetValueMixer(ch, &sbusServoInput[ch], dt);
         channels[ch] = sbusOutConvertToSbus(ch, value);
 
         // Store the output value for getServoOutput() to retrieve
