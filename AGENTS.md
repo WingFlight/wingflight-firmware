@@ -135,6 +135,11 @@ make TARGET=SITL              # native simulator build, see src/main/target/SITL
 `make help` lists the options. Extra defines go in `OPTIONS="USE_SOMETHING"`. CI runs the GitHub Actions
 workflows in `.github/workflows`.
 
+Feature branch dev builds embed `FC_VER_SUFFIX` from the `feature/<name>` branch slug plus the short SHA.
+`src/main/build/version.h` requires `FC_VERSION_STRING` to stay under 30 bytes, so long branch names can make
+the workflow fail with `fc_version_string_too_long`. This is a real compile failure, not a superseded run; either
+keep feature branch names short or update `.github/workflows/dev-build.yml` to truncate the generated suffix.
+
 Unit tests exist for PID, setpoint, curves, maths and the acro trainer. The hold engine, AUTOHOVER, ATTHOLD,
 the thrust-vector loop, leveling, airborne detection, servos and GPS navigation have none, so changes there
 need extra care and, where possible, a new test.
