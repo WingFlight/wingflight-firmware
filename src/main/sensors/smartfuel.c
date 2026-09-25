@@ -79,9 +79,9 @@ void INIT_CODE validateAndFixSmartFuelConfig(void)
 {
     batteryConfig_t *config = batteryConfigMutable();
 
-    if (!isBatteryVoltageConfigured()) {
-        config->smartfuel_mode = SMARTFUEL_MODE_OFF;
-    }
+    // No voltage source is handled at runtime (smartFuelInit()), not by clearing the saved
+    // mode: a fresh config has no voltage source yet, and clearing it here would lose the
+    // default for good on the first save.
     if (config->smartfuel_mode >= SMARTFUEL_MODE_COUNT) {
         config->smartfuel_mode = SMARTFUEL_MODE_OFF;
     }
@@ -104,7 +104,8 @@ void INIT_CODE smartFuelInit(void)
 
     const float dT = 1.0f / batteryConfig()->vbatUpdateHz;
 
-    smartFuel.config.mode = batteryConfig()->smartfuel_mode;
+    // SmartFuel needs pack voltage in every mode; stay off until a voltage source is set.
+    smartFuel.config.mode = isBatteryVoltageConfigured() ? batteryConfig()->smartfuel_mode : SMARTFUEL_MODE_OFF;
 
     smartFuel.config.vCellMin = getBatteryMinCellVoltage() / 100.0f;
     smartFuel.config.vCellFull = getBatteryFullCellVoltage() / 100.0f;

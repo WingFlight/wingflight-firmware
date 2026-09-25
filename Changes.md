@@ -57,6 +57,13 @@ New and reset configs also have telemetry on (`FEATURE_TELEMETRY`, all targets,
 suites decode. Native CRSF telemetry (standard battery, attitude and GPS
 frames) is still available by setting `crsf_telemetry_mode = NATIVE`.
 
+SmartFuel now defaults to current mode (`smartfuel = CURRENT`,
+`src/main/pg/battery.c`). With no current sensor, or no pack capacity set, it
+falls back to its voltage estimate. SmartFuel stays inactive until a battery
+voltage source is set, but the saved mode is no longer cleared to OFF when
+there isn't one, so the default survives first setup
+(`src/main/sensors/smartfuel.c`).
+
 Saved configs keep their current settings; only new or reset configs get
 these defaults.
 
