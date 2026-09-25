@@ -43,6 +43,17 @@ is the `NAV_BLOCKED` field of `SYSTEM_STATUS`. Models that had the removed
 sensors selected need `SYSTEM_STATUS` and `SYSTEM_CONFIG` selected instead. The
 Jeti EX Bus arming-flag and profile values are unchanged.
 
+`telemetry_sensors` now defaults to the sensors the Wingflight Lua suites read,
+instead of none (`src/main/pg/telemetry.c`). It is the same list, in the same
+order, that the Ethos suite's "Default" button writes:
+
+```
+set telemetry_sensors = 3,4,5,6,15,43,50,52,58,59,60,89,91,99,120,121,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+```
+
+Saved configs keep their current list; only new or reset configs get the
+default.
+
 
 ## Bus Servo Speed Limit
 
