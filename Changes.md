@@ -8,7 +8,8 @@ the APIs or flight performance.
 FBUS GPS sensors that report the FrSky GPS satellite-count app ID range
 `0x0860`-`0x086F` now feed the real satellite count into `gpsSol.numSat`
 (`src/main/drivers/fbus_sensor.c`). Older FBUS GPS sensors that do not send
-that value keep the previous fallback count of 5 once position data is valid.
+that value report `0` satellites, so RTH, Loiter, GPS Rescue and other
+minimum-satellite checks are not satisfied by a guessed count.
 
 
 ## Telemetry Status Words

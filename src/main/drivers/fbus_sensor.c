@@ -728,7 +728,10 @@ void fbusSensorUpdate(timeUs_t currentTimeUs)
                 gpsSol.groundCourse = fbusGps.courseDeg;
             }
 
-            gpsSol.numSat = fbusGps.hasSatellites ? fbusGps.satellites : 5;
+            // Older FBUS GPS sensors do not report satellite count. Leave it
+            // at zero rather than inventing a value that could satisfy
+            // RTH/Loiter/GPS Rescue minimum-satellite checks.
+            gpsSol.numSat = fbusGps.hasSatellites ? fbusGps.satellites : 0;
             gpsSol.hdop = 100;
             gpsData.lastMessage = millis();
             gpsSetFixState(true);
