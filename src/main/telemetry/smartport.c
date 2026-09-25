@@ -251,7 +251,7 @@ static const smartPortSensorDefinition_t smartportSensorDefinitions[] =
     TLM_SENSOR(DEBUG_4,                 0x52F4,   100,  3000,   1,  10,   0,    INT),
     TLM_SENSOR(DEBUG_5,                 0x52F5,   100,  3000,   1,  10,   0,    INT),
     TLM_SENSOR(DEBUG_6,                 0x52F6,   100,  3000,   1,  10,   0,    INT),
-    TLM_SENSOR(DEBUG_7,                 0x52F8,   100,  3000,   1,  10,   0,    INT),
+    TLM_SENSOR(DEBUG_7,                 0x52F7,   100,  3000,   1,  10,   0,    INT),
 };
 
 
