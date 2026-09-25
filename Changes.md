@@ -51,8 +51,14 @@ order, that the Ethos suite's "Default" button writes:
 set telemetry_sensors = 3,4,5,6,15,43,50,52,58,59,60,89,91,99,120,121,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 ```
 
-Saved configs keep their current list; only new or reset configs get the
-default.
+New and reset configs also have telemetry on (`FEATURE_TELEMETRY`, all targets,
+`src/main/pg/feature.c`) and CRSF telemetry in custom mode
+(`crsf_telemetry_mode = CUSTOM`, `src/main/pg/telemetry.c`), which the Lua
+suites decode. Native CRSF telemetry (standard battery, attitude and GPS
+frames) is still available by setting `crsf_telemetry_mode = NATIVE`.
+
+Saved configs keep their current settings; only new or reset configs get
+these defaults.
 
 
 ## Bus Servo Speed Limit

@@ -48,7 +48,8 @@ PG_RESET_TEMPLATE(telemetryConfig_t, telemetryConfig,
         IBUS_SENSOR_TYPE_EXTERNAL_VOLTAGE
     },
     .mavlink_mah_as_heading_divisor = 0,
-    .crsf_telemetry_mode = CRSF_TELEMETRY_MODE_NATIVE,
+    // Custom: the Wingflight radio Lua suites decode the custom sensor frames.
+    .crsf_telemetry_mode = CRSF_TELEMETRY_MODE_CUSTOM,
     .crsf_telemetry_link_rate = 250,
     .crsf_telemetry_link_ratio = 8,
     // Default sensor selection: what the Wingflight radio Lua suites read. Same IDs, in the
