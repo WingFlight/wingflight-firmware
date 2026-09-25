@@ -3,6 +3,26 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## AUTOHOVER Yaw Authority
+
+While AUTOHOVER is holding, the stabilised-yaw mixer input (`mixer input SY`)
+no longer caps rudder travel at its `rate` (`src/main/flight/mixer.c`,
+`src/main/flight/autohover_authority.h`). The mixer applies a mixer input's
+`rate` after clamping the input, so a cruise setting such as `SY` rate 350 was
+a hard 35% travel ceiling in a prop hang, where the yaw correction is the axis
+that saturates first. With this change the clamp on that input is widened by
+`1000 / |rate|` only while AUTOHOVER is holding, so `rate` still acts as the
+same gain (the linear behaviour is unchanged) but the input now travels until
+the output reaches the limit `min`/`max` define (full travel by default). Servo
+travel limits still apply. Rates of 0 or of 1000 and above are unaffected, so
+the change can only add authority, never remove it.
+
+There is no new setting and no configuration change: every other flight mode,
+PASSTHROUGH and MANUAL are unchanged. A pilot who deliberately set a low `SY`
+rate to limit rudder travel in hover should set `min`/`max` on that input
+instead, which are still honoured. The yaw I-term anti-windup now engages at the
+widened clamp during a hold, so it winds up further before it is held.
+
 ## FBUS GPS Satellite Count
 
 FBUS GPS sensors that report the FrSky GPS satellite-count app ID range

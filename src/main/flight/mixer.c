@@ -41,6 +41,7 @@
 #include "fc/rc.h"
 
 #include "flight/autohover.h"
+#include "flight/autohover_authority.h"
 #include "flight/failsafe.h"
 #include "flight/gps_nav.h"
 #include "flight/pid.h"
@@ -153,8 +154,20 @@ static inline void mixerApplyInputLimit(int index, float value)
     const mixerInput_t *in = mixerInputs(index);
 
     // Input limits
-    const float in_min = in->min / 1000.0f;
-    const float in_max = in->max / 1000.0f;
+    float in_min = in->min / 1000.0f;
+    float in_max = in->max / 1000.0f;
+
+#ifdef USE_ACC
+    // While AUTOHOVER is holding, the stabilised-yaw input's rate stops acting as a ceiling on rudder
+    // travel (it still acts as gain) -- see autohover_authority.h. Applied here rather than in
+    // mixerUpdateRules() so PASSTHROUGH/MANUAL, which write their inputs directly, are unaffected and
+    // so mixer.input[] (and the blackbox mixer[] field) stay in plain PID-output units.
+    if (index == MIXER_IN_STABILIZED_YAW && autoHoverIsHolding(FD_YAW)) {
+        const float scale = autoHoverYawAuthorityScale(in->rate);
+        in_min *= scale;
+        in_max *= scale;
+    }
+#endif
 
     // Constrain and saturate. +-Inf are still correctly caught below even
     // under -ffast-math (see constrainf() in common/maths.h). A NaN input

@@ -414,6 +414,10 @@ airborne_unittest_SRC := \
         $(USER_DIR)/common/maths.c \
         $(USER_DIR)/flight/airborne.c
 
+# Header-only helper (flight/autohover_authority.h); maths.c only satisfies the non-empty _SRC rule.
+autohover_authority_unittest_SRC := \
+        $(USER_DIR)/common/maths.c
+
 trainer_unittest_SRC := \
 		$(USER_DIR)/common/filter.c \
 		$(USER_DIR)/common/maths.c \
