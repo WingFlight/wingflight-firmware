@@ -4,6 +4,46 @@ This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
 
+## Telemetry Status Words
+
+Two new telemetry sensors carry the flight controller's status as packed
+bitfields, so a radio script can decode many flags from one sensor slot
+(`src/main/telemetry/status.h`, `src/main/telemetry/status.c`):
+
+| ID | Sensor | S.Port | CRSF | Rate |
+|---|---|---|---|---|
+| 120 | `SYSTEM_STATUS` | `0x5140` | `0x1230` | 100 ms |
+| 121 | `SYSTEM_CONFIG` | `0x5141` | `0x1231` | 500 ms |
+
+`SYSTEM_STATUS` holds live state: armed, airborne, motors running, main and
+backup RX link, backup RX in control, failsafe phase, GPS fix and GPS health,
+LOITER/RTH switched on but unable to fly, battery state, control surfaces at
+their mixer limit, gyro overflow, ACC not calibrated, Configurator test
+override active, a flight aid holding, autotrim state, Blackbox logging, and
+logic conditions 1-4.
+
+`SYSTEM_CONFIG` holds slower state: PID, rates, battery and TV profile
+numbers, unsaved settings, save in progress, reboot required, beeper on,
+ACC/baro/mag/GPS present, backup RX configured, Blackbox full, and RPM
+telemetry present.
+
+The radio Lua decodes by bit position, so a layout change needs a matching Lua
+update. Bit 31 is never set because S.Port sends a signed value.
+
+This is a hard cut. These sensors are removed, and their IDs are free for reuse:
+
+- 90 `ARMING_FLAGS` (the ARMED bit is in `SYSTEM_STATUS`)
+- 95-98 `PID_PROFILE`, `RATES_PROFILE`, `BATTERY_PROFILE`, `LED_PROFILE`
+- 118 `TV_PROFILE`
+- 119 `GPS_FIX_TYPE`
+
+`FLIGHT_MODE` (89) is plain `flightModeFlags` again. Bit 15 ("GPS mode
+unavailable") and the requested-mode bit that came with it are gone; that state
+is the `NAV_BLOCKED` field of `SYSTEM_STATUS`. Models that had the removed
+sensors selected need `SYSTEM_STATUS` and `SYSTEM_CONFIG` selected instead. The
+Jeti EX Bus arming-flag and profile values are unchanged.
+
+
 ## Bus Servo Speed Limit
 
 The servo `speed` limit on bus servos (SBUS and F.Bus output) now steps by the

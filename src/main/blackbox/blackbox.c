@@ -2035,6 +2035,11 @@ void blackboxErase(void)
 #endif
 }
 
+bool blackboxIsLogging(void)
+{
+    return blackboxState == BLACKBOX_STATE_RUNNING;
+}
+
 bool isBlackboxErased(void)
 {
     return isBlackboxDeviceReady();

@@ -45,7 +45,6 @@
 #include "flight/position.h"
 #include "flight/mixer.h"
 #include "flight/imu.h"
-#include "flight/gps_nav.h"
 
 #include "io/gps.h"
 #include "io/ledstrip.h"
@@ -59,6 +58,7 @@
 #include "scheduler/scheduler.h"
 
 #include "telemetry/sensors.h"
+#include "telemetry/status.h"
 
 #ifdef USE_FBUS_MASTER
 # include "drivers/fbus_sensor.h"
@@ -74,32 +74,6 @@
 #endif
 
 /** Sensor functions **/
-
-// See TELEM_FLIGHT_MODE_GPS_UNAVAILABLE_BIT. Mirrors fc/core.c's LOITER/RTH engage rules: RTH
-// wins over LOITER when both switches are on, and neither engages without an accelerometer.
-static uint32_t getTelemetryFlightModeFlags(void)
-{
-    uint32_t flags = flightModeFlags;
-
-#ifdef USE_GPS_NAV
-    uint32_t requested = 0;
-    bool available = false;
-
-    if (IS_RC_MODE_ACTIVE(BOXRTH)) {
-        requested = RTH_MODE;
-        available = navCanRTH();
-    } else if (IS_RC_MODE_ACTIVE(BOXLOITER)) {
-        requested = LOITER_MODE;
-        available = navCanLoiter();
-    }
-
-    if (requested && !(ARMING_FLAG(ARMED) && sensors(SENSOR_ACC) && available)) {
-        flags |= requested | BIT(TELEM_FLIGHT_MODE_GPS_UNAVAILABLE_BIT);
-    }
-#endif
-
-    return flags;
-}
 
 static int getVoltage(voltageMeterId_e id)
 {
@@ -350,8 +324,6 @@ int telemetrySensorValue(sensor_id_e id)
             return GPS_directionToHome;
         case TELEM_GPS_DATE_TIME:
             return 0;
-        case TELEM_GPS_FIX_TYPE:
-            return STATE(GPS_FIX_HOME) ? 2 : (STATE(GPS_FIX) ? 1 : 0);
 
         case TELEM_LOAD:
             return millis();
@@ -365,22 +337,14 @@ int telemetrySensorValue(sensor_id_e id)
         case TELEM_MODEL_ID:
             return pilotConfig()->modelId;
         case TELEM_FLIGHT_MODE:
-            return getTelemetryFlightModeFlags();
-        case TELEM_ARMING_FLAGS:
-            return armingFlags;
+            return flightModeFlags;
         case TELEM_ARMING_DISABLE_FLAGS:
             return getArmingDisableFlags();
 
-        case TELEM_PID_PROFILE:
-            return getCurrentPidProfileIndex() + 1;
-        case TELEM_RATES_PROFILE:
-            return getCurrentControlRateProfileIndex() + 1;
-        case TELEM_LED_PROFILE:
-            return 0;
-        case TELEM_BATTERY_PROFILE:
-            return getCurrentBatteryProfileIndex() + 1;
-        case TELEM_TV_PROFILE:
-            return getCurrentTvProfileIndex() + 1;
+        case TELEM_SYSTEM_STATUS:
+            return telemetrySystemStatus();
+        case TELEM_SYSTEM_CONFIG:
+            return telemetrySystemConfig();
 
         case TELEM_ADJFUNC:
             return getAdjustmentsRangeName() ?
@@ -550,7 +514,6 @@ bool telemetrySensorActive(sensor_id_e id)
         case TELEM_GPS_GROUNDSPEED:
         case TELEM_GPS_HOME_DISTANCE:
         case TELEM_GPS_HOME_DIRECTION:
-        case TELEM_GPS_FIX_TYPE:
             return true;
 
         case TELEM_GPS_PDOP:
@@ -566,19 +529,12 @@ bool telemetrySensorActive(sensor_id_e id)
 
         case TELEM_MODEL_ID:
         case TELEM_FLIGHT_MODE:
-        case TELEM_ARMING_FLAGS:
         case TELEM_ARMING_DISABLE_FLAGS:
             return true;
 
-        case TELEM_PID_PROFILE:
-        case TELEM_RATES_PROFILE:
-        case TELEM_TV_PROFILE:
+        case TELEM_SYSTEM_STATUS:
+        case TELEM_SYSTEM_CONFIG:
             return true;
-
-        case TELEM_BATTERY_PROFILE:
-            return true;
-        case TELEM_LED_PROFILE:
-            return false;
 
         case TELEM_ADJFUNC:
             return true;

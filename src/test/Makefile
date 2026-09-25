@@ -492,6 +492,14 @@ telemetry_sensors_unittest_DEFINES := \
         USE_TELEMETRY_CRSF \
         USE_TELEMETRY_SMARTPORT
 
+telemetry_status_unittest_SRC := \
+        $(USER_DIR)/telemetry/status.c
+
+telemetry_status_unittest_DEFINES := \
+        USE_GPS_NAV= \
+        USE_RX_INPUT_BACKUP= \
+        USE_ACRO_TRAINER=
+
 setpoint_unittest_SRC := \
         $(USER_DIR)/flight/setpoint.c \
 		$(USER_DIR)/build/debug.c \

@@ -236,15 +236,10 @@ static const smartPortSensorDefinition_t smartportSensorDefinitions[] =
 
     TLM_SENSOR(MODEL_ID,                0x5120,   200,  3000,   0,   0,   0,    INT),
     TLM_SENSOR(FLIGHT_MODE,             0x5121,   100,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(ARMING_FLAGS,            0x5122,   100,  3000,   1,   1,   0,    INT),
     TLM_SENSOR(ARMING_DISABLE_FLAGS,    0x5123,   100,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(GPS_FIX_TYPE,            0x5124,   100,  3000,   1,   1,   0,    INT),
 
-    TLM_SENSOR(PID_PROFILE,             0x5130,   200,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(RATES_PROFILE,           0x5131,   200,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(LED_PROFILE,             0x5132,   200,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(BATTERY_PROFILE,         0x5133,   200,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(TV_PROFILE,              0x5134,   200,  3000,   1,   1,   0,    INT),
+    TLM_SENSOR(SYSTEM_STATUS,           0x5140,   100,  3000,   1,   1,   0,    INT),
+    TLM_SENSOR(SYSTEM_CONFIG,           0x5141,   500,  3000,   1,   1,   0,    INT),
 
     TLM_SENSOR(ADJFUNC,                 0x5110,   200,  3000,   1,   1,   0,    AdjFunc),
     TLM_SENSOR(ADJFUNC,                 0x5111,   200,  3000,   1,   1,   0,    AdjValue),

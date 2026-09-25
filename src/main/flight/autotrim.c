@@ -57,12 +57,6 @@
 
 #define AUTOTRIM_WINDOW_MS 2000
 
-typedef enum {
-    AUTOTRIM_IDLE,
-    AUTOTRIM_COLLECTING,
-    AUTOTRIM_SAVE_PENDING,
-} autoTrimState_e;
-
 typedef struct {
     autoTrimState_e state;
     timeMs_t        startedAt;
@@ -89,6 +83,11 @@ static bool isTrimmableServo(int servo)
     }
 
     return false;
+}
+
+autoTrimState_e autoTrimGetState(void)
+{
+    return autoTrim.state;
 }
 
 void autoTrimUpdate(void)

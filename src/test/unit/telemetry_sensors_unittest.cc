@@ -375,7 +375,7 @@ TEST_F(CrsfSensorsTest, FullCustomConfigurationRetainsDiscoverySlot)
             supported.push_back(sensor_id_e(id));
         }
     }
-    EXPECT_EQ(86u, supported.size());
+    EXPECT_EQ(82u, supported.size());
     ASSERT_GE(supported.size(), size_t(TELEM_SENSOR_SLOT_COUNT));
     for (unsigned i = 0; i < TELEM_SENSOR_SLOT_COUNT; i++)
         telemetryConfigMutable()->telemetry_sensors[i] = supported[i];

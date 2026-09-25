@@ -30,15 +30,6 @@
 #include "flight/motors.h"
 #include "flight/servos.h"
 
-// Telemetry-only extension of TELEM_FLIGHT_MODE (flightModeFlags uses bits 0-14). Set while the
-// pilot's LOITER or RTH switch is on but that GPS mode can't actually fly -- disarmed, or no
-// usable fix/home -- so the radio can call out an error instead of staying silent or claiming the
-// mode is working. The requested mode's own bit (LOITER_MODE/RTH_MODE) is reported alongside it,
-// even while disarmed, so the receiver knows which mode was asked for. Never set in
-// flightModeFlags itself: flight code keys leveling/nav off those bits.
-#define TELEM_FLIGHT_MODE_GPS_UNAVAILABLE_BIT   15
-
-
 /** Custom telemetry sensor types **/
 
 typedef enum
@@ -146,16 +137,13 @@ typedef enum
     TELEM_RT_LOAD                       = 87,
 
     TELEM_MODEL_ID                      = 88,
-    TELEM_FLIGHT_MODE                   = 89,   // flightModeFlags, plus TELEM_FLIGHT_MODE_GPS_UNAVAILABLE_BIT
-    TELEM_ARMING_FLAGS                  = 90,
+    TELEM_FLIGHT_MODE                   = 89,
+    // 90 free (was arming flags, now in TELEM_SYSTEM_STATUS)
     TELEM_ARMING_DISABLE_FLAGS          = 91,
-    // 92 reserved (heli rescue removed, do not reuse)
-    // 93, 94 reserved (heli governor removed, do not reuse)
+    // 92 free (was heli rescue)
+    // 93, 94 free (were heli governor)
 
-    TELEM_PID_PROFILE                   = 95,
-    TELEM_RATES_PROFILE                 = 96,
-    TELEM_BATTERY_PROFILE               = 97,
-    TELEM_LED_PROFILE                   = 98,
+    // 95-98 free (were PID/rates/battery/LED profile, now in TELEM_SYSTEM_CONFIG)
 
     TELEM_ADJFUNC                       = 99,
 
@@ -180,12 +168,11 @@ typedef enum
     TELEM_FBUS_SENSOR_7                 = 116,
     TELEM_FBUS_SENSOR_8                 = 117,
 
-    TELEM_TV_PROFILE                    = 118,
+    // 118 free (was TV profile, now in TELEM_SYSTEM_CONFIG)
+    // 119 free (was GPS fix type, now in TELEM_SYSTEM_STATUS)
 
-    TELEM_GPS_FIX_TYPE                  = 119, // 0 = no fix, 1 = fix, 2 = fix + home captured;
-                                                // distinct from ARMING_DISABLE_FLAGS' GPS bit, which
-                                                // only reflects the pre-arm check and stops updating
-                                                // once WAS_EVER_ARMED (see fc/core.c)
+    TELEM_SYSTEM_STATUS                 = 120,  // packed live state, see telemetry/status.h
+    TELEM_SYSTEM_CONFIG                 = 121,  // packed profiles and config state, see telemetry/status.h
 
     TELEM_SENSOR_COUNT
 } sensor_id_e;

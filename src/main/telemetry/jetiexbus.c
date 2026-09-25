@@ -29,6 +29,7 @@
 #include "build/build_config.h"
 #include "build/debug.h"
 #include "fc/runtime_config.h"
+#include "config/config.h"
 #include "config/feature.h"
 #include "fc/rc_adjustments.h"
 
@@ -443,15 +444,15 @@ int32_t getSensorValue(uint8_t sensor)
     break;
 
     case EX_ARMING_FLAGS:
-        return telemetrySensorValue(TELEM_ARMING_FLAGS);
+        return armingFlags;
     break;
 
     case EX_PID_PROFILE:
-        return telemetrySensorValue(TELEM_PID_PROFILE);
+        return getCurrentPidProfileIndex() + 1;
     break;
 
     case EX_RATES_PROFILE:
-        return telemetrySensorValue(TELEM_RATES_PROFILE);
+        return getCurrentControlRateProfileIndex() + 1;
     break;
 
     case EX_THROTTLE_CONTROL:
@@ -467,7 +468,7 @@ int32_t getSensorValue(uint8_t sensor)
     break;
 
     case EX_TV_PROFILE:
-        return telemetrySensorValue(TELEM_TV_PROFILE);
+        return getCurrentTvProfileIndex() + 1;
     break;
 
 

@@ -92,6 +92,7 @@ float mixerGetInput(uint8_t index);
 float mixerGetOutput(uint8_t index);
 
 bool mixerSaturated(uint8_t index);
+bool mixerTakeStabilizedSaturation(void);
 void mixerSaturateInput(uint8_t index);
 void mixerSaturateOutput(uint8_t index);
 
