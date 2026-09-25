@@ -729,9 +729,11 @@ void fbusSensorUpdate(timeUs_t currentTimeUs)
             }
 
             // Older FBUS GPS sensors do not report satellite count. Leave it
-            // at zero rather than inventing a value that could satisfy
-            // RTH/Loiter/GPS Rescue minimum-satellite checks.
-            gpsSol.numSat = fbusGps.hasSatellites ? fbusGps.satellites : 0;
+            // at zero by default rather than inventing a value that could
+            // satisfy RTH/Loiter/GPS Rescue minimum-satellite checks. Users
+            // can explicitly opt into an assumed CLI value for those sensors;
+            // real satellite-count data always wins when the sensor sends it.
+            gpsSol.numSat = fbusGps.hasSatellites ? fbusGps.satellites : gpsConfig()->fbus_assumed_sats;
             gpsSol.hdop = 100;
             gpsData.lastMessage = millis();
             gpsSetFixState(true);

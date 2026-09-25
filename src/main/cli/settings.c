@@ -967,6 +967,7 @@ const clivalue_t valueTable[] = {
     { "gps_ublox_mode",             VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_GPS_UBLOX_MODE }, PG_GPS_CONFIG, offsetof(gpsConfig_t, gps_ublox_mode) },
     { "gps_set_home_point_once",    VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_GPS_CONFIG, offsetof(gpsConfig_t, gps_set_home_point_once) },
     { "gps_use_3d_speed",           VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_GPS_CONFIG, offsetof(gpsConfig_t, gps_use_3d_speed) },
+    { "gps_fbus_assumed_sats",      VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 50 }, PG_GPS_CONFIG, offsetof(gpsConfig_t, fbus_assumed_sats) },
 
 #ifdef USE_GPS_RESCUE
     // PG_GPS_RESCUE
