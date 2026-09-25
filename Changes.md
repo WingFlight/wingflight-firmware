@@ -3,6 +3,13 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## FBUS GPS Satellite Count
+
+FBUS GPS sensors that report the FrSky GPS satellite-count app ID range
+`0x0860`-`0x086F` now feed the real satellite count into `gpsSol.numSat`
+(`src/main/drivers/fbus_sensor.c`). Older FBUS GPS sensors that do not send
+that value keep the previous fallback count of 5 once position data is valid.
+
 
 ## Telemetry Status Words
 
