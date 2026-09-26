@@ -62,7 +62,6 @@ COMMON_SRC = \
             io/usb_msc.c \
             msp/msp.c \
             msp/msp_box.c \
-            msp/msp_catalogue.c \
             msp/msp_param.c \
             msp/msp_runtime.c \
             msp/msp_serial.c \
