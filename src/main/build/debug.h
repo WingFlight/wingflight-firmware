@@ -52,7 +52,7 @@ typedef enum {
     DEBUG_PIDLOOP,
     DEBUG_GYRO_SCALED,
     DEBUG_RC_COMMAND,
-    DEBUG_RC_SETPOINT,
+    DEBUG_UNUSED_8,     // was RC_SETPOINT -- slot kept so later modes keep their numbers
     DEBUG_ESC_SENSOR,
     DEBUG_SCHEDULER,
     DEBUG_STACK,
@@ -69,15 +69,15 @@ typedef enum {
     DEBUG_DUAL_GYRO_DIFF,
     DEBUG_SBUS,
     DEBUG_FPORT,
-    DEBUG_RANGEFINDER,          // unused (rangefinder removed) -- slot kept so later debug modes keep their numbers
-    DEBUG_RANGEFINDER_QUALITY,  // unused (rangefinder removed) -- slot kept
-    DEBUG_LIDAR_TF,             // unused (rangefinder removed) -- slot kept
+    DEBUG_UNUSED_25,    // was RANGEFINDER -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_26,    // was RANGEFINDER_QUALITY -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_27,    // was LIDAR_TF -- slot kept so later modes keep their numbers
     DEBUG_ADC_INTERNAL,
-    DEBUG_GOVERNOR,
-    DEBUG_SDIO,
+    DEBUG_UNUSED_29,    // was GOVERNOR -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_30,    // was SDIO -- slot kept so later modes keep their numbers
     DEBUG_CURRENT_SENSOR,
     DEBUG_USB,
-    DEBUG_SMARTAUDIO,
+    DEBUG_UNUSED_33,    // was SMARTAUDIO -- slot kept so later modes keep their numbers
     DEBUG_RTH,
     DEBUG_ITERM_RELAX,
     DEBUG_ACRO_TRAINER,
@@ -90,7 +90,7 @@ typedef enum {
     DEBUG_DSHOT_RPM_TELEMETRY,
     DEBUG_RPM_FILTER,
     DEBUG_RPM_SOURCE,
-    DEBUG_TTA,
+    DEBUG_UNUSED_46,    // was TTA -- slot kept so later modes keep their numbers
     DEBUG_AIRBORNE,
     DEBUG_DUAL_GYRO_SCALED,
     DEBUG_DSHOT_RPM_ERRORS,
@@ -100,28 +100,28 @@ typedef enum {
     DEBUG_BARO,
     DEBUG_GPS_RESCUE_THROTTLE_PID,
     DEBUG_FREQ_SENSOR,
-    DEBUG_FEEDFORWARD_LIMIT,
-    DEBUG_FEEDFORWARD,
+    DEBUG_UNUSED_56,    // was FEEDFORWARD_LIMIT -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_57,    // was FEEDFORWARD -- slot kept so later modes keep their numbers
     DEBUG_BLACKBOX_OUTPUT,
     DEBUG_GYRO_SAMPLE,
     DEBUG_RX_TIMING,
-    DEBUG_D_LPF,
-    DEBUG_VTX_TRAMP,    // unused (VTX removed) -- slot kept so later debug modes keep their numbers
+    DEBUG_UNUSED_61,    // was D_LPF -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_62,    // was VTX_TRAMP -- slot kept so later modes keep their numbers
     DEBUG_GHST,
     DEBUG_SCHEDULER_DETERMINISM,
     DEBUG_TIMING_ACCURACY,
     DEBUG_RX_EXPRESSLRS_SPI,
     DEBUG_RX_EXPRESSLRS_PHASELOCK,
     DEBUG_RX_STATE_TIME,
-    DEBUG_PITCH_PRECOMP,
-    DEBUG_YAW_PRECOMP,
-    DEBUG_RESCUE,
-    DEBUG_RESCUE_ALTHOLD,
-    DEBUG_CROSS_COUPLING,
-    DEBUG_ERROR_DECAY,
-    DEBUG_HS_OFFSET,
-    DEBUG_HS_BLEED,
-    DEBUG_GOV_MOTOR,
+    DEBUG_UNUSED_69,    // was PITCH_PRECOMP -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_70,    // was YAW_PRECOMP -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_71,    // was RESCUE -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_72,    // was RESCUE_ALTHOLD -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_73,    // was CROSS_COUPLING -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_74,    // was ERROR_DECAY -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_75,    // was HS_OFFSET -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_76,    // was HS_BLEED -- slot kept so later modes keep their numbers
+    DEBUG_UNUSED_77,    // was GOV_MOTOR -- slot kept so later modes keep their numbers
     DEBUG_GYRO_CALIBRATION,
     DEBUG_AUTOHOVER,
     DEBUG_ATTHOLD,
