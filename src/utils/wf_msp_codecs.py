@@ -252,6 +252,9 @@ class Executor(object):
 
         m = re.fullmatch(r'sbufRead([US])(8|16|32)', name)
         if m:
+            if self.direction == 'out':
+                # a request argument (page, index), not reply bytes
+                raise Manual('reads request arguments')
             return ('read', int(m.group(2)) // 8, m.group(1) == 'S')
 
         m = re.fullmatch(r'sbufWrite([US])(8|16|32)', name)

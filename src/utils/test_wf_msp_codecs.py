@@ -209,6 +209,11 @@ class Refusals(unittest.TestCase):
         i = sbufReadU8(src);
         rowsMutable(i)->p = sbufReadU16(src);''')), 26, 'bound')
 
+    def test_out_body_reading_request_arguments(self):
+        self.assertManual(*extract(case(28, '''
+        const uint8_t page = sbufReadU8(src);
+        sbufWriteU8(dst, demoConfig()->a);''')), 28, 'request arguments')
+
     def test_nested_switch_does_not_split_the_case(self):
         codecs, manual = extract(case(27, '''
         switch (demoConfig()->a) {
