@@ -164,6 +164,11 @@ gps_conversion_unittest_SRC := \
 		$(USER_DIR)/common/gps_conversion.c
 
 
+alt_fusion_unittest_SRC := \
+		$(USER_DIR)/flight/alt_fusion.c \
+		$(USER_DIR)/common/maths.c
+
+
 gps_nav_unittest_DEFINES := USE_GPS_NAV=
 
 gps_nav_unittest_SRC := \

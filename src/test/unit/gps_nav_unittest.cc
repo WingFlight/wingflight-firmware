@@ -15,7 +15,7 @@
  */
 
 // GPS nav guidance: loiter orbit direction and convergence, bank slew, altitude hold gain and
-// damping, turn coordination and nav throttle.
+// damping, turn coordination and nav throttle, GPS health gating and dead reckoning.
 
 #include <cmath>
 
@@ -44,6 +44,8 @@ int32_t stubAltitudeCm = 0;
 int getEstimatedAltitudeCm(void) { return stubAltitudeCm; }
 int32_t stubVarioCms = 0;
 int getEstimatedVarioCms(void) { return stubVarioCms; }
+bool stubHasAltitude = true;
+bool hasEstimatedAltitude(void) { return stubHasAltitude; }
 
 // Every millis() call advances the clock by stubMillisStep. The default of 10 s is long enough
 // that the bank slew limit never bites, so tests see the unslewed bank command; the slew test
@@ -239,8 +241,10 @@ class GpsNavAltitudeTest : public ::testing::Test {
         GPS_home[GPS_LONGITUDE] = 0;
         stubAltitudeCm = 0;
         stubVarioCms = 0;
+        stubHasAltitude = true;
         stubMillisStep = 10000;
-        stateFlags = GPS_FIX; // navIsHealthy() requires a fix, not just numSat/link health
+        // navIsHealthy() requires a fix, not just numSat/link health; RTH needs a home as well.
+        stateFlags = GPS_FIX | GPS_FIX_HOME;
     }
 
     // Starts an RTH toward GPS_home (0,0) with the configured rthAltitudeM as target, then
@@ -284,6 +288,32 @@ TEST_F(GpsNavAltitudeTest, ClimbRateDampsTheCorrection)
 {
     // 10 m low but already climbing at 3 m/s: 10 deg - 2 deg/(m/s) * 3 m/s = 4 deg nose-up.
     EXPECT_EQ(-400, pitchAt(40, 300));
+}
+
+TEST_F(GpsNavAltitudeTest, NoAltitudeEstimateHoldsLevelPitch)
+{
+    // No baro and no usable GPS altitude: the estimate reads 0, 50 m under the RTH altitude.
+    // That must not become a full nose-up command.
+    stubHasAltitude = false;
+    EXPECT_EQ(0, pitchAt(0));
+}
+
+TEST_F(GpsNavAltitudeTest, LoiterWithoutAltitudeAtEngageHoldsTheFirstRealOne)
+{
+    stubHasAltitude = false;
+    stubAltitudeCm = 0;
+    navLoiterStart();
+    updateGpsNav();
+    EXPECT_EQ(0, navAngle[AI_PITCH]);
+
+    // Altitude appears at 80 m: that becomes the hold altitude, not the 0 read at engage.
+    stubHasAltitude = true;
+    stubAltitudeCm = 8000;
+    updateGpsNav();
+    EXPECT_EQ(0, navAngle[AI_PITCH]);
+    stubAltitudeCm = 7000; // 10 m low -> 10 deg nose-up
+    updateGpsNav();
+    EXPECT_EQ(-1000, navAngle[AI_PITCH]);
 }
 
 TEST_F(GpsNavAltitudeTest, PitchIsClampedToMaxPitchAngleDeg)
@@ -397,7 +427,9 @@ TEST_F(GpsNavHealthTest, HealthySatCountWithNoFixCommandsNothing)
     navLoiterStart();
     placeAircraftForNonzeroRoll();
 
-    stateFlags = 0; // numSat stays 12 (well above minSats): link/sat-count alone must not pass
+    // numSat stays 12 (well above minSats): link/sat-count alone must not pass. The 10 s clock
+    // step is past the dead-reckoning window, so nothing bridges the gap either.
+    stateFlags = 0;
     updateGpsNav();
 
     EXPECT_EQ(0, navAngle[AI_ROLL]);
@@ -412,8 +444,9 @@ TEST_F(GpsNavHealthTest, ResumesTowardOriginalTargetAfterFixIsReacquired)
     const int32_t healthyRoll = navAngle[AI_ROLL];
     ASSERT_NE(0, healthyRoll) << "test setup should command a nonzero correction when healthy";
 
-    // Fix lost mid-session (switch/mode stays engaged -- core.c never calls navLoiterStart()
-    // again while the pilot leaves the switch on).
+    // Fix lost mid-session for longer than dead reckoning bridges (the 10 s clock step), with the
+    // switch/mode still engaged -- core.c never calls navLoiterStart() again while the pilot
+    // leaves the switch on.
     stateFlags = 0;
     updateGpsNav();
     EXPECT_EQ(0, navAngle[AI_ROLL]) << "should command nothing while unhealthy, not a stale value";
@@ -423,6 +456,132 @@ TEST_F(GpsNavHealthTest, ResumesTowardOriginalTargetAfterFixIsReacquired)
     stateFlags = GPS_FIX;
     updateGpsNav();
     EXPECT_EQ(healthyRoll, navAngle[AI_ROLL]);
+}
+
+TEST_F(GpsNavHealthTest, EngagedDuringADropoutStartsOnceTheFixReturns)
+{
+    // The switch goes on while there is no fix. This used to leave nav inactive until the pilot
+    // cycled the switch, even after the fix came back.
+    stateFlags = 0;
+    navLoiterStart();
+    EXPECT_FALSE(navCanLoiter());
+    updateGpsNav();
+    EXPECT_EQ(0, navAngle[AI_ROLL]);
+
+    // Fix back: the loiter point is captured where the aircraft is now, and it gets a correction
+    // (flying east, the wrong way for where a clockwise orbit starting here needs it to go).
+    stateFlags = GPS_FIX;
+    placeAircraftForNonzeroRoll();
+    updateGpsNav();
+    EXPECT_NE(0, navAngle[AI_ROLL]);
+}
+
+TEST_F(GpsNavHealthTest, RthWithoutAHomeNeverNavigates)
+{
+    // No recorded home: RTH must not fly toward GPS_home = {0,0}.
+    GPS_home[GPS_LATITUDE] = 0;
+    GPS_home[GPS_LONGITUDE] = 0;
+    placeAircraftForNonzeroRoll();
+    navRthStart();
+    updateGpsNav();
+    EXPECT_FALSE(navCanRTH());
+    EXPECT_EQ(0, navAngle[AI_ROLL]);
+    EXPECT_EQ(0, navAngle[AI_PITCH]);
+}
+
+// Dead reckoning through short GPS dropouts. The clock advances 100 ms per millis() call, so
+// every navCanLoiter()/updateGpsNav()/navGetEstimatedPosition() moves time on by 100 ms.
+class GpsNavDeadReckoningTest : public GpsNavHealthTest {
+  protected:
+    void SetUp() override
+    {
+        GpsNavHealthTest::SetUp();
+        stubMillisStep = 100;
+        gpsSol.groundSpeed = 1500; // 15 m/s
+        gpsSol.groundCourse = EAST;
+        attitude.values.yaw = EAST;
+        updateGpsNav(); // good sample at the origin
+    }
+
+    // Advance the clock by about `ms` through GPS task ticks with no fix.
+    void dropFixFor(timeMs_t ms)
+    {
+        stateFlags = 0;
+        for (timeMs_t t = 0; t < ms; t += stubMillisStep) {
+            updateGpsNav();
+        }
+    }
+};
+
+TEST_F(GpsNavDeadReckoningTest, ShortDropoutKeepsNavigating)
+{
+    navLoiterStart();
+    placeAircraftForNonzeroRoll();
+    updateGpsNav();
+    ASSERT_NE(0, navAngle[AI_ROLL]);
+
+    dropFixFor(1000);
+    EXPECT_TRUE(navCanLoiter());
+    EXPECT_NE(0, navAngle[AI_ROLL]) << "a 1 s dropout must not level the wings";
+}
+
+TEST_F(GpsNavDeadReckoningTest, LongDropoutLevelsTheWings)
+{
+    navLoiterStart();
+    placeAircraftForNonzeroRoll();
+    updateGpsNav();
+
+    dropFixFor(8000); // past the 5 s window, and long enough for the bank to slew back to 0
+    EXPECT_FALSE(navCanLoiter());
+    EXPECT_EQ(0, navAngle[AI_ROLL]);
+}
+
+TEST_F(GpsNavDeadReckoningTest, StraightFlightCarriesPositionForward)
+{
+    dropFixFor(2000);
+    int32_t lat, lon;
+    ASSERT_TRUE(navGetEstimatedPosition(&lat, &lon));
+    // About 2 s at 15 m/s due east: 30 m.
+    EXPECT_NEAR(0, lat, 2 * UNITS_PER_METER);
+    EXPECT_NEAR(30 * UNITS_PER_METER, lon, 3 * UNITS_PER_METER);
+}
+
+TEST_F(GpsNavDeadReckoningTest, TurningFlightFollowsTheImuHeading)
+{
+    // Heading east when the fix was lost, south by now: a 90 degree right turn. The chord of that
+    // turn runs south-east, so the estimate must be south as well as east of the last fix --
+    // plain extrapolation along the last course would have it due east.
+    stateFlags = 0;
+    attitude.values.yaw = SOUTH;
+    dropFixFor(2000);
+    int32_t lat, lon;
+    ASSERT_TRUE(navGetEstimatedPosition(&lat, &lon));
+    EXPECT_NEAR(-21 * UNITS_PER_METER, lat, 3 * UNITS_PER_METER);
+    EXPECT_NEAR(21 * UNITS_PER_METER, lon, 3 * UNITS_PER_METER);
+}
+
+TEST_F(GpsNavDeadReckoningTest, OneSatelliteUnderTheMinimumIsToleratedOnceNavigating)
+{
+    // minSats is 6. With a fresh estimate, 5 satellites still count as a good sample, so the
+    // position keeps tracking the GPS well past the dead-reckoning window.
+    gpsSol.numSat = 5;
+    for (int i = 0; i < 80; i++) { // 8 s
+        updateGpsNav();
+    }
+    EXPECT_TRUE(navCanLoiter());
+
+    // Two under is not enough.
+    gpsSol.numSat = 4;
+    for (int i = 0; i < 80; i++) {
+        updateGpsNav();
+    }
+    EXPECT_FALSE(navCanLoiter());
+
+    // And from cold (no fresh estimate), the full minimum is needed again.
+    gpsSol.numSat = 5;
+    EXPECT_FALSE(navCanLoiter());
+    gpsSol.numSat = 6;
+    EXPECT_TRUE(navCanLoiter());
 }
 
 } // namespace

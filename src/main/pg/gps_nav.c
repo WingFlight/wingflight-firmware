@@ -30,7 +30,7 @@ PG_RESET_TEMPLATE(gpsNavConfig_t, gpsNavConfig,
     .loiterRadiusM = 100, // a 25 deg bank at 20 m/s turns on about an 85 m radius
     .loiterDirection = NAV_LOITER_CW,
     .rthAltitudeM = 50,
-    .minSats = 8,
+    .minSats = 6,
     .maxBankAngleDeg = 25,
     .maxPitchAngleDeg = 15,
     .bearingKp = 200,   // 2.0 deg bank per deg bearing error

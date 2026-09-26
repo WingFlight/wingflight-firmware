@@ -3,6 +3,89 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Accelerometer-Fused Altitude and Vario
+
+Altitude and vario now come from a vertical inertial estimator
+(`src/main/flight/alt_fusion.c`, wired in `src/main/flight/position.c`): a
+third-order complementary filter, the same structure as INAV's position
+estimator and ArduPilot's AP_InertialNav. The earth-frame vertical
+acceleration carries the short term; the baro (or GPS altitude on boards
+without one) pulls altitude, velocity and an accelerometer-bias estimate back
+in over a time constant. Vario no longer lags behind a filtered baro
+derivative, which is what GPS nav altitude hold, telemetry vario and Blackbox
+all read.
+
+If the altitude measurement drops out (a GPS-only board losing its fix), the
+estimate coasts on the accelerometer for 5 s, then reports itself invalid and
+holds the last altitude with zero vario. Before, altitude read 0.
+
+Vertical acceleration is clipped at about 3 g and the learned bias at
+2 m/s^2, so a snap or a momentarily lost attitude estimate cannot run the
+estimate away.
+
+Without an accelerometer, altitude and vario are the filtered measurement and
+its derivative, as before.
+
+New settings (CLI):
+
+- `position_fusion_baro_tc` (20 = 2.0 s) and `position_fusion_gps_tc`
+  (40 = 4.0 s): how long the accelerometer is trusted over each measurement,
+  in 0.1 s. Longer gives a smoother estimate but slower correction.
+
+Fixes in the same code:
+
+- GPS altitude was never used on the default `position_alt_source`: the test
+  was `source & ALT_SOURCE_DEFAULT`, and `ALT_SOURCE_DEFAULT` is 0. A board
+  without a baro had no altitude at all unless the source was set to GPS
+  only.
+- `position_gps_min_sats` default 12 -> 6, matching `nav_min_sats`. At 12,
+  GPS altitude was unavailable on most fixes.
+- Recorded ground offsets are flagged explicitly instead of testing the offset
+  against 0.0, which a baro zeroed at calibration can legitimately average to.
+
+`DEBUG_ALTITUDE` fields are now: 0 altitude, 1 vario, 2 measured altitude,
+3 measured (derivative) vario, 4 baro altitude, 5 GPS altitude, 6 vertical
+acceleration (cm/s^2), 7 accelerometer bias (cm/s^2).
+
+## GPS Nav Dead Reckoning
+
+LOITER and RTH now ride through short GPS dropouts
+(`src/main/flight/gps_nav.c`). Every GPS task tick with a good fix records the
+position, ground speed, course and IMU heading. When the fix drops out, the
+position is carried forward at the last ground speed along a course turned by
+the IMU heading change since, for up to 5 s. Only after that does nav report the
+mode unavailable and ease the wings level. Before this, a single bad frame or a
+satellite lost in a bank dropped guidance, and telemetry reported
+"loiter/RTH unavailable", for as long as the blip lasted.
+
+Nav health still needs a 3D fix and `nav_min_sats`, the same on every GPS
+provider (UBLOX, NMEA, CRSF, FBUS, MSP); it does not use HDOP or receiver
+accuracy, which CRSF and FBUS don't supply. While the estimate is fresh, one
+satellite under `nav_min_sats` (never under 4) is still accepted, so a count on
+the threshold no longer flips nav in and out.
+
+Two fixes in the same code:
+
+- Switching LOITER or RTH on during a dropout used to leave nav inactive
+  (flying level at `nav_throttle`) until the switch was cycled. Nav now
+  engages and captures its target once the position is usable. Loiter still
+  holds the altitude from the moment the switch was flipped.
+- RTH switched on with no recorded home no longer steers toward latitude and
+  longitude 0,0; it flies level instead (home is only recorded at arming).
+
+Nav altitude hold now needs a real altitude estimate (`hasEstimatedAltitude()`
+in `src/main/flight/position.c`). Without a baro, and with GPS altitude not
+passing `position_gps_min_sats` (default 12), the estimate reads 0, which the
+altitude hold took as far below its target and answered with full nose-up.
+Nav now holds level pitch until an estimate exists; loiter engaged without one
+holds the first real altitude it gets.
+
+The `nav_min_sats` default drops from 8 to 6 (`src/main/pg/gps_nav.c`), in line
+with INAV's `gps_min_sats`. 8 left a single-satellite margin over a typical
+9-10 satellite fix at arming, and a banked wing easily loses two or three.
+Saved configurations keep their value; set `nav_min_sats = 6` to take the new
+default on an existing model.
+
 ## AUTOHOVER Yaw Authority
 
 While AUTOHOVER is holding, the stabilised-yaw mixer input (`mixer input SY`)
