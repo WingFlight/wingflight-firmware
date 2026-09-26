@@ -3207,7 +3207,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
     case MSP_SET_SENSOR_ALIGNMENT:
         gyroDeviceConfigMutable(0)->alignment = sbufReadU8(src);
+#ifdef USE_MULTI_GYRO
         gyroDeviceConfigMutable(1)->alignment = sbufReadU8(src);
+#else
+        // One gyro device: gyroDeviceConfig has a single element, and the
+        // accessor does not bounds-check, so element 1 is past the array.
+        sbufReadU8(src);
+#endif
 #if defined(USE_MAG)
         compassConfigMutable()->mag_alignment = sbufReadU8(src);
 #else
