@@ -75,7 +75,10 @@ jobs:
       run: make arm_sdk_install
 
     - name: Install manifest tooling
-      run: pip install pyelftools
+      run: pip install pyelftools pycparser
+
+    - name: Test the MSP codec extractor
+      run: python src/utils/test_wf_msp_codecs.py
 
     - name: Check the manifest against the CLI table and the shipping build
       run: make manifest_check TARGET=STM32F411
