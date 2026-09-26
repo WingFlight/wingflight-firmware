@@ -513,9 +513,12 @@ window with no working CLI at all. Revised:
    *Stage A (done, opt-in):* an experimental option runs the reply check on
    every connect and serves only the replies that matched *that* board from
    addressed access; setters and everything unverified keep the firmware's
-   opcodes, and a routed reply that fails falls back to them. *Stage B:*
-   route setters, once verified on each target (every client-used config
-   opcode has a codec now).
+   opcodes, and a routed reply that fails falls back to them. *Stage B
+   (done, opt-in, separately):* setters are routed each once verified on its
+   first use -- that request goes to the firmware, and a dry run of the codec
+   on the same payload must find exactly the bytes the firmware stored. No
+   extra writes. The Lua suite does the same. Before step 5, the two options
+   have to become the default and see real use on each target.
 4. **`.wf_meta`.** *(dropped.)* `settings.c` never needed converting: it is
    pure data, so it moved to `src/main/manifest/` and is compiled only into
    the manifest build, which is never flashed (`1caacb9a1`). §10 remains the
@@ -818,8 +821,8 @@ stays.
   releases, and a local build's pack is copied by hand. Opt-in, replies
   only, each verified against the firmware on first use per connection; the
   Lua translator is checked byte-for-byte against the configurator's layer.
-  Still to do, as for the configurator: setters (stage B) and hand-written
-  verification of the setters on each target.
+  Setters are routed the same way as the configurator's (stage B,
+  separately opted in), each verified on first use.
 
 - **`MSP_MULTIPLE_MSP`** — not config, not live data. Confirm it does not reach
   into the catalogue being deleted. (`MSP_PASSTHROUGH_*` and 4-way ESC are no
