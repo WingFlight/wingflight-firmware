@@ -54,7 +54,7 @@ jobs:
     - name: Create Release
       run: |
         .github/scripts/extract-release-notes.py "${{ env.GIT_VER }}" Releases.md > Notes.md
-        gh release create ${{ env.GIT_TAG }} --notes-file Notes.md --title "Wingflight ${{ env.GH_TYPE }} ${{ env.GIT_VER }}" obj/*.hex obj/*_manifest.json
+        gh release create ${{ env.GIT_TAG }} --notes-file Notes.md --title "Wingflight ${{ env.GH_TYPE }} ${{ env.GIT_VER }}" obj/*.hex obj/*_manifest.json obj/*_codecs.lua
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -75,6 +75,7 @@ jobs:
         mkdir -p "artifacts-repo/firmware/${{ env.GIT_TAG }}"
         cp obj/*.hex "artifacts-repo/firmware/${{ env.GIT_TAG }}/"
         cp obj/*_manifest.json "artifacts-repo/firmware/${{ env.GIT_TAG }}/"
+        cp obj/*_codecs.lua "artifacts-repo/firmware/${{ env.GIT_TAG }}/"
         cd artifacts-repo
         git config user.name "wingflight-artifacts[bot]"
         git config user.email "wingflight-artifacts[bot]@users.noreply.github.com"
