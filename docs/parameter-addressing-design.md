@@ -1,6 +1,7 @@
 # Parameter addressing: moving firmware self-description off the board
 
-Status: design, not yet implemented.
+Status: partially implemented — manifest, addressed opcodes and CLI removal
+are done; the configurator CLI emulator is in progress. See §11.
 
 Supersedes the earlier draft of this file, which was truncated on disk and is
 not recoverable. `wf_manifest.py` in this directory is truncated the same way
@@ -285,8 +286,9 @@ untouched. What changes is the *catalogue*, not the transport.
 The fork already has a contiguous Wingflight block: `MSP2_WING_*` occupies
 `0x5F00`–`0x5F14` in [msp_protocol.h:308-331](../src/main/msp/msp_protocol.h#L308-L331)
 and is still growing one opcode at a time. The addressing opcodes go in the
-same block, far enough up to leave room for that growth — `0x5F20` onwards, or
-the earlier draft's `0x5FF0`. Either is fine; pick one and document it.
+same block, far enough up to leave room for that growth: `0x5F20`–`0x5F25`
+([msp_protocol.h:341-346](../src/main/msp/msp_protocol.h#L341-L346)). New
+opcodes that replace CLI commands (§8.2) continue the `MSP2_WING_*` block.
 
 | opcode | purpose |
 | --- | --- |
@@ -368,25 +370,49 @@ and passthrough opcodes. That is a useful thing to know (it means §13's API
 version bump is a non-issue) but it should be confirmed against real tools, not
 inferred.
 
-### 8.2 Non-derivable CLI commands
+### 8.2 CLI commands beyond `set` / `get`
 
-Not everything in `cli.c` is derivable from PGs. These read runtime state or
-target hardware tables and have no manifest representation:
+The CLI is gone from the firmware (`1caacb9a1`); the configurator's CLI tab
+emulates it over MSP. Every command it offers must therefore map to an opcode,
+and any opcode it maps to must survive step 5. The rule: **MSP is kept as a
+transport and extended with `MSP2_WING_*` opcodes where the CLI did something
+MSP could not** — it is not replaced.
 
-- `resource`, `timer`, `dma` — need the runtime IO-owner registry and the
-  target's `timerHardware[]`. Roughly 790 lines across `printResourceOwner`
-  (166), `cliDmaopt` (151), `cliTimer` (122), `printTimer` (110), `cliResource`
-  (100), and the two `print*DmaoptDetails` helpers.
-- `status` (161 lines), `tasks` (62).
-- `serialpassthrough`, `escprog`, `gpspassthrough`, `msc`, `dfu`/`bl`,
-  `flash_*`, `bind_rx`, `save`, `defaults`.
+An earlier version of this section listed `resource`, `timer` and `dma` as
+needing firmware support. They do not: `resourceTable`, `dmaoptEntryTable` and
+`fullTimerHardware` are const tables carried in the manifest, and the pins are
+ordinary PG bytes (`a1eefb609`, `bbc08ce1a`, `27fe69ca7`).
 
-The move for the first two groups is the same as everywhere else: the firmware
-**emits the data, the configurator does the formatting.** `resource show`
-becomes a structured list of `(owner, index, ioTag)`; `tasks` becomes an array
-of counters. The data already exists; it is the `printf`-ing that costs flash.
+| CLI command | served by | state |
+| --- | --- | --- |
+| `set` `get` `dump` `diff` | `PARAM_READ` / `PARAM_WRITE` / `PG_DEFAULT` + manifest | exists |
+| `resource` `timer` `dma` | `PARAM_READ` / `PARAM_WRITE` + manifest tables | exists |
+| `feature` `serial` `map` `aux` (+ `# name` comment) | `PARAM_READ` / `PARAM_WRITE` + manifest PG layouts + manifest `cli` tables (feature names, baud rates, serial ports, box ids, channel letters) | exists — configurator `param/config_lines.js` |
+| `mixer` (`input` `rule` `rate` `limit` `reset`) | as above, plus mixer name tables and `cliLimits` in the manifest | exists — also emits `mixer rule N del` / zero-rate inputs for defaults that were removed, which the firmware's dump silently dropped |
+| `servo` (+ `flags`) `rxfail` `adjfunc` | as above, plus range constants in `cliLimits` | exists — `servo status`/`override` refused (live outputs, not config) |
+| `beeper` `beacon` `led` `color` `mode_color` | as above, plus `beeperTable` and beeper / HSV / LED-mode constants in the manifest | exists — the LED text format is checked against the firmware's own `parseLedStripConfig()` / `generateLedConfig()` compiled on the host |
+| `vtx` `vtxtable` | — | not applicable: no Wingflight target builds VTX (no VTX parameter groups), so a dump has nothing to emit; a `vtx` line from a foreign backup is refused as unknown |
+| `mixer curve`, `logic`, gain / servo curves | as above | **missing**, but never in a firmware `dump` either — backups have always lacked them |
+| `profile` / `rateprofile` / `tv_profile` | addressing by element index; live switch via `MSP_SELECT_SETTING` (210) / `MSP2_WING_SELECT_TV_PROFILE` (`0x5F10`) | exists — **keep** both |
+| `save` | `MSP_EEPROM_WRITE` (250) | exists — **keep** |
+| `defaults` | `MSP_RESET_CONF` (208) | exists — **keep** |
+| `exit` `dfu` / `bl` / `msc` | `MSP_REBOOT` (68) modes; `msc <offset>` writes `timezone_offset_minutes` first | exists — frozen (§8.1) |
+| `escprog` | `MSP_SET_PASSTHROUGH` (245), ESC-serial modes | exists — frozen (§8.1); only where `USE_ESCSERIAL` |
+| `serialpassthrough` | `MSP_SET_PASSTHROUGH`, `SERIAL_ID` / `SERIAL_FUNCTION_ID` (`esc_sensor`) | exists — **keep**. Narrower than the CLI: the port must already be open and runs at its configured speed; baud, mode, DTR and port-to-port arguments are refused |
+| `gpspassthrough` | `MSP_SET_PASSTHROUGH`, `SERIAL_FUNCTION_ID` | exists — **keep** |
+| `bind_rx` | `MSP2_BETAFLIGHT_BIND` (`0x3000`) | exists — **keep** |
+| `flash_info` / `flash_read` / `flash_erase` | `MSP_DATAFLASH_*` (70–72) | exists — **keep**. `flash_info` shows the FlashFS summary, not chip geometry; `flash_read` addresses the FlashFS partition, not physical flash |
+| `version` | `MSP2_WING_BUILD_ID` identity | exists |
+| `flash_fill` `flash_verify` `flash_write` `flash_erase_sector` `play_sound` `motor` `dshotprog` `dshot_telemetry_info` `fbus_sensors` `sd_info` `srxl2esc` `mcu_id` `signature` `board_name` `board_design` `manufacturer_id` `logic` | — | not provided; the emulator names why (developer tool, bench test, live diagnostic, board identity) rather than "Unknown command" |
+| `status` | `MSP_STATUS` (§8.1) + `MSP_BATTERY_STATE` + `MSP2_WING_SETPOINT_INFO` + MCU type from `MSP_BOARD_INFO`; name tables in the manifest | exists — MCU, config state, gyros and sensors detected, CPU / cycle / gyro and RX rate, voltage, arming-disable flags. Not over MSP and so not shown: clock, Vref, core temperature, stack, EEPROM size, I2C errors, sensor models, uptime |
+| `tasks` | `MSP2_WING_TASK_INFO` (`0x5F30`), paged | new — `msp/msp_runtime.c` |
+| `gyroregisters` | `MSP2_WING_GYRO_REGISTERS` (`0x5F31`), refused while armed | new — `msp/msp_runtime.c` |
+| `setpoint_info` | `MSP2_WING_SETPOINT_INFO` (`0x5F32`) | new — `msp/msp_runtime.c` |
 
-The rest are actions, not descriptions, and stay as they are.
+"**keep**" marks opcodes that are neither in the §8.1 frozen subset nor live
+data, and so would fall to a literal reading of step 5. They are the CLI
+emulator's action layer and belong in `msp_compat.c` alongside §8.1 — retained,
+not frozen, since only our own configurator depends on their wire shape.
 
 ## 9. Configurator side
 
@@ -436,23 +462,46 @@ window with no working CLI at all. Revised:
    exist this is a free regression test that *proves* the manifest before
    anything relies on it. Still to do: publish the manifest as a release asset,
    and the LTO-consistency gate below.
-2. **Addressed opcodes, additive.** Add the `0x50xx` block. MSP catalogue and
-   `cli.c` untouched. Nothing user-visible changes.
-3. **Configurator on the manifest.** Build the client-side CLI and migrate tabs
-   to addressed access behind a feature flag. Prove against real boards. Still
-   nothing removed from the firmware.
-4. **`.wf_meta`.** Convert `settings.c` to annotations. This is the step that
-   banks the 17.9 KB, and it lands only once (3) has shipped — so it lands
-   together with the configurator release that replaces what it removes.
-5. **Delete.** `cli.c`, `settings.c`, the MSP config catalogue *except the
-   frozen subset in §8.1*, `msp_box.c`, the `_Copy` buffers in `pg.h`. Add the
-   staging buffer. Before this lands, the frozen subset should be moved into
-   its own translation unit (`msp/msp_compat.c`) so that "the catalogue" and
-   "the compatibility shim" are separable by file rather than by `#if` — the
-   deletion then cannot take a frozen opcode with it by accident.
-Steps 1–3 are purely additive and reversible. Step 5 is the first irreversible
-one and it happens after the configurator has been running on the new path for a
-release.
+2. **Addressed opcodes, additive.** *(done.)* `MSP2_WING_BUILD_ID` …
+   `MSP2_WING_MANIFEST_READ` at `0x5F20`–`0x5F25`. MSP catalogue untouched.
+3. **Configurator on the manifest.** *(in progress.)* Client-side CLI in
+   `src/js/param/cli.js`: `get`/`set`/`dump`/`diff`/`save`/`defaults`/
+   `resource`/`timer`/`dma`/`tasks`/`gyroregisters`/`setpoint_info`/
+   `profile`/`rateprofile`/`tv_profile` done; `dump all`/`diff all` cover
+   every profile. Every non-`set` block a firmware `dump` emitted is done
+   (§8.2), so backups are complete again, and so are the action commands
+   (reboots, passthrough, `bind_rx`, `flash_*`) and `status`. Every CLI
+   command is now either emulated or named as not provided. Still to do:
+   migrating tabs.
+4. **`.wf_meta`.** *(dropped.)* `settings.c` never needed converting: it is
+   pure data, so it moved to `src/main/manifest/` and is compiled only into
+   the manifest build, which is never flashed (`1caacb9a1`). §10 remains the
+   long-term direction for new fields, not a prerequisite.
+5. **Delete.** `cli.c` and `settings.c` *(done, `1caacb9a1`: −65.9 KB on
+   STM32F7X2)*. Remaining: the MSP config catalogue *except the frozen subset
+   in §8.1 and the opcodes marked "keep" in §8.2*, the BOXNAMES/BOXIDS
+   serialisation in `msp_box.c` (not the file — `io/piniobox.c` uses
+   `findBoxByPermanentId()` and `getBoxIdState()`), the `_Copy` buffers in
+   `pg.h`. Before this lands, move §8.1 and the §8.2 "keep" opcodes into their
+   own translation unit (`msp/msp_compat.c`) so that "the catalogue" and "what
+   stays" are separable by file rather than by `#if` — the deletion then cannot
+   take a kept opcode with it by accident.
+
+   The full sort of all 209 handled opcodes is in
+   [msp-opcode-classification.md](msp-opcode-classification.md): 16 frozen,
+   35 keep, 28 live, 130 config. It sets two prerequisites the steps above did
+   not state:
+   - **The configurator's tabs** send 110 of the 130 config opcodes, so step 3's
+     tab migration must be complete, not just the CLI.
+   - **wingflight-lua-ethos-suite** sends 75 of them. It must be migrated as
+     well, which needs a design of its own (§14).
+
+Custom defaults did not survive step 5: they were CLI text replayed through
+the parser. Board configs are applied over the wire by the configurator
+instead, which is how `wingflight-targets` configs are written anyway.
+
+Steps 1–3 are additive. The catalogue deletion is irreversible and happens
+after the configurator has been running on the new path for a release.
 
 There is no step 6. An earlier draft had one — `wfLive_t` plus a subscription
 model, deleting `mspProcessOutCommand` — and it has been dropped. See §11.1.
@@ -579,7 +628,8 @@ Two tiers, because the second is only worth it at scale:
 
 1. **Now: three opcodes for what is actually lost.** `tasks`,
    `gyroregisters`, `setpoint_info`. Small, bounded, and it closes a real
-   regression rather than anticipating one.
+   regression rather than anticipating one. *(done: `0x5F30`–`0x5F32` in
+   `msp/msp_runtime.c`, +556 B on STM32F7X2.)*
 2. **Later: the registry**, once tab migration has shown how many live values
    the tabs actually want. If the answer is a few dozen, bespoke opcodes remain
    cheaper. If it is hundreds, the registry pays for itself in the same way the
@@ -664,9 +714,20 @@ concretely, so it is a known cost rather than a surprise:
 - `USE_MSP_OVER_TELEMETRY` keeps working as a *transport* — CRSF, ELRS and
   SmartPort still carry MSP frames, and MSPv2-over-v1 means the new opcodes
   reach through it. But radio-side tools that speak Betaflight *config* opcodes
-  (ELRS Lua scripts in particular) break when step 5 lands. A
+  (ELRS Lua scripts in particular) break when step 5 lands — and so does
+  Wingflight's own wingflight-lua-ethos-suite, which is built on them (§14). A
   Wingflight-specific Lua script can do everything the old one did, via
   `PARAM_READ`/`PARAM_WRITE`, but it has to be written.
+- Third-party tools that drive the firmware CLI over the USB port stop
+  working — this already happened when `cli.c` was removed, not at step 5.
+  The known case is the ExpressLRS configurator's "Betaflight passthrough"
+  flashing, which enters the CLI and sends `serialpassthrough <port> <baud>`.
+  The configurator's `serialpassthrough <port>` can bridge a receiver on an
+  open RX port at its configured speed, but whether the ELRS tool can then
+  flash through that bridge is untested. Anything needing a different baud
+  rate has no MSP path; if this matters, it needs a baud argument added to
+  `MSP_SET_PASSTHROUGH` (a Wingflight extension of a frozen opcode) or a new
+  `MSP2_WING_*` passthrough opcode.
 - The MSP API version needs no bump on account of this work. It is already
   `22.2` against a Betaflight-era `1.4x`, and the variant is already `"WGFL"`,
   so identity has been forked for a long time; nothing a tool checks changes.
@@ -684,6 +745,17 @@ stays.
 
 ## 14. Remaining open items
 
+- **Lua suite on addressed access.** wingflight-lua-ethos-suite runs on the
+  radio, over MSP-over-telemetry, and sends 75 config opcodes
+  ([classification](msp-opcode-classification.md)). It cannot use the
+  manifest the configurator's way: there is no network on the radio, and the
+  manifest is ~200 KB of JSON (~22 KB gzipped, F7X2), which is a lot to pull
+  over MSP-over-telemetry and likely more than a radio's Lua heap wants to
+  hold (both unmeasured). Options to weigh: a per-release *slim* manifest shipped with the suite
+  (only the settings its pages edit, keyed by build ID); or keeping the
+  specific config opcodes the suite uses as a small Wingflight-owned set,
+  outside the deleted catalogue. Until this is decided, step 5 cannot land.
+
 - **`MSP_MULTIPLE_MSP`** — not config, not live data. Confirm it does not reach
   into the catalogue being deleted. (`MSP_PASSTHROUGH_*` and 4-way ESC are no
   longer open: they are frozen by §8.1.)
@@ -691,8 +763,9 @@ stays.
   the reason `settings.c` did. Same treatment applies and it is probably a
   cleaner win than it looks, since the log already carries a header the decoder
   parses. Out of scope here; worth a follow-up.
-- **Opcode block number** — `0x5F20` onwards vs the draft's `0x5FF0`, both
-  inside the existing `MSP2_WING_*` block. Pick one.
+- **`status` gaps** — list what the old CLI `status` printed that
+  `MSP_STATUS` / `MSP_STATUS_EX` and the live opcodes do not already carry, and
+  decide whether it needs its own `MSP2_WING_*` opcode (§8.2).
 - **Confirm the §8.1 list against real tools.** It is derived from what the
   handshake and passthrough paths need, not from packet captures. Before step 5,
   run BLHeliSuite32, ESC Configurator and the AM32 configurator against a board
