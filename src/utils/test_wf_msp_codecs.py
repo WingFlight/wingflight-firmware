@@ -290,6 +290,19 @@ class Refusals(unittest.TestCase):
         self.assertNotIn(1, codecs)
         self.assertIn(27, manual)
 
+    def test_group_indexed_by_the_selected_profile(self):
+        # attitudeLimits(getCurrentPidProfileIndex())->x: relative to the
+        # selected pid profile, like currentPidProfile->x
+        codecs, manual = extract(case(49, '''
+        sbufWriteU8(dst, pidProfiles(getCurrentPidProfileIndex())->mode);'''), in_cases=case(50, '''
+        pidProfilesMutable(getCurrentPidProfileIndex())->mode = sbufReadU8(src);'''))
+        self.assertEqual(manual, {})
+        self.assertEqual(w.compact(codecs[49])['ops'], [['f', 1, 14, 0, 1, 'P']])
+        self.assertEqual(w.compact(codecs[50])['ops'], [['f', 1, 14, 0, 1, 'P']])
+
+    def test_group_indexed_by_another_call(self):
+        self.assertManual(*extract(case(51, 'sbufWriteU8(dst, pidProfiles(pickOne())->mode);')), 51, 'pickOne')
+
     def test_sizeof_in_a_length_guard(self):
         codecs, manual = extract(in_cases=case(40, '''
         if (dataSize != 2 * sizeof(uint16_t) + sizeof(uint8_t)) {
@@ -380,6 +393,24 @@ class Refusals(unittest.TestCase):
     def test_const_table_by_computed_index(self):
         self.assertManual(*extract(case(48, 'sbufWriteU8(dst, flashTable[demoConfig()->a]);')), 48,
                           'computed')
+
+
+class Getters(unittest.TestCase):
+    """GETTERS transcribe firmware functions; they must match the source."""
+
+    def test_every_getter_matches_its_definition(self):
+        import re
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'main')
+        listed = set()
+        for path, names in w.GETTER_SOURCES.items():
+            with open(os.path.join(root, path), encoding='utf-8') as f:
+                text = f.read()
+            for name in names:
+                listed.add(name)
+                m = re.search(r'\b' + name + r'\s*\(\s*void\s*\)\s*\{\s*return\s+(.*?);\s*\}', text, re.S)
+                self.assertIsNotNone(m, '%s is not a single return in %s' % (name, path))
+                self.assertEqual(re.sub(r'\s+', '', m.group(1)), re.sub(r'\s+', '', w.GETTERS[name]), name)
+        self.assertEqual(listed, set(w.GETTERS), 'GETTER_SOURCES and GETTERS list different getters')
 
 
 if __name__ == '__main__':
