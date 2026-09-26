@@ -1417,7 +1417,6 @@ const clivalue_t valueTable[] = {
     { "position_gps_offset_lpf",   VAR_UINT8 | MASTER_VALUE, .config.minmaxUnsigned = { 1, 250 }, PG_POSITION, offsetof(positionConfig_t, gps_offset_lpf) },
     { "position_gps_min_sats",     VAR_UINT8 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 50 }, PG_POSITION, offsetof(positionConfig_t, gps_min_sats) },
     { "position_vario_lpf",        VAR_UINT8 | MASTER_VALUE, .config.minmaxUnsigned = { 1, 250 }, PG_POSITION, offsetof(positionConfig_t, vario_lpf) },
-    { "position_acc_fusion",       VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_POSITION, offsetof(positionConfig_t, acc_fusion) },
     { "position_fusion_baro_tc",   VAR_UINT8 | MASTER_VALUE, .config.minmaxUnsigned = { 5, 100 }, PG_POSITION, offsetof(positionConfig_t, fusion_baro_tc) },
     { "position_fusion_gps_tc",    VAR_UINT8 | MASTER_VALUE, .config.minmaxUnsigned = { 5, 200 }, PG_POSITION, offsetof(positionConfig_t, fusion_gps_tc) },
 

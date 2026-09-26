@@ -35,7 +35,6 @@ PG_RESET_TEMPLATE(positionConfig_t, positionConfig,
     .gps_offset_lpf = 5,
     .gps_min_sats = 6,
     .vario_lpf = 50,
-    .acc_fusion = 1,
     .fusion_baro_tc = 20,   // 2 s
     .fusion_gps_tc = 40,    // 4 s: GPS altitude is noisier and slower than a baro
 );

@@ -204,7 +204,7 @@ void positionUpdate(void)
 
     const bool haveAcc = calculateAccUp(&alt.accUp);
 
-    if (positionConfig()->acc_fusion && haveAcc) {
+    if (haveAcc) {
         const float tau = (measIsBaro ? positionConfig()->fusion_baro_tc : positionConfig()->fusion_gps_tc) / 10.0f;
         altFusionUpdate(&alt.fusion, pidGetDT(), true, alt.accUp, haveMeas, measAltitude, tau);
         alt.altitude = alt.fusion.altitude;

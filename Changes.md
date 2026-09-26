@@ -23,10 +23,11 @@ Vertical acceleration is clipped at about 3 g and the learned bias at
 2 m/s^2, so a snap or a momentarily lost attitude estimate cannot run the
 estimate away.
 
+Without an accelerometer, altitude and vario are the filtered measurement and
+its derivative, as before.
+
 New settings (CLI):
 
-- `position_acc_fusion` (`ON`): `OFF` restores the previous filtered-baro/GPS
-  altitude and derivative vario exactly.
 - `position_fusion_baro_tc` (20 = 2.0 s) and `position_fusion_gps_tc`
   (40 = 4.0 s): how long the accelerometer is trusted over each measurement,
   in 0.1 s. Longer gives a smoother estimate but slower correction.
@@ -44,8 +45,7 @@ Fixes in the same code:
 
 `DEBUG_ALTITUDE` fields are now: 0 altitude, 1 vario, 2 measured altitude,
 3 measured (derivative) vario, 4 baro altitude, 5 GPS altitude, 6 vertical
-acceleration (cm/s^2), 7 accelerometer bias (cm/s^2). Log with it on to
-compare the fused estimate against the raw sources.
+acceleration (cm/s^2), 7 accelerometer bias (cm/s^2).
 
 ## GPS Nav Dead Reckoning
 
