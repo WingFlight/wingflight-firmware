@@ -762,12 +762,15 @@ stays.
 
 ## 14. Remaining open items
 
-- **`verify_msp` in CI, on SITL.** SITL runs the real `msp.c` and speaks MSP
-  over TCP (5761), so the virtual layer can be verified against it with no
-  hardware. It needs a SITL manifest, which needs an ELF: on Linux SITL is
-  one, but the Windows MinGW build is PE/COFF, which `wf_manifest.py` cannot
-  read. So this is a Linux CI job: build SITL and its manifest, start SITL,
-  and run the configurator's verifier against it over TCP.
+- **`verify_msp` on SITL: works locally, not yet in CI.** SITL runs the real
+  `msp.c` and speaks MSP over TCP (5761). `wf_pe.py` lets the generator read
+  the Windows (PE/COFF) SITL build too, and the configurator's
+  `scripts/verify-msp-sitl.mjs` runs the verifier against it: 40 of 40 reply
+  codecs match and 22 of 22 setters round-trip, on perturbed configuration
+  (on defaults only 12% of fields are distinctive enough to catch a wrong
+  offset); a planted one-byte error is caught. SITL only covers the codecs
+  its build compiles in, so each ARM target still needs `verify_msp` on a
+  board. Open: a CI job, which spans both repositories.
 - **Lua suite on addressed access.** wingflight-lua-ethos-suite runs on the
   radio, over MSP-over-telemetry, and sends 75 config opcodes
   ([classification](msp-opcode-classification.md)). It cannot use the
