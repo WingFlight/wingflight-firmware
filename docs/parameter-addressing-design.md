@@ -489,26 +489,33 @@ window with no working CLI at all. Revised:
    `PARAM_READ` / `PARAM_WRITE`, byte for byte as the firmware did, so tabs,
    FC state and `backup_restore.js` stay untouched. What each opcode's bytes
    mean is extracted at build time from the target's own preprocessed
-   `msp.c` into the manifest (`msp_codecs`, `src/utils/wf_msp_codecs.py`): 95
-   of the handled opcodes on STM32F7X2, 93 on STM32F411, 82 on SITL --
+   `msp.c` into the manifest (`msp_codecs`, `src/utils/wf_msp_codecs.py`): 100
+   of the handled opcodes on STM32F7X2, 98 on STM32F411, 87 on SITL --
    plain and profile fields, getters, indexed setters and `MSP_GET_*`
    replies, an array element picked by a stored selector, strings, 64-bit
-   fields. Of the *config* opcodes a client sends, six still need
-   hand-written codecs ([classification](msp-opcode-classification.md));
-   the *runtime* ones stay in the firmware. Setter side effects are not
-   replayed; `MSP_EEPROM_WRITE` re-runs `validateAndFixConfig()` and
-   `activateConfig()`, and every tab saves after writing.
+   fields, and elements named by an id from a const table in the image
+   (the meter configs). Every *config* opcode a client sends now has one
+   ([classification](msp-opcode-classification.md)); the *runtime* ones
+   stay in the firmware. Setter side effects are not replayed; every tab
+   saves after writing, and `MSP_EEPROM_WRITE` re-runs
+   `validateAndFixConfig()` and `activateConfig()` and rebuilds the runtime
+   state some setters rebuilt themselves and nothing else did (gyro and RPM
+   filters, smart fuel, FBUS forwarding: `writeReadEeprom()`).
 
    The gate is `verify_msp` in the configurator's CLI: every virtual reply
    against the firmware's real one, and with `setters`, every virtual setter
-   writing current values back without changing the real GET.
+   writing current values back without changing the real GET. On SITL,
+   `verify-msp-sitl.mjs --effects` also sends every setter sampled requests
+   through both paths and compares the stored bytes after a save -- the
+   only check for setters without a matching getter, and the one that found
+   the save not rebuilding filter and smart-fuel state.
 
    *Stage A (done, opt-in):* an experimental option runs the reply check on
    every connect and serves only the replies that matched *that* board from
    addressed access; setters and everything unverified keep the firmware's
    opcodes, and a routed reply that fails falls back to them. *Stage B:*
-   route setters, once verified on each target; then hand-written codecs
-   for the opcodes the extractor leaves manual.
+   route setters, once verified on each target (every client-used config
+   opcode has a codec now).
 4. **`.wf_meta`.** *(dropped.)* `settings.c` never needed converting: it is
    pure data, so it moved to `src/main/manifest/` and is compiled only into
    the manifest build, which is never flashed (`1caacb9a1`). §10 remains the
@@ -526,14 +533,15 @@ window with no working CLI at all. Revised:
 
    The full sort of all 209 handled opcodes is in
    [msp-opcode-classification.md](msp-opcode-classification.md): 16 frozen,
-   35 keep, 26 runtime, 28 live, 104 config. The rule that separates
+   35 keep, 27 runtime, 28 live, 103 config. The rule that separates
    *runtime* from *config*: delete what purely reflects stored config; keep
    what also depends on state only the running firmware has (box IDs against
    the compiled-in box table, the ports and servos this board has, channel
    counts, a refusal while logging, RPM filter and XACT state) and the
    profile actions. A codec for those would be a second copy of the
-   firmware's logic. It sets two prerequisites the steps above did not state:
-   - **The configurator's tabs** send 87 of the 104 config opcodes, so step
+   firmware's logic (so `MSP_SET_LED_STRIP_MODECOLOR`, whose addressing is
+   `setModeColor()`, stays too). It sets two prerequisites the steps above did not state:
+   - **The configurator's tabs** send 86 of the 103 config opcodes, so step
      3's tab migration must be complete, not just the CLI: their codecs
      verified on each target and setters routed (stage B).
    - **wingflight-lua-ethos-suite** sends 56 of them. It moves the same way
@@ -790,9 +798,10 @@ stays.
 - **`verify_msp` on SITL: works locally, not yet in CI.** SITL runs the real
   `msp.c` and speaks MSP over TCP (5761). `wf_pe.py` lets the generator read
   the Windows (PE/COFF) SITL build too, and the configurator's
-  `scripts/verify-msp-sitl.mjs` runs the verifier against it: 46 of 46 reply
-  codecs match (indexed replies at every index) and 25 of 25 setters
-  round-trip (indexed and string setters included), on perturbed configuration
+  `scripts/verify-msp-sitl.mjs` runs the verifier against it: 48 of 48 reply
+  codecs match (indexed replies at every index), 25 of 25 setters
+  round-trip (indexed and string setters included), and all 39 setter codecs
+  store what the firmware's own setters store, after a save (`--effects`), on perturbed configuration
   (on defaults only 12% of fields are distinctive enough to catch a wrong
   offset); a planted one-byte error is caught. SITL only covers the codecs
   its build compiles in, so each ARM target still needs `verify_msp` on a
@@ -810,8 +819,7 @@ stays.
   only, each verified against the firmware on first use per connection; the
   Lua translator is checked byte-for-byte against the configurator's layer.
   Still to do, as for the configurator: setters (stage B) and hand-written
-  codecs for the config opcodes the extractor leaves manual (one of them,
-  `MSP2_WING_SET_TV_PID_CONFIG`, is the suite's).
+  verification of the setters on each target.
 
 - **`MSP_MULTIPLE_MSP`** — not config, not live data. Confirm it does not reach
   into the catalogue being deleted. (`MSP_PASSTHROUGH_*` and 4-way ESC are no

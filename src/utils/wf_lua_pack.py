@@ -25,9 +25,12 @@ little-endian:
 
     header   dir u8 (0 reply, 1 setter)
              index u8 (0 none, else the index width), index_max u16,
-             index_stride u16 (0: the group's element size)
+             index_stride u16 (0: the group's element size),
+             index_miss u8 (0 refused, 1 accepted and nothing stored),
+             nmap u8 (0, or the ids naming elements 0..nmap-1)
              len_kind u8 (0 none, 1 exact, 2 minimum), len u16
              nops u16
+             map u16 * nmap
     op       kind u8, then by kind:
       1 field   w u8, pgn u16, off u16, size u8, flags u8
                 [+ if flags & 0x80: min s32, max s32 -- absent bound as
@@ -78,10 +81,13 @@ def encode_codec(codec):
         len_kind, length = 2, codec['min_len']
     else:
         len_kind, length = 0, 0
-    out += struct.pack('<BBHHBHH', 0 if codec['dir'] == 'out' else 1,
+    ids = (index or {}).get('map') or []
+    out += struct.pack('<BBHHBBBHH', 0 if codec['dir'] == 'out' else 1,
                        index['w'] if index else 0, index['max'] if index else 0,
                        index.get('stride', 0) if index else 0,
+                       1 if (index or {}).get('miss') == 'ignore' else 0, len(ids),
                        len_kind, length, len(codec['ops']))
+    out += struct.pack('<%dH' % len(ids), *ids)
     for op in codec['ops']:
         kind = op[0]
         if kind == 'f':

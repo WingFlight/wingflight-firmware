@@ -424,6 +424,20 @@ void writeReadEeprom(dispatchEntry_t* self)
     writeEEPROM();
     readEEPROM();
 
+    // readEEPROM() validates and activates the configuration, but some
+    // runtime state is otherwise built only at boot or by the config setter
+    // that changed it. Clients writing through MSP2_WING_PARAM_WRITE rely on
+    // the save to apply it (parameter-addressing-design.md, step 3), so the
+    // save rebuilds it the way those setters did.
+    gyroInitFilters();
+#if defined(USE_RPM_FILTER)
+    rpmFilterInit();
+#endif
+    smartFuelInit();
+#if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
+    fbusSensorInitForwarding();
+#endif
+
 #ifdef USE_VTX_TABLE
     if (vtxTableNeedsInit) {
         vtxTableNeedsInit = false;
