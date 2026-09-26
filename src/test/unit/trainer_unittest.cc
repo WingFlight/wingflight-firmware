@@ -22,12 +22,24 @@
 extern "C" {
 #include "build/debug.h"
 #include "flight/trainer.h"
+#include "flight/leveling.h"
+#include "pg/rates.h"
 #include "flight/imu.h"
 #include "pg/accel.h"
 #include "sensors/gyro.h"
 }
 
 extern "C" {
+static uint8_t profileIndex;
+static float stick[3];
+static controlRateConfig_t rates;
+controlRateConfig_t *currentControlRateProfile = &rates;
+uint16_t flightModeFlags;
+uint8_t getCurrentPidProfileIndex(void) { return profileIndex; }
+float getDeflection(int axis) { return stick[axis]; }
+bool isUpsidedown(void) { return false; }
+bool isAirborne(void) { return true; }
+
 // Globals that trainer.c reads
 attitudeEulerAngles_t attitude = EULER_INITIALIZE;
 gyro_t gyro = {};
@@ -45,6 +57,9 @@ class AcroTrainerTest : public ::testing::Test {
   public:
     void SetUp() override {
         pgResetAll();
+        profileIndex = 0;
+        memset(stick, 0, sizeof(stick));
+        currentPidProfile = pidProfilesMutable(0);
 
         // Configure trainer: gain=75 (7.5x), angle_limit=20, lookahead=50ms
         pidProfile_t *profile = pidProfilesMutable(0);
@@ -230,4 +245,116 @@ TEST_F(AcroTrainerTest, ZeroLookaheadDisablesLookahead) {
     float result = acroTrainerApply(FD_ROLL, 400.0f);
 
     EXPECT_FLOAT_EQ(result, 400.0f);
+}
+
+TEST_F(AcroTrainerTest, IndependentRollAndPitchLimits)
+{
+    attitudeLimitsMutable(0)->trainer_roll = 60;
+    attitudeLimitsMutable(0)->trainer_pitch = 25;
+    acroTrainerInit(pidProfiles(0));
+    setAngle(FD_ROLL, 40);
+    setAngle(FD_PITCH, 40);
+    EXPECT_FLOAT_EQ(acroTrainerApply(FD_ROLL, 100), 100);
+    EXPECT_LT(acroTrainerApply(FD_PITCH, 100), 0);
+    setAngle(FD_PITCH, -40);
+    EXPECT_GT(acroTrainerApply(FD_PITCH, -100), 0);
+}
+
+TEST_F(AcroTrainerTest, AxisOverridesAreBoundedAndZeroPreservesLegacy)
+{
+    EXPECT_EQ(attitudeLimitDegrees(255, 20, FD_ROLL), 90);
+    EXPECT_EQ(attitudeLimitDegrees(255, 20, FD_PITCH), 75);
+    EXPECT_EQ(attitudeLimitDegrees(1, 20, FD_PITCH), 10);
+    EXPECT_EQ(attitudeLimitDegrees(0, 80, FD_PITCH), 80);
+    EXPECT_EQ(attitudeLimitDegrees(0, 20, FD_ROLL), 20);
+}
+
+TEST_F(AcroTrainerTest, AngleDemandUsesIndependentAxisLimits)
+{
+    pidProfile_t *profile = pidProfilesMutable(0);
+    profile->angle.level_strength = 10;
+    attitudeLimitsMutable(0)->angle_roll = 60;
+    attitudeLimitsMutable(0)->angle_pitch = 25;
+    levelingInit(profile);
+    stick[FD_ROLL] = 1;
+    stick[FD_PITCH] = 1;
+    EXPECT_FLOAT_EQ(angleModeApply(FD_ROLL, 0), 60);
+    EXPECT_FLOAT_EQ(angleModeApply(FD_PITCH, 0), 25);
+    stick[FD_PITCH] = -1;
+    EXPECT_FLOAT_EQ(angleModeApply(FD_PITCH, 0), -25);
+    stick[FD_ROLL] = 0;
+    setAngle(FD_ROLL, 30);
+    EXPECT_FLOAT_EQ(angleModeApply(FD_ROLL, 0), -30);
+}
+
+TEST_F(AcroTrainerTest, AxisLimitsFollowSelectedProfileAndKeepLegacyDefaults)
+{
+    attitudeLimitsMutable(0)->trainer_roll = 60;
+    attitudeLimitsMutable(1)->trainer_roll = 30;
+    profileIndex = 1;
+    acroTrainerInit(pidProfiles(1));
+    setAngle(FD_ROLL, 40);
+    EXPECT_LT(acroTrainerApply(FD_ROLL, 100), 0);
+    profileIndex = 0;
+    acroTrainerInit(pidProfiles(0));
+    EXPECT_FLOAT_EQ(acroTrainerApply(FD_ROLL, 100), 100);
+    EXPECT_EQ(attitudeLimits(0)->trainer_pitch, 0);
+    EXPECT_EQ(pidProfiles(0)->trainer.angle_limit, 20);
+}
+
+TEST_F(AcroTrainerTest, LimiterStateTracksEachAxisIndependently)
+{
+    setAngle(FD_ROLL, 25);
+    setAngle(FD_PITCH, 10);
+    acroTrainerApply(FD_ROLL, 100);
+    acroTrainerApply(FD_PITCH, 100);
+    EXPECT_TRUE(acroTrainerIsLimiting(FD_ROLL));
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_PITCH));
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_YAW));
+    setAngle(FD_ROLL, 10);
+    EXPECT_FLOAT_EQ(acroTrainerApply(FD_ROLL, 100), 100);
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_ROLL));
+}
+
+TEST_F(AcroTrainerTest, HelpingPilotInputDoesNotRetainLimiterState)
+{
+    for (int sign : {-1, 1}) {
+        setAngle(FD_ROLL, sign * 25);
+        acroTrainerApply(FD_ROLL, sign * 100);
+        EXPECT_TRUE(acroTrainerIsLimiting(FD_ROLL));
+        EXPECT_FLOAT_EQ(acroTrainerApply(FD_ROLL, -sign * 100), -sign * 100);
+        EXPECT_FALSE(acroTrainerIsLimiting(FD_ROLL));
+    }
+}
+
+TEST_F(AcroTrainerTest, LookaheadReportsActualIntervention)
+{
+    for (int sign : {-1, 1}) {
+        setAngle(FD_ROLL, sign * 18);
+        gyro.gyroADCf[FD_ROLL] = sign * 400;
+        acroTrainerApply(FD_ROLL, sign * 400);
+        EXPECT_TRUE(acroTrainerIsLimiting(FD_ROLL));
+        acroTrainerApply(FD_ROLL, -sign * 400);
+        EXPECT_FALSE(acroTrainerIsLimiting(FD_ROLL));
+    }
+}
+
+TEST_F(AcroTrainerTest, ModeExitClearsLimiterStateBeforeReentry)
+{
+    setAngle(FD_ROLL, 25);
+    acroTrainerApply(FD_ROLL, 100);
+    EXPECT_TRUE(acroTrainerIsLimiting(FD_ROLL));
+    acroTrainerSetState(false);
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_ROLL));
+    acroTrainerSetState(true);
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_ROLL));
+}
+
+TEST_F(AcroTrainerTest, ProfileReloadClearsLimiterState)
+{
+    setAngle(FD_PITCH, -25);
+    acroTrainerApply(FD_PITCH, -100);
+    EXPECT_TRUE(acroTrainerIsLimiting(FD_PITCH));
+    acroTrainerInit(pidProfiles(0));
+    EXPECT_FALSE(acroTrainerIsLimiting(FD_PITCH));
 }

@@ -24,13 +24,18 @@
 #include "common/time.h"
 #include "common/utils.h"
 
-#define FMUS_MASTER_CONTROL_EXTRA_FIELDS 4
-#define FBUS_MASTER_NUM_CHANNELS 16
-#define SBUS_BITS_PER_CHANNEL 11
-#define FBUS_MASTER_CONTROL_FRAME_SIZE (FBUS_MASTER_NUM_CHANNELS * SBUS_BITS_PER_CHANNEL / 8 + 1 + FMUS_MASTER_CONTROL_EXTRA_FIELDS)
-#define FBUS_MASTER_CONTROL_FRAME_PAYLOAD_SIZE (FBUS_MASTER_CONTROL_FRAME_SIZE - FMUS_MASTER_CONTROL_EXTRA_FIELDS + 2)
+// Control frame: length, type, channels, rssi, crc. The length byte counts
+// the channels and rssi; the crc covers type, channels and rssi.
+#define FBUS_CONTROL8_LENGTH 0x0D
 #define FBUS_CONTROL16_LENGTH 0x18
-#define FBUS_CONTROL16_TYPE 0xFF
+#define FBUS_CONTROL24_LENGTH 0x23
+#define FBUS_CONTROL_TYPE_RC 0xFF
+
+// 8-channel frame: CH1-8 analog; its flags byte is left clear.
+// 16-channel frame: CH1-16 analog + CH17-18 digital (flags byte).
+// 24-channel frame: CH1-24 analog; its flags byte is left clear.
+#define FBUS_MASTER_CHANNELS_16_COUNT 18
+#define FBUS_MASTER_CHANNELS_24_COUNT 24
 
 #define FBUS_DOWNLINK_PAYLOAD_SIZE 0x08
 #define FBUS_DOWNLINK_LENGTH 0x0A
@@ -90,13 +95,14 @@ typedef struct {
     uint8_t crc;
 } __attribute__((__packed__)) fbusMasterOtaEnd_t;
 
-typedef struct {
-    fbusMasterControl16_t c16;
-    fbusMasterDownlink_t downlink;
-} __attribute__((__packed__)) fbusMasterFrame_t;
-
-STATIC_ASSERT(sizeof(fbusMasterControl16_t) == FBUS_MASTER_CONTROL_FRAME_SIZE,
-              fbus_master_frame_size_mismatch);
+STATIC_ASSERT(sizeof(fbusMasterControl8_t) == FBUS_CONTROL8_LENGTH + 3,
+              fbus_master_control8_size_mismatch);
+STATIC_ASSERT(sizeof(fbusMasterControl16_t) == FBUS_CONTROL16_LENGTH + 3,
+              fbus_master_control16_size_mismatch);
+STATIC_ASSERT(sizeof(fbusMasterControl24_t) == FBUS_CONTROL24_LENGTH + 3,
+              fbus_master_control24_size_mismatch);
+STATIC_ASSERT(BUS_SERVO_CHANNELS >= FBUS_MASTER_CHANNELS_24_COUNT,
+              fbus_master_bus_servo_channels_too_few);
 
 // Routine function called by the scheduler or timer
 void fbusMasterUpdate(timeUs_t currentTimeUs);

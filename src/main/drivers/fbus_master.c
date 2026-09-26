@@ -144,59 +144,123 @@ static int8_t smartportMasterStripPhyIDCheckBits(uint8_t phyID)
     return phyID == phyIDCheck ? smartportPhyID : -1;
 }
 
-static void fbusMasterPrepareFrame(fbusMasterFrame_t *frame, uint16_t *channels, timeUs_t currentTimeUs)
+// channels[] holds 8 values: CH1-8 analog
+static void fbusMasterPrepareControl8(fbusMasterControl8_t *frame, const uint16_t *channels)
 {
-    // Clear the control.c16 structure
-    memset(&frame->c16, 0, sizeof(fbusMasterFrame_t));
+    memset(frame, 0, sizeof(*frame));
 
-    frame->c16.length = FBUS_CONTROL16_LENGTH;
-    frame->c16.type = FBUS_CONTROL16_TYPE;
+    frame->length = FBUS_CONTROL8_LENGTH;
+    frame->type = FBUS_CONTROL_TYPE_RC;
 
-    frame->c16.channels.chan0 = channels[0];
-    frame->c16.channels.chan1 = channels[1];
-    frame->c16.channels.chan2 = channels[2];
-    frame->c16.channels.chan3 = channels[3];
-    frame->c16.channels.chan4 = channels[4];
-    frame->c16.channels.chan5 = channels[5];
-    frame->c16.channels.chan6 = channels[6];
-    frame->c16.channels.chan7 = channels[7];
-    frame->c16.channels.chan8 = channels[8];
-    frame->c16.channels.chan9 = channels[9];
-    frame->c16.channels.chan10 = channels[10];
-    frame->c16.channels.chan11 = channels[11];
-    frame->c16.channels.chan12 = channels[12];
-    frame->c16.channels.chan13 = channels[13];
-    frame->c16.channels.chan14 = channels[14];
-    frame->c16.channels.chan15 = channels[15];
+    frame->channels.chan0 = channels[0];
+    frame->channels.chan1 = channels[1];
+    frame->channels.chan2 = channels[2];
+    frame->channels.chan3 = channels[3];
+    frame->channels.chan4 = channels[4];
+    frame->channels.chan5 = channels[5];
+    frame->channels.chan6 = channels[6];
+    frame->channels.chan7 = channels[7];
 
-    frame->c16.channels.flags = channels[16] ? BIT(0) : 0;
-    frame->c16.channels.flags |= channels[17] ? BIT(1) : 0;
+    frame->rssi = 100; //ToDo
 
-    // Set RSSI (example value)
-    frame->c16.rssi = 100; //ToDo
+    frame->crc = frskyCheckSum(&frame->type, sizeof(*frame) - 2);
+}
 
-    uint8_t crc = frskyCheckSum((uint8_t *)&(frame->c16.type), FBUS_MASTER_CONTROL_FRAME_PAYLOAD_SIZE);
-    frame->c16.crc = crc;
+// channels[] holds FBUS_MASTER_CHANNELS_16_COUNT values: CH1-16 analog, CH17-18 digital
+static void fbusMasterPrepareControl16(fbusMasterControl16_t *frame, const uint16_t *channels)
+{
+    memset(frame, 0, sizeof(*frame));
+
+    frame->length = FBUS_CONTROL16_LENGTH;
+    frame->type = FBUS_CONTROL_TYPE_RC;
+
+    frame->channels.chan0 = channels[0];
+    frame->channels.chan1 = channels[1];
+    frame->channels.chan2 = channels[2];
+    frame->channels.chan3 = channels[3];
+    frame->channels.chan4 = channels[4];
+    frame->channels.chan5 = channels[5];
+    frame->channels.chan6 = channels[6];
+    frame->channels.chan7 = channels[7];
+    frame->channels.chan8 = channels[8];
+    frame->channels.chan9 = channels[9];
+    frame->channels.chan10 = channels[10];
+    frame->channels.chan11 = channels[11];
+    frame->channels.chan12 = channels[12];
+    frame->channels.chan13 = channels[13];
+    frame->channels.chan14 = channels[14];
+    frame->channels.chan15 = channels[15];
+
+    frame->channels.flags = channels[16] ? BIT(0) : 0;
+    frame->channels.flags |= channels[17] ? BIT(1) : 0;
+
+    frame->rssi = 100; //ToDo
+
+    frame->crc = frskyCheckSum(&frame->type, sizeof(*frame) - 2);
+}
+
+// channels[] holds FBUS_MASTER_CHANNELS_24_COUNT values: CH1-24 analog
+static void fbusMasterPrepareControl24(fbusMasterControl24_t *frame, const uint16_t *channels)
+{
+    memset(frame, 0, sizeof(*frame));
+
+    frame->length = FBUS_CONTROL24_LENGTH;
+    frame->type = FBUS_CONTROL_TYPE_RC;
+
+    frame->channels.chan0 = channels[0];
+    frame->channels.chan1 = channels[1];
+    frame->channels.chan2 = channels[2];
+    frame->channels.chan3 = channels[3];
+    frame->channels.chan4 = channels[4];
+    frame->channels.chan5 = channels[5];
+    frame->channels.chan6 = channels[6];
+    frame->channels.chan7 = channels[7];
+    frame->channels.chan8 = channels[8];
+    frame->channels.chan9 = channels[9];
+    frame->channels.chan10 = channels[10];
+    frame->channels.chan11 = channels[11];
+    frame->channels.chan12 = channels[12];
+    frame->channels.chan13 = channels[13];
+    frame->channels.chan14 = channels[14];
+    frame->channels.chan15 = channels[15];
+    frame->channels.chan16 = channels[16];
+    frame->channels.chan17 = channels[17];
+    frame->channels.chan18 = channels[18];
+    frame->channels.chan19 = channels[19];
+    frame->channels.chan20 = channels[20];
+    frame->channels.chan21 = channels[21];
+    frame->channels.chan22 = channels[22];
+    frame->channels.chan23 = channels[23];
+
+    frame->rssi = 100; //ToDo
+
+    frame->crc = frskyCheckSum(&frame->type, sizeof(*frame) - 2);
+}
+
+static void fbusMasterPrepareDownlink(fbusMasterDownlink_t *downlink, timeUs_t currentTimeUs)
+{
+    uint8_t crc;
+
+    memset(downlink, 0, sizeof(fbusMasterDownlink_t));
 
     switch (fbusMasterPayloadState) {
         case FBUS_MASTER_TELEMETRY:
-            memset(&frame->downlink, 0, sizeof(fbusMasterDownlink_t));
-            frame->downlink.length = FBUS_DOWNLINK_PAYLOAD_SIZE;
+            downlink->length = FBUS_DOWNLINK_PAYLOAD_SIZE;
 
             // XACT servo programming (read/write) takes priority over telemetry polling and
             // is not subject to the telemetry rate throttle below, so reads/writes complete quickly.
-            if (fbusXactIsBusy() && fbusXactProcessQueue(&frame->downlink)) {
-                smartportMasterPhyIDFillCheckBits(&frame->downlink.phyID);
-                crc = frskyCheckSum((uint8_t *)&frame->downlink.phyID, FBUS_DOWNLINK_PAYLOAD_SIZE);
-                frame->downlink.crc = crc;
+            if (fbusXactIsBusy() && fbusXactProcessQueue(downlink)) {
+                smartportMasterPhyIDFillCheckBits(&downlink->phyID);
+                crc = frskyCheckSum(&downlink->phyID, FBUS_DOWNLINK_PAYLOAD_SIZE);
+                downlink->crc = crc;
                 break;
             }
 
             if (cmpTimeUs(currentTimeUs, nextTelemetryPollTimeUs) < 0) {
-                frame->downlink.phyID = 0;
-                frame->downlink.prim = FBUS_FRAME_ID_NULL;
-                crc = frskyCheckSum((uint8_t *)&frame->downlink.phyID, FBUS_DOWNLINK_PAYLOAD_SIZE);
-                frame->downlink.crc = crc;
+                downlink->phyID = 0;
+                downlink->prim = FBUS_FRAME_ID_NULL;
+                crc = frskyCheckSum(&downlink->phyID, FBUS_DOWNLINK_PAYLOAD_SIZE);
+                downlink->crc = crc;
                 break;
             }
 
@@ -209,16 +273,16 @@ static void fbusMasterPrepareFrame(fbusMasterFrame_t *frame, uint16_t *channels,
             
             switch (fbusMasterTelemetryState) {
                 case FBUS_MASTER_SCAN_PHY_ID:
-                    frame->downlink.phyID = fbusMasterTakeNextScanPhysId();
-                    frame->downlink.prim = FBUS_FRAME_ID_DATA;
+                    downlink->phyID = fbusMasterTakeNextScanPhysId();
+                    downlink->prim = FBUS_FRAME_ID_DATA;
                     break;
                 case FBUS_MASTER_QUERY_PHY_ID:
                     if (physIdsfound == 0) {
                         fbusMasterTelemetryState = FBUS_MASTER_SCAN_PHY_ID;
                         currentPhysId = 0;
                         fbusMasterStartDiscoveryWindow(currentTimeUs);
-                        frame->downlink.phyID = 0;
-                        frame->downlink.prim = FBUS_FRAME_ID_NULL;
+                        downlink->phyID = 0;
+                        downlink->prim = FBUS_FRAME_ID_NULL;
                         break;
                     }
 
@@ -227,8 +291,8 @@ static void fbusMasterPrepareFrame(fbusMasterFrame_t *frame, uint16_t *channels,
                     }
 
                     currentPhysId = phsIdList[physIdCnt];
-                    frame->downlink.phyID = currentPhysId;
-                    frame->downlink.prim = FBUS_FRAME_ID_DATA;
+                    downlink->phyID = currentPhysId;
+                    downlink->prim = FBUS_FRAME_ID_DATA;
                     physIdCnt++;
                     break;
                 
@@ -236,9 +300,9 @@ static void fbusMasterPrepareFrame(fbusMasterFrame_t *frame, uint16_t *channels,
                     break;
             }
     
-            smartportMasterPhyIDFillCheckBits(&frame->downlink.phyID);
-            crc = frskyCheckSum((uint8_t *)&frame->downlink.phyID, FBUS_DOWNLINK_PAYLOAD_SIZE);
-            frame->downlink.crc = crc;
+            smartportMasterPhyIDFillCheckBits(&downlink->phyID);
+            crc = frskyCheckSum(&downlink->phyID, FBUS_DOWNLINK_PAYLOAD_SIZE);
+            downlink->crc = crc;
     
             break;
     
@@ -320,15 +384,25 @@ static FAST_CODE void dataReceive(uint16_t c, void *data)
     }
 }
 
-static float fbusMasterGetChannelValue(uint8_t channel)
+// Speed-limit state for F.Bus output, separate from SBUS output's so each
+// output steps only on its own frames.
+static float fbusMasterServoInput[FBUS_MASTER_CHANNELS_24_COUNT];
+static timeUs_t fbusMasterLastFrameUs = 0;
+
+static float fbusMasterGetChannelValue(uint8_t channel, float dt)
 {
-    return sbusOutGetValueMixer(channel);
+    return sbusOutGetValueMixer(channel, &fbusMasterServoInput[channel], dt);
 }
 
-static uint16_t fbusMasterConvertToSbus(float value)
+static uint16_t fbusMasterConvertToSbus(float value, bool digital)
 {
-    // For analog channels (0-15), convert microseconds to SBUS range (192-1792)
-    // Bus servo range: (1000 -> BUS_SERVO_MIN_SIGNAL) to (2000 -> BUS_SERVO_MAX_SIGNAL) -> SBUS 192-1792
+    // Digital channels (the two in the flags byte) are on at 1500us and above
+    if (digital) {
+        return (value >= 1500) ? 1 : 0;
+    }
+
+    // Analog channels: bus servo range (1000 -> BUS_SERVO_MIN_SIGNAL) to
+    // (2000 -> BUS_SERVO_MAX_SIGNAL) -> SBUS 192-1792
     const float scaledValue = scaleRangef(value, BUS_SERVO_MIN_SIGNAL, BUS_SERVO_MAX_SIGNAL, 192, 1792);
     return constrain(nearbyintf(scaledValue), FBUS_MIN, FBUS_MAX);
 }
@@ -341,26 +415,68 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
     // Keep derived FBUS sensor states (timeouts/GPS mirrors) updated.
     fbusSensorUpdate(currentTimeUs);
 
+    // fbus_master_channels: 8 -> 8-channel frame, 12/16 -> 16-channel frame
+    // (at 12, CH13-16 are sent at center), 24 -> 24-channel frame. The
+    // digital channels (CH17-18) are only used with all 16.
+    const int count = busOutChannelCount(fbusMasterConfig()->channels);
+    const int frameChannels = (count <= 8) ? 8 : (count <= 16) ? FBUS_MASTER_CHANNELS_16_COUNT : FBUS_MASTER_CHANNELS_24_COUNT;
+    const size_t controlSize = (count <= 8) ? sizeof(fbusMasterControl8_t) :
+                               (count <= 16) ? sizeof(fbusMasterControl16_t) : sizeof(fbusMasterControl24_t);
+
     // Check TX Buff is free
-    if (serialTxBytesFree(fbusMasterPort) <= sizeof(fbusMasterFrame_t)) {
+    if (serialTxBytesFree(fbusMasterPort) <= controlSize + sizeof(fbusMasterDownlink_t)) {
         return;
     }
 
+    // Time since the previous frame, for the speed limit. The first frame
+    // assumes the configured frame rate; a long gap is capped at 100ms.
+    const float dt = fbusMasterLastFrameUs ?
+        constrainf(cmpTimeUs(currentTimeUs, fbusMasterLastFrameUs) * 1e-6f, 0.0f, 0.1f) :
+        1.0f / fbusMasterConfig()->frameRate;
+    fbusMasterLastFrameUs = currentTimeUs;
+
     // Start sending.
-    fbusMasterFrame_t frame;
-    uint16_t channels[FBUS_MASTER_CHANNELS];
-    for (int ch = 0; ch < FBUS_MASTER_CHANNELS; ch++) {
-        float value = fbusMasterGetChannelValue(ch);
-        channels[ch] = fbusMasterConvertToSbus(value);
-        
+    uint16_t channels[FBUS_MASTER_CHANNELS_24_COUNT];
+    for (int ch = 0; ch < frameChannels; ch++) {
+        const bool digital = (count == 16) && (ch >= 16);
+        const bool used = (ch < count) || digital;
+        if (!used) {
+            channels[ch] = (ch >= 16) ? 0 : fbusMasterConvertToSbus(1500, false);
+            continue;
+        }
+
+        const float value = fbusMasterGetChannelValue(ch, dt);
+        channels[ch] = fbusMasterConvertToSbus(value, digital);
+
         // Store the output value for getServoOutput() to retrieve
         setBusServoOutput(ch, value);
     }
-    fbusMasterPrepareFrame(&frame, channels, currentTimeUs);
+
+    // Control frame followed by the downlink slot, sent as one write
+    uint8_t frame[sizeof(fbusMasterControl24_t) + sizeof(fbusMasterDownlink_t)];
+    if (count <= 8) {
+        fbusMasterControl8_t control;
+        fbusMasterPrepareControl8(&control, channels);
+        memcpy(frame, &control, sizeof(control));
+    } else if (count <= 16) {
+        fbusMasterControl16_t control;
+        fbusMasterPrepareControl16(&control, channels);
+        memcpy(frame, &control, sizeof(control));
+    } else {
+        fbusMasterControl24_t control;
+        fbusMasterPrepareControl24(&control, channels);
+        memcpy(frame, &control, sizeof(control));
+    }
+
+    fbusMasterDownlink_t downlink;
+    fbusMasterPrepareDownlink(&downlink, currentTimeUs);
+    memcpy(frame + controlSize, &downlink, sizeof(downlink));
+
+    const size_t frameSize = controlSize + sizeof(downlink);
 
     // serial output
-    serialWriteBuf(fbusMasterPort, (const uint8_t *)&frame, sizeof(frame));
-    readIngoreBytes = sizeof(frame);
+    serialWriteBuf(fbusMasterPort, frame, frameSize);
+    readIngoreBytes = frameSize;
     readBytes = 0;
 }
 

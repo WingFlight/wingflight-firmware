@@ -35,7 +35,6 @@
 
 #include "config/feature.h"
 
-#include "drivers/camera_control.h"
 
 #include "config/config.h"
 #include "fc/core.h"
@@ -49,7 +48,6 @@
 #include "io/usb_cdc_hid.h"
 #include "io/dashboard.h"
 #include "io/gps.h"
-#include "io/vtx_control.h"
 
 #include "pg/arming.h"
 #include "pg/rx.h"
@@ -328,42 +326,6 @@ void processRcStickPositions(void)
 
     if (rcSticks == COL_LO + YAW_CE + PIT_HI + ROL_HI) {
         dashboardEnablePageCycling();
-    }
-#endif
-
-#ifdef USE_VTX_CONTROL
-    if (rcSticks ==  COL_HI + YAW_LO + PIT_CE + ROL_HI) {
-        vtxIncrementBand();
-    }
-    if (rcSticks ==  COL_HI + YAW_LO + PIT_CE + ROL_LO) {
-        vtxDecrementBand();
-    }
-    if (rcSticks ==  COL_HI + YAW_HI + PIT_CE + ROL_HI) {
-        vtxIncrementChannel();
-    }
-    if (rcSticks ==  COL_HI + YAW_HI + PIT_CE + ROL_LO) {
-        vtxDecrementChannel();
-    }
-#endif
-
-#ifdef USE_CAMERA_CONTROL
-    if (rcSticks == COL_CE + YAW_HI + PIT_CE + ROL_CE) {
-        cameraControlKeyPress(CAMERA_CONTROL_KEY_ENTER, 0);
-        repeatAfter(3 * STICK_DELAY_MS);
-    } else if (rcSticks == COL_CE + YAW_CE + PIT_CE + ROL_LO) {
-        cameraControlKeyPress(CAMERA_CONTROL_KEY_LEFT, 0);
-        repeatAfter(3 * STICK_DELAY_MS);
-    } else if (rcSticks == COL_CE + YAW_CE + PIT_HI + ROL_CE) {
-        cameraControlKeyPress(CAMERA_CONTROL_KEY_UP, 0);
-        repeatAfter(3 * STICK_DELAY_MS);
-    } else if (rcSticks == COL_CE + YAW_CE + PIT_CE + ROL_HI) {
-        cameraControlKeyPress(CAMERA_CONTROL_KEY_RIGHT, 0);
-        repeatAfter(3 * STICK_DELAY_MS);
-    } else if (rcSticks == COL_CE + YAW_CE + PIT_LO + ROL_CE) {
-        cameraControlKeyPress(CAMERA_CONTROL_KEY_DOWN, 0);
-        repeatAfter(3 * STICK_DELAY_MS);
-    } else if (rcSticks == COL_LO + YAW_CE + PIT_HI + ROL_CE) {
-        cameraControlKeyPress(CAMERA_CONTROL_KEY_UP, 2000);
     }
 #endif
 }

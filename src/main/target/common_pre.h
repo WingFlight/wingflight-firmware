@@ -236,7 +236,6 @@ extern uint8_t _dmaram_end__;
 #define USE_SERIAL_PASSTHROUGH
 #define USE_GYRO_REGISTER_DUMP  // Adds gyroregisters command to cli to dump configured register values
 #define USE_IMU_CALC
-#define USE_PPM
 
 // ---- Wingflight fork identifier ------------------------------------------
 // Activates WINGFLIGHT_AIRPLANE code paths in all builds of this firmware fork.
@@ -245,7 +244,6 @@ extern uint8_t _dmaram_end__;
 // --------------------------------------------------------------------------
 #define USE_SERIAL_RX
 #define USE_SERIALRX_CRSF       // Team Black Sheep Crossfire protocol
-#define USE_SERIALRX_GHST       // ImmersionRC Ghost Protocol
 #define USE_SERIALRX_IBUS       // FlySky and Turnigy receivers
 #define USE_SERIALRX_IBUS2      // FlySky AFHDS3 receivers
 #define USE_SERIALRX_SBUS       // Frsky and Futaba receivers
@@ -254,6 +252,7 @@ extern uint8_t _dmaram_end__;
 #define USE_SBUS_OUTPUT         // SBus Output feature
 #define USE_FBUS_MASTER         // FBUS Master feature
 #define USE_SPORT_MASTER        // S.Port master feature
+#define USE_CRSF_SENSORS        // CRSF sensor input feature
 #define USE_RX_INPUT_BACKUP     // Secondary backup RX input, instant failover when the main RX link is lost
 #define USE_RX_INPUT_BACKUP_SBUS // SBUS provider for USE_RX_INPUT_BACKUP
 #define USE_RX_INPUT_BACKUP_FBUS // FBUS + FPort2 providers for USE_RX_INPUT_BACKUP
@@ -282,7 +281,6 @@ extern uint8_t _dmaram_end__;
 #define USE_RESOURCE_MGMT
 #define USE_SERVOS
 #define USE_TELEMETRY
-#define USE_TELEMETRY_FRSKY_HUB
 #define USE_TELEMETRY_SMARTPORT
 #endif
 
@@ -293,7 +291,6 @@ extern uint8_t _dmaram_end__;
 #define USE_SERIALRX_FBUS       // FrSky FBUS/FPORT2
 #define USE_SMARTFUEL
 #define USE_TELEMETRY_CRSF
-#define USE_TELEMETRY_GHST
 #define USE_TELEMETRY_SRXL
 
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 12))
@@ -301,15 +298,7 @@ extern uint8_t _dmaram_end__;
 #define USE_LED_STRIP
 #endif
 
-#if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 11))
-#define USE_VTX_COMMON
-#define USE_VTX_CONTROL
-#define USE_VTX_SMARTAUDIO
-#define USE_VTX_TRAMP
-#endif
-
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 10))
-#define USE_CAMERA_CONTROL
 #define USE_ESC_SENSOR
 #define USE_SRXL2_ESC
 #define USE_SERIAL_4WAY_BLHELI_BOOTLOADER
@@ -331,7 +320,6 @@ extern uint8_t _dmaram_end__;
 #endif
 
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 5))
-#define USE_PWM
 #endif
 
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 4))
@@ -347,15 +335,12 @@ extern uint8_t _dmaram_end__;
 #define USE_SPEKTRUM_REAL_RSSI
 #define USE_SPEKTRUM_FAKE_RSSI
 #define USE_SPEKTRUM_RSSI_PERCENT_CONVERSION
-#define USE_SPEKTRUM_VTX_CONTROL
-#define USE_SPEKTRUM_VTX_TELEMETRY
 #define USE_PIN_PULL_UP_DOWN
 #endif
 #endif
 
 #if ((TARGET_FLASH_SIZE > 256) || (FEATURE_CUT_LEVEL < 2))
 #define USE_TELEMETRY_HOTT
-#define USE_TELEMETRY_LTM
 #define USE_SERIALRX_SUMH       // Graupner legacy protocol
 #define USE_SERIALRX_XBUS       // JR
 #endif
@@ -384,12 +369,10 @@ extern uint8_t _dmaram_end__;
 #define USE_TELEMETRY_IBUS2
 #define USE_TELEMETRY_IBUS_EXTENDED
 #define USE_TELEMETRY_JETIEXBUS
-#define USE_TELEMETRY_MAVLINK
 #define USE_SIGNATURE
 #define USE_LED_STRIP_STATUS_MODE
 #define USE_VARIO
 #define USE_ESC_SENSOR_TELEMETRY
-#define USE_VTX_TABLE
 #define USE_PERSISTENT_STATS
 #define USE_PROFILE_NAMES
 #define USE_SERIALRX_SRXL2     // Spektrum SRXL2 protocol

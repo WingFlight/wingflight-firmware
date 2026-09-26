@@ -33,6 +33,12 @@
 
 static int32_t fakePressure;
 static int32_t fakeTemperature;
+// Nothing to read until the simulator has sent a first sample. Reporting the
+// seed values instead would let the baro calibrate its ground level on a
+// made-up 0 m MSL, and every real reading after it would then be off by the
+// true field elevation - enough to fall outside position.c's plausible range
+// at any real airfield. A real sensor never reports before it has measured.
+static bool fakeBaroHasData;
 
 
 static void fakeBaroStart(baroDev_t *baro)
@@ -44,7 +50,7 @@ static bool fakeBaroReadGet(baroDev_t *baro)
 {
     UNUSED(baro);
 
-    return true;
+    return fakeBaroHasData;
 }
 
 static void fakeBaroCalculate(int32_t *pressure, int32_t *temperature)
@@ -59,12 +65,14 @@ void fakeBaroSet(int32_t pressure, int32_t temperature)
 {
     fakePressure = pressure;
     fakeTemperature = temperature;
+    fakeBaroHasData = true;
 }
 
 bool fakeBaroDetect(baroDev_t *baro)
 {
     fakePressure = 101325;    // pressure in Pa (0m MSL)
     fakeTemperature = 2500;   // temperature in 0.01 C = 25 deg
+    fakeBaroHasData = false;
 
     // these are dummy as temperature is measured as part of pressure
     baro->combined_read = true;

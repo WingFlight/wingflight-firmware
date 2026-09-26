@@ -119,9 +119,6 @@ typedef enum {
 #ifdef USE_BARO
     TASK_BARO,
 #endif
-#ifdef USE_RANGEFINDER
-    TASK_RANGEFINDER,
-#endif
 #ifdef USE_DASHBOARD
     TASK_DASHBOARD,
 #endif
@@ -142,12 +139,6 @@ typedef enum {
 #endif
 #ifdef USE_SRXL2_ESC
     TASK_SRXL2_ESC,
-#endif
-#ifdef USE_VTX_CONTROL
-    TASK_VTXCTRL,
-#endif
-#ifdef USE_CAMERA_CONTROL
-    TASK_CAMCTRL,
 #endif
 
 #ifdef USE_RCDEVICE
@@ -180,6 +171,10 @@ typedef enum {
 
 #ifdef USE_SPORT_MASTER
     TASK_SPORT_MASTER,
+#endif
+
+#ifdef USE_CRSF_SENSORS
+    TASK_CRSF_SENSORS,
 #endif
     /* Count of real tasks */
     TASK_COUNT,

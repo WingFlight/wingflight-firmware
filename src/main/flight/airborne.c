@@ -19,32 +19,28 @@
 #include <stdint.h>
 
 #include "platform.h"
-
 #include "build/debug.h"
-
 #include "common/axis.h"
 #include "common/maths.h"
 #include "common/filter.h"
-
-#include "config/config.h"
-#include "config/feature.h"
-
+#include "drivers/time.h"
 #include "flight/pid.h"
 #include "flight/imu.h"
-#include "flight/position.h"
-
 #include "fc/runtime_config.h"
 #include "fc/rc.h"
-
+#include "sensors/gyro.h"
 #include "airborne.h"
 
 #define FILTER_CUTOFF                       5.0f
-
 #define PEAK_UP_CUTOFF                     20.0f
 #define PEAK_DN_CUTOFF                      0.5f
 
-#define LIFTOFF_COS_ANGLE_THRESHOLD        0.80f
-#define LANDING_COS_ANGLE_THRESHOLD        0.90f
+// Evidence, not proof, of flight: a meaningful pilot command accompanied by
+// sustained roll/pitch rotation in the same direction. These initial thresholds
+// need flight validation. Yaw is excluded because ground steering can follow it.
+#define FLIGHT_INPUT_THRESHOLD             0.10f
+#define FLIGHT_RESPONSE_RATE               15.0f  // degrees/second
+#define FLIGHT_RESPONSE_TIME_US          250000
 
 typedef enum {
     AIRBORNE_STATE_INIT = 0,
@@ -52,107 +48,112 @@ typedef enum {
     AIRBORNE_STATE_AIRBORNE,
 } airborneState_e;
 
-typedef struct
-{
+typedef struct {
     airborneState_e state;
-
-    float liftoffThreshold[XYZ_AXIS_COUNT];
-    float landingThreshold[XYZ_AXIS_COUNT];
-
+    float handsOnThreshold[XYZ_AXIS_COUNT];
     pt1Filter_t filter[XYZ_AXIS_COUNT];
     peakFilter_t peakDeflection[XYZ_AXIS_COUNT];
-
+    int8_t responseDirection[2];
+    timeUs_t responseSince[2];
 } airborneData_t;
 
 static FAST_DATA_ZERO_INIT airborneData_t airborne;
 
+static void resetResponse(void)
+{
+    for (int axis = FD_ROLL; axis <= FD_PITCH; axis++) {
+        airborne.responseDirection[axis] = 0;
+        airborne.responseSince[axis] = 0;
+    }
+}
 
 INIT_CODE void airborneInit(void)
 {
     airborne.state = AIRBORNE_STATE_LANDED;
-
+    resetResponse();
     for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
         pt1FilterInit(&airborne.filter[axis], FILTER_CUTOFF, pidGetPidFrequency());
         peakFilterInit(&airborne.peakDeflection[axis], PEAK_UP_CUTOFF, PEAK_DN_CUTOFF, pidGetPidFrequency());
-        airborne.liftoffThreshold[axis] = rcControlsConfig()->rc_threshold[axis] / 1000.0f;
-        airborne.landingThreshold[axis] = rcControlsConfig()->rc_threshold[axis] / 1500.0f;
+        airborne.handsOnThreshold[axis] = rcControlsConfig()->rc_threshold[axis] / 1000.0f;
     }
 }
 
-static bool isOverThreshold(const float *threshold)
+static bool updateFlightResponse(const float rc[XYZ_AXIS_COUNT], timeUs_t now)
 {
-    return (
-        peakFilterOutput(&airborne.peakDeflection[FD_ROLL]) > threshold[FD_ROLL] ||
-        peakFilterOutput(&airborne.peakDeflection[FD_PITCH]) > threshold[FD_PITCH] ||
-        peakFilterOutput(&airborne.peakDeflection[FD_YAW]) > threshold[FD_YAW]
-    );
-}
-
-static bool liftoff(void)
-{
-    return (
-        ARMING_FLAG(ARMED) &&
-        (
-            isOverThreshold(airborne.liftoffThreshold) ||
-            getCosTiltAngle() < LIFTOFF_COS_ANGLE_THRESHOLD ||
-            FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE)
-        )
-    );
-}
-
-static bool touchdown(void)
-{
-    return !(
-        ARMING_FLAG(ARMED) &&
-        (
-            isOverThreshold(airborne.landingThreshold) ||
-            getCosTiltAngle() < LANDING_COS_ANGLE_THRESHOLD ||
-            FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE)
-        )
-    );
-}
-
-static void updateStickDeflection(const float rc[XYZ_AXIS_COUNT])
-{
-    for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
-        float stick = pt1FilterApply(&airborne.filter[axis], rc[axis]);
-        peakFilterApply(&airborne.peakDeflection[axis], fabsf(stick));
+    bool confirmed = false;
+    for (int axis = FD_ROLL; axis <= FD_PITCH; axis++) {
+        const float input = rc[axis];
+        const float rate = gyro.gyroADCf[axis];
+        const int8_t direction = input > 0 ? 1 : -1;
+        // Use current pilot input, not the decaying hands-on peak or an attitude
+        // controller's correction: neither is evidence of current pilot intent.
+        if (fabsf(input) >= FLIGHT_INPUT_THRESHOLD && rate * direction >= FLIGHT_RESPONSE_RATE) {
+            if (airborne.responseDirection[axis] != direction) {
+                airborne.responseDirection[axis] = direction;
+                airborne.responseSince[axis] = now;
+            }
+            if ((timeUs_t)(now - airborne.responseSince[axis]) >= FLIGHT_RESPONSE_TIME_US) {
+                confirmed = true;
+            }
+        } else {
+            airborne.responseDirection[axis] = 0;
+            airborne.responseSince[axis] = 0;
+        }
     }
+    return confirmed;
 }
 
 void airborneUpdate(const float rc[XYZ_AXIS_COUNT])
 {
-    updateStickDeflection(rc);
-
-    switch (airborne.state) {
-        case AIRBORNE_STATE_INIT:
-            break;
-        case AIRBORNE_STATE_LANDED:
-            if (liftoff()) {
-                airborne.state = AIRBORNE_STATE_AIRBORNE;
-            }
-            break;
-        case AIRBORNE_STATE_AIRBORNE:
-            if (touchdown()) {
-                airborne.state = AIRBORNE_STATE_LANDED;
-            }
-            break;
+    // Preserve hands-on detection, including yaw, independently of flight state.
+    for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
+        const float stick = pt1FilterApply(&airborne.filter[axis], rc[axis]);
+        peakFilterApply(&airborne.peakDeflection[axis], fabsf(stick));
     }
+
+    const timeUs_t now = micros();
+    bool flightEvidence = false;
+    if (!ARMING_FLAG(ARMED)) {
+        airborne.state = AIRBORNE_STATE_LANDED;
+        resetResponse();
+    } else if (airborne.state != AIRBORNE_STATE_AIRBORNE) {
+        // Preserve the existing rescue/failsafe override. Loss of pilot response
+        // must never weaken a recovery, even if takeoff was not detected first.
+        if (FLIGHT_MODE(GPS_RESCUE_MODE | FAILSAFE_MODE)) {
+            flightEvidence = true;
+        } else if (rxIsReceivingSignal()) {
+            flightEvidence = updateFlightResponse(rc, now);
+        } else {
+            resetResponse();
+        }
+        if (flightEvidence) {
+            airborne.state = AIRBORNE_STATE_AIRBORNE;
+            resetResponse();
+        }
+    }
+    // Flight is latched until disarm. Quiet sticks, low throttle, lack of gyro
+    // response, and loss of altitude evidence cannot distinguish a landing from
+    // a glide or low control authority. Armed ground handling after landing thus
+    // retains flight authority; disarm to restore the ground reduction.
 
     DEBUG(AIRBORNE, 0, peakFilterOutput(&airborne.peakDeflection[FD_ROLL]) * 1000);
     DEBUG(AIRBORNE, 1, peakFilterOutput(&airborne.peakDeflection[FD_PITCH]) * 1000);
     DEBUG(AIRBORNE, 2, peakFilterOutput(&airborne.peakDeflection[FD_YAW]) * 1000);
+    DEBUG(AIRBORNE, 3, airborne.responseDirection[FD_ROLL] ? (timeUs_t)(now - airborne.responseSince[FD_ROLL]) / 1000 : 0);
     DEBUG(AIRBORNE, 4, getCosTiltAngle() * 1000);
-    DEBUG(AIRBORNE, 6, (liftoff() ? 1 : 0) | (touchdown() ? 2 : 0));
+    DEBUG(AIRBORNE, 5, airborne.responseDirection[FD_PITCH] ? (timeUs_t)(now - airborne.responseSince[FD_PITCH]) / 1000 : 0);
+    DEBUG(AIRBORNE, 6, (flightEvidence ? 1 : 0) | (!ARMING_FLAG(ARMED) ? 2 : 0));
     DEBUG(AIRBORNE, 7, airborne.state);
 }
 
 bool isAirborne(void)
 {
-    return (airborne.state == AIRBORNE_STATE_AIRBORNE);
+    return airborne.state == AIRBORNE_STATE_AIRBORNE;
 }
 
 bool isHandsOn(void)
 {
-    return isOverThreshold(airborne.liftoffThreshold);
+    return peakFilterOutput(&airborne.peakDeflection[FD_ROLL]) > airborne.handsOnThreshold[FD_ROLL]
+        || peakFilterOutput(&airborne.peakDeflection[FD_PITCH]) > airborne.handsOnThreshold[FD_PITCH]
+        || peakFilterOutput(&airborne.peakDeflection[FD_YAW]) > airborne.handsOnThreshold[FD_YAW];
 }

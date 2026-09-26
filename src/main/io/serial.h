@@ -44,9 +44,9 @@ typedef enum {
     FUNCTION_BLACKBOX            = (1 << 7),  // 128
     FUNCTION_TELEMETRY_MAVLINK   = (1 << 9),  // 512
     FUNCTION_ESC_SENSOR          = (1 << 10), // 1024
-    FUNCTION_VTX_SMARTAUDIO      = (1 << 11), // 2048
+    FUNCTION_VTX_SMARTAUDIO      = (1 << 11), // 2048 -- reserved (VTX removed), do not reuse
     FUNCTION_TELEMETRY_IBUS      = (1 << 12), // 4096
-    FUNCTION_VTX_TRAMP           = (1 << 13), // 8192
+    FUNCTION_VTX_TRAMP           = (1 << 13), // 8192 -- reserved (VTX removed), do not reuse
     FUNCTION_RCDEVICE            = (1 << 14), // 16384
     FUNCTION_LIDAR_TF            = (1 << 15), // 32768
     FUNCTION_PRINTF              = (1 << 17), // 131072
@@ -54,7 +54,8 @@ typedef enum {
     FUNCTION_FBUS_MASTER         = (1 << 19), // 524288
     FUNCTION_SPORT_MASTER        = (1 << 20), // 1048576
     FUNCTION_SRXL2_ESC           = (1 << 21), // 2097152
-    FUNCTION_RX_INPUT_BACKUP     = (1 << 22), // 4194304
+    FUNCTION_CRSF_SENSORS        = (1 << 22), // 4194304
+    FUNCTION_RX_INPUT_BACKUP     = (1 << 23), // 8388608
 
 } serialPortFunction_e;
 

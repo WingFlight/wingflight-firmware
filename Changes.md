@@ -3,12 +3,246 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## FBUS GPS Satellite Count
+
+FBUS GPS sensors that report the FrSky GPS satellite-count app ID range
+`0x0860`-`0x086F` now feed the real satellite count into `gpsSol.numSat`
+(`src/main/drivers/fbus_sensor.c`). Older FBUS GPS sensors that do not send
+that value report `0` satellites, so RTH, Loiter, GPS Rescue and other
+minimum-satellite checks are not satisfied by a guessed count. Users who accept
+that risk can set the CLI-only `gps_fbus_assumed_sats` value to provide an
+assumed satellite count for older FBUS GPS sensors; real sensor data always
+overrides the assumed value when the satellite-count app ID is present.
+
+
+## Telemetry Status Words
+
+Two new telemetry sensors carry the flight controller's status as packed
+bitfields, so a radio script can decode many flags from one sensor slot
+(`src/main/telemetry/status.h`, `src/main/telemetry/status.c`):
+
+| ID | Sensor | S.Port | CRSF | Rate |
+|---|---|---|---|---|
+| 120 | `SYSTEM_STATUS` | `0x5140` | `0x1230` | 100 ms |
+| 121 | `SYSTEM_CONFIG` | `0x5141` | `0x1231` | 500 ms |
+
+`SYSTEM_STATUS` holds live state: armed, airborne, motors running, main and
+backup RX link, backup RX in control, failsafe phase, GPS fix and GPS health,
+LOITER/RTH switched on but unable to fly, battery state, control surfaces at
+their mixer limit, gyro overflow, ACC not calibrated, Configurator test
+override active, a flight aid holding, autotrim state, Blackbox logging, and
+logic conditions 1-4.
+
+`SYSTEM_CONFIG` holds slower state: PID, rates, battery and TV profile
+numbers, unsaved settings, save in progress, reboot required, beeper on,
+ACC/baro/mag/GPS present, backup RX configured, Blackbox full, and RPM
+telemetry present.
+
+The radio Lua decodes by bit position, so a layout change needs a matching Lua
+update. Bit 31 is never set because S.Port sends a signed value.
+
+This is a hard cut. These sensors are removed, and their IDs are free for reuse:
+
+- 90 `ARMING_FLAGS` (the ARMED bit is in `SYSTEM_STATUS`)
+- 95-98 `PID_PROFILE`, `RATES_PROFILE`, `BATTERY_PROFILE`, `LED_PROFILE`
+- 118 `TV_PROFILE`
+- 119 `GPS_FIX_TYPE`
+
+`FLIGHT_MODE` (89) is plain `flightModeFlags` again. Bit 15 ("GPS mode
+unavailable") and the requested-mode bit that came with it are gone; that state
+is the `NAV_BLOCKED` field of `SYSTEM_STATUS`. Models that had the removed
+sensors selected need `SYSTEM_STATUS` and `SYSTEM_CONFIG` selected instead. The
+Jeti EX Bus arming-flag and profile values are unchanged.
+
+`telemetry_sensors` now defaults to the sensors the Wingflight Lua suites read,
+instead of none (`src/main/pg/telemetry.c`). It is the same list, in the same
+order, that the Ethos suite's "Default" button writes:
+
+```
+set telemetry_sensors = 3,4,5,6,15,43,50,52,58,59,60,89,91,99,120,121,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+```
+
+New and reset configs also have telemetry on (`FEATURE_TELEMETRY`, all targets,
+`src/main/pg/feature.c`) and CRSF telemetry in custom mode
+(`crsf_telemetry_mode = CUSTOM`, `src/main/pg/telemetry.c`), which the Lua
+suites decode. Native CRSF telemetry (standard battery, attitude and GPS
+frames) is still available by setting `crsf_telemetry_mode = NATIVE`.
+
+SmartFuel now defaults to current mode (`smartfuel = CURRENT`,
+`src/main/pg/battery.c`). With no current sensor, or no pack capacity set, it
+falls back to its voltage estimate. SmartFuel stays inactive until a battery
+voltage source is set, but the saved mode is no longer cleared to OFF when
+there isn't one, so the default survives first setup
+(`src/main/sensors/smartfuel.c`).
+
+Saved configs keep their current settings; only new or reset configs get
+these defaults.
+
+
+## Bus Servo Speed Limit
+
+The servo `speed` limit on bus servos (SBUS and F.Bus output) now steps by the
+real time since that output's previous frame. It used the PID loop time
+instead, while running only once per output frame, so bus servos with a speed
+set moved far slower than configured (about 20x at the default 50 Hz SBUS
+rate on a 1 kHz loop). SBUS and F.Bus output also keep separate speed-limit
+state now, so running both no longer steps it twice
+(`src/main/drivers/sbus_output.c`, `src/main/drivers/fbus_master.c`). Bus
+servos with a speed limit set will now move at the configured speed.
+
+The default bus servo scale (`rneg`/`rpos`) is now 500, as for PWM servos,
+instead of 1000. With the ±500us bus servo travel limits, 1000 reached full
+travel at half stick and the rest of the stick did nothing. Only new or reset
+configs get the new default; saved bus servos keep their scale, so set Scale
+neg/pos to 500 on the Servos tab (`src/main/pg/bus_servo.h`).
+
+
+## Removed Protocols
+
+The following receiver and telemetry protocols are no longer compiled in
+(`src/main/target/common_pre.h`):
+
+- RX: ImmersionRC GHOST (`USE_SERIALRX_GHST`, and with it `USE_TELEMETRY_GHST`),
+  CPPM (`USE_PPM`) and parallel PWM (`USE_PWM`).
+- Telemetry: FrSky Hub (`USE_TELEMETRY_FRSKY_HUB`), MAVLink
+  (`USE_TELEMETRY_MAVLINK`) and LTM (`USE_TELEMETRY_LTM`).
+
+FrSky SmartPort telemetry is kept because F.PORT, F.PORT2 and FBUS telemetry
+and MSP over telemetry depend on it. MSP RX is also kept.
+
+The source files, the `serialrx_provider` values, the `FEATURE_RX_PPM` and
+`FEATURE_RX_PARALLEL_PWM` bits and the serial port function bits are unchanged,
+so IDs stay stable. `FEATURE_RX_PPM` and `FEATURE_RX_PARALLEL_PWM` are cleared
+at boot (`src/main/config/config.c`). The `resource PWM` pins and the
+`input_filtering_mode` CLI setting are no longer available. A port still set to a removed telemetry function
+stays configured but idle. A `serialrx_provider` still set to GHST leaves the
+receiver unconfigured. The FrSky Hub CLI settings (`frsky_default_lat`,
+`frsky_default_long`, `frsky_gps_format`, `frsky_unit`, `frsky_vfas_precision`)
+and `mavlink_mah_as_heading_divisor` are no longer available.
+
+
+## 24-Channel F.Bus (MSP API 22.5)
+
+### Output
+
+Bus output channel counts are set per output:
+
+| Setting | Values | Default | Frame |
+|---|---|---|---|
+| `fbus_master_channels` | `8`, `12`, `16`, `24` | `24` | 8 -> 8-channel, 12/16 -> 16-channel, 24 -> 24-channel F.Bus frame |
+| `sbus_out_channels` | `8`, `12`, `16` | `16` | Always the 16-channel SBUS frame (there is no 24-channel SBUS frame) |
+
+Channels past the count are sent at center. The two digital channels (CH17-18)
+are only sent with a count of 16 (`src/main/drivers/fbus_master.c`,
+`src/main/drivers/sbus_output.c`).
+
+Bus servos go from 18 to 24 (`BUS_SERVO_CHANNELS`), so servos are now S1-S32
+and `MSP_STATUS` reports 6 more servos. Bus servo N is always channel N on the
+wire.
+
+Mixer output numbers used before this change do not move, so saved mixer
+rules, CLI diffs and backups keep their meaning: 1-26 are S1-S26, 27-30 are
+M1-M4, and the new bus servos S27-S32 are outputs 31-36
+(`src/main/flight/mixer.h`).
+
+`MSP_MIXER_CONFIG` appends the SBUS count, the F.Bus count and the count the
+configured bus outputs drive (the larger if SBUS and F.Bus are both set up, 0
+with none). SBUS and F.Bus output can run at the same time.
+`MSP_SET_MIXER_CONFIG` accepts the SBUS and F.Bus counts as two optional
+trailing bytes.
+
+The 16-channel F.Bus frame used to fill the CH17-18 flag bits from past the end
+of its channel array. It now sends bus servos 17 and 18 as those two digital
+channels, on at 1500us and above.
+
+### Input
+
+RC channels go from 18 to 24 (`MAX_SUPPORTED_RC_CHANNEL_COUNT`), so a
+24-channel F.Bus receiver delivers CH19-24. Other receivers are unchanged.
+`MSP_RC` and `MSP_RXFAIL_CONFIG` report up to 24 channels, modes and
+adjustments can use AUX channels up to CH24, and `rxfail` accepts channels up to
+23. Saved failsafe settings for CH1-18 are kept.
+
+Mixer inputs CH19-CH24 are added after the thrust-vector inputs (input numbers
+30-35), so existing input numbers do not move. The mixer's input mapping is
+now 64-bit to fit them (`src/main/flight/mixer.c`).
+
+The backup receiver's F.Bus/F.Port2 decoder accepts the 8-, 16- and
+24-channel frames, like the main receiver
+(`src/main/drivers/rx_input_backup_fbus.c`). A backup provider's `update()`
+now returns how many channels the decoded frame carried. When the backup
+receiver takes over, channels its latest frame does not carry (for example
+CH19-24 from a 16-channel backup frame) go to stick center (`rc_center`)
+instead of dropping to minimum (`src/main/drivers/rx_input_backup.c`). A mode
+or switch on those channels therefore moves to its middle position on
+takeover. `MSP2_WING_RX_INPUT_BACKUP_STATUS` reports a backup value for every
+main RX channel, center for the ones the backup does not carry. F.Port (v1)
+stays at 16 + 2 channels on both receivers: its frame has no 24-channel form.
+
+
+## Memory Usage
+
+SmartPort keeps its sensor catalogue in flash and reserves runtime state only
+for the 40 configurable sensor slots, plus the extra GPS coordinate and
+adjustment-value entries. This reduces the sensor table's RAM allocation from
+3,000 to 1,680 bytes on STM32 targets. Sensor IDs, encodings and configurable
+intervals are preserved. See `src/main/telemetry/smartport.c`.
+
+CRSF also keeps its native and custom sensor catalogues in flash. The two
+modes share runtime storage for 40 configured sensors plus the custom discovery
+marker, reducing their sensor arrays from 3,760 to 1,640 bytes on STM32 targets
+(plus a runtime entry count). Native packets, custom discovery and sensor
+encodings are preserved. See `src/main/telemetry/crsf.c`.
+
+The SmartPort longitude flag now uses an unsigned shift, avoiding signed-shift
+undefined behaviour while keeping the same transmitted bits.
 
 ## Flight Performance
 
+Airborne detection now requires at least 10% pilot roll or pitch input with
+at least 15 degrees/second gyro response in the same direction for 250 ms
+continuously. Each axis and direction qualifies independently. Arming alone,
+static tilt, yaw steering, motor output and altitude do not establish flight.
+Once detected, flight is latched until disarm, preserving full attitude
+correction through hands-off flight and motor-off glides. Ground reduction
+therefore returns on disarm, not automatically after landing while armed.
+The existing armed GPS-rescue/failsafe override and hands-on detection remain.
+Normal rate/manual behavior and TRAINER are unchanged. ANGLE/HORIZON, ATT HOLD,
+TV hold and AUTO HOVER retain their existing airborne-based correction policy.
+Debug AIRBORNE indexes 3 and 5 now show roll/pitch response duration in ms.
+These initial thresholds need bench/flight validation: hand movement can
+imitate a response, and flight without a qualifying input remains undetected.
+See `src/main/flight/airborne.c`.
+
+TRAINER now keeps normal rate-mode I-term decay independently on roll and pitch
+until its envelope limiter changes that axis's rate command. Stronger pilot
+input back into the envelope also retains normal decay. Active limiting still
+suspends decay to sustain correction (`src/main/flight/trainer.c`,
+`src/main/flight/pid.c`). Mode exit and profile reload clear limiter state.
+
+
+ANGLE and TRAINER now support independent roll and pitch limits per PID profile
+(`src/main/flight/leveling.c`, `src/main/flight/trainer.c`). Explicit roll limits
+use 10–90° and pitch limits 10–75°, matching SAFE's documented configuration
+ranges. ANGLE commands attitude and self-levels; TRAINER retains rate control
+with envelope limiting and no self-leveling. This does not change the trainer's
+prediction algorithm or airborne detection, and is not stall protection.
+
+New CLI settings: `angle_roll_limit`, `angle_pitch_limit`,
+`acro_trainer_roll_limit`, `acro_trainer_pitch_limit`. Zero inherits the existing
+`angle_level_limit` / `acro_trainer_angle_limit`; positive values below 10 are
+effectively 10. Inherited legacy values remain unchanged, including pitch limits
+above 75°. The new PG_ATTITUDE_LIMITS array preserves existing PID-profile
+storage and participates in profile copy/reset. MSP API 22.4 appends four U8
+values to PID_PROFILE in ANGLE roll/pitch, TRAINER roll/pitch order. Older writes
+leave them intact; updated clients expose the independent controls. The ANGLE
+limits also apply to the shared leveling path used by HORIZON and GPS navigation.
+
+
 Fixed-wing cross-axis relax is added for normal stabilization. When enabled,
-yaw/rudder command can attenuate roll and/or pitch P/I/D feedback so
-rudder-induced coupling is not held artificially flat. The feature is
+yaw/rudder command can attenuate roll and/or pitch P and D feedback, and slow
+the I accumulation (the I output itself is not scaled), so rudder-induced
+coupling is not held artificially flat. The feature is
 configured by `cross_axis_relax_strength`,
 `cross_axis_relax_pitch_strength`, `cross_axis_relax_level`, and
 `cross_axis_relax_cutoff`, and defaults to off.
@@ -19,7 +253,54 @@ consistent D-term reaction on transients.
 PID Mode 4 is introduced for testing new features (#293). The current default
 PID Mode 3 is maintained for backward compatibility.
 
+`nav_loiter_direction` now orbits the way it says. Loiter and RTH steered the
+wrong way round the target (`CW` orbited anticlockwise and the other way
+round). If you set the opposite value to get the direction you wanted, swap it
+back after updating.
+
+GPS LOITER and RTH reworked after a flight log showed wide, full-bank orbits
+and a steady descent (`src/main/flight/gps_nav.c`):
+
+- **Altitude gain was 10x too weak.** `nav_altitude_kp` was applied as
+  decidegrees per meter, so the documented 1.0 deg/m default gave 0.1 deg/m:
+  25 m below the RTH altitude commanded only 2.5 deg of nose-up. It now gives
+  the documented degrees per meter. Anyone who raised `nav_altitude_kp` to
+  compensate should divide it by 10. New `nav_altitude_kd` (default 200, 2.0
+  deg of pitch per m/s of climb rate) damps the now-stronger correction.
+- **Orbit guidance.** The two-phase approach/tangent logic had no correction for
+  distance from the circle, so an aircraft that could not turn as tight as
+  `nav_loiter_radius` circled at full bank on its own turn radius. The desired
+  track is now a vector field that converges onto the circle, plus a
+  feedforward of the bank needed to follow the circle at the current GPS ground
+  speed. The bank command is slew-limited to 45 deg/s (bank reversals were
+  logged at over 400 deg/s). Default `nav_loiter_radius` raised from 75 to
+  100 m; existing configs keep their stored value.
+- **Turn coordination.** Nav left yaw in rate mode with a zero setpoint, so the
+  yaw PID held about 10% rudder against every nav turn. LOITER/RTH now add the
+  coordinated-turn yaw rate (g*sin(bank)*cos(pitch)/ground speed) to the yaw
+  setpoint (`src/main/flight/leveling.c`). New `nav_turn_coordination`, percent,
+  default 100, 0 disables.
+- **Throttle.** New `nav_throttle`, percent, default 60. Switch LOITER/RTH and
+  the failsafe GPS-rescue phase now all fly at it, once the in-flight latch has
+  set (`src/main/flight/mixer.c`, `src/main/flight/failsafe.c`). Failsafe
+  landing and drop still use `failsafe_throttle`.
+- Arming is now blocked while the LOITER switch is on, as it already was for
+  RTH (`src/main/fc/core.c`).
+- The blackbox header logs the nav settings as `gps_nav`.
+
+`MSP2_WING_GPS_NAV_CONFIG` / `MSP2_WING_SET_GPS_NAV_CONFIG` append
+`nav_altitude_kd` (U16), `nav_throttle` (U8) and `nav_turn_coordination` (U8).
+Clients that send only the original fields leave them unchanged.
+
 ## Configuration Changes
+
+The shared roll/pitch stick deadband (a helicopter "cyclic" leftover) is split
+into independent `roll_deadband` and `pitch_deadband` CLI settings, alongside
+the existing `yaw_deadband`. The CLI name `deadband` is gone. The
+`rcControlsConfig` PG version is bumped (1 -> 2), so all its settings
+(`rc_center`, `rc_deflection`, throttle range, deadbands, smoothness,
+thresholds) reset to defaults on upgrade. The blackbox header `deadband` is
+replaced by `roll_deadband` and `pitch_deadband`.
 
 Added airborne re-arm grace settings `rearm_grace_seconds` and
 `rearm_min_armed_seconds`. After the aircraft has been armed for the minimum
@@ -95,8 +376,50 @@ generic per-motor RPM/gear-ratio handling now, not heli-specific:
   `motor2speed`. This changes the log field/column names, so blackbox log
   tooling needs to follow.
 
+Renamed the RC adjustment function `ADJUSTMENT_GOV_HEADSPEED` ->
+`ADJUSTMENT_GOV_RPM` (numeric id 80 unchanged) for the same reason -- the
+governor now targets a plain RPM value (`governor_rpm`), not a
+helicopter-specific "headspeed". This id has no `get_`/`set_` implementation
+in `rc_adjustments.c` yet, so it's an identifier-only rename with no wire or
+runtime effect.
+
 
 ## MSP Changes
+
+### MSP_RC_CONFIG / MSP_SET_RC_CONFIG
+
+- The deadbands after `rc_max_throttle` are now `rc_roll_deadband`,
+  `rc_pitch_deadband`, `rc_yaw_deadband` (U8 each). This is a breaking layout
+  change with no API version bump; update the configurator and Lua suite
+  together with the firmware.
+
+### Heli-only placeholder bytes removed (MSP API 22.3)
+
+The always-zero bytes left over from Rotorflight are dropped from the wire, so
+every field after each one moves up. This is a breaking layout change for the
+messages below, and the MSP API version is bumped from 22.2 to 22.3 so clients
+can tell the two layouts apart. Read and write use the same new layout.
+
+- `MSP_RC_TUNING` / `MSP_SET_RC_TUNING`: `rates_type` (first byte), the collective
+  block (`rcRates`, `rcExpo`, `sRates`, `response_time` U8 each, `accel_limit` U16),
+  the collective `setpoint_boost_gain`/`cutoff` pair, and the trailing
+  `cyclic_ring`/`cyclic_polar`. 11 bytes.
+- `MSP_PID_PROFILE` / `MSP_SET_PID_PROFILE`: the three error-decay placeholders,
+  `error_rotation`, the eight yaw stop-gain/precomp/collective-FF placeholders,
+  the three cyclic cross-coupling bytes, and the two yaw inertia precomp bytes.
+  17 bytes.
+- `MSP_PID_TUNING` / `MSP_SET_PID_TUNING`: the trailing two U16 `O` terms. 4 bytes.
+- `MSP_SETPOINT`: the trailing collective S16. 2 bytes.
+- `MSP_TELEMETRY_CONFIG` / `MSP_SET_TELEMETRY_CONFIG`: the U32 `enableSensors`
+  after `halfDuplex`. 4 bytes.
+- `MSP_ESC_SENSOR_CONFIG` / `MSP_SET_ESC_SENSOR_CONFIG`: the U32 HW4 parameters
+  after `current_offset`. 4 bytes.
+- `MSP_RC_CONFIG` / `MSP_SET_RC_CONFIG`: the U16 `rc_arm_throttle` after
+  `rc_deflection`. 2 bytes.
+- `MSP_SENSOR_CONFIG` / `MSP_SET_SENSOR_CONFIG`: the U16 `gyro_offset_yaw` after
+  `gyroCalibrationDuration`. 2 bytes.
+
+`MSP_STATUS` still carries its two compat placeholder bytes.
 
 ### MSP_PID_PROFILE
 
@@ -248,9 +571,17 @@ The `batteryProfile` field is added. (#415)
 
 The `batteryCapacity` array is added. (#415)
 
+The `batteryCellCount`, `vbatmincellvoltage`, `vbatmaxcellvoltage`,
+`vbatfullcellvoltage` and `vbatwarningcellvoltage` arrays are added, one value
+per battery profile. The legacy single-value fields report the active profile.
+
 ### MSP_SET_BATTERY_CONFIG
 
 The `batteryCapacity` array is added. (#415)
+
+The `batteryCellCount`, `vbatmincellvoltage`, `vbatmaxcellvoltage`,
+`vbatfullcellvoltage` and `vbatwarningcellvoltage` arrays are added (optional).
+The legacy single-value fields are stored into the active profile.
 
 ### MSP_BATTERY_PROFILE
 
@@ -347,6 +678,14 @@ the actual values are calculated automatically (#332).
 `bat_capacity` parameter changed from a single value to an array of 6 values (one for each battery profile).
 
 `bat_profile` parameter added. Value in 0-5, selects the active battery profile.
+
+`battery_cell_count`, `vbat_max_cell_voltage`, `vbat_full_cell_voltage`,
+`vbat_min_cell_voltage` and `vbat_warning_cell_voltage` changed from a single
+value to an array of 6 values (one for each battery profile). This allows
+profiles with different cell counts (e.g. 3S and 4S) and chemistries
+(e.g. LiPo and LiHV). A single value in an old `diff` only sets profile 0.
+Each profile must be ordered `min` <= `warning` <= `full` <= `max`; a profile
+that is not ordered is reset to the defaults.
 
 `pid_gyro_filter_type` and `yaw_precomp_filter_type` parameters are removed (#414).
 
@@ -596,3 +935,236 @@ stability debounce's live-tracking issue.
 
 The attitiude sensors where found to be out by a factor of 10.  The scaling
 in the firmware has been adjusted to set these correctly. (#313)
+
+### Servo `speed` limiting no longer couples independent wing surfaces
+
+`servoUpdate()` (PWM) and the SBUS-out mixer path shared a Rotorflight-heritage
+"cyclic" mode: any servo fed by stabilized/RC roll or pitch was synchronized
+with every other such servo, so that one overrunning its `speed` limit scaled
+*all* of them down together to keep a helicopter swashplate in plane. On a
+fixed-wing airframe roll and pitch feed independent, unrelated surfaces (e.g.
+left aileron and elevator), so a slow aileron servo incorrectly slowed the
+elevator too. `DEFAULT_SERVO_SPEED` is 0, so this only showed up once a pilot
+configured a nonzero `servo_speed`. (#109)
+
+Each servo (and each SBUS-out channel) is now speed-limited independently, in
+both `src/main/flight/servos.c` and `src/main/drivers/sbus_output.c`. The
+swashplate-coupling logic, `mixerIsCyclicServo()` and the mixer's
+`cyclicMapping` bitmap, is removed entirely -- Wingflight targets fixed-wing
+airframes only and has no cyclic/swashplate output to keep synchronized. No
+MSP or CLI changes; `servo_speed` behaves the same for servos that were never
+coupled, and now behaves correctly for the roll/pitch-fed ones that were.
+
+### NaN/Inf can no longer reach the servo output or the mixer
+
+A NaN reaching a comparison-based clamp (`if (x > max) ... else if (x < min)
+... else x`) fails every comparison and falls through untouched, since NaN is
+"unordered" -- this pattern was used, unguarded, at the servo hardware
+boundary (`servoSetOutput()`'s `lrintf(pos * resolution)`, written straight
+into a timer compare register -- `lrintf()` of a NaN/Inf is undefined
+behaviour), in the mixer's per-input clamp (`mixerApplyInputLimit()`) and
+per-rule output (`mixerUpdateRules()`), and in the shared `constrainf()`/
+`limitf()` helpers used throughout the codebase. Once a NaN reached a
+speed-limited servo's or mixer rule's own slew state (`servoInput[]`,
+`sbusServoInput[]`, `mixer.ruleOutput[]`), it stayed there permanently. (#107)
+
+This is defense in depth rather than a currently-reachable flight-time bug
+via any first-party input path, with one exception: `MSP_SET_RC_CONFIG`
+writes `rc_deflection`/`rc_deadband` with no cross-validation at all (unlike
+the CLI's own independent range checks on each), and applies live on the next
+`MSP_EEPROM_WRITE` with no reboot required. A deadband at or beyond deflection
+zeroed or inverted `rc.range[]` in `initRcProcessing()`
+(`src/main/fc/rc.c`), and `data / rc.range[axis]` in `updateRcCommands()`
+could then divide by zero (a 0/0 is a NaN) or go negative. `rc.range[]` is
+now floored to a minimum of 1.
+
+Fixed by adding `isfinitef()` to `common/maths.h` -- checking the IEEE-754
+exponent bits directly, since this firmware is built with `-ffast-math`
+(`OPTIMISATION_BASE` in the Makefile), which lets the compiler assume every
+float is finite and fold `isnan()`/`isfinite()`/the `x != x` idiom away as
+dead code returning a constant (verified against this project's actual
+arm-none-eabi-gcc invocation -- a naive `isnan()`/`isfinite()` guard would
+silently compile to nothing). `constrainf()` and `limitf()` now use it, and
+the same pattern is applied at each hand-rolled equivalent: `limitTravel()`
+and `servoSetOutput()` in `servos.c`, `sbusLimitTravel()` and the input stage
+of `sbusOutGetValueMixer()` in `sbus_output.c`, and `mixerApplyInputLimit()`
+and `mixerUpdateRules()` in `mixer.c`. Existing `+-Inf` clamping (already
+correct, since ordered comparisons are unaffected by `-ffast-math`) is
+unchanged; only the NaN fallthrough is now defined, resolving to the clamp's
+low bound or, at the servo/mixer state-protecting boundaries, to zero. No MSP
+or CLI changes.
+
+### Flight-controller failsafe stage 2 is re-enabled and adapted for fixed-wing
+
+`failsafeStartMonitoring()` had its body commented out ("RTFL: Keep disabled until code
+refactored"), so `failsafeIsMonitoring()` was always false and `failsafeUpdateState()` (run every
+10ms) returned immediately without ever executing. In practice, signal loss was handled entirely
+by `rx.c`'s per-channel RX fallback (hold last value 300ms, then configured fallback), never
+`FAILSAFE_MODE` -- no staged landing, no disarm-on-loss, no GPS rescue, and every
+`failsafe_*` setting was dead. This is documented as finding H-1 in the [Flight Dynamics tech
+reference](https://doc.wingflight.org/contributing/tech/flight-dynamics/).
+
+Monitoring is re-enabled (`failsafeStartMonitoring()`), and each of the three
+`failsafe_procedure` options now does something real and appropriate for a plane:
+
+- **AUTO-LAND** / **DROP** already worked correctly once monitoring was on, with no changes
+  needed: `FAILSAFE_MODE` was already wired into the self-leveling pipeline
+  (`pid.c`/`leveling.c`), and disarming a plane only cuts the motor (`motors.c` gates motor
+  output on `ARMING_FLAG(ARMED)` independently) -- control surfaces keep self-leveling
+  regardless of arm state. AUTO-LAND self-levels for `failsafe_off_delay` before cutting; DROP
+  cuts immediately.
+- **GPS-RESCUE** previously drove `gps_rescue.c`, a multirotor/heli hover-throttle-learning
+  descent algorithm -- neither meaningful nor safe on a fixed-wing airframe. It, and the
+  independent `BOXGPSRESCUE` pilot switch that triggered the same thing (already live today,
+  regardless of this fix -- see below), now both drive the existing fixed-wing-native
+  `navRthStart()`/`updateGpsNav()` controller (`gps_nav.c`, previously only reachable via
+  `BOXRTH`) via `RTH_MODE` instead: fly home and orbit at the configured loiter radius/altitude,
+  for up to `failsafe_off_delay`, then hand off to the same motor-off self-level glide-down
+  AUTO-LAND/DROP already use. If GPS isn't healthy or no home position was ever recorded, it
+  falls back to AUTO-LAND's behaviour outright, rather than flying toward `GPS_home == {0,0}`.
+  **This is deliberately a bounded, first-cut rescue**: one fixed configured cruise throttle
+  (`failsafe_throttle`, below -- since superseded by `nav_throttle` for the fly-home phase, see
+  Flight Performance), no altitude-managed pitch-to-throttle correction, no stall/min-
+  speed protection, no autoland/flare. A proper altitude-managed autoland (see iNav's
+  `navigation_fixedwing.c` for prior art) is a substantial, separate, sensor-dependent
+  (baro/airspeed) undertaking, tracked as a follow-up rather than attempted here.
+- `failsafe_throttle` (CLI/MSP setting, PWM 1000-2000, documented "throttle level used for
+  landing") existed but was never read anywhere in the flight code -- it's now wired into
+  `mixer.c`'s throttle input, applied whenever any failsafe procedure is active. Default (1000 =
+  off) preserves today's motor-cut behaviour for existing configs; raise it to fly the AUTO-LAND
+  glide or the GPS-RESCUE fly-home leg under power. `failsafe_stick_threshold` ("stick deflection
+  to exit GPS Rescue") is likewise still declared but unread -- left as a follow-up, same as the
+  altitude-managed rescue above.
+
+Two related correctness fixes, found while re-enabling this:
+
+- `BOXGPSRESCUE` ("GPS RESCUE") was already live and independent of this fix -- a pilot switch
+  that triggered the heli `gps_rescue.c` algorithm on any armed, GPS-fixed aircraft, switch or no
+  failsafe involved. Retargeting it to `RTH_MODE` (above) fixes this too, rather than just the
+  failsafe-triggered path. `GPS_RESCUE_MODE` is no longer set anywhere on this fork;
+  `gps_rescue.c` stays compiled in but is now a guaranteed no-op (its own internal
+  `if (!FLIGHT_MODE(GPS_RESCUE_MODE)) rescueStop();` check), and is a reasonable candidate for a
+  follow-up pruning pass, matching how #109 removed `mixerIsCyclicServo()`.
+- `BOXPASSTHROUGH`/`BOXMANUAL` bypass PID/leveling entirely at the mixer level, using whatever the
+  RC channel currently reads. Since aux/mode channels hold their last value through a real signal
+  loss (`RX_FAILSAFE_MODE_HOLD`, the default), a switch that happened to be left engaged the
+  moment the link dropped would otherwise keep commanding raw/stale stick position straight to
+  the surfaces for as long as failsafe was active -- silently defeating the self-leveling
+  `FAILSAFE_MODE` is specifically meant to provide, for all three procedures. `mixer.c` now defers
+  to failsafe whenever it's genuinely active, regardless of switch state.
+
+Also: `processRxModes()` (TASK_RX, ~33Hz) and `failsafeUpdateState()` (the 10ms scheduler path)
+are independently scheduled with no guaranteed ordering. `core.c`'s per-cycle `BOXRTH`/
+`BOXGPSRESCUE` re-evaluation would otherwise clobber `RTH_MODE` back off on any cycle where the
+pilot's switch itself isn't engaged (the normal case during a real signal loss) -- `core.c` now
+explicitly defers to failsafe.c for the duration of its own GPS-rescue phase.
+
+No unit test coverage exists for failsafe, leveling, airborne detection, or GPS navigation --
+verified with a full build and by tracing the state machine for each `failsafe_procedure`/
+`failsafe_switch_mode` combination; bench-test (props off) before trusting this in the field.
+
+### GPS RTH/loiter altitude hold was commanding the wrong pitch direction
+
+`updateGpsNav()`'s altitude term (`gps_nav.c`) computed `pitchDdeg = altitudeKp * (targetAltitude -
+currentAltitude)` and fed it straight into the pitch target, positive when below target. Pitch in
+this codebase's convention is positive **nose-down** (bench-confirmed in `autohover.c`: `+900`
+drives the elevator toward nose-down, `-900` is the physically-vertical nose-up target -- the same
+convention `attitude.raw[]`/`navAngle[]` use throughout, see `leveling.c`'s
+`calcLevelErrorAngle()`). So being below target altitude commanded nose-**down**, diving further
+away from it, and being above target commanded nose-up, climbing further away -- actively
+divergent, not just ineffective. This affected both `BOXRTH`/`BOXLOITER` (already live) and the
+new GPS-rescue failsafe procedure above, which now depends on this same code with no pilot able to
+intervene. The roll/bearing term was unaffected (already fixed in #139); only the pitch/altitude
+term was inverted. Fixed by negating it. Added `GpsNavAltitudeTest` to `gps_nav_unittest.cc`
+(below/above/at target, and clamping to `maxPitchAngleDeg`); confirmed the new tests fail without
+the fix and pass with it.
+
+### GPS RTH/Loiter could navigate on a stale position, and wouldn't resume after a fix drop
+
+Two bugs found in code review of the GPS Navigation work above, both in `gps_nav.c`:
+
+- `navIsHealthy()` checked `gpsIsHealthy()` (GPS frames are being received) and satellite count,
+  but not `STATE(GPS_FIX)`. `gpsIsHealthy()` says nothing about whether the last frame was
+  actually a fix, and UBLOX PVT sets `gpsSol.numSat` from the frame's `numSV` field
+  unconditionally, independent of `fixType`/`NAV_STATUS_FIX_VALID` -- so a receiver could report a
+  healthy satellite count with no valid fix at all, and RTH/Loiter would keep commanding bank/pitch
+  toward `gpsSol.llh.lat/lon` using that stale or invalid position. Fixed by requiring
+  `STATE(GPS_FIX)` too.
+- When GPS did become unhealthy, `updateGpsNav()` called `navStop()`, but `fc/core.c`'s
+  `wasRthActive`/`wasLoiterActive` switch-latch only calls `navRthStart()`/`navLoiterStart()`
+  again on the mode switch's off->on edge -- so once `nav.active` was cleared, it stayed cleared
+  (RTH_MODE/LOITER_MODE remained flagged "on", but nav commanded nothing) until the pilot cycled
+  the switch, even after GPS recovered. Fixed by zeroing the commanded bank/pitch on a health loss
+  instead of stopping nav outright, so it resumes toward the original target the moment health
+  returns, with no pilot action needed.
+
+Added `GpsNavHealthTest` to `gps_nav_unittest.cc` (healthy satellite count with no fix commands
+nothing; nav resumes toward the original target after a fix is lost and reacquired, without
+restarting).
+
+Also: `src/test/Makefile` unconditionally passed a few clang-only warning flags
+(`-Wno-c99-extensions`, `-Wno-reorder`, `-Wno-error=unused-command-line-argument`) that GCC
+rejects as unrecognized under `-Werror`, breaking `make test CC=gcc CXX=g++` on a machine without
+clang installed (the comment right above them already said they were clang-specific; they just
+weren't gated). Now gated behind `ifeq ($(CC),clang)`. Also fixed a latent MinGW portability gap
+in `gps_nav_unittest.cc`'s own test stub: `M_PI` isn't standard C++ and needs a platform-specific
+feature-test macro that MinGW's `<cmath>` doesn't define by default -- replaced with a local
+literal.
+
+### MSP_FAILSAFE_CONFIG / MSP_SET_FAILSAFE_CONFIG gain `failsafe_recovery_delay`
+
+Found while wiring up Configurator/Lua-suite UI for the failsafe stage-2 work above: this MSP
+pair only ever carried six of the seven `failsafeConfig_t` fields (`failsafe_delay`,
+`failsafe_off_delay`, `failsafe_throttle`, `failsafe_switch_mode`, `failsafe_throttle_low_delay`,
+`failsafe_procedure`) -- `failsafe_recovery_delay` (how long a recovered RX link must stay good
+before re-arming is allowed, `failsafeState.rxDataRecoveryPeriod`) was CLI-only, with no MSP
+path at all. Appended as a 7th field (U16) on both messages. `MSP_SET_FAILSAFE_CONFIG` only reads
+it when present (`sbufBytesRemaining(src) >= 2`, same pattern used elsewhere in `msp.c`, e.g.
+`MSP_SET_TELEMETRY_CONFIG`), so older clients that only send the original six fields are
+unaffected.
+
+### New MSP command: `gpsNavConfig` (BOXRTH/BOXLOITER/GPS-rescue tuning)
+
+`gpsNavConfig_t` (`PG_GPS_NAV` -- `nav_rth_altitude`, `nav_loiter_radius`, `nav_loiter_direction`,
+`nav_max_bank_angle`, `nav_max_pitch_angle`, `nav_min_sats`, `nav_bearing_kp`, `nav_altitude_kp`)
+had no MSP command at all -- CLI-only, so `BOXRTH`/`BOXLOITER` and, since the change above,
+`FAILSAFE_PROCEDURE_GPS_RESCUE`, were all untunable from the Configurator or the Lua suite even
+though they were flyable. New MSPv2 pair, `MSP2_WING_GPS_NAV_CONFIG`/
+`MSP2_WING_SET_GPS_NAV_CONFIG` (`0x5F16`/`0x5F17`, next free ID after
+`MSP2_WING_CRSF_SENSORS_STATUS`), one flat 12-byte record matching `gpsNavConfig_t`'s field order
+exactly. No existing MSP surface changed.
+
+### New custom-telemetry sensor: GPS fix type
+
+The only existing way to see GPS fix state over CRSF/S.Port was `armdisableflags`' GPS bit
+(`ARMING_DISABLED_GPS`) -- and that bit permanently clears the first time the model is ever armed
+(`WAS_EVER_ARMED`), so it stops reflecting reality right when GPS Rescue/RTH actually needs a
+live answer. Added `TELEM_GPS_FIX_TYPE` (custom-telemetry sensor id 119, next free id after
+`TELEM_TV_PROFILE`; ids 92-94 stay reserved, heli rescue/governor removed, not reused): `0` = no
+fix, `1` = fix, `2` = fix + home captured, read straight off `STATE(GPS_FIX)`/`STATE(GPS_FIX_HOME)`
+every time it's polled. Registered in both `crsf.c` (appId `0x112C` -- `0x112B` is taken by the Lua
+suite's synthetic GPS Longitude sensor split out of `0x1125` GPS Coord -- after the
+existing GPS block `0x1121`-`0x112A`) and `smartport.c` (appId `0x5124`, next free id after
+`ARMING_DISABLE_FLAGS`, which also covers FPort/FPort2 -- `smartport.c` already serves
+`FSSP_MSPC_FRAME_FPORT` frames on the same sensor table). Not added to any other telemetry
+protocol.
+
+### GPS RESCUE switch removed (was a redundant alias for GPS RTH)
+
+`BOXGPSRESCUE` and `BOXRTH` drove the identical fixed-wing RTH controller
+(`navRthStart()`/`gps_nav.c`) -- the old multirotor hover-descent GPS Rescue algorithm was
+disconnected from both switches earlier (see "Flight-controller failsafe stage 2" above). Two
+switches for the same behavior was confusing, and the prearm GPS-fix check only recognized the
+legacy `BOXGPSRESCUE`/failsafe-procedure trigger, so a craft wired with only `BOXRTH` -- the
+natural fixed-wing choice -- got no GPS-fix protection at all (already fixed separately).
+
+`BOXGPSRESCUE` is now retired: `msp_box.c` no longer registers it (permanentId 46 reserved, not
+reused), so it no longer appears in the Modes tab or any MSP box list. The `boxId_e` enum slot is
+kept and marked reserved (`fc/rc_modes.h`), matching this codebase's existing convention for
+retired boxes (`BOXRESCUE`, `BOXOSD`, `BOXVTXPITMODE`, etc.) -- no renumbering, so existing saved
+configs aren't affected. Any leftover `BOXGPSRESCUE` mode-activation-condition from an older
+config is now cleared unconditionally on load.
+
+The Failsafe tab's Stage 2 "GPS Rescue" *procedure* (`FAILSAFE_PROCEDURE_GPS_RESCUE`) is
+unaffected -- it's a separate config value that also drives the RTH controller automatically on
+signal loss, and still works exactly as before.

@@ -40,6 +40,7 @@
 
 #include "drivers/light_led.h"
 #include "drivers/time.h"
+#include "drivers/crsf_sensors.h"
 
 #include "io/beeper.h"
 #include "io/dashboard.h"
@@ -106,8 +107,22 @@ uint8_t GPS_svinfo_cno[GPS_SV_MAXSATS_M8N];
 #define GPS_BAUDRATE_CHANGE_DELAY (200)
 // Timeout for waiting ACK/NAK in GPS task cycles (0.25s at 100Hz)
 #define UBLOX_ACK_TIMEOUT_MAX_COUNT (25)
+// After this many consecutive failed init cycles, stop re-initialising the
+// serial port continuously and only retry every GPS_LOST_COMM_RETRY_DELAY.
+#define GPS_LOST_COMM_FAST_RETRIES (2 * GPS_INIT_ENTRIES)
+#define GPS_LOST_COMM_RETRY_DELAY (30000)
 
 static serialPort_t *gpsPort;
+
+// MSP-fed GPS (gpsConfig()->provider == GPS_MSP) never runs through
+// gpsNewData()/gpsPort, so unlike UBLOX/NMEA it never engages the
+// GPS_STATE_RECEIVING_DATA communication-lost watchdog below (explicitly
+// skipped for it, same as FBUS/CRSF). It relies entirely on the
+// controlling MSP client to keep sending MSP_SET_RAW_GPS -- if that client
+// stops (crash, disconnect) there's nothing else to notice, so track
+// staleness here ourselves. See gpsMspDataReceived() and its call site in
+// gpsUpdate().
+static uint32_t mspGpsLastUpdateMs;
 
 typedef struct gpsInitData_s {
     uint8_t index;
@@ -293,6 +308,14 @@ static bool gpsNewFrameNMEA(char c);
 static bool gpsNewFrameUBLOX(uint8_t data);
 #endif
 
+// Only reconfigure the UART if the baud rate actually changes
+static void gpsSetBaudRate(uint32_t baudRate)
+{
+    if (serialGetBaudRate(gpsPort) != baudRate) {
+        serialSetBaudRate(gpsPort, baudRate);
+    }
+}
+
 static void gpsSetState(gpsState_e state)
 {
     gpsData.lastMessage = millis();
@@ -318,11 +341,25 @@ bool gpsUsesFbusTransport(void)
 #endif
 }
 
+bool gpsUsesCrsfTransport(void)
+{
+#ifdef USE_CRSF_SENSORS
+    if (gpsConfig()->provider != GPS_CRSF) {
+        return false;
+    }
+
+    return findSerialPortConfig(FUNCTION_CRSF_SENSORS) != NULL;
+#else
+    return false;
+#endif
+}
+
 void gpsInit(void)
 {
     gpsData.baudrateIndex = 0;
     gpsData.errors = 0;
     gpsData.timeouts = 0;
+    gpsData.lostCommCount = 0;
 
     memset(gpsPacketLog, 0x00, sizeof(gpsPacketLog));
 
@@ -331,7 +368,7 @@ void gpsInit(void)
 
     gpsData.lastMessage = millis();
 
-    if (gpsConfig()->provider == GPS_MSP || gpsUsesFbusTransport()) { // no serial port is used when GPS is fed by MSP or FBUS
+    if (gpsConfig()->provider == GPS_MSP || gpsUsesFbusTransport() || gpsUsesCrsfTransport()) { // no serial port is used when GPS is fed by MSP, FBUS or CRSF
         gpsSetState(GPS_STATE_INITIALIZED);
         return;
     }
@@ -381,7 +418,7 @@ void gpsInitNmea(void)
            }
            gpsData.state_ts = now;
            if (gpsData.state_position < 1) {
-               serialSetBaudRate(gpsPort, 4800);
+               gpsSetBaudRate(4800);
                gpsData.state_position++;
            } else if (gpsData.state_position < 2) {
                // print our FIXED init string for the baudrate we want to be at
@@ -401,7 +438,7 @@ void gpsInitNmea(void)
            }
            gpsData.state_ts = now;
            if (gpsData.state_position < 1) {
-               serialSetBaudRate(gpsPort, baudRates[gpsInitData[gpsData.baudrateIndex].baudrateIndex]);
+               gpsSetBaudRate(baudRates[gpsInitData[gpsData.baudrateIndex].baudrateIndex]);
                gpsData.state_position++;
            } else if (gpsData.state_position < 2) {
                serialPrint(gpsPort, "$PSRF103,00,6,00,0*23\r\n");
@@ -409,7 +446,7 @@ void gpsInitNmea(void)
            } else
 #else
            {
-               serialSetBaudRate(gpsPort, baudRates[gpsInitData[gpsData.baudrateIndex].baudrateIndex]);
+               gpsSetBaudRate(baudRates[gpsInitData[gpsData.baudrateIndex].baudrateIndex]);
            }
 #endif
                gpsSetState(GPS_STATE_RECEIVING_DATA);
@@ -605,7 +642,7 @@ void gpsInitUblox(void)
             break;
 
         case GPS_STATE_CHANGE_BAUD:
-            serialSetBaudRate(gpsPort, baudRates[gpsInitData[gpsData.baudrateIndex].baudrateIndex]);
+            gpsSetBaudRate(baudRates[gpsInitData[gpsData.baudrateIndex].baudrateIndex]);
 #if DEBUG_SERIAL_BAUD
             debug[0] = baudRates[gpsInitData[gpsData.baudrateIndex].baudrateIndex] / 100;
 #endif
@@ -782,16 +819,47 @@ void gpsUpdate(timeUs_t currentTimeUs)
         rescheduleTask(TASK_SELF, TASK_PERIOD_HZ(TASK_GPS_RATE));
     }
 
-    // GPS data received via MSP or FBUS
+    if (gpsUsesCrsfTransport()) {
+        crsfSensorsGpsData_t crsfGps;
+        if (crsfSensorsGetGpsData(&crsfGps)) {
+            gpsSol.llh.lat = crsfGps.latitude;
+            gpsSol.llh.lon = crsfGps.longitude;
+            gpsSol.llh.altCm = crsfGps.altitudeCm;
+            gpsSol.groundSpeed = crsfGps.groundspeedCmS;
+            gpsSol.groundCourse = crsfGps.headingDeg10;
+            gpsSol.numSat = crsfGps.satellites;
+            gpsSetFixState(crsfGps.satellites > 0);
+            GPS_update |= GPS_MSP_UPDATE;
+        } else {
+            // CRSF GPS never runs through the gpsPort/gpsNewData path, so it
+            // never engages the GPS_STATE_RECEIVING_DATA communication-lost
+            // watchdog below. crsfSensorsGetGpsData() already returns false
+            // once its own data has gone stale (crsf_sensors.c's
+            // sensorTimeoutMs) -- e.g. the GPS unit was unplugged -- so mirror
+            // that here instead of leaving GPS_FIX latched from the last
+            // frame we ever received.
+            gpsSol.numSat = 0;
+            gpsSetFixState(false);
+        }
+    }
+
+    // GPS data received via MSP, FBUS or CRSF
     if (GPS_update & GPS_MSP_UPDATE) {
-        if (gpsConfig()->provider == GPS_MSP || gpsUsesFbusTransport()) {
+        if (gpsConfig()->provider == GPS_MSP || gpsUsesFbusTransport() || gpsUsesCrsfTransport()) {
             gpsSetState(GPS_STATE_RECEIVING_DATA);
-            if (gpsUsesFbusTransport()) {
+            if (gpsUsesFbusTransport() || gpsUsesCrsfTransport()) {
                 sensorsSet(SENSOR_GPS);
             }
             onGpsNewData();
         }
         GPS_update &= ~GPS_MSP_UPDATE;
+    }
+
+    if (gpsConfig()->provider == GPS_MSP && mspGpsLastUpdateMs &&
+        millis() - mspGpsLastUpdateMs > GPS_TIMEOUT) {
+        gpsSol.numSat = 0;
+        gpsSetFixState(false);
+        mspGpsLastUpdateMs = 0; // fire once; wait for fresh data before checking again
     }
 
 #if DEBUG_UBLOX_INIT
@@ -808,31 +876,39 @@ void gpsUpdate(timeUs_t currentTimeUs)
         case GPS_STATE_INITIALIZING:
         case GPS_STATE_CHANGE_BAUD:
         case GPS_STATE_CONFIGURE:
-            // Skip hardware initialization for MSP and FBUS GPS (no serial port)
-            if (gpsConfig()->provider != GPS_MSP && !gpsUsesFbusTransport()) {
+            // Skip hardware initialization for MSP, FBUS and CRSF GPS (no serial port)
+            if (gpsConfig()->provider != GPS_MSP && !gpsUsesFbusTransport() && !gpsUsesCrsfTransport()) {
                 gpsInitHardware();
             }
             break;
 
         case GPS_STATE_LOST_COMMUNICATION:
+            gpsSol.numSat = 0;
+            DISABLE_STATE(GPS_FIX);
+            // No module answering - back off instead of re-initialising the UART forever
+            if (gpsData.lostCommCount >= GPS_LOST_COMM_FAST_RETRIES &&
+                millis() - gpsData.state_ts < GPS_LOST_COMM_RETRY_DELAY) {
+                break;
+            }
+            if (gpsData.lostCommCount < UINT8_MAX) {
+                gpsData.lostCommCount++;
+            }
             gpsData.timeouts++;
             if (gpsConfig()->autoBaud) {
                 // try another rate
                 gpsData.baudrateIndex++;
                 gpsData.baudrateIndex %= GPS_INIT_ENTRIES;
             }
-            gpsSol.numSat = 0;
-            DISABLE_STATE(GPS_FIX);
-            // Don't try to reinitialize MSP/FBUS GPS on timeout
-            if (gpsConfig()->provider != GPS_MSP && !gpsUsesFbusTransport()) {
+            // Don't try to reinitialize MSP/FBUS/CRSF GPS on timeout
+            if (gpsConfig()->provider != GPS_MSP && !gpsUsesFbusTransport() && !gpsUsesCrsfTransport()) {
                 gpsSetState(GPS_STATE_INITIALIZING);
             }
             break;
 
         case GPS_STATE_RECEIVING_DATA:
             // check for no data/gps timeout/cable disconnection etc
-            // Skip timeout check for MSP/FBUS GPS (data comes from other sources)
-            if (gpsConfig()->provider != GPS_MSP && !gpsUsesFbusTransport()) {
+            // Skip timeout check for MSP/FBUS/CRSF GPS (data comes from other sources)
+            if (gpsConfig()->provider != GPS_MSP && !gpsUsesFbusTransport() && !gpsUsesCrsfTransport()) {
                 if (millis() - gpsData.lastMessage > GPS_TIMEOUT) {
                     gpsSetState(GPS_STATE_LOST_COMMUNICATION);
 #ifdef USE_GPS_UBLOX
@@ -925,6 +1001,7 @@ static void gpsNewData(uint16_t c)
         // new data received and parsed, we're in business
         gpsData.lastLastMessage = gpsData.lastMessage;
         gpsData.lastMessage = millis();
+        gpsData.lostCommCount = 0;
         sensorsSet(SENSOR_GPS);
     }
 
@@ -1900,5 +1977,11 @@ void gpsSetFixState(bool state)
     } else {
         DISABLE_STATE(GPS_FIX);
     }
+}
+
+// Called from msp.c's MSP_SET_RAW_GPS handler on every message received.
+void gpsMspDataReceived(void)
+{
+    mspGpsLastUpdateMs = millis();
 }
 #endif

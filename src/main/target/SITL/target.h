@@ -69,6 +69,16 @@
 #define USE_BARO
 #define USE_FAKE_BARO
 
+// Onboard dataflash for blackbox, backed by a file next to eeprom.bin
+// (drivers/flash_file.c). Blackbox logs to it by default, as on an FC with a
+// flash chip, and the Configurator can download and erase it over MSP.
+#define USE_FLASH_FILE
+#define FLASH_FILE_NAME "blackbox_flash.bin"
+#define USE_FLASHFS
+#define USE_FLASHFS_LOOP        // as on STM32_UNIFIED: rolling erase once the flash is full
+#define USE_FLASH_TOOLS         // CLI flash_read / flash_write / flash_erase_sector
+#define ENABLE_BLACKBOX_LOGGING_ON_SPIFLASH_BY_DEFAULT
+
 // Must match the synthetic timerHardware[] table in target.c (4 motor + 8 servo).
 #define USABLE_TIMER_CHANNEL_COUNT 12
 
@@ -135,15 +145,17 @@
 #undef USE_TELEMETRY_JETIEXBUS
 #undef USE_TELEMETRY_SRXL
 #undef USE_SERIALRX_JETIEXBUS
-#undef USE_VTX_COMMON
-#undef USE_VTX_CONTROL
-#undef USE_VTX_SMARTAUDIO
-#undef USE_VTX_TRAMP
-#undef USE_CAMERA_CONTROL
 #undef USE_GPS_RESCUE
 #undef USE_GPS_NAV
 #undef USE_SERIAL_4WAY_BLHELI_BOOTLOADER
 #undef USE_SERIAL_4WAY_SK_BOOTLOADER
+// USE_ESC_SENSOR stays on for SITL (see common_post.h) so ESC telemetry can
+// arrive over the FBUS master. What it drags in besides needs hardware SITL
+// doesn't have: ESC programming through the 4-way interface, and SRXL2 ESCs,
+// whose driver timestamps bytes with microsISR() from drivers/system.c.
+#undef USE_BLHELI_FORWARD_PROGRAMMING
+#undef USE_AM32_FORWARD_PROGRAMMING
+#undef USE_SRXL2_ESC
 
 #undef USE_I2C
 #undef USE_SPI
@@ -267,6 +279,16 @@ typedef struct {
     double velocity_xyz[3];             // m/s, earth frame
     double position_xyz[3];             // meters, NED from origin
 } fdm_packet;
+// Barometer reading from the simulator, sent on the same UDP port as
+// fdm_packet and told apart from it by its size alone. That keeps both
+// directions compatible: firmware without this struct drops the short
+// datagram (udpThread() only accepts sizeof(fdm_packet)), and a simulator
+// that never sends it leaves target.c on its ISA-from-position fallback.
+typedef struct {
+    double timestamp;                   // in seconds, same clock as fdm_packet
+    double pressure_pa;                 // absolute static pressure, Pa
+    double temperature_c;               // sensor temperature, degC
+} baro_packet;
 typedef struct {
     float motor_speed[4];   // normal: [0.0, 1.0], 3D: [-1.0, 1.0]
     float servo[8];         // wing control-surface outputs S1-S8, in microseconds (e.g. 1000-2000)

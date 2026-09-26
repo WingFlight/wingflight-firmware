@@ -96,6 +96,22 @@ bool baroDetect(baroDev_t *baroDev, baroSensor_e baroHardwareToUse)
     UNUSED(dev);
 #endif
 
+#ifdef USE_FAKE_BARO
+    // The fake baro sits on no bus, so it has to be caught before the bus
+    // switch below, which gives up on BUS_TYPE_NONE. Without this nothing ever
+    // called fakeBaroDetect() and SITL ran with no barometer at all, however
+    // faithfully the simulator fed fakeBaroSet(). NONE still means no baro, so
+    // baro-less behaviour stays testable.
+    if (baroHardware == BARO_DEFAULT || baroHardware == BARO_FAKE) {
+        if (fakeBaroDetect(baroDev)) {
+            detectedSensors[SENSOR_INDEX_BARO] = BARO_FAKE;
+            sensorsSet(SENSOR_BARO);
+            return true;
+        }
+        return false;
+    }
+#endif
+
     switch (barometerConfig()->baro_busType) {
 #ifdef USE_I2C
     case BUS_TYPE_I2C:
@@ -221,6 +237,7 @@ bool baroDetect(baroDev_t *baroDev, baroSensor_e baroHardwareToUse)
         }
 #endif
         FALLTHROUGH;
+    case BARO_FAKE:     // handled before the bus switch, where the target has one
     case BARO_NONE:
         baroHardware = BARO_NONE;
         break;
@@ -265,6 +282,13 @@ void baroStartCalibration(void)
 void baroSetGroundLevel(void)
 {
     baroSetCalibrationCycles(SET_GROUND_LEVEL_BARO_CYCLES);
+}
+
+void baroSetExternalAltitude(int32_t altitudeCm)
+{
+    baro.baroAltitude = altitudeCm;
+    baroReady = true;
+    calibCycles = 0;
 }
 
 void performBaroCalibrationCycle(void)

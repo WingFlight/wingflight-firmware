@@ -60,6 +60,7 @@ typedef struct gpsData_s {
     uint32_t state_ts;              // timestamp for last state_position increment
     uint8_t state;                  // GPS thread state. Used for detecting cable disconnects and configuring attached devices
     uint8_t baudrateIndex;          // index into auto-detecting or current baudrate
+    uint8_t lostCommCount;          // consecutive init cycles without a valid message
 
     uint8_t ackWaitingMsgId;        // Message id when waiting for ACK
     uint8_t ackTimeoutCounter;      // Ack timeout counter
@@ -134,6 +135,7 @@ void gpsUpdate(timeUs_t currentTimeUs);
 bool gpsNewFrame(uint8_t c);
 bool gpsIsHealthy(void); // Check for healthy communications
 bool gpsUsesFbusTransport(void);
+bool gpsUsesCrsfTransport(void);
 struct serialPort_s;
 void gpsEnablePassthrough(struct serialPort_s *gpsPassthroughPort);
 void onGpsNewData(void);
@@ -141,3 +143,4 @@ void GPS_reset_home_position(void);
 void GPS_calc_longitude_scaling(int32_t lat);
 void GPS_distance_cm_bearing(int32_t *currentLat1, int32_t *currentLon1, int32_t *destinationLat2, int32_t *destinationLon2, uint32_t *dist, int32_t *bearing);
 void gpsSetFixState(bool state);
+void gpsMspDataReceived(void);

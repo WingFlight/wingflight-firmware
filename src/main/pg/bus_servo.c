@@ -23,9 +23,12 @@
 
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER) || defined(USE_BUS_SERVO)
 
+#include "common/maths.h"
 #include "config/config_reset.h"
 #include "io/serial.h"
 #include "pg/bus_servo.h"
+#include "pg/fbus_master.h"
+#include "pg/sbus_output.h"
 #include "pg/pg_ids.h"
 
 PG_REGISTER_WITH_RESET_TEMPLATE(busServoConfig_t, busServoConfig, PG_BUS_SERVO_CONFIG, 0);
@@ -37,6 +40,41 @@ PG_RESET_TEMPLATE(busServoConfig_t, busServoConfig,
 bool hasBusServosConfigured(void)
 {
     return findSerialPortConfig(FUNCTION_SBUS_OUT) || findSerialPortConfig(FUNCTION_FBUS_MASTER);
+}
+
+static const uint8_t busOutChannelCounts[BUS_OUT_CHANNELS_COUNT] = { 8, 12, 16, 24 };
+
+uint8_t busOutChannelCount(uint8_t setting)
+{
+    return busOutChannelCounts[MIN(setting, BUS_OUT_CHANNELS_COUNT - 1)];
+}
+
+uint8_t busOutChannelSetting(uint8_t count)
+{
+    for (int i = 0; i < BUS_OUT_CHANNELS_COUNT; i++) {
+        if (busOutChannelCounts[i] == count) {
+            return i;
+        }
+    }
+    return BUS_OUT_CHANNELS_COUNT;
+}
+
+uint8_t getBusServoOutputCount(void)
+{
+    // SBUS and F.Bus output can run at the same time; bus servo N is channel
+    // N on both, so the count is the larger of the two.
+    uint8_t count = 0;
+#ifdef USE_FBUS_MASTER
+    if (findSerialPortConfig(FUNCTION_FBUS_MASTER)) {
+        count = MAX(count, busOutChannelCount(fbusMasterConfig()->channels));
+    }
+#endif
+#ifdef USE_SBUS_OUTPUT
+    if (findSerialPortConfig(FUNCTION_SBUS_OUT)) {
+        count = MAX(count, MIN(busOutChannelCount(sbusOutConfig()->channels), 16));
+    }
+#endif
+    return count;
 }
 
 // Storage for bus servo outputs (SBUS/FBUS)

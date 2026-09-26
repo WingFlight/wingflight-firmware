@@ -65,7 +65,6 @@
 #include "io/gps.h"
 #include "io/ledstrip.h"
 #include "io/serial.h"
-#include "io/vtx.h"
 
 #include "msp/msp_box.h"
 
@@ -80,7 +79,6 @@
 #include "pg/rx.h"
 #include "pg/rx_spi.h"
 #include "pg/sdcard.h"
-#include "pg/vtx_table.h"
 #include "pg/freq.h"
 #include "pg/system.h"
 #include "pg/pilot.h"
@@ -227,15 +225,27 @@ static void validateAndFixConfig(void)
 #if defined(USE_GPS)
     const serialPortConfig_t *gpsSerial = findSerialPortConfig(FUNCTION_GPS);
     const bool gpsUsesFbus = gpsUsesFbusTransport();
+    const bool gpsUsesCrsf = gpsUsesCrsfTransport();
+    // A FBUS/SPORT or CRSF sensors port assigned but not yet matched by gps_provider is still
+    // accepted as a valid transport (like a bare FUNCTION_GPS port is). Otherwise the feature
+    // gets disabled before the user can ever reach the GPS tab (which requires the feature to
+    // already be enabled) to pick the matching provider.
+    const bool gpsHasFbusPort =
+        findSerialPortConfig(FUNCTION_FBUS_MASTER) != NULL ||
+        findSerialPortConfig(FUNCTION_SPORT_MASTER) != NULL;
+    const bool gpsHasCrsfPort = findSerialPortConfig(FUNCTION_CRSF_SENSORS) != NULL;
     const bool gpsHasValidTransport =
         gpsConfig()->provider == GPS_MSP ||
         gpsSerial != NULL ||
-        gpsUsesFbus;
+        gpsUsesFbus ||
+        gpsUsesCrsf ||
+        gpsHasFbusPort ||
+        gpsHasCrsfPort;
 
     if (gpsConfig()->provider == GPS_MSP && gpsSerial) {
         serialRemovePort(gpsSerial->identifier);
     }
-    if (gpsUsesFbus && gpsSerial) {
+    if ((gpsUsesFbus || gpsUsesCrsf) && gpsSerial) {
         serialRemovePort(gpsSerial->identifier);
     }
 #endif
@@ -333,10 +343,13 @@ static void validateAndFixConfig(void)
             failsafeConfigMutable()->failsafe_procedure = FAILSAFE_PROCEDURE_DROP_IT;
         }
 #endif
+    }
 
-        if (isModeActivationConditionPresent(BOXGPSRESCUE)) {
-            removeModeActivationCondition(BOXGPSRESCUE);
-        }
+    // BOXGPSRESCUE was a redundant switch alias for BOXRTH and has been retired (fc/rc_modes.h) --
+    // unconditionally (not just when GPS is unconfigured) clear any leftover assignment from an
+    // older config so it doesn't sit around as a dead switch mapping.
+    if (isModeActivationConditionPresent(BOXGPSRESCUE)) {
+        removeModeActivationCondition(BOXGPSRESCUE);
     }
 
 #if defined(USE_ESC_SENSOR)
@@ -435,9 +448,6 @@ static void validateAndFixConfig(void)
     featureDisableImmediate(FEATURE_SOFTSERIAL);
 #endif
 
-#ifndef USE_RANGEFINDER
-    featureDisableImmediate(FEATURE_RANGEFINDER);
-#endif
 
 #ifndef USE_TELEMETRY
     featureDisableImmediate(FEATURE_TELEMETRY);
@@ -545,22 +555,6 @@ static void validateAndFixConfig(void)
 #endif // USE_DSHOT_TELEMETRY
 #endif // USE_DSHOT
 
-#if defined(USE_VTX_COMMON) && defined(USE_VTX_TABLE)
-    // reset vtx band, channel, power if outside range specified by vtxtable
-    if (vtxSettingsConfig()->channel > vtxTableConfig()->channels) {
-        vtxSettingsConfigMutable()->channel = 0;
-        if (vtxSettingsConfig()->band > 0) {
-            vtxSettingsConfigMutable()->freq = 0; // band/channel determined frequency can't be valid anymore
-        }
-    }
-    if (vtxSettingsConfig()->band > vtxTableConfig()->bands) {
-        vtxSettingsConfigMutable()->band = 0;
-        vtxSettingsConfigMutable()->freq = 0; // band/channel determined frequency can't be valid anymore
-    }
-    if (vtxSettingsConfig()->power > vtxTableConfig()->powerLevels) {
-        vtxSettingsConfigMutable()->power = 0;
-    }
-#endif
 
     validateAndFixRatesSettings();  // constrain the various rates settings to limits imposed by the rates type
 
@@ -568,12 +562,8 @@ static void validateAndFixConfig(void)
     validateAndFixSmartFuelConfig();
 #endif
 
-    // validate that the minimum battery cell voltage is less than the maximum cell voltage
-    // reset to defaults if not
-    if (batteryConfig()->vbatmincellvoltage >=  batteryConfig()->vbatmaxcellvoltage) {
-        batteryConfigMutable()->vbatmincellvoltage = VBAT_CELL_VOLTAGE_DEFAULT_MIN;
-        batteryConfigMutable()->vbatmaxcellvoltage = VBAT_CELL_VOLTAGE_DEFAULT_MAX;
-    }
+    // validate the battery profiles (cell count, cell voltage ranges)
+    validateAndFixBatteryConfig();
 
 #if defined(TARGET_VALIDATECONFIG)
     // This should be done at the end of the validation

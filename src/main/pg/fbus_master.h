@@ -21,8 +21,6 @@
 #include "pg/pg.h"
 #include "pg/bus_servo.h"
 
-#define FBUS_MASTER_CHANNELS 16
-
 #define FBUS_MIN 192
 #define FBUS_MAX 1792
 
@@ -46,6 +44,10 @@ typedef struct fbusMasterConfig_s {
     // List of sensor physical IDs to forward to the receiver (max 8)
     // 0xFF = disabled slot, 0..FBUS_MAX_PHYS_ID = valid physical IDs
     uint8_t forwardedSensors[FBUS_MASTER_MAX_FORWARDED_SENSORS];
+
+    // Channel count, busOutChannels_e (pg/bus_servo.h): 8 uses the 8-channel
+    // frame, 12 and 16 the 16-channel frame, 24 the 24-channel frame.
+    uint8_t channels;
 
 } fbusMasterConfig_t;
 

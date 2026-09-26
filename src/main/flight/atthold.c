@@ -76,6 +76,12 @@ bool attHoldIsHolding(int axis)
     return quatHoldIsHolding(&attHold, axis);
 }
 
+// Scale on the normal I-term decay for this axis -- see quatHoldIDecayScale.
+float attHoldIDecayScale(int axis)
+{
+    return quatHoldIDecayScale(&attHold, axis);
+}
+
 float attHoldApply(int axis, float pidSetpoint)
 {
     if (!attHold.Active) {
@@ -85,6 +91,12 @@ float attHoldApply(int axis, float pidSetpoint)
     const float setpoint = quatHoldApply(&attHold, axis, pidSetpoint);
 
     DEBUG_AXIS(ATTHOLD, axis, 0, setpoint);
+
+    int16_t holdDebug[QUATHOLD_DEBUG_COUNT];
+    quatHoldGetDebug(&attHold, axis, holdDebug);
+    for (int i = 0; i < QUATHOLD_DEBUG_COUNT; i++) {
+        DEBUG_AXIS(ATTHOLD, axis, 1 + i, holdDebug[i]);
+    }
 
     return setpoint;
 }

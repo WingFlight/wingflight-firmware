@@ -204,7 +204,7 @@ static uint8_t crsfInputFrameCRC(const crsfInputFrameBuf_t *frame, uint8_t paylo
 
 // Called from the RX task (rx/rx.c, via rx_input_backup.c's poll loop), not an
 // ISR - safe to do the heavier decode/convert work here.
-static bool crsfInputUpdate(float *channels, uint8_t channelCount)
+static uint8_t crsfInputUpdate(float *channels, uint8_t channelCount)
 {
     crsfInputFrameBuf_t frame;
     bool haveFrame = false;
@@ -218,7 +218,7 @@ static bool crsfInputUpdate(float *channels, uint8_t channelCount)
     }
 
     if (!haveFrame) {
-        return false;
+        return 0;
     }
 
     // Widened to uint16_t and MIN-capped exactly like the ISR's own
@@ -230,7 +230,7 @@ static bool crsfInputUpdate(float *channels, uint8_t channelCount)
     // crsfInputPendingFrameReady).
     const uint16_t fullFrameLength = MIN((uint16_t)frame.frame.frameLength + CRSF_INPUT_FRAME_LENGTH_ADDRESS + CRSF_INPUT_FRAME_LENGTH_FRAMELENGTH, CRSF_INPUT_FRAME_SIZE_MAX);
     if (fullFrameLength < CRSF_INPUT_FRAME_LENGTH_ADDRESS + CRSF_INPUT_FRAME_LENGTH_FRAMELENGTH + CRSF_INPUT_FRAME_LENGTH_TYPE_CRC) {
-        return false;
+        return 0;
     }
 
     // Derived from the already-capped fullFrameLength, not frame.frame.type's
@@ -239,7 +239,7 @@ static bool crsfInputUpdate(float *channels, uint8_t channelCount)
     // safely within the payload[] array's bounds.
     const uint8_t payloadLength = (uint8_t)(fullFrameLength - CRSF_INPUT_FRAME_LENGTH_ADDRESS - CRSF_INPUT_FRAME_LENGTH_FRAMELENGTH - CRSF_INPUT_FRAME_LENGTH_TYPE_CRC);
     if (crsfInputFrameCRC(&frame, payloadLength) != frame.bytes[fullFrameLength - 1]) {
-        return false;
+        return 0;
     }
 
     // Anything other than an RC_CHANNELS_PACKED frame addressed to the FC -
@@ -251,7 +251,7 @@ static bool crsfInputUpdate(float *channels, uint8_t channelCount)
     if (frame.frame.deviceAddress != CRSF_INPUT_ADDRESS_FLIGHT_CONTROLLER
         || frame.frame.type != CRSF_INPUT_FRAMETYPE_RC_CHANNELS_PACKED
         || frame.frame.frameLength != (CRSF_INPUT_FRAME_RC_CHANNELS_PAYLOAD_SIZE + CRSF_INPUT_FRAME_LENGTH_TYPE_CRC)) {
-        return false;
+        return 0;
     }
 
     // Copied into a genuine object rather than pointer-cast straight out of
@@ -280,7 +280,7 @@ static bool crsfInputUpdate(float *channels, uint8_t channelCount)
         channels[i] = CRSF_INPUT_RC_CHANNEL_SCALE * (float)crsfInputChannelData[i] + CRSF_INPUT_RC_CHANNEL_OFFSET;
     }
 
-    return true;
+    return channelCount;
 }
 
 bool rxInputBackupCrsfInit(rxInputBackupOps_t *ops)

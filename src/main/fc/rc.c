@@ -225,14 +225,26 @@ void updateRcCommands(void)
 
 INIT_CODE void initRcProcessing(void)
 {
-    rc.deadband[0] = rcControlsConfig()->rc_deadband;
-    rc.deadband[1] = rcControlsConfig()->rc_deadband;
+    rc.deadband[0] = rcControlsConfig()->rc_roll_deadband;
+    rc.deadband[1] = rcControlsConfig()->rc_pitch_deadband;
     rc.deadband[2] = rcControlsConfig()->rc_yaw_deadband;
     rc.deadband[3] = 0;
 
     for (int axis = 0; axis < 4; axis++) {
         rc.center[axis] = rcControlsConfig()->rc_center;
-        rc.range[axis] = rcControlsConfig()->rc_deflection - rc.deadband[axis];
+
+        // rc_deflection and the deadbands are independently range-checked by the
+        // CLI (deflection >= 250, deadband <= 100), which keeps this positive
+        // today, but MSP_SET_RC_CONFIG writes both with no cross-validation
+        // at all (see msp.c) and applies live via MSP_EEPROM_WRITE -> readEEPROM()
+        // -> initRcProcessing(), no reboot required. A deadband at or beyond
+        // deflection would zero or invert this range, and data / rc.range[axis]
+        // below would then divide by zero or go negative -- a 0/0 is a NaN that
+        // constrainf() cannot clamp away by comparison alone (see isfinitef()
+        // in common/maths.h). Floor it so the division is always well-defined;
+        // any resulting large-but-finite deflection is still caught by the
+        // normal constrainf(..., -1, 1) below.
+        rc.range[axis] = MAX(rcControlsConfig()->rc_deflection - rc.deadband[axis], 1.0f);
     }
 
     if (rcControlsConfig()->rc_min_throttle)

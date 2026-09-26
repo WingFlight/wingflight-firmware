@@ -47,7 +47,6 @@
 #include "drivers/light_ws2811strip.h"
 #include "drivers/serial.h"
 #include "drivers/time.h"
-#include "drivers/vtx_common.h"
 
 #include "config/config.h"
 #include "fc/core.h"
@@ -629,99 +628,6 @@ static void applyLedWarningLayer(bool updateNow, timeUs_t *timer)
     }
 }
 
-#ifdef USE_VTX_COMMON
-static void applyLedVtxLayer(bool updateNow, timeUs_t *timer)
-{
-    static uint16_t frequency = 0;
-    static uint8_t power = 255;
-    static unsigned vtxStatus = UINT32_MAX;
-    static uint8_t showSettings = false;
-    static uint16_t lastCheck = 0;
-    static bool blink = false;
-
-    const vtxDevice_t *vtxDevice = vtxCommonDevice();
-    if (!vtxDevice) {
-        return;
-    }
-
-    uint8_t band = 255, channel = 255;
-    uint16_t check = 0;
-
-    if (updateNow) {
-        // keep counter running, so it stays in sync with vtx
-        vtxCommonGetBandAndChannel(vtxDevice, &band, &channel);
-        vtxCommonGetPowerIndex(vtxDevice, &power);
-        vtxCommonGetStatus(vtxDevice, &vtxStatus);
-
-        frequency = vtxCommonLookupFrequency(vtxDevice, band, channel);
-
-        // check if last vtx values have changed.
-        check = ((vtxStatus & VTX_STATUS_PIT_MODE) ? 1 : 0) + (power << 1) + (band << 4) + (channel << 8);
-        if (!showSettings && check != lastCheck) {
-            // display settings for 3 seconds.
-            showSettings = 15;
-        }
-        lastCheck = check; // quick way to check if any settings changed.
-
-        if (showSettings) {
-            showSettings--;
-        }
-        blink = !blink;
-        *timer += HZ_TO_US(5); // check 5 times a second
-    }
-
-    hsvColor_t color = {0, 0, 0};
-    if (showSettings) { // show settings
-        uint8_t vtxLedCount = 0;
-        for (int i = 0; i < ledCounts.count && vtxLedCount < 6; ++i) {
-            const ledConfig_t *ledConfig = &ledStripStatusModeConfig()->ledConfigs[i];
-            if (ledGetOverlayBit(ledConfig, LED_OVERLAY_VTX)) {
-                if (vtxLedCount == 0) {
-                    color.h = HSV(GREEN).h;
-                    color.s = HSV(GREEN).s;
-                    color.v = blink ? 15 : 0; // blink received settings
-                }
-                else if (vtxLedCount > 0 && power >= vtxLedCount && !(vtxStatus & VTX_STATUS_PIT_MODE)) { // show power
-                    color.h = HSV(ORANGE).h;
-                    color.s = HSV(ORANGE).s;
-                    color.v = blink ? 15 : 0; // blink received settings
-                }
-                else { // turn rest off
-                    color.h = HSV(BLACK).h;
-                    color.s = HSV(BLACK).s;
-                    color.v = HSV(BLACK).v;
-                }
-                setLedHsv(i, &color);
-                ++vtxLedCount;
-            }
-        }
-    }
-    else { // show frequency
-        // calculate the VTX color based on frequency
-        int colorIndex = 0;
-        if (frequency <= 5672) {
-            colorIndex = COLOR_WHITE;
-        } else if (frequency <= 5711) {
-            colorIndex = COLOR_RED;
-        } else if (frequency <= 5750) {
-            colorIndex = COLOR_ORANGE;
-        } else if (frequency <= 5789) {
-            colorIndex = COLOR_YELLOW;
-        } else if (frequency <= 5829) {
-            colorIndex = COLOR_GREEN;
-        } else if (frequency <= 5867) {
-            colorIndex = COLOR_BLUE;
-        } else if (frequency <= 5906) {
-            colorIndex = COLOR_DARK_VIOLET;
-        } else {
-            colorIndex = COLOR_DEEP_PINK;
-        }
-        hsvColor_t color = ledStripStatusModeConfig()->colors[colorIndex];
-        color.v = (vtxStatus & VTX_STATUS_PIT_MODE) ? (blink ? 15 : 0) : 255; // blink when in pit mode
-        applyLedHsv(LED_MOV_OVERLAY(LED_FLAG_OVERLAY(LED_OVERLAY_VTX)), &color);
-    }
-}
-#endif
 
 static void applyLedBatteryLayer(bool updateNow, timeUs_t *timer)
 {
@@ -1099,9 +1005,6 @@ typedef enum {
     timLarson,
     timRing,
     timIndicator,
-#ifdef USE_VTX_COMMON
-    timVtx,
-#endif
 #ifdef USE_GPS
     timGps,
 #endif
@@ -1134,9 +1037,6 @@ static applyLayerFn_timed* layerTable[] = {
     [timGps] = &applyLedGpsLayer,
 #endif
     [timWarning] = &applyLedWarningLayer,
-#ifdef USE_VTX_COMMON
-    [timVtx] = &applyLedVtxLayer,
-#endif
     [timIndicator] = &applyLedIndicatorLayer,
     [timRing] = &applyLedThrustRingLayer
 };
@@ -1160,9 +1060,6 @@ void updateRequiredOverlay(void)
     disabledTimerMask |= !isOverlayTypeUsed(LED_OVERLAY_BLINK) << timBlink;
     disabledTimerMask |= !isOverlayTypeUsed(LED_OVERLAY_LARSON_SCANNER) << timLarson;
     disabledTimerMask |= !isOverlayTypeUsed(LED_OVERLAY_WARNING) << timWarning;
-#ifdef USE_VTX_COMMON
-    disabledTimerMask |= !isOverlayTypeUsed(LED_OVERLAY_VTX) << timVtx;
-#endif
     disabledTimerMask |= !isOverlayTypeUsed(LED_OVERLAY_INDICATOR) << timIndicator;
 }
 

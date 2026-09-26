@@ -80,6 +80,12 @@ bool tvHoldIsHolding(int axis)
     return quatHoldIsHolding(&tvHold, axis);
 }
 
+// Scale on the normal I-term decay for this axis -- see quatHoldIDecayScale.
+float tvHoldIDecayScale(int axis)
+{
+    return quatHoldIDecayScale(&tvHold, axis);
+}
+
 float tvHoldApply(int axis, float pidSetpoint)
 {
     if (!tvHold.Active) {
@@ -89,6 +95,12 @@ float tvHoldApply(int axis, float pidSetpoint)
     const float setpoint = quatHoldApply(&tvHold, axis, pidSetpoint);
 
     DEBUG_AXIS(TVHOLD, axis, 0, setpoint);
+
+    int16_t holdDebug[QUATHOLD_DEBUG_COUNT];
+    quatHoldGetDebug(&tvHold, axis, holdDebug);
+    for (int i = 0; i < QUATHOLD_DEBUG_COUNT; i++) {
+        DEBUG_AXIS(TVHOLD, axis, 1 + i, holdDebug[i]);
+    }
 
     return setpoint;
 }

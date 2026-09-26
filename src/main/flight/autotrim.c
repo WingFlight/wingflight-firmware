@@ -57,12 +57,6 @@
 
 #define AUTOTRIM_WINDOW_MS 2000
 
-typedef enum {
-    AUTOTRIM_IDLE,
-    AUTOTRIM_COLLECTING,
-    AUTOTRIM_SAVE_PENDING,
-} autoTrimState_e;
-
 typedef struct {
     autoTrimState_e state;
     timeMs_t        startedAt;
@@ -82,13 +76,18 @@ static bool isTrimmableServo(int servo)
         const mixerRule_t *rule = mixerRules(i);
 
         if (rule->oper &&
-            rule->output == MIXER_SERVO_OFFSET + servo &&
+            rule->output == mixerServoOutputIndex(servo) &&
             rule->input >= MIXER_IN_STABILIZED_ROLL && rule->input <= MIXER_IN_STABILIZED_YAW) {
             return true;
         }
     }
 
     return false;
+}
+
+autoTrimState_e autoTrimGetState(void)
+{
+    return autoTrim.state;
 }
 
 void autoTrimUpdate(void)

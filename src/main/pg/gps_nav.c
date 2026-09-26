@@ -27,7 +27,7 @@
 PG_REGISTER_WITH_RESET_TEMPLATE(gpsNavConfig_t, gpsNavConfig, PG_GPS_NAV, 0);
 
 PG_RESET_TEMPLATE(gpsNavConfig_t, gpsNavConfig,
-    .loiterRadiusM = 75,
+    .loiterRadiusM = 100, // a 25 deg bank at 20 m/s turns on about an 85 m radius
     .loiterDirection = NAV_LOITER_CW,
     .rthAltitudeM = 50,
     .minSats = 8,
@@ -35,4 +35,7 @@ PG_RESET_TEMPLATE(gpsNavConfig_t, gpsNavConfig,
     .maxPitchAngleDeg = 15,
     .bearingKp = 200,   // 2.0 deg bank per deg bearing error
     .altitudeKp = 100,  // 1.0 deg pitch per meter altitude error
+    .altitudeKd = 200,  // 2.0 deg pitch per m/s climb rate
+    .throttle = 60,
+    .turnCoordination = 100,
 );

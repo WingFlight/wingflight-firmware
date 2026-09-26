@@ -128,11 +128,6 @@
 #undef USE_CRSF_V3
 
 #undef USE_RCDEVICE
-#undef USE_VTX_COMMON
-#undef USE_VTX_CONTROL
-#undef USE_VTX_SMARTAUDIO
-#undef USE_VTX_TRAMP
-#undef USE_CAMERA_CONTROL
 
 #undef USE_RX_FRSKY_SPI_D
 #undef USE_RX_FRSKY_SPI_X
@@ -237,6 +232,7 @@
 #undef USE_MULTI_GYRO
 #undef USE_FBUS_MASTER
 #undef USE_SPORT_MASTER
+#undef USE_CRSF_SENSORS
 #undef USE_BUS_SERVO
 
 // Remove drivers that are not supported by any existinting F411 boards
@@ -261,7 +257,6 @@
 #undef USE_SDCARD
 #undef USE_SDCARD_SPI
 
-#undef USE_RANGEFINDER
 
 #undef USE_GPS
 #undef USE_MAG
@@ -386,6 +381,7 @@
 #undef USE_AM32_FORWARD_PROGRAMMING
 #undef USE_FBUS_MASTER
 #undef USE_SPORT_MASTER
+#undef USE_CRSF_SENSORS
 #undef USE_BUS_SERVO
 
 #define USE_SPI_DEVICE_1

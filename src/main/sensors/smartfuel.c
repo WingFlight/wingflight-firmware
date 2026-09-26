@@ -25,8 +25,7 @@
 #include "fc/runtime_config.h"
 #include "fc/rc_controls.h"
 
-#include "flight/airborne.h"
-#include "flight/mixer.h"
+#include "flight/motors.h"
 
 #include "pg/battery.h"
 
@@ -80,9 +79,9 @@ void INIT_CODE validateAndFixSmartFuelConfig(void)
 {
     batteryConfig_t *config = batteryConfigMutable();
 
-    if (!isBatteryVoltageConfigured()) {
-        config->smartfuel_mode = SMARTFUEL_MODE_OFF;
-    }
+    // No voltage source is handled at runtime (smartFuelInit()), not by clearing the saved
+    // mode: a fresh config has no voltage source yet, and clearing it here would lose the
+    // default for good on the first save.
     if (config->smartfuel_mode >= SMARTFUEL_MODE_COUNT) {
         config->smartfuel_mode = SMARTFUEL_MODE_OFF;
     }
@@ -105,10 +104,11 @@ void INIT_CODE smartFuelInit(void)
 
     const float dT = 1.0f / batteryConfig()->vbatUpdateHz;
 
-    smartFuel.config.mode = batteryConfig()->smartfuel_mode;
+    // SmartFuel needs pack voltage in every mode; stay off until a voltage source is set.
+    smartFuel.config.mode = isBatteryVoltageConfigured() ? batteryConfig()->smartfuel_mode : SMARTFUEL_MODE_OFF;
 
-    smartFuel.config.vCellMin = batteryConfig()->vbatmincellvoltage / 100.0f;
-    smartFuel.config.vCellFull = batteryConfig()->vbatfullcellvoltage / 100.0f;
+    smartFuel.config.vCellMin = getBatteryMinCellVoltage() / 100.0f;
+    smartFuel.config.vCellFull = getBatteryFullCellVoltage() / 100.0f;
 
     smartFuel.config.voltageDropPerSample = (batteryConfig()->smartfuel_voltage_drop_rate / 1000.0f) * dT;
     smartFuel.config.chargeDropPerSample = (batteryConfig()->smartfuel_charge_drop_rate / 10000.0f) * dT;
@@ -133,16 +133,25 @@ static float smartFuelChargeLevelFromVoltage(float cellVoltage)
     return constrainf(1.0f / (1.0f + exp_approx(-12.0f * (scaledVoltage - 3.7f))), 0.0f, 1.0f);
 }
 
+// Voltage sag follows current, and on a wing current follows the motors. Use the motor outputs
+// actually being sent (after governor, AUTOHOVER assist and slew), averaged so the gain always
+// means "sag at full power on every motor". A model with no motor gets no compensation, and a
+// throttle channel that drives something else (airbrakes, say) can not inject any.
+// The gain is the sag, in volts per cell, expected at full power.
 static float smartFuelApplySagCompensation(float cellVoltage)
 {
-    if (isAirborne()) {
-        const float cyclic = getCyclicDeflection();
-        const float stickLoad = constrainf(cyclic * 0.2f, 0.0f, 1.0f);
-
-        cellVoltage += smartFuel.config.sagCompensation * stickLoad;
+    const uint8_t motorCount = getMotorCount();
+    if (motorCount == 0) {
+        return cellVoltage;
     }
 
-    return cellVoltage;
+    float load = 0.0f;
+    for (int i = 0; i < motorCount; i++) {
+        load += constrainf(getMotorOutput(i) / 1000.0f, 0.0f, 1.0f);
+    }
+    load /= motorCount;
+
+    return cellVoltage + smartFuel.config.sagCompensation * load;
 }
 
 static float smartFuelChargeLevelFromVoltageEstimation(float estimation)

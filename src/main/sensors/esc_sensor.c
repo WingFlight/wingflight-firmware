@@ -983,7 +983,9 @@ static void sendDShotTelemetryReqeust(timeMs_t currentTimeMs)
 
     dshotTriggerTimestamp = currentTimeMs;
 
+#ifdef USE_DSHOT
     getMotorDmaOutput(currentEsc)->protocolControl.requestTelemetry = true;
+#endif
 }
 
 static void blSelectNextEsc(void)
@@ -3661,7 +3663,7 @@ typedef struct {
     uint16_t    current_max;
     uint16_t    rpm;
     uint16_t    rpm_max;
-} __packed GraupnerTelemetryFrame_t;
+} __attribute__((__packed__)) GraupnerTelemetryFrame_t;
 
 
 static uint8_t graupnerCalculateChecksum(uint8_t *ptr, size_t length)
@@ -4542,7 +4544,7 @@ bool INIT_CODE escSensorInit(void)
 }
 
 // ESC telemetry wiring auto-detect - mirrors rx/rx.c's rxSerialTrial*
-// mechanism (see docs/rx-wiring-autodetect-design.md) applied to this port's
+// mechanism (see https://doc.wingflight.org/contributing/tech/rx-wiring-autodetect/) applied to this port's
 // halfDuplex/pinSwap instead. No `inverted` bit to test - escSensorInit()
 // above always opens SERIAL_NOT_INVERTED - so this is a 4-combo search.
 //

@@ -118,7 +118,7 @@ static void smartPortSensorEncodeLon(__unused telemetrySensor_t *sensor, smartPo
     if (gpsSol.llh.lon < 0)
         lon |= BIT(30);
 
-    payload->data = lon | BIT(31);
+    payload->data = lon | (1U << 31);
 }
 
 static void smartPortSensorEncodeHeading(__unused telemetrySensor_t *sensor, smartPortPayload_t *payload)
@@ -138,6 +138,17 @@ static void smartPortSensorEncodeAdjValue(__unused telemetrySensor_t *sensor, sm
     payload->data = getAdjustmentsRangeValue();
 }
 
+typedef struct {
+    uint16_t sensor_id;
+    uint16_t app_id;
+    uint16_t fast_interval;
+    uint16_t slow_interval;
+    uint16_t ratio_den;
+    uint8_t fast_weight;
+    uint8_t slow_weight;
+    telemetryEncode_f encode;
+} smartPortSensorDefinition_t;
+
 #define TLM_SENSOR(NAME, APPID, FAST, SLOW, WF, WS, DENOM, ENC) \
     { \
         .sensor_id = TELEM_##NAME, \
@@ -146,16 +157,11 @@ static void smartPortSensorEncodeAdjValue(__unused telemetrySensor_t *sensor, sm
         .slow_interval = (SLOW), \
         .fast_weight = (WF), \
         .slow_weight = (WS), \
-        .ratio_num = 1, \
         .ratio_den = (DENOM), \
-        .value = 0, \
-        .bucket = 0, \
-        .update = 0, \
-        .active = false, \
         .encode = (telemetryEncode_f)smartPortSensorEncode##ENC, \
     }
 
-static telemetrySensor_t smartportTelemetrySensors[] =
+static const smartPortSensorDefinition_t smartportSensorDefinitions[] =
 {
     TLM_SENSOR(HEARTBEAT,               0x5100,  1000,  1000,   0,   0,   0,    INT),
 
@@ -230,14 +236,10 @@ static telemetrySensor_t smartportTelemetrySensors[] =
 
     TLM_SENSOR(MODEL_ID,                0x5120,   200,  3000,   0,   0,   0,    INT),
     TLM_SENSOR(FLIGHT_MODE,             0x5121,   100,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(ARMING_FLAGS,            0x5122,   100,  3000,   1,   1,   0,    INT),
     TLM_SENSOR(ARMING_DISABLE_FLAGS,    0x5123,   100,  3000,   1,   1,   0,    INT),
 
-    TLM_SENSOR(PID_PROFILE,             0x5130,   200,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(RATES_PROFILE,           0x5131,   200,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(LED_PROFILE,             0x5132,   200,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(BATTERY_PROFILE,         0x5133,   200,  3000,   1,   1,   0,    INT),
-    TLM_SENSOR(TV_PROFILE,              0x5134,   200,  3000,   1,   1,   0,    INT),
+    TLM_SENSOR(SYSTEM_STATUS,           0x5140,   100,  3000,   1,   1,   0,    INT),
+    TLM_SENSOR(SYSTEM_CONFIG,           0x5141,   500,  3000,   1,   1,   0,    INT),
 
     TLM_SENSOR(ADJFUNC,                 0x5110,   200,  3000,   1,   1,   0,    AdjFunc),
     TLM_SENSOR(ADJFUNC,                 0x5111,   200,  3000,   1,   1,   0,    AdjValue),
@@ -249,9 +251,13 @@ static telemetrySensor_t smartportTelemetrySensors[] =
     TLM_SENSOR(DEBUG_4,                 0x52F4,   100,  3000,   1,  10,   0,    INT),
     TLM_SENSOR(DEBUG_5,                 0x52F5,   100,  3000,   1,  10,   0,    INT),
     TLM_SENSOR(DEBUG_6,                 0x52F6,   100,  3000,   1,  10,   0,    INT),
-    TLM_SENSOR(DEBUG_7,                 0x52F8,   100,  3000,   1,  10,   0,    INT),
+    TLM_SENSOR(DEBUG_7,                 0x52F7,   100,  3000,   1,  10,   0,    INT),
 };
 
+
+// GPS_COORD and ADJFUNC each expand one configured sensor into two wire entries.
+// Keep only selected sensors in RAM; the full catalogue stays in flash.
+static telemetrySensor_t smartportTelemetrySensors[TELEM_SENSOR_SLOT_COUNT + 2];
 
 void smartPortSendByte(uint8_t c, uint16_t *checksum, serialPort_t *port)
 {
@@ -346,15 +352,29 @@ static void smartPortWriteFrameInternal(const smartPortPayload_t *payload)
     smartPortWriteFrameSerial(payload, smartPortSerialPort, 0);
 }
 
-static void INIT_CODE initSmartPortSensors(void)
+STATIC_UNIT_TESTED void INIT_CODE initSmartPortSensors(void)
 {
-    telemetryScheduleInit(smartportTelemetrySensors, ARRAYLEN(smartportTelemetrySensors), false);
+    size_t sensorCount = 0;
+    memset(smartportTelemetrySensors, 0, sizeof(smartportTelemetrySensors));
 
-    for (size_t i = 0; i < ARRAYLEN(smartportTelemetrySensors); i++) {
-        telemetrySensor_t * sensor = &smartportTelemetrySensors[i];
-        if (telemetrySensorActive(sensor->sensor_id)) {
+    for (size_t i = 0; i < ARRAYLEN(smartportSensorDefinitions); i++) {
+        const smartPortSensorDefinition_t *definition = &smartportSensorDefinitions[i];
+        telemetrySensor_t *sensor = NULL;
+        if (telemetrySensorActive(definition->sensor_id)) {
             for (size_t j = 0; j < TELEM_SENSOR_SLOT_COUNT; j++) {
-                if (telemetryConfig()->telemetry_sensors[j] == sensor->sensor_id) {
+                if (telemetryConfig()->telemetry_sensors[j] == definition->sensor_id) {
+                    if (!sensor) {
+                        sensor = &smartportTelemetrySensors[sensorCount++];
+                        sensor->sensor_id = definition->sensor_id;
+                        sensor->app_id = definition->app_id;
+                        sensor->fast_interval = definition->fast_interval;
+                        sensor->slow_interval = definition->slow_interval;
+                        sensor->fast_weight = definition->fast_weight;
+                        sensor->slow_weight = definition->slow_weight;
+                        sensor->ratio_num = 1;
+                        sensor->ratio_den = definition->ratio_den;
+                        sensor->encode = definition->encode;
+                    }
                     if (telemetryConfig()->telemetry_interval[j])
                         sensor->fast_interval = telemetryConfig()->telemetry_interval[j];
                     if (sensor->slow_interval > 1000)
@@ -364,6 +384,8 @@ static void INIT_CODE initSmartPortSensors(void)
             }
         }
     }
+
+    telemetryScheduleInit(smartportTelemetrySensors, sensorCount, false);
 }
 
 bool INIT_CODE initSmartPortTelemetry(void)

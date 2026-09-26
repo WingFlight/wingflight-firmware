@@ -73,6 +73,7 @@
 #include "io/serial.h"
 
 #include "pg/blackbox.h"
+#include "pg/gps_nav.h"
 #include "pg/motor.h"
 #include "pg/rx.h"
 
@@ -85,7 +86,6 @@
 #include "sensors/compass.h"
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
-#include "sensors/rangefinder.h"
 
 #define BLACKBOX_SHUTDOWN_TIMEOUT_MILLIS 200
 
@@ -1658,9 +1658,9 @@ static bool blackboxWriteSysinfo(void)
             }
             );
 
-        BLACKBOX_PRINT_HEADER_LINE("vbatcellvoltage", "%u,%u,%u",           batteryConfig()->vbatmincellvoltage,
-                                                                            batteryConfig()->vbatwarningcellvoltage,
-                                                                            batteryConfig()->vbatmaxcellvoltage);
+        BLACKBOX_PRINT_HEADER_LINE("vbatcellvoltage", "%u,%u,%u",           getBatteryMinCellVoltage(),
+                                                                            getBatteryWarningCellVoltage(),
+                                                                            getBatteryMaxCellVoltage());
         BLACKBOX_PRINT_HEADER_LINE("vbatref", "%u",                         vbatReference);
 
         BLACKBOX_PRINT_HEADER_CUSTOM(
@@ -1721,9 +1721,26 @@ static bool blackboxWriteSysinfo(void)
                                                                             currentPidProfile->cross_axis_relax_level,
                                                                             currentPidProfile->cross_axis_relax_cutoff,
                                                                             currentPidProfile->cross_axis_relax_pitch_strength);
+#ifdef USE_GPS_NAV
+        // Order: loiter_radius, loiter_direction, rth_altitude, min_sats, max_bank_angle,
+        // max_pitch_angle, bearing_kp, altitude_kp, altitude_kd, throttle, turn_coordination
+        BLACKBOX_PRINT_HEADER_LINE("gps_nav", "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+                                                                            gpsNavConfig()->loiterRadiusM,
+                                                                            gpsNavConfig()->loiterDirection,
+                                                                            gpsNavConfig()->rthAltitudeM,
+                                                                            gpsNavConfig()->minSats,
+                                                                            gpsNavConfig()->maxBankAngleDeg,
+                                                                            gpsNavConfig()->maxPitchAngleDeg,
+                                                                            gpsNavConfig()->bearingKp,
+                                                                            gpsNavConfig()->altitudeKp,
+                                                                            gpsNavConfig()->altitudeKd,
+                                                                            gpsNavConfig()->throttle,
+                                                                            gpsNavConfig()->turnCoordination);
+#endif
 
 
-        BLACKBOX_PRINT_HEADER_LINE("deadband", "%d",                        rcControlsConfig()->rc_deadband);
+        BLACKBOX_PRINT_HEADER_LINE("roll_deadband", "%d",                   rcControlsConfig()->rc_roll_deadband);
+        BLACKBOX_PRINT_HEADER_LINE("pitch_deadband", "%d",                  rcControlsConfig()->rc_pitch_deadband);
         BLACKBOX_PRINT_HEADER_LINE("yaw_deadband", "%d",                    rcControlsConfig()->rc_yaw_deadband);
 
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_GYRO_TO_USE, "%d",            gyroConfig()->gyro_to_use);
@@ -2016,6 +2033,11 @@ void blackboxErase(void)
         blackboxSetState(BLACKBOX_STATE_START_ERASE);
     }
 #endif
+}
+
+bool blackboxIsLogging(void)
+{
+    return blackboxState == BLACKBOX_STATE_RUNNING;
 }
 
 bool isBlackboxErased(void)

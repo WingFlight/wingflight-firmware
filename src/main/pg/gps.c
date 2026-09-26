@@ -33,5 +33,6 @@ PG_RESET_TEMPLATE(gpsConfig_t, gpsConfig,
     .gps_ublox_mode = UBLOX_AIRBORNE,
     .gps_set_home_point_once = false,
     .gps_use_3d_speed = false,
-    .sbas_integrity = false
+    .sbas_integrity = false,
+    .fbus_assumed_sats = 0
 );

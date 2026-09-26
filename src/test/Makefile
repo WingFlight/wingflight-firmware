@@ -149,6 +149,17 @@ gps_conversion_unittest_SRC := \
 		$(USER_DIR)/common/gps_conversion.c
 
 
+gps_nav_unittest_DEFINES := USE_GPS_NAV=
+
+gps_nav_unittest_SRC := \
+		$(USER_DIR)/flight/gps_nav.c \
+		$(USER_DIR)/pg/gps_nav.c \
+		$(USER_DIR)/pg/pg.c \
+		$(USER_DIR)/common/crc.c \
+		$(USER_DIR)/common/maths.c \
+		$(USER_DIR)/common/streambuf.c
+
+
 io_serial_unittest_SRC := \
 		$(USER_DIR)/io/serial.c \
 		$(USER_DIR)/pg/serial.c \
@@ -393,10 +404,16 @@ pid_unittest_SRC :=  \
 		$(USER_DIR)/pg/mixer.c \
 		$(USER_DIR)/pg/rates.c
 
+airborne_unittest_SRC := \
+        $(USER_DIR)/common/filter.c \
+        $(USER_DIR)/common/maths.c \
+        $(USER_DIR)/flight/airborne.c
+
 trainer_unittest_SRC := \
 		$(USER_DIR)/common/filter.c \
 		$(USER_DIR)/common/maths.c \
 		$(USER_DIR)/flight/trainer.c \
+		$(USER_DIR)/flight/leveling.c \
 		$(USER_DIR)/pg/accel.c \
 		$(USER_DIR)/pg/pid.c \
 		$(USER_DIR)/pg/pg.c \
@@ -405,23 +422,6 @@ trainer_unittest_SRC := \
 
 trainer_unittest_DEFINES := \
 		USE_ACRO_TRAINER=
-
-#vtx_unittest_SRC := \
-#		$(USER_DIR)/fc/core.c \
-#		$(USER_DIR)/fc/dispatch.c \
-#		$(USER_DIR)/fc/rc_controls.c \
-#		$(USER_DIR)/fc/rc_modes.c \
-#		$(USER_DIR)/fc/runtime_config.c \
-#		$(USER_DIR)/drivers/vtx_common.c \
-#		$(USER_DIR)/drivers/vtx_table.c \
-#		$(USER_DIR)/io/vtx_control.c \
-#		$(USER_DIR)/io/vtx.c \
-#		$(USER_DIR)/common/bitarray.c
-#
-#vtx_unittest_DEFINES := \
-#		USE_VTX_COMMON= \
-#		USE_VTX_CONTROL= \
-#		USE_VTX_SMARTAUDIO=
 
 rx_spi_spektrum_unittest_SRC := \
 		$(USER_DIR)/rx/cyrf6936_spektrum.c \
@@ -474,6 +474,27 @@ flashfs_unittest_SRC := \
 flashfs_unittest_DEFINES := \
 		USE_FLASHFS_LOOP
 
+telemetry_sensors_unittest_SRC := \
+        $(USER_DIR)/telemetry/smartport.c \
+        $(USER_DIR)/telemetry/crsf.c \
+        $(USER_DIR)/common/streambuf.c \
+        $(USER_DIR)/common/crc.c \
+        $(USER_DIR)/telemetry/telemetry.c \
+        $(USER_DIR)/rx/frsky_crc.c
+
+telemetry_sensors_unittest_DEFINES := \
+        USE_TELEMETRY \
+        USE_TELEMETRY_CRSF \
+        USE_TELEMETRY_SMARTPORT
+
+telemetry_status_unittest_SRC := \
+        $(USER_DIR)/telemetry/status.c
+
+telemetry_status_unittest_DEFINES := \
+        USE_GPS_NAV= \
+        USE_RX_INPUT_BACKUP= \
+        USE_ACRO_TRAINER=
+
 setpoint_unittest_SRC := \
         $(USER_DIR)/flight/setpoint.c \
 		$(USER_DIR)/build/debug.c \
@@ -509,6 +530,13 @@ COMMON_FLAGS = \
 	-MMD -MP \
 	-pipe \
 	-Wno-missing-field-initializers
+
+ifeq ($(CC),clang)
+COMMON_FLAGS += \
+	-Wno-error=unused-command-line-argument \
+	-Wno-c99-extensions \
+	-Wno-reorder
+endif
 
 CC_VERSION = $(shell $(CC) -dumpversion)
 CXX_VERSION = $(shell $(CXX) -dumpversion)

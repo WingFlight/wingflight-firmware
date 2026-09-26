@@ -47,11 +47,18 @@ typedef enum {
 #endif
     TABLE_CURRENT_METER,
     TABLE_VOLTAGE_METER,
+#ifdef USE_CRSF_SENSORS
+    TABLE_CRSF_SENSORS_BATTERY_SOURCE,
+#endif
 #ifdef USE_SERIAL_RX
     TABLE_SERIAL_RX,
 #endif
 #ifdef USE_RX_INPUT_BACKUP
     TABLE_RX_INPUT_BACKUP_PROVIDER,
+#endif
+#if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
+    TABLE_BUS_OUT_CHANNELS,
+    TABLE_SBUS_OUT_CHANNELS,
 #endif
 #ifdef USE_RX_SPI
     TABLE_RX_SPI,
@@ -69,15 +76,9 @@ typedef enum {
     TABLE_LPF_TYPE,
     TABLE_FAILSAFE,
     TABLE_FAILSAFE_SWITCH_MODE,
-#ifdef USE_CAMERA_CONTROL
-    TABLE_CAMERA_CONTROL_MODE,
-#endif
     TABLE_BUS_TYPE,
 #ifdef USE_RX_FRSKY_SPI
     TABLE_RX_FRSKY_SPI_A1_SOURCE,
-#endif
-#ifdef USE_RANGEFINDER
-    TABLE_RANGEFINDER_HARDWARE,
 #endif
 #ifdef USE_GYRO_OVERFLOW_CHECK
     TABLE_GYRO_OVERFLOW_CHECK,
@@ -90,9 +91,6 @@ typedef enum {
 #endif
 #ifdef USE_MULTI_GYRO
     TABLE_GYRO,
-#endif
-#ifdef USE_VTX_COMMON
-    TABLE_VTX_LOW_POWER_DISARM,
 #endif
     TABLE_GYRO_HARDWARE,
 #ifdef USE_SDCARD
@@ -235,7 +233,6 @@ extern const char * const lookupTableBaroHardware[];
 extern const char * const lookupTableMagHardware[];
 //extern const uint8_t lookupTableMagHardwareEntryCount;
 
-extern const char * const lookupTableRangefinderHardware[];
 
 extern const char * const lookupTableLedstripColors[];
 

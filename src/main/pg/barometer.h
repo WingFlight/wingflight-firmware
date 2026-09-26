@@ -36,6 +36,8 @@ typedef enum {
     BARO_BMP388     = 7,
     BARO_DPS310     = 8,
     BARO_BMP581     = 9,
+    // SITL only: pressure/temperature fed by the simulator (drivers/barometer/barometer_fake.c)
+    BARO_FAKE       = 10,
 } baroSensor_e;
 
 

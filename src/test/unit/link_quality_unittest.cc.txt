@@ -611,7 +611,7 @@ extern "C" {
         return 0.0;
     }
 
-    bool isUpright(void) { return true; }
+    bool isAttitudeEstimateReady(void) { return true; }
 
     float getMotorOutputLow(void) { return 1000.0; }
 

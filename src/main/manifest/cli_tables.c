@@ -66,7 +66,7 @@ const char * const featureNames[] = {
     [ 6] = "SOFTSERIAL",
     [ 7] = "GPS",
     [ 8] = "",
-    [ 9] = "RANGEFINDER",
+    [ 9] = "",
     [10] = "TELEMETRY",
     [11] = "",
     [12] = "",
@@ -126,14 +126,22 @@ const char * const mixerInputNames[MIXER_INPUT_COUNT] = {
     [MIXER_IN_STABILIZED_TV_ROLL]    = "TR",
     [MIXER_IN_STABILIZED_TV_PITCH]   = "TP",
     [MIXER_IN_STABILIZED_TV_YAW]     = "TY",
+    [MIXER_IN_RC_CHANNEL_19]         = "CH19",
+    [MIXER_IN_RC_CHANNEL_20]         = "CH20",
+    [MIXER_IN_RC_CHANNEL_21]         = "CH21",
+    [MIXER_IN_RC_CHANNEL_22]         = "CH22",
+    [MIXER_IN_RC_CHANNEL_23]         = "CH23",
+    [MIXER_IN_RC_CHANNEL_24]         = "CH24",
 };
 
-// Servos S1..S26, then motors M1..M4.
+// In mixer output order (flight/mixer.h): servos S1..S26, motors M1..M4,
+// then servos S27..S32. Targets with fewer outputs use a prefix.
 const char * const mixerOutputNames[] = {
     "-", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14", "S15", "S16", "S17", "S18",
-    "S19", "S20", "S21", "S22", "S23", "S24", "S25", "S26", "M1", "M2", "M3", "M4"
+    "S19", "S20", "S21", "S22", "S23", "S24", "S25", "S26", "M1", "M2", "M3", "M4",
+    "S27", "S28", "S29", "S30", "S31", "S32"
 };
-STATIC_ASSERT(ARRAYLEN(mixerOutputNames) == MIXER_OUTPUT_COUNT, mixer_output_names_match_output_count);
+STATIC_ASSERT(ARRAYLEN(mixerOutputNames) >= MIXER_OUTPUT_COUNT, mixer_output_names_too_short);
 
 const char * const mixerOpNames[MIXER_OP_COUNT] = {
     [MIXER_OP_NUL]     = "-",

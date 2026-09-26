@@ -35,13 +35,11 @@
 #include "drivers/bus_i2c.h"
 #include "drivers/bus_spi.h"
 #include "drivers/dshot_command.h"
-#include "drivers/camera_control.h"
 #include "drivers/light_led.h"
 #include "drivers/mco.h"
 #include "drivers/pinio.h"
 #include "drivers/sdio.h"
-#include "drivers/vtx_common.h"
-#include "drivers/vtx_table.h"
+#include "drivers/crsf_sensors.h"
 
 #include "config/config.h"
 #include "fc/rc_rates.h"
@@ -66,9 +64,6 @@
 #include "io/gps.h"
 #include "io/ledstrip.h"
 #include "io/serial.h"
-#include "io/vtx.h"
-#include "io/vtx_control.h"
-#include "io/vtx_rtc6705.h"
 
 #include "pg/adc.h"
 #include "pg/beeper.h"
@@ -92,7 +87,6 @@
 #include "pg/rx_spi_cc2500.h"
 #include "pg/rx_spi_expresslrs.h"
 #include "pg/sdcard.h"
-#include "pg/vtx_io.h"
 #include "pg/usb.h"
 #include "pg/scheduler.h"
 #include "pg/sdio.h"
@@ -105,6 +99,7 @@
 #include "pg/fbus_master.h"
 #include "pg/rx_input_backup.h"
 #include "pg/sport_master.h"
+#include "pg/crsf_sensors.h"
 #include "pg/bus_servo.h"
 
 #include "rx/a7105_flysky.h"
@@ -122,7 +117,6 @@
 #include "sensors/compass.h"
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
-#include "sensors/rangefinder.h"
 
 #include "telemetry/frsky_hub.h"
 #include "telemetry/ibus_shared.h"
@@ -149,18 +143,13 @@ const char * const lookupTableGyroHardware[] = {
 #if defined(USE_SENSOR_NAMES) || defined(USE_BARO)
 // sync with baroSensor_e
 const char * const lookupTableBaroHardware[] = {
-    "AUTO", "NONE", "BMP085", "MS5611", "BMP280", "LPS", "QMP6988", "BMP388", "DPS310", "BMP581"
+    "AUTO", "NONE", "BMP085", "MS5611", "BMP280", "LPS", "QMP6988", "BMP388", "DPS310", "BMP581", "FAKE"
 };
 #endif
 #if defined(USE_SENSOR_NAMES) || defined(USE_MAG)
 // sync with magSensor_e
 const char * const lookupTableMagHardware[] = {
     "AUTO", "NONE", "HMC5883", "AK8975", "AK8963", "QMC5883", "LIS3MDL", "MAG_MPU925X_AK8963"
-};
-#endif
-#if defined(USE_SENSOR_NAMES) || defined(USE_RANGEFINDER)
-const char * const lookupTableRangefinderHardware[] = {
-    "NONE", "HCSR04", "TFMINI", "TF02"
 };
 #endif
 
@@ -193,7 +182,7 @@ static const char * const lookupTableGyro[] = {
 
 #ifdef USE_GPS
 static const char * const lookupTableGPSProvider[] = {
-    "NMEA", "UBLOX", "MSP", "FBUS"
+    "NMEA", "UBLOX", "MSP", "FBUS", "CRSF"
 };
 
 static const char * const lookupTableGPSSBASMode[] = {
@@ -255,6 +244,23 @@ static const char * const lookupTableRxInputBackupProvider[] = {
 };
 #endif
 
+#if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
+// Keep in sync with pg/bus_servo.h's busOutChannels_e (same order). SBUS
+// uses the first three entries only (no 24-channel SBUS frame).
+static const char * const lookupTableBusOutChannels[] = {
+    "8", "12", "16", "24",
+};
+#endif
+
+#ifdef USE_CRSF_SENSORS
+// Keep in sync with pg/crsf_sensors.h's crsfSensorsBatterySource_e.
+static const char * const lookupTableCrsfSensorsBatterySource[] = {
+    "AUTO",
+    "CURRENT",
+    "VOLTAGE",
+};
+#endif
+
 #ifdef USE_RX_SPI
 // sync with rx_spi_protocol_e
 static const char * const lookupTableRxSpi[] = {
@@ -290,13 +296,6 @@ static const char * const lookupTableGyroHardwareLpf[] = {
 #endif
 };
 
-#ifdef USE_CAMERA_CONTROL
-static const char * const lookupTableCameraControlMode[] = {
-    "HARDWARE_PWM",
-    "SOFTWARE_PWM",
-    "DAC"
-};
-#endif
 
 static const char * const lookupTablePwmProtocol[] = {
     "PWM", "ONESHOT125", "ONESHOT42", "MULTISHOT", "RESERVED",
@@ -373,11 +372,6 @@ static const char * const lookupTableNavLoiterDirection[] = {
 };
 #endif
 
-#ifdef USE_VTX_COMMON
-static const char * const lookupTableVtxLowPowerDisarm[] = {
-    "OFF", "ON", "UNTIL_FIRST_ARM"
-};
-#endif
 
 #ifdef USE_SDCARD
 static const char * const lookupTableSdcardMode[] = {
@@ -512,11 +506,18 @@ const lookupTableEntry_t lookupTables[] = {
 #endif
     LOOKUP_TABLE_ENTRY(batteryCurrentSourceNames),
     LOOKUP_TABLE_ENTRY(batteryVoltageSourceNames),
+#ifdef USE_CRSF_SENSORS
+    LOOKUP_TABLE_ENTRY(lookupTableCrsfSensorsBatterySource),
+#endif
 #ifdef USE_SERIAL_RX
     LOOKUP_TABLE_ENTRY(lookupTableSerialRX),
 #endif
 #ifdef USE_RX_INPUT_BACKUP
     LOOKUP_TABLE_ENTRY(lookupTableRxInputBackupProvider),
+#endif
+#if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
+    LOOKUP_TABLE_ENTRY(lookupTableBusOutChannels),
+    { lookupTableBusOutChannels, BUS_OUT_CHANNELS_16 + 1 },  // SBUS: 8, 12, 16
 #endif
 #ifdef USE_RX_SPI
     LOOKUP_TABLE_ENTRY(lookupTableRxSpi),
@@ -534,15 +535,9 @@ const lookupTableEntry_t lookupTables[] = {
     LOOKUP_TABLE_ENTRY(lookupTableLowpassType),
     LOOKUP_TABLE_ENTRY(lookupTableFailsafe),
     LOOKUP_TABLE_ENTRY(lookupTableFailsafeSwitchMode),
-#ifdef USE_CAMERA_CONTROL
-    LOOKUP_TABLE_ENTRY(lookupTableCameraControlMode),
-#endif
     LOOKUP_TABLE_ENTRY(lookupTableBusType),
 #ifdef USE_RX_FRSKY_SPI
     LOOKUP_TABLE_ENTRY(lookupTableFrskySpiA1Source),
-#endif
-#ifdef USE_RANGEFINDER
-    LOOKUP_TABLE_ENTRY(lookupTableRangefinderHardware),
 #endif
 #ifdef USE_GYRO_OVERFLOW_CHECK
     LOOKUP_TABLE_ENTRY(lookupTableGyroOverflowCheck),
@@ -555,9 +550,6 @@ const lookupTableEntry_t lookupTables[] = {
 #endif
 #ifdef USE_MULTI_GYRO
     LOOKUP_TABLE_ENTRY(lookupTableGyro),
-#endif
-#ifdef USE_VTX_COMMON
-    LOOKUP_TABLE_ENTRY(lookupTableVtxLowPowerDisarm),
 #endif
     LOOKUP_TABLE_ENTRY(lookupTableGyroHardware),
 #ifdef USE_SDCARD
@@ -840,10 +832,10 @@ const clivalue_t valueTable[] = {
 
     { "bat_profile",                VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, BATTERY_PROFILE_COUNT - 1 }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, batteryProfile) },
     { "bat_capacity",               VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = BATTERY_PROFILE_COUNT, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, batteryCapacity) },
-    { "vbat_max_cell_voltage",      VAR_UINT16  | MASTER_VALUE, .config.minmaxUnsigned = { VBAT_CELL_VOTAGE_RANGE_MIN, VBAT_CELL_VOTAGE_RANGE_MAX }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbatmaxcellvoltage) },
-    { "vbat_full_cell_voltage",     VAR_UINT16  | MASTER_VALUE, .config.minmaxUnsigned = { VBAT_CELL_VOTAGE_RANGE_MIN, VBAT_CELL_VOTAGE_RANGE_MAX }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbatfullcellvoltage) },
-    { "vbat_min_cell_voltage",      VAR_UINT16  | MASTER_VALUE, .config.minmaxUnsigned = { VBAT_CELL_VOTAGE_RANGE_MIN, VBAT_CELL_VOTAGE_RANGE_MAX }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbatmincellvoltage) },
-    { "vbat_warning_cell_voltage",  VAR_UINT16  | MASTER_VALUE, .config.minmaxUnsigned = { VBAT_CELL_VOTAGE_RANGE_MIN, VBAT_CELL_VOTAGE_RANGE_MAX }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbatwarningcellvoltage) },
+    { "vbat_max_cell_voltage",      VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = BATTERY_PROFILE_COUNT, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbatmaxcellvoltage) },
+    { "vbat_full_cell_voltage",     VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = BATTERY_PROFILE_COUNT, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbatfullcellvoltage) },
+    { "vbat_min_cell_voltage",      VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = BATTERY_PROFILE_COUNT, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbatmincellvoltage) },
+    { "vbat_warning_cell_voltage",  VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = BATTERY_PROFILE_COUNT, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbatwarningcellvoltage) },
     { "vbat_hysteresis",            VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbathysteresis) },
     { "current_meter",              VAR_UINT8  | HARDWARE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_CURRENT_METER }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, currentMeterSource) },
     { "battery_meter",              VAR_UINT8  | HARDWARE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_VOLTAGE_METER }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, voltageMeterSource) },
@@ -852,7 +844,7 @@ const clivalue_t valueTable[] = {
     { "use_cbat_alerts",            VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, useConsumptionAlerts) },
     { "cbat_alert_percent",         VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, consumptionWarningPercentage) },
     { "vbat_cutoff_percent",        VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, lvcPercentage) },
-    { "battery_cell_count",         VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 24 }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, batteryCellCount) },
+    { "battery_cell_count",         VAR_UINT8  | MASTER_VALUE | MODE_ARRAY, .config.array.length = BATTERY_PROFILE_COUNT, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, batteryCellCount) },
     { "vbat_lpf_hz",                VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, UINT8_MAX }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbatLpfHz) },
     { "ibat_lpf_hz",                VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, UINT8_MAX }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, ibatLpfHz) },
     { "vbat_duration_for_warning",  VAR_UINT8  | MASTER_VALUE, .config.minmax = { 0, 150 }, PG_BATTERY_CONFIG, offsetof(batteryConfig_t, vbatDurationForWarning) },
@@ -975,6 +967,7 @@ const clivalue_t valueTable[] = {
     { "gps_ublox_mode",             VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_GPS_UBLOX_MODE }, PG_GPS_CONFIG, offsetof(gpsConfig_t, gps_ublox_mode) },
     { "gps_set_home_point_once",    VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_GPS_CONFIG, offsetof(gpsConfig_t, gps_set_home_point_once) },
     { "gps_use_3d_speed",           VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_GPS_CONFIG, offsetof(gpsConfig_t, gps_use_3d_speed) },
+    { "gps_fbus_assumed_sats",      VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 50 }, PG_GPS_CONFIG, offsetof(gpsConfig_t, fbus_assumed_sats) },
 
 #ifdef USE_GPS_RESCUE
     // PG_GPS_RESCUE
@@ -1018,6 +1011,9 @@ const clivalue_t valueTable[] = {
     { "nav_max_pitch_angle",        VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 5, 45 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, maxPitchAngleDeg) },
     { "nav_bearing_kp",             VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 1000 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, bearingKp) },
     { "nav_altitude_kp",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 1000 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, altitudeKp) },
+    { "nav_altitude_kd",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 1000 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, altitudeKd) },
+    { "nav_throttle",               VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, throttle) },
+    { "nav_turn_coordination",      VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 200 }, PG_GPS_NAV, offsetof(gpsNavConfig_t, turnCoordination) },
 #endif
 #endif
 
@@ -1029,7 +1025,8 @@ const clivalue_t valueTable[] = {
     { "rc_smoothness",              VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_smoothness) },
     { "rc_threshold",               VAR_UINT8  | MASTER_VALUE | MODE_ARRAY, .config.array.length = 3, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_threshold) },
 
-    { "deadband",                   VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_deadband) },
+    { "roll_deadband",              VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_roll_deadband) },
+    { "pitch_deadband",             VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_pitch_deadband) },
     { "yaw_deadband",               VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_yaw_deadband) },
 
 // PG_PID_CONFIG
@@ -1099,6 +1096,11 @@ const clivalue_t valueTable[] = {
     { "horizon_tilt_expert_mode",   VAR_UINT8  | PROFILE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_PID_PROFILE, offsetof(pidProfile_t, horizon.tilt_expert_mode) },
 
 #ifdef USE_ACRO_TRAINER
+    // Zero axis overrides inherit angle_level_limit / acro_trainer_angle_limit.
+    { "angle_roll_limit",           VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 90 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, angle_roll) },
+    { "angle_pitch_limit",          VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 75 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, angle_pitch) },
+    { "acro_trainer_roll_limit",    VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 90 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, trainer_roll) },
+    { "acro_trainer_pitch_limit",   VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 75 }, PG_ATTITUDE_LIMITS, offsetof(attitudeLimits_t, trainer_pitch) },
     { "acro_trainer_angle_limit",   VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 80 }, PG_PID_PROFILE, offsetof(pidProfile_t, trainer.angle_limit) },
     { "acro_trainer_lookahead_ms",  VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, trainer.lookahead_ms) },
     { "acro_trainer_gain",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 25, 255 }, PG_PID_PROFILE, offsetof(pidProfile_t, trainer.gain) },
@@ -1244,32 +1246,6 @@ const clivalue_t valueTable[] = {
     { "cpu_overclock",              VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OVERCLOCK }, PG_SYSTEM_CONFIG, offsetof(systemConfig_t, cpu_overclock) },
 #endif
 
-// PG_VTX_CONFIG
-#ifdef USE_VTX_COMMON
-    { "vtx_band",                   VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, VTX_TABLE_MAX_BANDS }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, band) },
-    { "vtx_channel",                VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, VTX_TABLE_MAX_CHANNELS }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, channel) },
-    { "vtx_power",                  VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, VTX_TABLE_MAX_POWER_LEVELS - 1 }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, power) },
-    { "vtx_low_power_disarm",       VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_VTX_LOW_POWER_DISARM }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, lowPowerDisarm) },
-    { "vtx_softserial_alt",         VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, softserialAlt) },
-#ifdef VTX_SETTINGS_FREQCMD
-    { "vtx_freq",                   VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, VTX_SETTINGS_MAX_FREQUENCY_MHZ }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, freq) },
-    { "vtx_pit_mode_freq",          VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, VTX_SETTINGS_MAX_FREQUENCY_MHZ }, PG_VTX_SETTINGS_CONFIG, offsetof(vtxSettingsConfig_t, pitModeFreq) },
-#endif
-#endif
-
-// PG_VTX_CONFIG
-#if defined(USE_VTX_CONTROL) && defined(USE_VTX_COMMON)
-    { "vtx_halfduplex",             VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_VTX_CONFIG, offsetof(vtxConfig_t, halfDuplex) },
-#ifdef USE_SERIAL_PINSWAP
-    { "vtx_pinswap",                VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_VTX_CONFIG, offsetof(vtxConfig_t, pinSwap) },
-#endif
-#endif
-
-// PG_VTX_IO
-#ifdef USE_VTX_RTC6705
-    { "vtx_spi_bus",                VAR_UINT8  | HARDWARE_VALUE | MASTER_VALUE, .config.minmaxUnsigned = { 0, SPIDEV_COUNT }, PG_VTX_IO_CONFIG, offsetof(vtxIOConfig_t, spiDevice) },
-#endif
-
 #ifdef USE_ESC_SENSOR
     { "esc_sensor_protocol",            VAR_UINT8   | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_ESC_SENSOR_PROTO }, PG_ESC_SENSOR_CONFIG, offsetof(escSensorConfig_t, protocol) },
     { "esc_sensor_halfduplex",          VAR_UINT8   | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_ESC_SENSOR_CONFIG, offsetof(escSensorConfig_t, halfDuplex) },
@@ -1299,20 +1275,7 @@ const clivalue_t valueTable[] = {
     { "dashboard_i2c_addr",          VAR_UINT8  | HARDWARE_VALUE, .config.minmaxUnsigned = { I2C_ADDR7_MIN, I2C_ADDR7_MAX }, PG_DASHBOARD_CONFIG, offsetof(dashboardConfig_t, address) },
 #endif
 
-// PG_CAMERA_CONTROL_CONFIG
-#ifdef USE_CAMERA_CONTROL
-    { "camera_control_mode", VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_CAMERA_CONTROL_MODE }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, mode) },
-    { "camera_control_ref_voltage", VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 200, 400 }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, refVoltage) },
-    { "camera_control_key_delay", VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 100, 500 }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, keyDelayMs) },
-    { "camera_control_internal_resistance", VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 10, 1000 }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, internalResistance) },
-    { "camera_control_button_resistance",   VAR_UINT16 | MASTER_VALUE | MODE_ARRAY, .config.array.length = CAMERA_CONTROL_KEYS_COUNT, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, buttonResistanceValues) },
-    { "camera_control_inverted", VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_CAMERA_CONTROL_CONFIG, offsetof(cameraControlConfig_t, inverted) },
-#endif
 
-// PG_RANGEFINDER_CONFIG
-#ifdef USE_RANGEFINDER
-    { "rangefinder_hardware", VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_RANGEFINDER_HARDWARE }, PG_RANGEFINDER_CONFIG, offsetof(rangefinderConfig_t, rangefinder_hardware) },
-#endif
 
 // PG_PINIO_CONFIG
 #ifdef USE_PINIO
@@ -1330,7 +1293,7 @@ const clivalue_t valueTable[] = {
     { "usb_msc_pin_pullup", VAR_UINT8 | HARDWARE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_USB_CONFIG, offsetof(usbDev_t, mscButtonUsePullup) },
 #endif
 // PG_FLASH_CONFIG
-#ifdef USE_FLASH_CHIP
+#if defined(USE_FLASH_CHIP) && !defined(USE_FLASH_FILE)
     { "flash_spi_bus", VAR_UINT8 | HARDWARE_VALUE, .config.minmaxUnsigned = { 0, SPIDEV_COUNT }, PG_FLASH_CONFIG, offsetof(flashConfig_t, spiDevice) },
 #endif
 // RCDEVICE
@@ -1467,6 +1430,7 @@ const clivalue_t valueTable[] = {
     { "sbus_out_frame_rate",        VAR_UINT8 | MASTER_VALUE, .config.minmaxUnsigned = {25, 250}, PG_DRIVER_SBUS_OUT_CONFIG, offsetof(sbusOutConfig_t, frameRate) },
     { "sbus_out_pinswap",           VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_SBUS_OUT_CONFIG, offsetof(sbusOutConfig_t, pinSwap) },
     { "sbus_out_inverted",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_SBUS_OUT_CONFIG, offsetof(sbusOutConfig_t, inverted) },
+    { "sbus_out_channels",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_SBUS_OUT_CHANNELS }, PG_DRIVER_SBUS_OUT_CONFIG, offsetof(sbusOutConfig_t, channels) },
 #endif
 
 #ifdef USE_FBUS_MASTER
@@ -1476,6 +1440,7 @@ const clivalue_t valueTable[] = {
     { "fbus_master_telemetry_rate",    VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = {FBUS_MASTER_TELEMETRY_RATE_MIN_HZ, FBUS_MASTER_TELEMETRY_RATE_MAX_HZ}, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, telemetryRate) },
     { "fbus_master_discovery_ms",      VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = {FBUS_MASTER_DISCOVERY_TIME_MIN_MS, FBUS_MASTER_DISCOVERY_TIME_MAX_MS}, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, sensorDiscoveryTimeMs) },
     { "fbus_master_forwarded_sensors", VAR_UINT8 | MASTER_VALUE | MODE_ARRAY, .config.array.length = FBUS_MASTER_MAX_FORWARDED_SENSORS, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, forwardedSensors) },
+    { "fbus_master_channels",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_BUS_OUT_CHANNELS }, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, channels) },
 #endif
 
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER) || defined(USE_BUS_SERVO)
@@ -1485,6 +1450,13 @@ const clivalue_t valueTable[] = {
 #ifdef USE_SPORT_MASTER
     { "sport_master_pinswap",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_SPORT_MASTER_CONFIG, offsetof(sportMasterConfig_t, pinSwap) },
     { "sport_master_inverted",         VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_SPORT_MASTER_CONFIG, offsetof(sportMasterConfig_t, inverted) },
+#endif
+#ifdef USE_CRSF_SENSORS
+    { "crsf_sensors_timeout_ms",       VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { CRSF_SENSORS_TIMEOUT_MS_MIN, CRSF_SENSORS_TIMEOUT_MS_MAX }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, sensorTimeoutMs) },
+    { "crsf_sensors_use_baro",         VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, useBaroAltitude) },
+    { "crsf_sensors_pinswap",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, pinSwap) },
+    { "crsf_sensors_battery_source",   VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_CRSF_SENSORS_BATTERY_SOURCE }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, batterySource) },
+    { "crsf_sensors_use_rpm",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_DRIVER_CRSF_SENSORS_CONFIG, offsetof(crsfSensorsConfig_t, useRpm) },
 #endif
 
 #ifdef USE_RX_INPUT_BACKUP

@@ -28,6 +28,16 @@
 #define SPEKTRUM_SAT_BIND_MAX                10
 
 #define SPEK_FRAME_SIZE                      16
+
+// Some Spektrum transmitters append a 4-byte VTX control block to the frame. VTX control is not
+// implemented, but the block still has to be recognised so it is not read as channel data.
+#define SPEKTRUM_VTX_CONTROL_FRAME_MASK 0xf000f000
+#define SPEKTRUM_VTX_CONTROL_FRAME      0xe000e000
+#define SPEKTRUM_VTX_CONTROL_1          (SPEK_FRAME_SIZE - 4)
+#define SPEKTRUM_VTX_CONTROL_2          (SPEK_FRAME_SIZE - 3)
+#define SPEKTRUM_VTX_CONTROL_3          (SPEK_FRAME_SIZE - 2)
+#define SPEKTRUM_VTX_CONTROL_4          (SPEK_FRAME_SIZE - 1)
+#define SPEKTRUM_VTX_CONTROL_SIZE       4
 #define SRXL_FRAME_OVERHEAD                   5
 #define SRXL_FRAME_SIZE_MAX (SPEK_FRAME_SIZE + SRXL_FRAME_OVERHEAD)
 

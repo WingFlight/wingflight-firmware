@@ -41,6 +41,8 @@
 #include "fc/rc.h"
 
 #include "flight/autohover.h"
+#include "flight/failsafe.h"
+#include "flight/gps_nav.h"
 #include "flight/pid.h"
 #include "flight/tv_pid.h"
 #include "flight/imu.h"
@@ -59,23 +61,31 @@
 
 /** Internal data **/
 
+// Mixer inputs no longer fit a 32-bit bitmap_t (RC channels 19-24 pushed
+// the count past 32).
+#define MIXER_INPUT_BIT(x)  ((uint64_t)1 << (x))
+STATIC_ASSERT(MIXER_INPUT_COUNT <= 64, mixer_input_count_exceeds_mapping_bits);
+STATIC_ASSERT(MAX_SUPPORTED_RC_CHANNEL_COUNT == 18 + (MIXER_IN_RC_CHANNEL_24 - MIXER_IN_RC_CHANNEL_19 + 1),
+              mixer_rc_channel_inputs_mismatch);
+
 typedef struct {
 
     float           input[MIXER_INPUT_COUNT];
     float           output[MIXER_OUTPUT_COUNT];
     float           ruleOutput[MIXER_RULE_COUNT];  // per-rule slew state for mixerRule_t.speed
 
-    bitmap_t        mapping[MIXER_OUTPUT_COUNT];
+    uint64_t        mapping[MIXER_OUTPUT_COUNT];   // bit per input, see MIXER_INPUT_BIT
     int16_t         override[MIXER_INPUT_COUNT];
     uint16_t        saturation[MIXER_INPUT_COUNT];
-
-    float           cyclicTotal;
-
-    bitmap_t        cyclicMapping;
 
 } mixerData_t;
 
 static FAST_DATA_ZERO_INIT mixerData_t mixer;
+
+// Telemetry only: set while any stabilized roll/pitch/yaw input is saturated, cleared by
+// mixerTakeStabilizedSaturation(). The per-input countdown lasts a few mixer cycles, far
+// shorter than a telemetry interval, so the reader needs a latch to see it at all.
+static bool stabilizedSaturationLatch;
 
 
 /** Interface functions **/
@@ -90,11 +100,6 @@ float mixerGetOutput(uint8_t index)
     return mixer.output[index];
 }
 
-float getCyclicDeflection(void)
-{
-    return mixer.cyclicTotal;
-}
-
 bool mixerSaturated(uint8_t index)
 {
     return (mixer.saturation[index] > 0);
@@ -105,10 +110,17 @@ void mixerSaturateInput(uint8_t index)
     mixer.saturation[index] = MIXER_SATURATION_TIME;
 }
 
+bool mixerTakeStabilizedSaturation(void)
+{
+    const bool saturated = stabilizedSaturationLatch;
+    stabilizedSaturationLatch = false;
+    return saturated;
+}
+
 void mixerSaturateOutput(uint8_t index)
 {
     for (int i = 1; i < MIXER_INPUT_COUNT; i++) {
-        if (mixer.mapping[index] & BIT(i)) {
+        if (mixer.mapping[index] & MIXER_INPUT_BIT(i)) {
             mixerSaturateInput(i);
         }
     }
@@ -134,12 +146,6 @@ bool isMixerOverrideActive(void)
     return false;
 }
 
-bool mixerIsCyclicServo(uint8_t index)
-{
-    return (mixer.cyclicMapping & BIT(MIXER_SERVO_OFFSET + index));
-}
-
-
 /** Internal functions **/
 
 static inline void mixerApplyInputLimit(int index, float value)
@@ -150,13 +156,24 @@ static inline void mixerApplyInputLimit(int index, float value)
     const float in_min = in->min / 1000.0f;
     const float in_max = in->max / 1000.0f;
 
-    // Constrain and saturate
+    // Constrain and saturate. +-Inf are still correctly caught below even
+    // under -ffast-math (see constrainf() in common/maths.h). A NaN input
+    // (a bad sensor read, a PID/setpoint computation gone wrong, a
+    // misconfigured rc.c deadband/deflection pair, ...) fails every
+    // comparison and would otherwise fall through to the final `else` and
+    // reach every servo/motor fed from this input untouched -- isfinitef()
+    // catches that remaining case without changing how Inf is already
+    // handled. isnan() itself can't be used for this; see isfinitef().
     if (value > in_max) {
         mixer.input[index] = in_max;
         mixerSaturateInput(index);
     }
     else if (value < in_min) {
         mixer.input[index] = in_min;
+        mixerSaturateInput(index);
+    }
+    else if (!isfinitef(value)) {
+        mixer.input[index] = 0;
         mixerSaturateInput(index);
     }
     else {
@@ -217,16 +234,6 @@ static void mixerSetInput(int index, float value)
     mixerApplyInputLimit(index, value);
 }
 
-static void mixerUpdateCyclic(void)
-{
-    const float SR = mixer.input[MIXER_IN_STABILIZED_ROLL];
-    const float SP = mixer.input[MIXER_IN_STABILIZED_PITCH];
-
-    // Total cyclic deflection (combined roll+pitch magnitude, used e.g. by
-    // smartfuel's stick-load sag compensation)
-    mixer.cyclicTotal = sqrtf(sq(SP) + sq(SR));
-}
-
 // Curves have at most MIXER_CURVE_POINTS (9) points, so a linear scan is
 // negligible cost.
 static float mixerEvaluateCurve(const mixerCurve_t *curve, float x)
@@ -257,6 +264,13 @@ static void mixerUpdateRules(void)
             if (mixerRules(i)->speed > 0) {
                 out = slewLimit(mixer.ruleOutput[i], out, 1200.0f * pidGetDT() / mixerRules(i)->speed);
             }
+
+            // Guard before this feeds back into ruleOutput: a NaN stored here
+            // would poison every future slewLimit() call on this rule forever
+            // (NaN - NaN is still NaN), and would otherwise reach mixer.output[]
+            // -- and from there every servo/motor -- untouched.
+            if (!isfinitef(out))
+                out = 0;
             mixer.ruleOutput[i] = out;
 
             switch (mixerRules(i)->oper)
@@ -271,6 +285,10 @@ static void mixerUpdateRules(void)
                     mixer.output[dst] *= out;
                     break;
             }
+
+            // Finite rule values can still overflow the accumulated output.
+            if (!isfinitef(mixer.output[dst]))
+                mixer.output[dst] = 0;
         }
     }
 }
@@ -286,8 +304,12 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_RC_COMMAND_THROTTLE, getThrottle());
 
     // RC channels
-    for (int i = 0; i < MAX_SUPPORTED_RC_CHANNEL_COUNT; i++)
-        mixerSetInput(MIXER_IN_RC_CHANNEL_ROLL + i, rcCommand[i] / 500);
+    // CH1-18 are contiguous from MIXER_IN_RC_CHANNEL_ROLL; CH19-24 follow the
+    // thrust-vector inputs.
+    for (int i = 0; i < MAX_SUPPORTED_RC_CHANNEL_COUNT; i++) {
+        const int input = (i < 18) ? MIXER_IN_RC_CHANNEL_ROLL + i : MIXER_IN_RC_CHANNEL_19 + (i - 18);
+        mixerSetInput(input, rcCommand[i] / 500);
+    }
 
     // Stabilised inputs
     mixerSetInput(MIXER_IN_STABILIZED_ROLL, pidGetOutput(PID_ROLL));
@@ -303,34 +325,42 @@ static void mixerUpdateInputs(void)
         mixerSetInput(MIXER_IN_STABILIZED_TV_YAW, tvPidGetOutput(PID_YAW));
     }
 
-    // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels, bypassing the
-    // rates/expo curve as well as PID - direct radio to surfaces. Takes priority over MANUAL
-    // if both happen to be active at once.
-    if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
-        mixer.input[MIXER_IN_STABILIZED_ROLL]  = mixer.input[MIXER_IN_RC_CHANNEL_ROLL];
-        mixer.input[MIXER_IN_STABILIZED_PITCH] = mixer.input[MIXER_IN_RC_CHANNEL_PITCH];
-        // Yaw command is reversed in setpoint.c relative to raw RC (unlike other axes);
-        // keep the same reversal here so passthrough yaw direction matches stabilized.
-        mixer.input[MIXER_IN_STABILIZED_YAW]   = -mixer.input[MIXER_IN_RC_CHANNEL_YAW];
-        // No raw RC channel is mapped to the independent TV axes, so the only safe
-        // bypass is neutral: zero the TV stabilized inputs rather than leave any
-        // TV-driven actuator still under PID stabilization during a passthrough bailout.
-        mixer.input[MIXER_IN_STABILIZED_TV_ROLL]  = 0;
-        mixer.input[MIXER_IN_STABILIZED_TV_PITCH] = 0;
-        mixer.input[MIXER_IN_STABILIZED_TV_YAW]   = 0;
+    // BOXPASSTHROUGH/BOXMANUAL bypass PID/leveling entirely, taking whatever the RC channel
+    // currently reads. During a real signal loss, aux/mode channels hold their last value
+    // (RX_FAILSAFE_MODE_HOLD is the default for them -- see rx.c), so a switch that happened to
+    // be left engaged the moment the link dropped would otherwise keep commanding raw/stale
+    // stick position straight to the surfaces for as long as failsafe is active, defeating the
+    // self-leveling failsafe.c's FAILSAFE_MODE is specifically meant to provide (see
+    // leveling.c's angleModeApply(), which FAILSAFE_MODE/RTH_MODE/GPS_RESCUE_MODE already
+    // trigger). Once failsafe is genuinely active, it takes priority over both regardless of
+    // switch state.
+    if (!failsafeIsActive()) {
+        // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels, bypassing the
+        // rates/expo curve as well as PID - direct radio to surfaces. Takes priority over MANUAL
+        // if both happen to be active at once.
+        if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
+            mixer.input[MIXER_IN_STABILIZED_ROLL]  = mixer.input[MIXER_IN_RC_CHANNEL_ROLL];
+            mixer.input[MIXER_IN_STABILIZED_PITCH] = mixer.input[MIXER_IN_RC_CHANNEL_PITCH];
+            // Yaw command is reversed in setpoint.c relative to raw RC (unlike other axes);
+            // keep the same reversal here so passthrough yaw direction matches stabilized.
+            mixer.input[MIXER_IN_STABILIZED_YAW]   = -mixer.input[MIXER_IN_RC_CHANNEL_YAW];
+            // No raw RC channel is mapped to the independent TV axes, so the only safe
+            // bypass is neutral: zero the TV stabilized inputs rather than leave any
+            // TV-driven actuator still under PID stabilization during a passthrough bailout.
+            mixer.input[MIXER_IN_STABILIZED_TV_ROLL]  = 0;
+            mixer.input[MIXER_IN_STABILIZED_TV_PITCH] = 0;
+            mixer.input[MIXER_IN_STABILIZED_TV_YAW]   = 0;
+        }
+        // BOXMANUAL mode: replace stabilized inputs with the same rates/expo-shaped setpoint the
+        // PID rate loop targets, but skip the gyro-corrected PID output itself - same stick feel as
+        // stabilized flight, no stabilization. getManualDeflection() already matches the stabilized
+        // sign convention (yaw included), so no extra reversal is needed here.
+        else if (IS_RC_MODE_ACTIVE(BOXMANUAL)) {
+            mixer.input[MIXER_IN_STABILIZED_ROLL]  = getManualDeflection(FD_ROLL);
+            mixer.input[MIXER_IN_STABILIZED_PITCH] = getManualDeflection(FD_PITCH);
+            mixer.input[MIXER_IN_STABILIZED_YAW]   = getManualDeflection(FD_YAW);
+        }
     }
-    // BOXMANUAL mode: replace stabilized inputs with the same rates/expo-shaped setpoint the
-    // PID rate loop targets, but skip the gyro-corrected PID output itself - same stick feel as
-    // stabilized flight, no stabilization. getManualDeflection() already matches the stabilized
-    // sign convention (yaw included), so no extra reversal is needed here.
-    else if (IS_RC_MODE_ACTIVE(BOXMANUAL)) {
-        mixer.input[MIXER_IN_STABILIZED_ROLL]  = getManualDeflection(FD_ROLL);
-        mixer.input[MIXER_IN_STABILIZED_PITCH] = getManualDeflection(FD_PITCH);
-        mixer.input[MIXER_IN_STABILIZED_YAW]   = getManualDeflection(FD_YAW);
-    }
-
-    // Calculate cyclic
-    mixerUpdateCyclic();
 
     // Update throttle (governor holds RPM/throttle per its configured mode when BOXGOVERNOR is engaged)
     float throttle = getThrottle();
@@ -340,11 +370,38 @@ static void mixerUpdateInputs(void)
     // no-op (returns 0) whenever the mode is inactive or the assist isn't configured/triggered.
     throttle = constrainf(throttle + autoHoverThrottleBoost(), 0.0f, 1.0f);
 #endif
+#ifdef USE_GPS_NAV
+    // GPS LOITER/RTH fly at the configured nav_throttle rather than wherever the pilot's stick
+    // happened to be when the switch was flipped -- nav only commands attitude, so manual
+    // throttle left the aircraft sinking through every turn. Only once the in-flight latch has
+    // set (see INFLIGHT_MODE), so a nav switch left on while armed on the ground can't spin the
+    // motor up to cruise power.
+    if (FLIGHT_MODE(LOITER_MODE | RTH_MODE) && FLIGHT_MODE(INFLIGHT_MODE)) {
+        throttle = navGetThrottle();
+    }
+#endif
+    // While any failsafe procedure is active (auto-land, drop, or GPS rescue), command
+    // failsafeGetThrottle() instead of whatever rcInput[THROTTLE] currently reads. That's
+    // normally the RX's own per-channel fallback, which by default cuts the motor. The GPS
+    // rescue phase flies home at nav_throttle, the same cruise power as a switch RTH; landing
+    // and drop use failsafe_throttle (documented "throttle level used for landing"), whose
+    // default (1000us = off) glides the aircraft down. See failsafeGetThrottle(). Once failsafe.c
+    // actually disarms (FAILSAFE_LANDED), motors.c's own independent ARMING_FLAG(ARMED) gate
+    // zeroes motor output regardless of this value, so no extra phase-gating is needed here.
+    if (failsafeIsActive()) {
+        throttle = failsafeGetThrottle();
+    }
     mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, governorApply(throttle));
 }
 
 void mixerUpdate(timeUs_t currentTimeUs)
 {
+    if (mixer.saturation[MIXER_IN_STABILIZED_ROLL] ||
+        mixer.saturation[MIXER_IN_STABILIZED_PITCH] ||
+        mixer.saturation[MIXER_IN_STABILIZED_YAW]) {
+        stabilizedSaturationLatch = true;
+    }
+
     // Reset saturation
     for (int i = 0; i < MIXER_INPUT_COUNT; i++) {
         if (mixer.saturation[i])
@@ -432,18 +489,21 @@ void mixerCaptureRuleSign(uint8_t index)
  * everywhere else a rule's liveness is checked (mixerUpdateRules(),
  * configurator's isNullRule(), the LUA suite's isEmpty()).
  *
- * Deliberately never touches a rule's sign, only its magnitude -- each
- * matching rule keeps whatever polarity it was configured with (via
- * mixerRuleSign[], not weight's own live value -- see that comment), and
- * *value only ever scales |weight|. This is what makes Reverse mean
- * anything once an adjustment is live: an earlier version of this wrote
- * the adjustment's own raw value straight into the first matching rule,
+ * *value is a signed scale applied on top of each matching rule's
+ * configured polarity (via mixerRuleSign[], not weight's own live value --
+ * see that comment): weight = sign * value. Positive values keep the
+ * configured direction, negative values flip it, so one adjustment can
+ * sweep a rule through both directions while Reverse in the mixer table
+ * still means what it says. An earlier version of this wrote the
+ * adjustment's own raw value straight into the first matching rule,
  * silently overwriting whatever sign the pilot had configured on the very
- * next tick. Per-rule sign preservation also happens to be exactly what a
+ * next tick; a later one only ever scaled |weight|, which fixed that but
+ * made negative values impossible. Per-rule sign is still what a
  * differential-thrust-yaw pair needs (the two rules are tagged the same
  * role but opposite sign by design -- one motor speeds up, the other
  * slows down) and what several same-signed flap-compensation rules on a
- * v-tail/flying-wing need, without treating either case specially.
+ * v-tail/flying-wing need: a negative value flips every match together
+ * and their relative polarity is untouched.
  */
 static bool applyRoleWeight(uint8_t role, int *value, bool write)
 {
@@ -456,11 +516,10 @@ static bool applyRoleWeight(uint8_t role, int *value, bool write)
         }
 
         if (write) {
-            const int magnitude = ABS(*value);
-            rule->weight    = (mixerRuleSign[i] >= 0) ? magnitude : -magnitude;
+            rule->weight    = (mixerRuleSign[i] >= 0) ? *value : -*value;
             rule->weightNeg = rule->weight;
         } else if (!found) {
-            *value = ABS(rule->weight);
+            *value = (mixerRuleSign[i] >= 0) ? rule->weight : -rule->weight;
         }
 
         found = true;
@@ -495,25 +554,15 @@ void set_ADJUSTMENT_DIFF_THRUST_YAW_GAIN(int value)
 
 static void INIT_CODE setMapping(uint8_t in, uint8_t out)
 {
-    mixer.mapping[out] = BIT(in);
-
-    if (in == MIXER_IN_STABILIZED_ROLL || in == MIXER_IN_STABILIZED_PITCH ||
-        in == MIXER_IN_RC_COMMAND_ROLL || in == MIXER_IN_RC_COMMAND_PITCH) {
-        mixer.cyclicMapping |= BIT(out);
-    }
+    mixer.mapping[out] = MIXER_INPUT_BIT(in);
 }
 
 static void INIT_CODE addMapping(uint8_t in, uint8_t out)
 {
-    mixer.mapping[out] |= BIT(in);
-
-    if (in == MIXER_IN_STABILIZED_ROLL || in == MIXER_IN_STABILIZED_PITCH ||
-        in == MIXER_IN_RC_COMMAND_ROLL || in == MIXER_IN_RC_COMMAND_PITCH) {
-        mixer.cyclicMapping |= BIT(out);
-    }
+    mixer.mapping[out] |= MIXER_INPUT_BIT(in);
 }
 
-#define addServoMapping(INDEX,SERVO)    addMapping((INDEX), MIXER_SERVO_OFFSET + (SERVO))
+#define addServoMapping(INDEX,SERVO)    addMapping((INDEX), mixerServoOutputIndex(SERVO))
 #define addMotorMapping(INDEX,MOTOR)    addMapping((INDEX), MIXER_MOTOR_OFFSET + (MOTOR))
 
 void INIT_CODE mixerInit(void)

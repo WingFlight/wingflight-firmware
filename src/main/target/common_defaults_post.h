@@ -451,15 +451,6 @@
 #endif
 #endif
 
-#if defined(USE_RANGEFINDER) && defined(USE_RANGEFINDER_HCSR04)
-#ifndef RANGEFINDER_HCSR04_TRIGGER_PIN
-#define RANGEFINDER_HCSR04_TRIGGER_PIN     NONE
-#endif
-#ifndef RANGEFINDER_HCSR04_ECHO_PIN
-#define RANGEFINDER_HCSR04_ECHO_PIN        NONE
-#endif
-#endif
-
 // Mag
 #if defined(USE_MAG)
 #ifndef MAG_SPI_INSTANCE
@@ -689,7 +680,7 @@
 #endif
 
 #ifndef BUS_SERVO_CHANNELS
-#define BUS_SERVO_CHANNELS 18
+#define BUS_SERVO_CHANNELS 24
 #endif
 
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)

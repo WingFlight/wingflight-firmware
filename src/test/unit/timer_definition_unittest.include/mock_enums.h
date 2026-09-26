@@ -54,7 +54,6 @@ const char *const TEST_PIN_NAMES[TEST_PIN_SIZE] = {
 enum TestTimUseEnum {
     TIM_USE_ANY,
     TIM_USE_BEEPER,
-    TIM_USE_CAMERA_CONTROL,
     TIM_USE_LED,
     TIM_USE_MOTOR,
     TIM_USE_NONE,

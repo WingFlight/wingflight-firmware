@@ -285,6 +285,19 @@ void tcpWrite(serialPort_t *instance, uint8_t ch)
 void tcpDataIn(tcpPort_t *instance, uint8_t* ch, int size)
 {
     tcpPort_t *s = (tcpPort_t *)instance;
+
+    // A port opened with a receive callback never reads its buffer: on a real
+    // UART the RX interrupt hands each byte straight to the callback instead
+    // (see serial_uart.c). Do the same here, or callback-driven protocols -
+    // the FBUS master's sensor replies, for one - never hear anything. This
+    // runs on the port's accept thread, which stands in for the IRQ.
+    if (s->port.rxCallback) {
+        while (size--) {
+            s->port.rxCallback(*(ch++), s->port.rxCallbackData);
+        }
+        return;
+    }
+
     pthread_mutex_lock(&s->rxLock);
 
     while (size--) {

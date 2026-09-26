@@ -79,7 +79,7 @@ typedef struct {
     uint8_t  gain;                 // Correction strength back to the held vertical attitude/heading
     uint8_t  max_angle;            // Max degrees the stick may deflect the target off vertical/held heading
     uint16_t max_rate;             // deg/s clamp on the commanded attitude-capture rate (safety limit)
-    uint8_t  roll_deadband;        // Percent roll stick deflection below which roll freezes and corrects
+    uint8_t  roll_deadband;        // Unused: AUTOHOVER roll is a free pass-through now. Kept so the profile layout and MSP/CLI stay compatible.
                                     // back to the last captured value (disturbance rejection, e.g. torque
                                     // roll); above which roll is a free pass-through (pirouette control) --
                                     // mirrors atthold's deadband, but scoped to just this one axis
@@ -157,3 +157,16 @@ typedef struct pidProfile_s {
 } pidProfile_t;
 
 PG_DECLARE_ARRAY(pidProfile_t, PID_PROFILE_COUNT, pidProfiles);
+
+// Separate storage preserves existing PID profiles. Zero inherits the legacy shared limit.
+typedef struct {
+    uint8_t angle_roll;
+    uint8_t angle_pitch;
+    uint8_t trainer_roll;
+    uint8_t trainer_pitch;
+} attitudeLimits_t;
+
+PG_DECLARE_ARRAY(attitudeLimits_t, PID_PROFILE_COUNT, attitudeLimits);
+
+// Positive axis overrides use the SAFE-style range; zero preserves the legacy shared value.
+uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis);

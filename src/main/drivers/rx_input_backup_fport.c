@@ -162,7 +162,7 @@ static FAST_CODE void fportInputDataReceive(uint16_t c, void *data)
 
 // Called from the RX task (rx/rx.c, via rx_input_backup.c's poll loop), not an
 // ISR - safe to do the heavier decode/convert work here.
-static bool fportInputUpdate(float *channels, uint8_t channelCount)
+static uint8_t fportInputUpdate(float *channels, uint8_t channelCount)
 {
     uint8_t frame[FPORT_INPUT_FRAME_SIZE];
     uint8_t length = 0;
@@ -178,7 +178,7 @@ static bool fportInputUpdate(float *channels, uint8_t channelCount)
     }
 
     if (!haveFrame) {
-        return false;
+        return 0;
     }
 
     // Generic size self-consistency (matches rx/fport.c's frameLength !=
@@ -190,7 +190,7 @@ static bool fportInputUpdate(float *channels, uint8_t channelCount)
         || frame[0] != length - 2
         || frame[0] != FPORT_INPUT_PAYLOAD_LENGTH_CONTROL
         || frame[1] != FPORT_INPUT_FRAME_TYPE_CONTROL) {
-        return false;
+        return 0;
     }
 
     // Checksum covers the full de-stuffed span, length byte included - unlike
@@ -200,7 +200,7 @@ static bool fportInputUpdate(float *channels, uint8_t channelCount)
     // same full-span check.
     if (!frskyCheckSumIsGood(frame, length)) {
         fportInputResetParser();
-        return false;
+        return 0;
     }
 
     // Copied into a genuine sbusChannels_t object rather than pointer-cast
@@ -212,14 +212,14 @@ static bool fportInputUpdate(float *channels, uint8_t channelCount)
     const uint8_t frameStatus = sbusChannelsDecode(&fportInputRxRuntimeState, &wireChannels);
     if (frameStatus & (RX_FRAME_DROPPED | RX_FRAME_FAILSAFE)) {
         fportInputResetParser();
-        return false;
+        return 0;
     }
 
     for (uint8_t i = 0; i < channelCount; i++) {
         channels[i] = (5.0f * (float)fportInputChannelData[i] / 8.0f) + 880.0f;
     }
 
-    return true;
+    return channelCount;
 }
 
 bool rxInputBackupFportInit(rxInputBackupOps_t *ops)
@@ -235,7 +235,7 @@ bool rxInputBackupFportInit(rxInputBackupOps_t *ops)
         | (rxInputBackupConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
         | (rxInputBackupConfig()->halfDuplex ? (SERIAL_BIDIR | SERIAL_BIDIR_PP) : SERIAL_UNIDIR);
     ops->isrFn = fportInputDataReceive;
-    ops->channelCount = RX_INPUT_BACKUP_MAX_CHANNEL;
+    ops->channelCount = SBUS_MAX_CHANNEL;   // 16 + 2 digital
     ops->update = fportInputUpdate;
 
     return true;

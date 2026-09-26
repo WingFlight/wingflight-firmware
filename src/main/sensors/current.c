@@ -34,6 +34,7 @@
 
 #include "drivers/adc.h"
 #include "drivers/fbus_sensor.h"
+#include "drivers/crsf_sensors.h"
 
 #include "pg/current.h"
 
@@ -98,7 +99,7 @@ void currentSensorADCRefresh(timeUs_t currentTimeUs)
 
             state->sample = current;
             state->current = filterApply(&state->filter, current);
-            state->capacity += current * udpateDelta;
+            state->capacity += (uint64_t)state->sample * (uint32_t)udpateDelta;
 
             DEBUG_AXIS(CURRENT_SENSOR, i, 0, sample);
             DEBUG_AXIS(CURRENT_SENSOR, i, 1, current);
@@ -257,6 +258,48 @@ void currentSensorFBUSInit(void)
     memset(&currentFBUSSensor, 0, sizeof(currentFBUSSensor));
 
     lowpassFilterInit(&currentFBUSSensor.filter, LPF_BESSEL,
+        batteryConfig()->ibatLpfHz,
+        batteryConfig()->ibatUpdateHz, 0);
+}
+#endif
+
+#ifdef USE_CRSF_SENSORS
+static currentSensorState_t currentCRSFSensor;
+
+bool currentSensorCRSFRead(currentMeter_t *meter)
+{
+    const currentSensorState_t *state = &currentCRSFSensor;
+
+    meter->sample = state->sample;
+    meter->current = state->current;
+    meter->capacity = state->capacity;
+
+    return state->enabled;
+}
+
+void currentSensorCRSFRefresh(void)
+{
+    currentSensorState_t *state = &currentCRSFSensor;
+    crsfSensorsBatteryData_t battery;
+
+    if (crsfSensorsGetBatteryData(&battery)) {
+        state->sample = battery.currentMa;
+        state->current = filterApply(&state->filter, state->sample);
+        state->capacity = battery.capacityMah;
+        state->enabled = true;
+    } else {
+        state->sample = 0;
+        state->current = 0;
+        state->capacity = 0;
+        state->enabled = false;
+    }
+}
+
+void currentSensorCRSFInit(void)
+{
+    memset(&currentCRSFSensor, 0, sizeof(currentCRSFSensor));
+
+    lowpassFilterInit(&currentCRSFSensor.filter, LPF_BESSEL,
         batteryConfig()->ibatLpfHz,
         batteryConfig()->ibatUpdateHz, 0);
 }

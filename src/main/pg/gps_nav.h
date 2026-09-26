@@ -36,6 +36,11 @@ typedef struct {
     uint8_t     maxPitchAngleDeg;
     uint16_t    bearingKp;          // centidegrees of bank per degree of bearing error
     uint16_t    altitudeKp;         // centidegrees of pitch per meter of altitude error
+    // Appended fields -- keep new members at the end so configs saved by older firmware (a
+    // shorter struct, same PG version) still load, with these taking their reset defaults.
+    uint16_t    altitudeKd;         // centidegrees of pitch per m/s of climb rate (damping)
+    uint8_t     throttle;           // percent; LOITER/RTH and the failsafe GPS rescue fly at this
+    uint8_t     turnCoordination;   // percent of the coordinated-turn yaw rate fed to the rudder
 } gpsNavConfig_t;
 
 PG_DECLARE(gpsNavConfig_t, gpsNavConfig);

@@ -625,7 +625,11 @@ void imuQuaternionMultiplication(quaternion *q1, quaternion *q2, quaternion *res
     result->z = D + (+ E - F - G + H) / 2.0f;
 }
 
-bool isUpright(void)
+// Gate for arming (ARMING_DISABLED_ANGLE): the attitude estimate must be established, so an
+// armed aircraft never flies with an unconverged attitude. It deliberately does not check tilt --
+// a hand-launched wing is armed held at any angle, so refusing to arm past a bank angle (as a
+// quad does) would be wrong here.
+bool isAttitudeEstimateReady(void)
 {
 #ifdef USE_ACC
     return !sensors(SENSOR_ACC) || attitudeIsEstablished;

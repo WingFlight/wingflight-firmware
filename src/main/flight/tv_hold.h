@@ -27,5 +27,6 @@ void  tvHoldSetState(bool state);
 
 float tvHoldApply(int axis, float pidSetpoint);
 bool  tvHoldIsHolding(int axis);
+float tvHoldIDecayScale(int axis);
 
 ADJFUN_DECLARE(TV_HOLD_GAIN)

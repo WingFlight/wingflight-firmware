@@ -20,10 +20,13 @@
 
 #ifdef USE_TELEMETRY
 
+#include "common/time.h"
 #include "common/unit.h"
 
 #include "pg/pg_ids.h"
 #include "pg/telemetry.h"
+
+#include "telemetry/sensors.h"
 
 
 PG_REGISTER_WITH_RESET_TEMPLATE(telemetryConfig_t, telemetryConfig, PG_TELEMETRY_CONFIG, 6);
@@ -45,10 +48,32 @@ PG_RESET_TEMPLATE(telemetryConfig_t, telemetryConfig,
         IBUS_SENSOR_TYPE_EXTERNAL_VOLTAGE
     },
     .mavlink_mah_as_heading_divisor = 0,
-    .crsf_telemetry_mode = CRSF_TELEMETRY_MODE_NATIVE,
+    // Custom: the Wingflight radio Lua suites decode the custom sensor frames.
+    .crsf_telemetry_mode = CRSF_TELEMETRY_MODE_CUSTOM,
     .crsf_telemetry_link_rate = 250,
     .crsf_telemetry_link_ratio = 8,
-    .telemetry_sensors = INIT_ZERO,
+    // Default sensor selection: what the Wingflight radio Lua suites read. Same IDs, in the
+    // same ascending order, as the Ethos suite writes for its "Default" button
+    // (wingflight-lua-ethos-suite lib/telemetry_sensor_catalog.lua DEFAULT_IDS), so a model
+    // set up either way shows no telemetry_sensors diff. Keep the two in sync.
+    .telemetry_sensors = {
+        TELEM_BATTERY_VOLTAGE,          // 3
+        TELEM_BATTERY_CURRENT,          // 4
+        TELEM_BATTERY_CONSUMPTION,      // 5
+        TELEM_BATTERY_CHARGE_LEVEL,     // 6
+        TELEM_THROTTLE_CONTROL,         // 15
+        TELEM_BEC_VOLTAGE,              // 43
+        TELEM_ESC_TEMP,                 // 50
+        TELEM_MCU_TEMP,                 // 52
+        TELEM_ALTITUDE,                 // 58
+        TELEM_VARIOMETER,               // 59
+        TELEM_MOTOR1SPEED,              // 60
+        TELEM_FLIGHT_MODE,              // 89
+        TELEM_ARMING_DISABLE_FLAGS,     // 91
+        TELEM_ADJFUNC,                  // 99
+        TELEM_SYSTEM_STATUS,            // 120
+        TELEM_SYSTEM_CONFIG,            // 121
+    },
     .telemetry_interval = INIT_ZERO,
 );
 

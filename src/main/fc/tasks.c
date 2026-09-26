@@ -33,7 +33,6 @@
 #include "config/feature.h"
 
 #include "drivers/accgyro/accgyro.h"
-#include "drivers/camera_control.h"
 #include "drivers/compass/compass.h"
 #include "drivers/sensor.h"
 #include "drivers/serial.h"
@@ -41,10 +40,10 @@
 #include "drivers/srxl2_esc.h"
 #include "drivers/stack_check.h"
 #include "drivers/usb_io.h"
-#include "drivers/vtx_common.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
 #include "drivers/fbus_sensor.h"
+#include "drivers/crsf_sensors.h"
 
 #include "config/config.h"
 #include "fc/core.h"
@@ -66,10 +65,8 @@
 #include "io/ledstrip.h"
 #include "io/piniobox.h"
 #include "io/serial.h"
-#include "io/vtx_tramp.h" // Will be gone
 #include "io/rcdevice_cam.h"
 #include "io/usb_cdc_hid.h"
-#include "io/vtx.h"
 
 #include "msp/msp.h"
 #include "msp/msp_serial.h"
@@ -91,7 +88,6 @@
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
 #include "sensors/sensors.h"
-#include "sensors/rangefinder.h"
 
 #include "telemetry/telemetry.h"
 #include "telemetry/crsf.h"
@@ -237,9 +233,27 @@ static void taskUpdateRxMain(timeUs_t currentTimeUs)
 #ifdef USE_BARO
 static void taskUpdateBaro(timeUs_t currentTimeUs)
 {
-    UNUSED(currentTimeUs);
-
     if (sensors(SENSOR_BARO)) {
+#if defined(USE_CRSF_SENSORS)
+        static bool usingCrsfBaroAltitude = false;
+        crsfSensorsBaroData_t crsfBaro;
+        if (crsfSensorsGetBaroUse() && crsfSensorsGetBaroData(&crsfBaro)) {
+            usingCrsfBaroAltitude = true;
+            baroSetExternalAltitude(crsfBaro.altitudeCm);
+            return;
+        }
+        if (usingCrsfBaroAltitude) {
+            // CRSF altitude just stopped (timeout, sensor unplugged, or the
+            // override was turned off). baroSetExternalAltitude() marks the
+            // physical barometer's calibration as complete without ever
+            // establishing its ground-level reference, so falling back to
+            // baroUpdate() now would report an altitude relative to an
+            // uninitialized baroGroundAltitude. Recalibrate before trusting
+            // the physical sensor again.
+            usingCrsfBaroAltitude = false;
+            baroStartCalibration();
+        }
+#endif
         const uint32_t newDeadline = baroUpdate(currentTimeUs);
         if (newDeadline != 0) {
             rescheduleTask(TASK_SELF, newDeadline);
@@ -262,20 +276,6 @@ static void taskUpdateMag(timeUs_t currentTimeUs)
 }
 #endif
 
-#if defined(USE_RANGEFINDER)
-void taskUpdateRangefinder(timeUs_t currentTimeUs)
-{
-    UNUSED(currentTimeUs);
-
-    if (!sensors(SENSOR_RANGEFINDER)) {
-        return;
-    }
-
-    rangefinderUpdate();
-
-    rangefinderProcess(getCosTiltAngle());
-}
-#endif
 
 #ifdef USE_TELEMETRY
 static void taskTelemetry(timeUs_t currentTimeUs)
@@ -298,16 +298,6 @@ static void taskSportMaster(timeUs_t currentTimeUs)
 }
 #endif
 
-#ifdef USE_CAMERA_CONTROL
-static void taskCameraControl(uint32_t currentTime)
-{
-    if (ARMING_FLAG(ARMED)) {
-        return;
-    }
-
-    cameraControlProcess(currentTime);
-}
-#endif
 
 #define DEFINE_TASK(taskNameParam, subTaskNameParam, checkFuncParam, taskFuncParam, desiredPeriodParam, staticPriorityParam) {  \
     .taskName = taskNameParam, \
@@ -384,17 +374,11 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_SRXL2_ESC] = DEFINE_TASK("SRXL2_ESC", NULL, NULL, srxl2escDriverTask, TASK_PERIOD_HZ(SRXL2_ESC_DRIVER_TASK_FREQ_HZ), TASK_PRIORITY_HIGH),
 #endif
 
-#ifdef USE_VTX_CONTROL
-    [TASK_VTXCTRL] = DEFINE_TASK("VTXCTRL", NULL, NULL, vtxUpdate, TASK_PERIOD_HZ(5), TASK_PRIORITY_LOWEST),
-#endif
 
 #ifdef USE_RCDEVICE
     [TASK_RCDEVICE] = DEFINE_TASK("RCDEVICE", NULL, NULL, rcdeviceUpdate, TASK_PERIOD_HZ(20), TASK_PRIORITY_MEDIUM),
 #endif
 
-#ifdef USE_CAMERA_CONTROL
-    [TASK_CAMCTRL] = DEFINE_TASK("CAMCTRL", NULL, NULL, taskCameraControl, TASK_PERIOD_HZ(5), TASK_PRIORITY_LOW),
-#endif
 
 #ifdef USE_ADC_INTERNAL
     [TASK_ADC_INTERNAL] = DEFINE_TASK("ADCINTERNAL", NULL, NULL, adcInternalProcess, TASK_PERIOD_HZ(1), TASK_PRIORITY_LOWEST),
@@ -404,9 +388,6 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_PINIOBOX] = DEFINE_TASK("PINIOBOX", NULL, NULL, pinioBoxUpdate, TASK_PERIOD_HZ(20), TASK_PRIORITY_LOWEST),
 #endif
 
-#ifdef USE_RANGEFINDER
-    [TASK_RANGEFINDER] = DEFINE_TASK("RANGEFINDER", NULL, NULL, taskUpdateRangefinder, TASK_PERIOD_HZ(10), TASK_PRIORITY_LOWEST),
-#endif
 
 #ifdef USE_CRSF_V3
     [TASK_SPEED_NEGOTIATION] = DEFINE_TASK("SPEED_NEGOTIATION", NULL, NULL, speedNegotiationProcess, TASK_PERIOD_HZ(100), TASK_PRIORITY_LOW),
@@ -428,6 +409,9 @@ task_attribute_t task_attributes[TASK_COUNT] = {
 
 #ifdef USE_SPORT_MASTER
     [TASK_SPORT_MASTER] = DEFINE_TASK("SPORT_MASTER", NULL, NULL, taskSportMaster, TASK_PERIOD_MS(12), TASK_PRIORITY_MEDIUM),
+#endif
+#ifdef USE_CRSF_SENSORS
+    [TASK_CRSF_SENSORS] = DEFINE_TASK("CRSF_SENSORS", NULL, NULL, crsfSensorsUpdate, TASK_PERIOD_HZ(100), TASK_PRIORITY_MEDIUM),
 #endif
 };
 
@@ -492,11 +476,6 @@ void tasksInit(void)
     }
 #endif
 
-#ifdef USE_RANGEFINDER
-    if (sensors(SENSOR_RANGEFINDER)) {
-        setTaskEnabled(TASK_RANGEFINDER, featureIsEnabled(FEATURE_RANGEFINDER));
-    }
-#endif
 
     setTaskEnabled(TASK_RX, true);
 
@@ -561,15 +540,7 @@ void tasksInit(void)
     pinioBoxTaskControl();
 #endif
 
-#ifdef USE_VTX_CONTROL
-#if defined(USE_VTX_RTC6705) || defined(USE_VTX_SMARTAUDIO) || defined(USE_VTX_TRAMP)
-    setTaskEnabled(TASK_VTXCTRL, true);
-#endif
-#endif
 
-#ifdef USE_CAMERA_CONTROL
-    setTaskEnabled(TASK_CAMCTRL, true);
-#endif
 
 #ifdef USE_RCDEVICE
     setTaskEnabled(TASK_RCDEVICE, rcdeviceIsEnabled());
@@ -598,6 +569,9 @@ void tasksInit(void)
 #ifdef USE_SPORT_MASTER
     rescheduleTask(TASK_SPORT_MASTER, TASK_PERIOD_MS(12));
     setTaskEnabled(TASK_SPORT_MASTER, sportMasterIsEnabled());
+#endif
+#ifdef USE_CRSF_SENSORS
+    setTaskEnabled(TASK_CRSF_SENSORS, crsfSensorsIsEnabled());
 #endif
 
 }

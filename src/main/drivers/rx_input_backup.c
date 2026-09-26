@@ -33,6 +33,7 @@
 
 #include "io/serial.h"
 
+#include "pg/rx.h"
 #include "pg/rx_input_backup.h"
 
 #ifdef USE_RX_INPUT_BACKUP_SBUS
@@ -65,6 +66,8 @@ static serialPort_t *rxInputBackupPort = NULL;
 static rxInputBackupOps_t rxInputBackupOps;
 
 static float rxInputBackupChannel[RX_INPUT_BACKUP_MAX_CHANNEL];
+// Channels carried by the latest valid frame, 0 before the first one
+static uint8_t rxInputBackupFrameChannelCount = 0;
 static timeMs_t rxInputBackupLastValidFrameMs = 0;
 
 // False until the first genuinely valid frame has been decoded. Without this,
@@ -95,7 +98,9 @@ void rxInputBackupPoll(void)
         return;
     }
 
-    if (rxInputBackupOps.update(rxInputBackupChannel, rxInputBackupOps.channelCount)) {
+    const uint8_t frameChannels = rxInputBackupOps.update(rxInputBackupChannel, rxInputBackupOps.channelCount);
+    if (frameChannels) {
+        rxInputBackupFrameChannelCount = frameChannels;
         rxInputBackupHasValidFrame = true;
         rxInputBackupLastValidFrameMs = millis();
     }
@@ -122,7 +127,7 @@ bool rxInputBackupIsActive(void)
 
 uint8_t rxInputBackupGetChannelCount(void)
 {
-    return rxInputBackupOps.channelCount;
+    return rxInputBackupFrameChannelCount ? rxInputBackupFrameChannelCount : rxInputBackupOps.channelCount;
 }
 
 rxInputBackupProvider_e rxInputBackupGetProvider(void)
@@ -132,8 +137,10 @@ rxInputBackupProvider_e rxInputBackupGetProvider(void)
 
 float rxInputBackupGetChannel(uint8_t channel)
 {
-    if (channel >= rxInputBackupOps.channelCount) {
-        return 0;
+    // Channels the latest frame doesn't carry (e.g. CH19-24 from a 16-channel
+    // F.Bus frame) read as stick center, so a takeover centers them.
+    if (channel >= rxInputBackupGetChannelCount()) {
+        return rcControlsConfig()->rc_center;
     }
     return rxInputBackupChannel[channel];
 }
@@ -190,6 +197,7 @@ void rxInputBackupInit(void)
 
     rxInputBackupLastValidFrameMs = 0;
     rxInputBackupHasValidFrame = false;
+    rxInputBackupFrameChannelCount = 0;
 
     // Only pinSwap is applied generically here - inverted/halfDuplex are
     // protocol-specific (see rxInputBackupOps_t's own comment) and already
@@ -205,7 +213,7 @@ void rxInputBackupInit(void)
 }
 
 // Backup-port wiring auto-detect - mirrors rx/rx.c's rxSerialTrial* mechanism
-// (see docs/rx-wiring-autodetect-design.md) applied to this port instead:
+// (see https://doc.wingflight.org/contributing/tech/rx-wiring-autodetect/) applied to this port instead:
 // cycle inverted/halfDuplex/pinSwap live and report which combo (if any)
 // produces a valid frame. No persistence here either - the caller (MSP)
 // only ever reads the winning combo back out of a SUCCESS status and applies

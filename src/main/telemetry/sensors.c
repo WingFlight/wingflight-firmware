@@ -40,6 +40,7 @@
 #include "sensors/esc_sensor.h"
 #include "sensors/adcinternal.h"
 #include "sensors/acceleration.h"
+#include "sensors/sensors.h"
 
 #include "flight/position.h"
 #include "flight/mixer.h"
@@ -57,6 +58,7 @@
 #include "scheduler/scheduler.h"
 
 #include "telemetry/sensors.h"
+#include "telemetry/status.h"
 
 #ifdef USE_FBUS_MASTER
 # include "drivers/fbus_sensor.h"
@@ -336,21 +338,13 @@ int telemetrySensorValue(sensor_id_e id)
             return pilotConfig()->modelId;
         case TELEM_FLIGHT_MODE:
             return flightModeFlags;
-        case TELEM_ARMING_FLAGS:
-            return armingFlags;
         case TELEM_ARMING_DISABLE_FLAGS:
             return getArmingDisableFlags();
 
-        case TELEM_PID_PROFILE:
-            return getCurrentPidProfileIndex() + 1;
-        case TELEM_RATES_PROFILE:
-            return getCurrentControlRateProfileIndex() + 1;
-        case TELEM_LED_PROFILE:
-            return 0;
-        case TELEM_BATTERY_PROFILE:
-            return getCurrentBatteryProfileIndex() + 1;
-        case TELEM_TV_PROFILE:
-            return getCurrentTvProfileIndex() + 1;
+        case TELEM_SYSTEM_STATUS:
+            return telemetrySystemStatus();
+        case TELEM_SYSTEM_CONFIG:
+            return telemetrySystemConfig();
 
         case TELEM_ADJFUNC:
             return getAdjustmentsRangeName() ?
@@ -535,19 +529,12 @@ bool telemetrySensorActive(sensor_id_e id)
 
         case TELEM_MODEL_ID:
         case TELEM_FLIGHT_MODE:
-        case TELEM_ARMING_FLAGS:
         case TELEM_ARMING_DISABLE_FLAGS:
             return true;
 
-        case TELEM_PID_PROFILE:
-        case TELEM_RATES_PROFILE:
-        case TELEM_TV_PROFILE:
+        case TELEM_SYSTEM_STATUS:
+        case TELEM_SYSTEM_CONFIG:
             return true;
-
-        case TELEM_BATTERY_PROFILE:
-            return true;
-        case TELEM_LED_PROFILE:
-            return false;
 
         case TELEM_ADJFUNC:
             return true;

@@ -60,6 +60,7 @@ typedef enum {
     FBUS_GPS_SPEED_BASE     = 0x0830,  // 0x0830~0x083f
     FBUS_GPS_COURSE_BASE    = 0x0840,  // 0x0840~0x084f
     FBUS_GPS_TIME_BASE      = 0x0850,  // 0x0850~0x085f
+    FBUS_GPS_SATS_BASE      = 0x0860,  // 0x0860~0x086f
 } fbusGpsDataId_e;
 
 // GPS Latitude/Longitude bit definitions
@@ -153,12 +154,14 @@ typedef struct {
     int32_t altitudeCm;     // Altitude in cm
     uint32_t speedMilliKnots; // Speed in knots * 1000 (FrSky GPS Speed 0x0830 U32 format)
     uint16_t courseDeg;     // Course in degrees * 10 (Rotorflight groundCourse format)
+    uint8_t satellites;      // Number of satellites
     fbusGpsTime_t time;     // UTC time
     fbusGpsDate_t date;     // UTC date
     bool hasPosition;       // Position data valid
     bool hasAltitude;       // Altitude data valid
     bool hasSpeed;          // Speed data valid
     bool hasCourse;         // Course data valid
+    bool hasSatellites;     // Satellite count valid
     bool hasTime;           // Time data valid
     bool hasDate;           // Date data valid
     timeUs_t lastUpdateUs;

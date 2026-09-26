@@ -91,7 +91,7 @@ static int axisTrimDirection(int axis, int servo)
 
     for (int r = 0; r < MIXER_RULE_COUNT; r++) {
         const mixerRule_t *rule = mixerRules(r);
-        if (rule->oper && rule->output == (uint8_t)(MIXER_SERVO_OFFSET + servo) &&
+        if (rule->oper && rule->output == mixerServoOutputIndex(servo) &&
             rule->input == axisInput[axis]) {
             const bool flagReversed = servoParams(servo)->flags & SERVO_FLAG_REVERSED;
             const bool weightReversed = (rule->weight != 0 ? rule->weight : rule->weightNeg) < 0;
@@ -369,6 +369,14 @@ void servoShutdown(void)
 
 static inline void servoSetOutput(uint8_t index, float pos)
 {
+    // Last-resort guard right at the hardware boundary: lrintf() of a NaN/Inf
+    // is undefined behaviour, and the result would be written straight into
+    // a timer compare register. Everything upstream is already expected to
+    // hand this a finite, travel-limited value (see limitTravel()); this is
+    // the backstop in case it doesn't.
+    if (!isfinitef(pos))
+        pos = 0;
+
     servoOutput[index] = pos;
 
     if (servoChannel[index].ccr)
@@ -377,10 +385,17 @@ static inline void servoSetOutput(uint8_t index, float pos)
 
 static inline float limitTravel(uint8_t servo, float pos, float min, float max)
 {
+    // +-Inf are still correctly caught below even under -ffast-math (see
+    // constrainf() in common/maths.h). Only a NaN fails both comparisons
+    // and would otherwise fall through untouched -- isfinitef() catches
+    // that remaining case without changing how Inf is already handled.
     if (pos > max) {
         mixerSaturateServoOutput(servo);
         return max;
     } else if (pos < min) {
+        mixerSaturateServoOutput(servo);
+        return min;
+    } else if (!isfinitef(pos)) {
         mixerSaturateServoOutput(servo);
         return min;
     }
@@ -400,11 +415,6 @@ static inline float limitSpeed(float old, float new, float speed)
     return new;
  }
 
- static inline float limitRatio(float old, float new, float ratio)
- {
-    return old + (new - old) * ratio;
- }
-
 #ifdef USE_SERVO_GEOMETRY_CORRECTION
 float geometryCorrection(float pos)
 {
@@ -421,18 +431,16 @@ float geometryCorrection(float pos)
 void servoUpdate(void)
 {
     float input[MAX_SUPPORTED_SERVOS];
-    float cyclic_ratio = 1;
 
     for (int i = 0; i < servoCount; i++)
     {
-        const servoParam_t *servo = servoParams(i);
-
         if (!ARMING_FLAG(ARMED) && hasServoOverride(i))
             input[i] = servoOverride[i] / 1000.0f;
         else
             input[i] = mixerGetServoOutput(i);
 
 #ifdef USE_SERVO_GEOMETRY_CORRECTION
+        const servoParam_t *servo = servoParams(i);
         if (servo->flags & SERVO_FLAG_GEO_CORR)
             input[i] = geometryCorrection(input[i]);
 #endif
@@ -448,12 +456,13 @@ void servoUpdate(void)
                                              input[i] * 1000.0f, 0.0f) / 1000.0f;
         }
 
-        if (servo->speed && mixerIsCyclicServo(i)) {
-            const float limit = 1200 * pidGetDT() / servo->speed;
-            const float speed = fabsf(input[i] - servoInput[i]);
-            if (speed > limit)
-                cyclic_ratio = fminf(cyclic_ratio, limit / speed);
-        }
+        // Guard the boundary: a NaN here (a bad upstream sensor read, a
+        // misconfigured mixer/curve, ...) would otherwise sit in servoInput[i]
+        // and poison every future limitSpeed() call on this servo forever,
+        // since NaN - NaN is still NaN. isnan()/isfinite() cannot be trusted
+        // to catch it -- see isfinitef() in common/maths.h.
+        if (!isfinitef(input[i]))
+            input[i] = 0;
     }
 
     for (int i = 0; i < servoCount; i++)
@@ -461,12 +470,12 @@ void servoUpdate(void)
         const servoParam_t *servo = servoParams(i);
         float pos = input[i];
 
-        if (servo->speed > 0) {
-            if (mixerIsCyclicServo(i))
-                pos = limitRatio(servoInput[i], pos, cyclic_ratio);
-            else
-                pos = limitSpeed(servoInput[i], pos, servo->speed);
-        }
+        // Each servo is speed-limited independently. Wing surfaces (aileron,
+        // elevator, rudder, ...) move on their own hinges, unlike a
+        // helicopter swashplate, so one servo running into its speed limit
+        // must never slow down an unrelated surface.
+        if (servo->speed > 0)
+            pos = limitSpeed(servoInput[i], pos, servo->speed);
 
         servoInput[i] = pos;
 

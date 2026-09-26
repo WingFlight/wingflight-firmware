@@ -439,7 +439,7 @@ static void tvPidApplyAxis(uint8_t axis)
     // needs against a persistent disturbance (the correction "gives up" after a couple of
     // seconds), while no decay at all would leave stale I parking the nozzle off-center forever.
     // Same reasoning as pid.c's ATT HOLD handling.
-    const float decayScale = tvHoldIsHolding(axis) ? QUATHOLD_HOLD_I_DECAY_SCALE : 1.0f;
+    const float decayScale = tvHoldIDecayScale(axis);
     const float errorDecay = limitf(tvPid.data[axis].axisError * tvPid.itermDecayRate * decayScale, tvPid.itermDecayLimit * decayScale);
     tvPid.data[axis].axisError -= errorDecay * pidGetDT();
 

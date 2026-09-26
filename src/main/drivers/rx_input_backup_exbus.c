@@ -167,7 +167,7 @@ static FAST_CODE void exbusInputDataReceive(uint16_t c, void *data)
 
 // Called from the RX task (rx/rx.c, via rx_input_backup.c's poll loop), not an
 // ISR - safe to do the heavier decode/convert work here.
-static bool exbusInputUpdate(float *channels, uint8_t channelCount)
+static uint8_t exbusInputUpdate(float *channels, uint8_t channelCount)
 {
     uint8_t frame[EXBUS_INPUT_FRAME_SIZE];
     bool haveFrame = false;
@@ -181,13 +181,13 @@ static bool exbusInputUpdate(float *channels, uint8_t channelCount)
     }
 
     if (!haveFrame) {
-        return false;
+        return 0;
     }
 
     // Residue check across the whole frame including its own trailing CRC -
     // matches rx/jetiexbus.c's own jetiExBusCalcCRC16(frame, msg_len) == 0.
     if (exbusInputCalcCRC16(frame, EXBUS_INPUT_FRAME_SIZE) != 0) {
-        return false;
+        return 0;
     }
 
     // 16 channels, little-endian 16-bit each, right-shifted by 3 to this
@@ -204,7 +204,7 @@ static bool exbusInputUpdate(float *channels, uint8_t channelCount)
         channels[i] = (float)exbusInputChannelData[i];
     }
 
-    return true;
+    return channelCount;
 }
 
 bool rxInputBackupExbusInit(rxInputBackupOps_t *ops)

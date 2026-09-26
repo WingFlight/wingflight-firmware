@@ -161,7 +161,6 @@ extern uint16_t flightModeFlags;
    [BOXTRAINER]     = TRAINER_MODE_BIT,                  \
    [BOXATTHOLD]     = ATTHOLD_MODE_BIT,                  \
    [BOXALTHOLD]     = ALTHOLD_MODE_BIT,                  \
-   [BOXGPSRESCUE]   = GPS_RESCUE_MODE_BIT,               \
    [BOXLOITER]      = LOITER_MODE_BIT,                   \
    [BOXRTH]         = RTH_MODE_BIT,                      \
    [BOXFAILSAFE]    = FAILSAFE_MODE_BIT,                 \

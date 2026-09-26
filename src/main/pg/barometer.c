@@ -48,6 +48,14 @@ void pgResetFn_barometerConfig(barometerConfig_t *barometerConfig)
     barometerConfig->baro_i2c_address = 0;
     barometerConfig->baro_spi_device = SPI_DEV_TO_CFG(SPIINVALID);
     barometerConfig->baro_spi_csn = IO_TAG_NONE;
+#elif defined(USE_FAKE_BARO)
+    // No bus at all (SITL): baroDetect() picks the fake baro on AUTO/FAKE.
+    barometerConfig->baro_hardware = BARO_DEFAULT;
+    barometerConfig->baro_busType = BUS_TYPE_NONE;
+    barometerConfig->baro_i2c_device = I2C_DEV_TO_CFG(I2CINVALID);
+    barometerConfig->baro_i2c_address = 0;
+    barometerConfig->baro_spi_device = SPI_DEV_TO_CFG(SPIINVALID);
+    barometerConfig->baro_spi_csn = IO_TAG_NONE;
 #else
     barometerConfig->baro_hardware = BARO_NONE;
     barometerConfig->baro_busType = BUS_TYPE_NONE;

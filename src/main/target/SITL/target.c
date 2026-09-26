@@ -31,6 +31,7 @@
 #endif
 
 #include "common/maths.h"
+#include "common/time.h"
 
 #include "drivers/io.h"
 #include "drivers/dma.h"
@@ -101,6 +102,15 @@ uint32_t SystemCoreClock;
 
 static fdm_packet fdmPkt;
 static servo_packet pwmPkt;
+
+// Anything the simulator sends to the state port lands here and is dispatched
+// on its length (see baro_packet in target.h).
+static union {
+    fdm_packet fdm;
+    baro_packet baro;
+} statePkt;
+
+STATIC_ASSERT(sizeof(baro_packet) != sizeof(fdm_packet), SITL_state_packets_must_differ_in_size);
 
 // The two halves of the servo path have to agree, and nothing else checks them.
 //
@@ -178,19 +188,40 @@ void sendMotorUpdate(void) {
 static void refreshPwmPacket(bool motorsActive);
 
 #if defined(USE_FAKE_BARO)
-// The fake baro driver keeps whatever fakeBaroDetect() seeded (101325 Pa, i.e.
-// a constant 0 m MSL) until something calls fakeBaroSet(), so without this the
-// simulated aircraft's altitude never changes as far as the firmware is
-// concerned. Derive a pressure from the FDM's altitude via the ISA troposphere
-// model, so baro-derived altitude tracks the simulator.
+// Last time a baro_packet arrived, in real-time us (0 = never). While the
+// simulator is sending its own barometer, the position-derived fallback below
+// stays out of the way; if it stops for BARO_PACKET_TIMEOUT_US, the fallback
+// takes over again so the reading never freezes.
+static uint64_t lastBaroPacketUs = 0;
+#define BARO_PACKET_TIMEOUT_US 500000
+
+// A simulator's own barometer: absolute pressure at the aircraft's true MSL
+// altitude, with whatever noise, drift and static-port error it chose to
+// model (wingflight-sitl-hitl sitl/jsbsim_bridge.py's Barometer class).
+static void updateFakeBaroFromPacket(const baro_packet *pkt)
+{
+    if (!isfinite(pkt->pressure_pa) || !isfinite(pkt->temperature_c) || pkt->pressure_pa <= 0) {
+        return;
+    }
+    lastBaroPacketUs = micros64_real();
+    fakeBaroSet((int32_t)lrint(pkt->pressure_pa), (int32_t)lrint(pkt->temperature_c * 100.0));
+}
+
+// Fallback for a simulator that sends no baro_packet. The fake baro driver
+// keeps whatever fakeBaroDetect() seeded (101325 Pa, i.e. a constant 0 m MSL)
+// until something calls fakeBaroSet(), so derive a pressure from the FDM's
+// altitude via the ISA troposphere model, so baro-derived altitude at least
+// tracks the simulator.
 //
 // Note the altitude is *relative to the simulator's initial condition*:
-// fdm_packet.position_xyz is NED metres from the sim's origin (see
-// wingflight-sitl-hitl sitl/jsbsim_bridge.py), so the firmware sees the IC altitude as 0 m MSL.
-// That's what altitude-hold/vario style consumers care about; absolute MSL
-// altitude would need a new field in fdm_packet.
+// fdm_packet.position_xyz is NED metres from the sim's origin, so the firmware
+// sees the IC altitude as 0 m MSL, and the reading is noise-free.
 static void updateFakeBaroFromFdm(const fdm_packet *pkt)
 {
+    if (lastBaroPacketUs && micros64_real() - lastBaroPacketUs < BARO_PACKET_TIMEOUT_US) {
+        return;
+    }
+
     const double altitudeMeters = -pkt->position_xyz[2];
 
     // ISA: p = p0 * (1 - 2.25577e-5 * h)^5.25588, valid to ~11 km.
@@ -326,11 +357,17 @@ static void* udpThread(void* data) {
     int n = 0;
 
     while (workerRunning) {
-        n = udpRecv(&stateLink, &fdmPkt, sizeof(fdm_packet), 100);
+        n = udpRecv(&stateLink, &statePkt, sizeof(statePkt), 100);
         if (n == sizeof(fdm_packet)) {
 //            printf("[data]new fdm %d\n", n);
+            fdmPkt = statePkt.fdm;
             updateState(&fdmPkt);
         }
+#if defined(USE_FAKE_BARO)
+        else if (n == sizeof(baro_packet)) {
+            updateFakeBaroFromPacket(&statePkt.baro);
+        }
+#endif
     }
 
     printf("udpThread end!!\n");
@@ -367,6 +404,16 @@ void systemInit(void) {
         printf("Create udpWorker error!\n");
         exit(1);
     }
+
+#ifdef USE_RTC_TIME
+    // No RTC chip, but the host has a clock. A real FC waits for GPS or the
+    // Configurator to set its time; without one, every blackbox log would be
+    // stamped 0000-01-01 and they could not be told apart.
+    struct timespec wallClock;
+    clock_gettime(CLOCK_REALTIME, &wallClock);
+    rtcTime_t rtcNow = rtcTimeMake(wallClock.tv_sec, wallClock.tv_nsec / 1000000);
+    rtcSet(&rtcNow);
+#endif
 
     // Note: task attributes (tasks[].attribute) aren't initialized until
     // tasksInitData() runs, which happens after systemInit() returns (see
@@ -439,27 +486,39 @@ uint64_t millis64_real(void) {
     return 1.0e3*((ts.tv_sec + (ts.tv_nsec*1.0e-9)) - (start_time.tv_sec + (start_time.tv_nsec*1.0e-9)));
 }
 
-uint64_t micros64(void) {
+// micros64()/millis64() integrate real time at simRate into a running total,
+// which makes them read-modify-write on shared state. They are called from
+// more than the main loop: the TCP serial threads run serial RX callbacks (see
+// tcpDataIn() in drivers/serial_tcp.c) that timestamp what they receive, as
+// the FBUS master does for every sensor reply. Unguarded, two callers could
+// interleave so one saw a `last` newer than its own `now`; the unsigned
+// difference then wrapped and threw the FC's clock billions of us forward,
+// stalling every time-based task. Hardware never sees this, because an IRQ
+// can't interleave with the code it interrupted this way.
+static pthread_mutex_t clockLock = PTHREAD_MUTEX_INITIALIZER;
+
+static uint64_t simNanos64(void)
+{
     static uint64_t last = 0;
     static uint64_t out = 0;
-    uint64_t now = nanos64_real();
 
+    pthread_mutex_lock(&clockLock);
+    const uint64_t now = nanos64_real();
     out += (now - last) * simRate;
     last = now;
+    const uint64_t result = out;
+    pthread_mutex_unlock(&clockLock);
 
-    return out*1e-3;
+    return result;
+}
+
+uint64_t micros64(void) {
+    return simNanos64()*1e-3;
 //    return micros64_real();
 }
 
 uint64_t millis64(void) {
-    static uint64_t last = 0;
-    static uint64_t out = 0;
-    uint64_t now = nanos64_real();
-
-    out += (now - last) * simRate;
-    last = now;
-
-    return out*1e-6;
+    return simNanos64()*1e-6;
 //    return millis64_real();
 }
 

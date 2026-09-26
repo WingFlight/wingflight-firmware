@@ -24,11 +24,10 @@
 
 #include "build/version.h"
 
-#if defined(USE_VTX_RTC6705_SOFTSPI)
-#define USE_VTX_RTC6705
-#endif
-
-#ifndef USE_DSHOT
+// SITL has no DShot, but it does read ESC telemetry: over the FBUS master,
+// from the simulator's emulated FrSky ESC (wingflight-sitl-hitl
+// sitl/jsbsim_bridge.py), which needs no DShot at all.
+#if !defined(USE_DSHOT) && !defined(SIMULATOR_BUILD)
 #undef USE_ESC_SENSOR
 #endif
 
@@ -143,8 +142,6 @@
 #undef USE_SPEKTRUM_REAL_RSSI
 #undef USE_SPEKTRUM_FAKE_RSSI
 #undef USE_SPEKTRUM_RSSI_PERCENT_CONVERSION
-#undef USE_SPEKTRUM_VTX_CONTROL
-#undef USE_SPEKTRUM_VTX_TELEMETRY
 #undef USE_TELEMETRY_SRXL
 #endif
 
@@ -154,15 +151,6 @@
 
 #if !defined(USE_TELEMETRY_SMARTPORT) && !defined(USE_TELEMETRY_CRSF)
 #undef USE_MSP_OVER_TELEMETRY
-#endif
-
-/* If either VTX_CONTROL or VTX_COMMON is undefined then remove common code and device drivers */
-#if !defined(USE_VTX_COMMON) || !defined(USE_VTX_CONTROL)
-#undef USE_VTX_COMMON
-#undef USE_VTX_CONTROL
-#undef USE_VTX_TRAMP
-#undef USE_VTX_SMARTAUDIO
-#undef USE_VTX_TABLE
 #endif
 
 #if defined(USE_RX_FRSKY_SPI_D) || defined(USE_RX_FRSKY_SPI_X) || defined(USE_RX_REDPINE_SPI)
@@ -203,7 +191,7 @@
 #define USE_FLASH_W25M
 #endif
 
-#if defined(USE_FLASH_M25P16) || defined(USE_FLASH_W25N01G)
+#if defined(USE_FLASH_M25P16) || defined(USE_FLASH_W25N01G) || defined(USE_FLASH_FILE)
 #define USE_FLASH_CHIP
 #endif
 
@@ -340,14 +328,6 @@
 #undef USE_UNIFIED_TARGET
 #endif
 
-#if !defined(USE_RANGEFINDER)
-#undef USE_RANGEFINDER_HCSR04
-#undef USE_RANGEFINDER_SRF10
-#undef USE_RANGEFINDER_HCSR04_I2C
-#undef USE_RANGEFINDER_VL53L0X
-#undef USE_RANGEFINDER_UIB
-#undef USE_RANGEFINDER_TF
-#endif
 
 // TODO: Remove this once HAL support is fixed for ESCSERIAL
 #ifdef STM32F7

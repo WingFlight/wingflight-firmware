@@ -27,6 +27,8 @@
 
 #include "config/config.h"
 #include "io/serial.h"
+#include "pg/battery.h"
+#include "pg/esc_sensor.h"
 #include "pg/gps.h"
 
 // SITL-specific config defaults. NOTE: like every config default, these apply
@@ -44,9 +46,26 @@
 // - Third MSP port on UART3 (TCP 127.0.0.1:5763), reserved for the Configurator,
 //   so it can stay connected alongside the joystick RC and the GPS feed. Three
 //   MSP ports is MAX_MSP_PORT_COUNT.
+// - FBUS master on UART4 (TCP 127.0.0.1:5764), with ESC telemetry read over it:
+//   wingflight-sitl-hitl sitl/jsbsim_bridge.py connects there and answers the
+//   master's polls as a FrSky ESC, reporting the simulated pack voltage,
+//   current, RPM, consumption and temperature. The battery voltage and current
+//   meters use that ESC, since SITL has no ADC. Nothing on the port simply
+//   means no telemetry, as with a real FC whose FBUS wire is unplugged.
 void targetConfiguration(void)
 {
     gpsConfigMutable()->provider = GPS_MSP;
+
+#if defined(USE_FBUS_MASTER) && defined(USE_ESC_SENSOR)
+    serialPortConfig_t *fbusPortConfig = serialFindPortConfigurationMutable(SERIAL_PORT_UART4);
+    if (fbusPortConfig) {
+        fbusPortConfig->functionMask = FUNCTION_FBUS_MASTER;
+    }
+    // validateAndFixConfig() turns FEATURE_ESC_SENSOR on for this combination.
+    escSensorConfigMutable()->protocol = ESC_SENSOR_PROTO_FBUS;
+    batteryConfigMutable()->voltageMeterSource = VOLTAGE_METER_ESC;
+    batteryConfigMutable()->currentMeterSource = CURRENT_METER_ESC;
+#endif
 
     for (serialPortIdentifier_e id = SERIAL_PORT_USART2; id <= SERIAL_PORT_USART3; id++) {
         serialPortConfig_t *portConfig = serialFindPortConfigurationMutable(id);

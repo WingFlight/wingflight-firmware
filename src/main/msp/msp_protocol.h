@@ -55,7 +55,7 @@
 #define MSP_PROTOCOL_VERSION                 0
 
 #define API_VERSION_MAJOR                    22
-#define API_VERSION_MINOR                    2
+#define API_VERSION_MINOR                    5
 #define API_VERSION_LENGTH                   2
 
 #define FLIGHT_CONTROLLER_IDENTIFIER_LENGTH  4
@@ -105,7 +105,7 @@
 #define MSP_SET_SERIAL_CONFIG                55
 #define MSP_VOLTAGE_METER_CONFIG             56
 #define MSP_SET_VOLTAGE_METER_CONFIG         57
-#define MSP_SONAR_ALTITUDE                   58
+// #define MSP_SONAR_ALTITUDE                   58
 #define MSP_DEBUG_CONFIG                     59
 #define MSP_SET_DEBUG_CONFIG                 60
 #define MSP_ARMING_CONFIG                    61
@@ -136,8 +136,8 @@
 // #define MSP_SET_OSD_CONFIG                 85
 // #define MSP_OSD_CHAR_READ                  86
 // #define MSP_OSD_CHAR_WRITE                 87
-#define MSP_VTX_CONFIG                       88
-#define MSP_SET_VTX_CONFIG                   89
+// #define MSP_VTX_CONFIG                       88
+// #define MSP_SET_VTX_CONFIG                   89
 #define MSP_ADVANCED_CONFIG                  90
 #define MSP_SET_ADVANCED_CONFIG              91
 #define MSP_FILTER_CONFIG                    92
@@ -146,7 +146,7 @@
 #define MSP_SET_PID_PROFILE                  95
 #define MSP_SENSOR_CONFIG                    96
 #define MSP_SET_SENSOR_CONFIG                97
-#define MSP_CAMERA_CONTROL                   98
+// #define MSP_CAMERA_CONTROL                   98
 #define MSP_SET_ARMING_DISABLED              99
 
 #define MSP_STATUS                           101
@@ -185,8 +185,8 @@
 
 #define MSP_GPS_RESCUE                       135
 #define MSP_GPS_RESCUE_PIDS                  136
-#define MSP_VTXTABLE_BAND                    137
-#define MSP_VTXTABLE_POWERLEVEL              138
+// #define MSP_VTXTABLE_BAND                    137
+// #define MSP_VTXTABLE_POWERLEVEL              138
 #define MSP_MOTOR_TELEMETRY                  139
 
 // 142, 143 reserved (heli governor removed, do not reuse)
@@ -280,8 +280,8 @@
 #define MSP_SET_GPS_CONFIG                   223
 #define MSP_SET_GPS_RESCUE                   225
 #define MSP_SET_GPS_RESCUE_PIDS              226
-#define MSP_SET_VTXTABLE_BAND                227
-#define MSP_SET_VTXTABLE_POWERLEVEL          228
+// #define MSP_SET_VTXTABLE_BAND                227
+// #define MSP_SET_VTXTABLE_POWERLEVEL          228
 
 #define MSP_MULTIPLE_MSP                     230
 #define MSP_SERVO_CURVES                     231
@@ -329,6 +329,13 @@
 // MSP2_WING_RX_INPUT_BACKUP_TRIAL above, which claimed those two from master
 // independently on a sibling branch.
 #define MSP2_WING_ESC_SENSOR_TRIAL            0x5F14
+// 0x5F15: CRSF Sensors link diagnostics (0x5F10-0x5F14 are taken by the entries above).
+#define MSP2_WING_CRSF_SENSORS_STATUS         0x5F15
+// gpsNavConfig_t (PG_GPS_NAV) had no MSP command at all before this -- CLI-only
+// (nav_rth_altitude, nav_loiter_radius, nav_max_bank_angle, nav_max_pitch_angle,
+// nav_min_sats, nav_bearing_kp, nav_altitude_kp, nav_loiter_direction).
+#define MSP2_WING_GPS_NAV_CONFIG              0x5F16
+#define MSP2_WING_SET_GPS_NAV_CONFIG          0x5F17
 
 // Generic parameter addressing. These address configuration by
 // (pgn, offset, length) against the parameter group registry instead of by a

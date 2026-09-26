@@ -41,12 +41,10 @@
 
 static serialPort_t *sbusOutPort = NULL;
 
-// Storage for speed limiting (similar to servoInput in servos.c)
+// Speed-limit state for SBUS output (similar to servoInput in servos.c). F.Bus
+// output keeps its own, so each output steps only on its own frames.
 static FAST_DATA_ZERO_INIT float sbusServoInput[SBUS_OUT_CHANNELS];
-
-// Cached cyclic ratio (calculated once per update cycle)
-static FAST_DATA_ZERO_INIT float sbusCyclicRatio = 1.0f;
-static FAST_DATA_ZERO_INIT bool sbusCyclicRatioValid = false;
+static timeUs_t sbusOutLastFrameUs = 0;
 
 static void sbusOutPrepareSbusFrame(sbusOutFrame_t *frame,
                                     uint16_t *channels)
@@ -89,10 +87,18 @@ float sbusOutGetRX(uint8_t channel)
 static inline float sbusLimitTravel(uint8_t channel, float pos, float min, float max)
 {
     const uint8_t servoIndex = BUS_SERVO_OFFSET + channel;
+
+    // +-Inf are still correctly caught below even under -ffast-math (see
+    // constrainf() in common/maths.h). Only a NaN fails both comparisons
+    // and would otherwise fall through untouched -- isfinitef() catches
+    // that remaining case without changing how Inf is already handled.
     if (pos > max) {
         mixerSaturateServoOutput(servoIndex);
         return max;
     } else if (pos < min) {
+        mixerSaturateServoOutput(servoIndex);
+        return min;
+    } else if (!isfinitef(pos)) {
         mixerSaturateServoOutput(servoIndex);
         return min;
     }
@@ -100,9 +106,11 @@ static inline float sbusLimitTravel(uint8_t channel, float pos, float min, float
 }
 
 // Helper function similar to limitSpeed in servos.c
-static inline float sbusLimitSpeed(float old, float new, float speed)
+// dt is the time since this output's previous frame: the limit is applied once
+// per output frame, not once per PID loop like servoUpdate().
+static inline float sbusLimitSpeed(float old, float new, float speed, float dt)
 {
-    float rate = 1200 * pidGetDT() / speed;
+    float rate = 1200 * dt / speed;
     float diff = new - old;
 
     if (diff > rate)
@@ -113,63 +121,13 @@ static inline float sbusLimitSpeed(float old, float new, float speed)
     return new;
 }
 
-// Helper function similar to limitRatio in servos.c
-static inline float sbusLimitRatio(float old, float new, float ratio)
-{
-    return old + (new - old) * ratio;
-}
-
-// Calculate cyclic ratio for all channels (called once per update cycle)
-static void sbusOutCalculateCyclicRatio(void)
-{
-    float cyclic_ratio = 1.0f;
-    
-    for (int ch = 0; ch < SBUS_OUT_CHANNELS; ch++)
-    {
-        const uint8_t servoIndex = BUS_SERVO_OFFSET + ch;
-
-        if (servoIndex >= MAX_SUPPORTED_SERVOS)
-            continue;
-
-        // Cloned channels mirror the PWM output verbatim (see
-        // sbusOutGetValueMixer) and never consult their own servoParams, so
-        // their speed/cyclic setting shouldn't factor into the shared ratio.
-        if (busServoConfig()->cloneFromPwm && ch < getServoCount())
-            continue;
-
-        const servoParam_t *servo = servoParams(servoIndex);
-
-        // Get normalized mixer output (-1.0 to 1.0), or servo override when disarmed
-        float input;
-        if (!ARMING_FLAG(ARMED) && hasServoOverride(servoIndex))
-            input = getServoOverride(servoIndex) / 1000.0f;
-        else
-            input = mixerGetServoOutput(servoIndex);
-
-#ifdef USE_SERVO_GEOMETRY_CORRECTION
-        // Apply geometry correction if enabled for this servo
-        if (servo->flags & SERVO_FLAG_GEO_CORR)
-            input = geometryCorrection(input);
-#endif
-
-        // Calculate cyclic ratio for speed limiting (if this is a cyclic servo)
-        if (servo->speed && mixerIsCyclicServo(servoIndex)) {
-            const float limit = 1200 * pidGetDT() / servo->speed;
-            const float speed = fabsf(input - sbusServoInput[ch]);
-            if (speed > limit)
-                cyclic_ratio = fminf(cyclic_ratio, limit / speed);
-        }
-    }
-    
-    sbusCyclicRatio = cyclic_ratio;
-    sbusCyclicRatioValid = true;
-}
-
 // Process a single SBUS mixer channel with same logic as servoUpdate()
 // Returns processed value in microseconds
-float sbusOutGetValueMixer(uint8_t channel)
+// lastPos is the calling output's speed-limit state for this channel and dt
+// the time since that output's previous frame.
+float sbusOutGetValueMixer(uint8_t channel, float *lastPos, float dt)
 {
-    if (channel >= SBUS_OUT_CHANNELS)
+    if (channel >= BUS_SERVO_CHANNELS)
         return 0;
     
     const uint8_t servoIndex = BUS_SERVO_OFFSET + channel;
@@ -203,23 +161,23 @@ float sbusOutGetValueMixer(uint8_t channel)
         input = geometryCorrection(input);
 #endif
 
+    // Guard the boundary: a NaN here would otherwise sit in
+    // *lastPos and poison every future sbusLimitSpeed() call
+    // on this channel forever, since NaN - NaN is still NaN.
+    if (!isfinitef(input))
+        input = 0;
+
     float pos = input;
 
-    // Apply speed limiting
-    if (servo->speed > 0) {
-        if (mixerIsCyclicServo(servoIndex)) {
-            // Use cached cyclic ratio (must be calculated first via sbusOutCalculateCyclicRatio)
-            if (!sbusCyclicRatioValid)
-                sbusOutCalculateCyclicRatio();
-            pos = sbusLimitRatio(sbusServoInput[channel], pos, sbusCyclicRatio);
-        }
-        else {
-            pos = sbusLimitSpeed(sbusServoInput[channel], pos, servo->speed);
-        }
-    }
+    // Apply speed limiting. Each SBUS channel is limited independently, same
+    // as servoUpdate() in servos.c -- there is no swashplate to keep in
+    // plane on a fixed-wing airframe, so one channel's overrun must not
+    // couple into another, unrelated surface.
+    if (servo->speed > 0)
+        pos = sbusLimitSpeed(*lastPos, pos, servo->speed, dt);
 
     // Store input for next iteration
-    sbusServoInput[channel] = pos;
+    *lastPos = pos;
 
     // Apply servo reversal
     if (servo->flags & SERVO_FLAG_REVERSED)
@@ -238,21 +196,6 @@ float sbusOutGetValueMixer(uint8_t channel)
     return constrainf(pos, BUS_SERVO_MIN_SIGNAL, BUS_SERVO_MAX_SIGNAL);
 }
 
-// Process all SBUS mixer channels (batch version for sbusOutUpdate)
-void sbusOutProcessMixerChannels(float output[SBUS_OUT_CHANNELS])
-{
-    // Calculate cyclic ratio once for all channels
-    sbusOutCalculateCyclicRatio();
-    
-    // Process each channel
-    for (int ch = 0; ch < SBUS_OUT_CHANNELS; ch++) {
-        output[ch] = sbusOutGetValueMixer(ch);
-    }
-    
-    // Invalidate cyclic ratio for next update cycle
-    sbusCyclicRatioValid = false;
-}
-
 static uint16_t sbusOutConvertToSbus(uint8_t channel, float pwm)
 {
     // For digital channels (16-17), convert to 0 or 1
@@ -269,7 +212,6 @@ static uint16_t sbusOutConvertToSbus(uint8_t channel, float pwm)
 
 void sbusOutUpdate(timeUs_t currentTimeUs)
 {
-    UNUSED(currentTimeUs);
     if (!sbusOutPort)
         return;
 
@@ -277,17 +219,29 @@ void sbusOutUpdate(timeUs_t currentTimeUs)
     if (serialTxBytesFree(sbusOutPort) <= sizeof(sbusOutFrame_t))
         return;
 
-    // Process all mixer channels with servoUpdate() logic
-    float mixerOutputs[SBUS_OUT_CHANNELS];
-    sbusOutProcessMixerChannels(mixerOutputs);
+    // sbus_out_channels: CH1-count carry bus servos, the rest are sent at
+    // center. The digital channels (17-18) are only used with all 16.
+    const int count = MIN(busOutChannelCount(sbusOutConfig()->channels), 16);
+    // Time since the previous frame, for the speed limit. The first frame
+    // assumes the configured frame rate; a long gap is capped at 100ms.
+    const float dt = sbusOutLastFrameUs ?
+        constrainf(cmpTimeUs(currentTimeUs, sbusOutLastFrameUs) * 1e-6f, 0.0f, 0.1f) :
+        1.0f / sbusOutConfig()->frameRate;
+    sbusOutLastFrameUs = currentTimeUs;
 
     // Prepare SBUS frame
     sbusOutFrame_t frame;
     uint16_t channels[SBUS_OUT_CHANNELS];
     for (int ch = 0; ch < SBUS_OUT_CHANNELS; ch++) {
-        float value = mixerOutputs[ch];
+        const bool used = (ch < count) || (count == 16);
+        if (!used) {
+            channels[ch] = (ch >= 16) ? 0 : sbusOutConvertToSbus(ch, 1500);
+            continue;
+        }
+
+        const float value = sbusOutGetValueMixer(ch, &sbusServoInput[ch], dt);
         channels[ch] = sbusOutConvertToSbus(ch, value);
-        
+
         // Store the output value for getServoOutput() to retrieve
         setBusServoOutput(ch, value);
     }

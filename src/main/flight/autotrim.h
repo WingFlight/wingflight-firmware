@@ -17,4 +17,12 @@
 
 #pragma once
 
+// Reported in telemetry (TELEM_STATUS_AUTOTRIM_SHIFT): the radio Lua decodes these values.
+typedef enum {
+    AUTOTRIM_IDLE,
+    AUTOTRIM_COLLECTING,
+    AUTOTRIM_SAVE_PENDING,
+} autoTrimState_e;
+
 void autoTrimUpdate(void);
+autoTrimState_e autoTrimGetState(void);

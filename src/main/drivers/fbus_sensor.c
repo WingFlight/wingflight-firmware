@@ -228,12 +228,13 @@ static fbusDetectedSensorType_e classifySensorTypeByAppId(uint16_t appId)
     // Classify by App ID signatures/ranges so sensors remain detectable even
     // when physical IDs are reconfigured.
 
-    // GPS signature block: 0x0800, 0x0820, 0x0830, 0x0840, 0x0850 (+ low nibble group)
+    // GPS signature block: 0x0800, 0x0820, 0x0830, 0x0840, 0x0850, 0x0860 (+ low nibble group)
     if ((appId >= FBUS_GPS_LATITUDE_BASE && appId <= (FBUS_GPS_LATITUDE_BASE + 0x0F)) ||
         (appId >= FBUS_GPS_ALTITUDE_BASE && appId <= (FBUS_GPS_ALTITUDE_BASE + 0x0F)) ||
         (appId >= FBUS_GPS_SPEED_BASE && appId <= (FBUS_GPS_SPEED_BASE + 0x0F)) ||
         (appId >= FBUS_GPS_COURSE_BASE && appId <= (FBUS_GPS_COURSE_BASE + 0x0F)) ||
-        (appId >= FBUS_GPS_TIME_BASE && appId <= (FBUS_GPS_TIME_BASE + 0x0F))) {
+        (appId >= FBUS_GPS_TIME_BASE && appId <= (FBUS_GPS_TIME_BASE + 0x0F)) ||
+        (appId >= FBUS_GPS_SATS_BASE && appId <= (FBUS_GPS_SATS_BASE + 0x0F))) {
         return FBUS_DETECTED_SENSOR_GPS;
     }
 
@@ -510,6 +511,11 @@ bool fbusSensorProcessDataWithSource(uint8_t physicalId, uint16_t appId, uint32_
                 fbusGps.hasDate = fbusGpsConvertDate(data, &fbusGps.date);
             }
             fbusGps.lastUpdateUs = currentTimeUs;
+
+        } else if (appId >= FBUS_GPS_SATS_BASE && appId <= (FBUS_GPS_SATS_BASE + 0x0F)) {
+            fbusGps.satellites = (data > UINT8_MAX) ? UINT8_MAX : (uint8_t)data;
+            fbusGps.hasSatellites = true;
+            fbusGps.lastUpdateUs = currentTimeUs;
         }
         
         return true;
@@ -674,6 +680,7 @@ void fbusSensorUpdate(timeUs_t currentTimeUs)
         fbusGps.hasAltitude = false;
         fbusGps.hasSpeed = false;
         fbusGps.hasCourse = false;
+        fbusGps.hasSatellites = false;
         fbusGps.hasTime = false;
         fbusGps.hasDate = false;
     }
@@ -721,7 +728,12 @@ void fbusSensorUpdate(timeUs_t currentTimeUs)
                 gpsSol.groundCourse = fbusGps.courseDeg;
             }
 
-            gpsSol.numSat = 5;
+            // Older FBUS GPS sensors do not report satellite count. Leave it
+            // at zero by default rather than inventing a value that could
+            // satisfy RTH/Loiter/GPS Rescue minimum-satellite checks. Users
+            // can explicitly opt into an assumed CLI value for those sensors;
+            // real satellite-count data always wins when the sensor sends it.
+            gpsSol.numSat = fbusGps.hasSatellites ? fbusGps.satellites : gpsConfig()->fbus_assumed_sats;
             gpsSol.hdop = 100;
             gpsData.lastMessage = millis();
             gpsSetFixState(true);

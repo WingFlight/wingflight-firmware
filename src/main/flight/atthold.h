@@ -32,5 +32,6 @@ void attHoldSetState(bool state);
 
 float attHoldApply(int axis, float pidSetpoint);
 bool attHoldIsHolding(int axis);
+float attHoldIDecayScale(int axis);
 
 ADJFUN_DECLARE(ATTHOLD_GAIN)
