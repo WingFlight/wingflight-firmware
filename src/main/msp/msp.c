@@ -110,6 +110,7 @@
 
 #include "msp/msp_box.h"
 #include "msp/msp_param.h"
+#include "msp/msp_runtime.h"
 #include "msp/msp_protocol.h"
 #include "msp/msp_protocol_v2_betaflight.h"
 #include "msp/msp_protocol_v2_rotorflight.h"
@@ -4462,6 +4463,8 @@ mspResult_e mspFcProcessCommand(mspDescriptor_t srcDesc, mspPacket_t *cmd, mspPa
     } else if ((ret = mspFcProcessOutCommandWithArg(srcDesc, cmdMSP, src, dst, mspPostProcessFn)) != MSP_RESULT_CMD_UNKNOWN) {
         /* ret */;
     } else if (mspParamCommand(cmdMSP, src, dst, &paramResult)) {
+        ret = paramResult;
+    } else if (mspRuntimeCommand(cmdMSP, src, dst, &paramResult)) {
         ret = paramResult;
     } else if (cmdMSP == MSP_SET_PASSTHROUGH) {
         mspFcSetPassthroughCommand(dst, src, mspPostProcessFn);

@@ -63,6 +63,7 @@ COMMON_SRC = \
             msp/msp.c \
             msp/msp_box.c \
             msp/msp_param.c \
+            msp/msp_runtime.c \
             msp/msp_serial.c \
             scheduler/scheduler.c \
             sensors/adcinternal.c \

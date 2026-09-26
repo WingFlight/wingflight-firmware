@@ -207,6 +207,10 @@ msp_param_unittest_SRC := \
 		$(USER_DIR)/msp/msp_param.c \
 		$(USER_DIR)/pg/pg.c
 
+msp_runtime_unittest_SRC := \
+		$(USER_DIR)/common/streambuf.c \
+		$(USER_DIR)/msp/msp_runtime.c
+
 pg_unittest_SRC := \
 		$(USER_DIR)/common/crc.c \
 		$(USER_DIR)/common/streambuf.c \

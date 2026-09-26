@@ -345,4 +345,12 @@
 #define MSP2_WING_PG_DEFAULT                  0x5F24
 #define MSP2_WING_MANIFEST_READ               0x5F25
 
+// Runtime diagnostics the on-device CLI used to print (`tasks`,
+// `gyroregisters`, `setpoint_info`). The firmware reports raw values and the
+// configurator's CLI formats them. See msp/msp_runtime.c and §8.2/§11.2 of
+// parameter-addressing-design.md.
+#define MSP2_WING_TASK_INFO                   0x5F30
+#define MSP2_WING_GYRO_REGISTERS              0x5F31
+#define MSP2_WING_SETPOINT_INFO               0x5F32
+
 #define MSP_V2_FRAME                         255
