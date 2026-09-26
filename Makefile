@@ -600,6 +600,9 @@ MANIFEST_ELF        := $(MANIFEST_OBJECT_DIR)/$(FORKNAME)_$(TARGET).elf
 MANIFEST_JSON       := $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET)_manifest.json
 BUILD_ID_HEADER     := $(OBJECT_DIR)/$(TARGET)/wf_build_id.h
 WF_MANIFEST_TOOL    := $(ROOT)/src/utils/wf_manifest.py
+# msp.c preprocessed for this target, for the MSP codec extractor
+# (src/utils/wf_msp_codecs.py): every #if resolved, every opcode a number.
+MANIFEST_MSP_SOURCE := $(MANIFEST_OBJECT_DIR)/$(TARGET)/msp/msp.i
 
 # Without this, `make manifest` matches the src/main/manifest *directory* and
 # does nothing. The Makefile declares no other phony targets, but these three
@@ -610,9 +613,15 @@ WF_MANIFEST_TOOL    := $(ROOT)/src/utils/wf_manifest.py
 manifest:
 	$(V0) $(MAKE) $(JFLAG) DEBUG=INFO EXTRA_FLAGS="$(EXTRA_FLAGS) -Wno-error" \
 	      OPTIMISATION_BASE="-ffast-math -fmerge-all-constants" \
-	      OBJECT_DIR="$(MANIFEST_OBJECT_DIR)" MANIFEST_BUILD=yes $(MANIFEST_ELF)
+	      OBJECT_DIR="$(MANIFEST_OBJECT_DIR)" MANIFEST_BUILD=yes $(MANIFEST_ELF) $(MANIFEST_MSP_SOURCE)
 	$(V1) $(PYTHON) $(WF_MANIFEST_TOOL) $(MANIFEST_ELF) $(MANIFEST_JSON) \
-	      --build-id-header $(BUILD_ID_HEADER)
+	      --build-id-header $(BUILD_ID_HEADER) --msp-source $(MANIFEST_MSP_SOURCE)
+
+# Same flags as the object, minus dependency generation, which -E would
+# otherwise point at the object's .d file.
+$(OBJECT_DIR)/$(TARGET)/msp/msp.i: src/main/msp/msp.c
+	$(V1) mkdir -p $(dir $@)
+	$(V1) $(CROSS_CC) -E -P -o $@ $(filter-out -MMD -MP,$(CFLAGS)) $<
 
 # Checks the manifest two ways: against valueTable, which is the firmware's
 # other description of the same settings, and against the shipping LTO build,

@@ -164,6 +164,7 @@ class Dwarf(object):
         self.variables = {}   # name -> (die, cu)
         self.structs = {}     # struct/union name -> (die, cu), first definition wins
         self._typedefs = {}   # typedef name -> (die, cu), for anonymous structs
+        self.enum_constants = {}  # enumerator name -> value, for the MSP codec extractor
 
         for cu in self.dwarf.iter_CUs():
             for die in cu.get_top_DIE().iter_children():
@@ -178,6 +179,13 @@ class Dwarf(object):
                     identifier = name_of(die)
                     if identifier and 'DW_AT_byte_size' in die.attributes:
                         self.structs.setdefault(identifier, (die, cu))
+                elif die.tag == 'DW_TAG_enumeration_type':
+                    # msp.c sizes and bounds things by enumerators
+                    # (MIXER_IN_COUNT, PID_ROLL), which the preprocessor
+                    # leaves as names; DWARF has their values.
+                    for child in die.iter_children():
+                        if child.tag == 'DW_TAG_enumerator':
+                            self.enum_constants.setdefault(name_of(child), attr(child, 'DW_AT_const_value'))
                 elif die.tag == 'DW_TAG_typedef':
                     # `typedef struct { ... } foo_t;` leaves the struct itself
                     # anonymous, so it is only reachable by the typedef name.
@@ -927,6 +935,8 @@ def main(argv):
         description='Extract a parameter manifest from a linked Wingflight ELF.')
     parser.add_argument('elf', help='linked firmware ELF (non-LTO, DEBUG=INFO)')
     parser.add_argument('manifest', help='manifest JSON to write')
+    parser.add_argument('--msp-source', metavar='PATH',
+                        help='msp.c preprocessed for this target; adds MSP codecs')
     parser.add_argument('--build-id-header', metavar='PATH',
                         help='also write a C header defining WF_BUILD_ID_BYTES')
     args = parser.parse_args(argv[1:])
@@ -973,6 +983,13 @@ def main(argv):
     manifest['timers'] = read_timer_hardware(elf, dwarf)
     manifest['dmaopts'] = read_dmaopt_table(elf, dwarf)
     manifest['cli'] = read_cli_tables(elf, dwarf)
+    if args.msp_source:
+        import wf_msp_codecs
+        codecs, manual = wf_msp_codecs.extract(args.msp_source, manifest['pgs'],
+                                               constants=dwarf.enum_constants)
+        manifest['msp_codecs'] = {str(op): wf_msp_codecs.compact(codec) for op, codec in sorted(codecs.items())}
+        manifest['msp_manual'] = {str(op): why for op, why in sorted(manual.items())}
+        print('MSP codecs: %d mechanical, %d manual' % (len(codecs), len(manual)))
     manifest['build']['id'] = build_id(manifest)
 
     leaves = sum(count_leaves(pg['fields']) for pg in manifest['pgs'])
@@ -999,8 +1016,11 @@ def main(argv):
     print('largest group: %d bytes (%s)' % (
         largest, next(pg['symbol'] for pg in manifest['pgs'] if pg['size'] == largest)))
 
+    # Written compact: with the MSP codecs unrolled, indentation alone
+    # doubled the file, and the configurator caches it per build ID. The
+    # build ID hashes canonical(), so the layout here does not affect it.
     with open(args.manifest, 'w') as out:
-        json.dump(manifest, out, indent=1, sort_keys=True)
+        json.dump(manifest, out, sort_keys=True, separators=(',', ':'))
         out.write('\n')
 
     if args.build_id_header:

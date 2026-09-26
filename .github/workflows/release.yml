@@ -48,7 +48,7 @@ jobs:
     # docs/parameter-addressing-design.md.
     - name: Generate parameter manifests
       run: |
-        pip install pyelftools
+        pip install pyelftools pycparser
         make manifests FC_VER_SUFFIX="${{ env.GIT_PRE }}"
 
     - name: Create Release
