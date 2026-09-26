@@ -485,11 +485,16 @@ window with no working CLI at all. Revised:
    replayed; `MSP_EEPROM_WRITE` re-runs `validateAndFixConfig()` and
    `activateConfig()`, and every tab saves after writing.
 
-   Nothing is routed through the layer yet. The gate is `verify_msp` in the
-   configurator's CLI: every virtual reply against the firmware's real one,
-   and with `setters`, every virtual setter writing current values back
-   without changing the real GET. It must pass on each target before tabs
-   are pointed at the layer, per opcode.
+   The gate is `verify_msp` in the configurator's CLI: every virtual reply
+   against the firmware's real one, and with `setters`, every virtual setter
+   writing current values back without changing the real GET.
+
+   *Stage A (done, opt-in):* an experimental option runs the reply check on
+   every connect and serves only the replies that matched *that* board from
+   addressed access; setters and everything unverified keep the firmware's
+   opcodes, and a routed reply that fails falls back to them. *Stage B:*
+   route setters, once verified on each target; then hand-written codecs
+   for the opcodes the extractor leaves manual.
 4. **`.wf_meta`.** *(dropped.)* `settings.c` never needed converting: it is
    pure data, so it moved to `src/main/manifest/` and is compiled only into
    the manifest build, which is never flashed (`1caacb9a1`). §10 remains the
