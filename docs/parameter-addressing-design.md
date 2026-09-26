@@ -473,6 +473,23 @@ window with no working CLI at all. Revised:
    (reboots, passthrough, `bind_rx`, `flash_*`) and `status`. Every CLI
    command is now either emulated or named as not provided. Still to do:
    migrating tabs.
+
+   *Tabs, decided:* not rewritten, but served by a **virtual MSP layer** in
+   the configurator that answers each legacy config opcode itself from
+   `PARAM_READ` / `PARAM_WRITE`, byte for byte as the firmware did, so tabs,
+   FC state and `backup_restore.js` stay untouched. What each opcode's bytes
+   mean is extracted at build time from the target's own preprocessed
+   `msp.c` into the manifest (`msp_codecs`, `src/utils/wf_msp_codecs.py`): 85
+   of the handled opcodes on STM32F7X2, 83 on STM32F411. The rest need
+   hand-written codecs or stay in the firmware. Setter side effects are not
+   replayed; `MSP_EEPROM_WRITE` re-runs `validateAndFixConfig()` and
+   `activateConfig()`, and every tab saves after writing.
+
+   Nothing is routed through the layer yet. The gate is `verify_msp` in the
+   configurator's CLI: every virtual reply against the firmware's real one,
+   and with `setters`, every virtual setter writing current values back
+   without changing the real GET. It must pass on each target before tabs
+   are pointed at the layer, per opcode.
 4. **`.wf_meta`.** *(dropped.)* `settings.c` never needed converting: it is
    pure data, so it moved to `src/main/manifest/` and is compiled only into
    the manifest build, which is never flashed (`1caacb9a1`). §10 remains the
@@ -745,6 +762,12 @@ stays.
 
 ## 14. Remaining open items
 
+- **`verify_msp` in CI, on SITL.** SITL runs the real `msp.c` and speaks MSP
+  over TCP (5761), so the virtual layer can be verified against it with no
+  hardware. It needs a SITL manifest, which needs an ELF: on Linux SITL is
+  one, but the Windows MinGW build is PE/COFF, which `wf_manifest.py` cannot
+  read. So this is a Linux CI job: build SITL and its manifest, start SITL,
+  and run the configurator's verifier against it over TCP.
 - **Lua suite on addressed access.** wingflight-lua-ethos-suite runs on the
   radio, over MSP-over-telemetry, and sends 75 config opcodes
   ([classification](msp-opcode-classification.md)). It cannot use the
