@@ -9,7 +9,7 @@ to do that it needs, per opcode, which parameter-group bytes each wire field
 is. That is exactly what the serializers in msp.c say, so this reads them
 instead of transcribing them by hand.
 
-Input is msp.c *preprocessed for the target*: every #if resolved, every
+Input is msp_catalogue.c *preprocessed for the target*: every #if resolved, every
 opcode macro a number. Each case body is parsed with pycparser and run
 through a small symbolic executor that understands the shapes the catalogue
 is written in:
@@ -40,8 +40,13 @@ try:
 except ImportError:  # the manifest still builds; it just carries no codecs
     c_parser = c_ast = None
 
-# Dispatch functions whose case bodies are serializers, and their direction.
+# Dispatch functions whose case bodies are serializers, and their direction:
+# the config catalogue's (msp/msp_catalogue.c), and msp.c's, which a source
+# from before the catalogue was split out still has.
 FUNCTIONS = {
+    'mspCatalogueProcessOutCommand': 'out',
+    'mspCatalogueProcessOutCommandWithArg': 'out',
+    'mspCatalogueProcessInCommand': 'in',
     'mspCommonProcessOutCommand': 'out',
     'mspProcessOutCommand': 'out',
     'mspFcProcessOutCommandWithArg': 'out',
@@ -58,15 +63,28 @@ PROFILE_POINTERS = {
 
 
 # Getters msp.c calls in place of a field: each is a single expression over
-# groups, spelled out so the executor can follow it. Checked against their
-# definitions (cited), and by verify_msp like every codec.
+# groups, spelled out so the executor can follow it. GETTER_SOURCES names the
+# file defining each; test_wf_msp_codecs.py checks every one against its
+# definition's `return`, so a changed getter fails the tests rather than the
+# codec. verify_msp checks them again like every codec.
 GETTERS = {
     # sensors/battery.c
     'getBatteryCapacity': 'batteryConfig()->batteryCapacity[batteryConfig()->batteryProfile]',
+    'getBatteryProfileCellCount': 'batteryConfig()->batteryCellCount[batteryConfig()->batteryProfile]',
+    'getBatteryMaxCellVoltage': 'batteryConfig()->vbatmaxcellvoltage[batteryConfig()->batteryProfile]',
+    'getBatteryMinCellVoltage': 'batteryConfig()->vbatmincellvoltage[batteryConfig()->batteryProfile]',
+    'getBatteryFullCellVoltage': 'batteryConfig()->vbatfullcellvoltage[batteryConfig()->batteryProfile]',
+    'getBatteryWarningCellVoltage': 'batteryConfig()->vbatwarningcellvoltage[batteryConfig()->batteryProfile]',
     # config/config.c
     'getCurrentPidProfileIndex': 'systemConfig()->pidProfileIndex',
     'getCurrentControlRateProfileIndex': 'systemConfig()->activeRateProfile',
     'getCurrentTvProfileIndex': 'systemConfig()->tvProfileIndex',
+}
+
+GETTER_SOURCES = {
+    'sensors/battery.c': ['getBatteryCapacity', 'getBatteryProfileCellCount', 'getBatteryMaxCellVoltage',
+                          'getBatteryMinCellVoltage', 'getBatteryFullCellVoltage', 'getBatteryWarningCellVoltage'],
+    'config/config.c': ['getCurrentPidProfileIndex', 'getCurrentControlRateProfileIndex', 'getCurrentTvProfileIndex'],
 }
 
 # MIN() expands to a GCC statement expression pycparser cannot read; the
@@ -78,6 +96,15 @@ MIN_EXPANSION = re.compile(
 # sizeof() of the types msp.c sizes requests by.
 SIZEOF = {'uint8_t': 1, 'int8_t': 1, 'bool': 1, 'char': 1, 'uint16_t': 2, 'int16_t': 2,
           'uint32_t': 4, 'int32_t': 4, 'float': 4, 'uint64_t': 8, 'int64_t': 8}
+
+# The selected profile's index: an array group indexed by one of these is a
+# per-profile group (attitudeLimits(getCurrentPidProfileIndex())), its fields
+# relative to the selected profile like currentPidProfile's.
+PROFILE_INDEX_GETTERS = {
+    'getCurrentPidProfileIndex': 'pid',
+    'getCurrentControlRateProfileIndex': 'rate',
+    'getCurrentTvProfileIndex': 'tv',
+}
 
 _getter_parser = None
 
@@ -394,6 +421,10 @@ class Executor(object):
                 if is_array:
                     if len(args) != 1:
                         raise Manual('array group %s() without an index' % name)
+                    arg = args[0]
+                    if (isinstance(arg, c_ast.FuncCall) and isinstance(arg.name, c_ast.ID)
+                            and arg.name.name in PROFILE_INDEX_GETTERS and not arg.args):
+                        return Ref(pg, relative=PROFILE_INDEX_GETTERS[arg.name.name])
                     idx = self.value(args[0])
                     if idx == INDEX:
                         return Ref(pg, element=INDEX)
