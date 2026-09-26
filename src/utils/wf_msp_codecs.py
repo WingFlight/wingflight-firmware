@@ -19,6 +19,8 @@ is written in:
     armingConfigMutable()->auto_disarm_delay = sbufReadU8(src);    in field
     if (sbufBytesRemaining(src) >= 1) { ... }                      optional tail
     i = sbufReadU8(src); if (i < 42) { r = rangesMutable(i); ... } indexed
+    for (i = 0; i < N; i++) if (id == map[i]) break;               indexed via a
+                                                                   const id map
     currentPidProfile->pid_mode                                    selected profile
 
 Anything else makes the opcode *manual*: no codec is emitted, and the reason
@@ -72,6 +74,10 @@ GETTERS = {
 MIN_EXPANSION = re.compile(
     r'__extension__\s*\(\{\s*__typeof__\s*\((?P<a>[^()]*)\)\s*_a\s*=\s*\((?P=a)\)\s*;\s*'
     r'__typeof__\s*\((?P<b>[^()]*)\)\s*_b\s*=\s*\((?P=b)\)\s*;\s*_a\s*<\s*_b\s*\?\s*_a\s*:\s*_b\s*;\s*\}\)')
+
+# sizeof() of the types msp.c sizes requests by.
+SIZEOF = {'uint8_t': 1, 'int8_t': 1, 'bool': 1, 'char': 1, 'uint16_t': 2, 'int16_t': 2,
+          'uint32_t': 4, 'int32_t': 4, 'float': 4, 'uint64_t': 8, 'int64_t': 8}
 
 _getter_parser = None
 
@@ -213,6 +219,13 @@ INDEX = 'INDEX'  # the value of a leading index byte, in an indexed setter
 REMAINING = 'REMAINING'  # sbufBytesRemaining(src) in a reply body
 
 
+class ConstArray(object):
+    """A `const` integer table in the image, with the build's values."""
+
+    def __init__(self, name, values):
+        self.name, self.values = name, values
+
+
 class Selected(object):
     """array[field]: an element chosen by another field's value."""
 
@@ -221,14 +234,15 @@ class Selected(object):
 
 
 class Executor(object):
-    def __init__(self, groups, direction, constants=None):
+    def __init__(self, groups, direction, constants=None, arrays=None):
         self.groups = groups
         self.direction = direction
         self.constants = constants or {}
+        self.arrays = arrays or (lambda name: None)
         self.checks = {}        # {'len': k} / {'min_len': k} from dataSize guards
         self.ops = []
         self.env = {}
-        self.index = None       # {'w': 1, 'max': N} for indexed setters
+        self.index = None       # {'w': 1, 'max': N[, 'map': ids][, 'miss': 'ignore']}
         self.optional = False   # inside if (sbufBytesRemaining(src) >= k)
         self.side_effects = []
         self.done = False
@@ -253,6 +267,10 @@ class Executor(object):
                 # &field and *pointer-to-field: both the field itself
                 return self.value(node.expr)
             if node.op == 'sizeof':
+                t = node.expr
+                names = getattr(getattr(getattr(t, 'type', None), 'type', None), 'names', None)
+                if isinstance(t, c_ast.Typename) and names and len(names) == 1 and names[0] in SIZEOF:
+                    return SIZEOF[names[0]]
                 raise Manual('sizeof')
             raise Manual('unary %s' % node.op)
         if isinstance(node, c_ast.BinaryOp):
@@ -272,6 +290,9 @@ class Executor(object):
                 accessor, sel = PROFILE_POINTERS[node.name]
                 pg, _ = self.groups.group(accessor)
                 return Ref(pg, relative=sel)
+            values = self.arrays(node.name)
+            if values is not None:
+                return ConstArray(node.name, values)
             raise Manual('identifier %s' % node.name)
         if isinstance(node, c_ast.FuncCall):
             return self.call(node, want_value=True)
@@ -283,6 +304,11 @@ class Executor(object):
         if isinstance(node, c_ast.ArrayRef):
             base = self.value(node.name)
             sub = self.value(node.subscript)
+            if isinstance(base, ConstArray):
+                # a const table in the image: an element is a build constant
+                if not isinstance(sub, int) or not 0 <= sub < len(base.values):
+                    raise Manual('%s indexed by a computed value' % base.name)
+                return base.values[sub]
             if isinstance(sub, Ref) and isinstance(base, Ref) and base.path:
                 return Selected(base, sub)
             if sub == INDEX and isinstance(base, Ref) and base.path and base.element is None                     and not base.relative:
@@ -607,7 +633,50 @@ class Executor(object):
             return
         raise Manual('guard on a computed value')
 
+    def lookup_loop(self, node):
+        """`for (i = 0; i < N; i++) if (id == map[i]) break;`: the element
+        is where the request's id sits in a const table. True if handled."""
+        init, cond, nxt, body = node.init, node.cond, node.next, node.stmt
+        if not (isinstance(init, c_ast.Assignment) and init.op == '=' and isinstance(init.lvalue, c_ast.ID)):
+            return False
+        var = init.lvalue.name
+        items = body.block_items if isinstance(body, c_ast.Compound) else [body]
+        if len(items or []) != 1 or not isinstance(items[0], c_ast.If):
+            return False
+        test = items[0]
+        if test.iffalse is not None or not isinstance(test.iftrue, (c_ast.Break, c_ast.Compound)):
+            return False
+        if isinstance(test.iftrue, c_ast.Compound) and not (
+                len(test.iftrue.block_items or []) == 1 and isinstance(test.iftrue.block_items[0], c_ast.Break)):
+            return False
+        c = test.cond
+        if not (isinstance(c, c_ast.BinaryOp) and c.op == '=='):
+            return False
+        sides = [c.left, c.right]
+        ids = [x for x in sides if isinstance(x, c_ast.ID) and self.env.get(x.name) == INDEX]
+        tables = [x for x in sides if isinstance(x, c_ast.ArrayRef) and isinstance(x.subscript, c_ast.ID)
+                  and x.subscript.name == var]
+        if len(ids) != 1 or len(tables) != 1:
+            return False
+        table = self.value(tables[0].name)
+        if not isinstance(table, ConstArray):
+            raise Manual('id lookup in a table that is not const')
+        if self.value(init.rvalue) != 0 or not (isinstance(cond, c_ast.BinaryOp) and cond.op == '<'
+                                                and isinstance(cond.left, c_ast.ID) and cond.left.name == var):
+            raise Manual('id lookup loop shape')
+        if not (isinstance(nxt, c_ast.UnaryOp) and nxt.op in ('p++', '++') and nxt.expr.name == var):
+            raise Manual('id lookup loop step')
+        count = self.value(cond.right)
+        if not isinstance(count, int) or count > len(table.values) or self.ops or self.index['max'] is not None:
+            raise Manual('id lookup bound')
+        self.index['map'] = table.values[:count]
+        self.index['max'] = count
+        self.env[var] = INDEX
+        return True
+
     def run_for(self, node):
+        if self.index is not None and self.lookup_loop(node):
+            return
         init, cond, nxt = node.init, node.cond, node.next
         decls = init.decls if isinstance(init, c_ast.DeclList) else None
         if not decls or len(decls) != 1 or not isinstance(cond, c_ast.BinaryOp) or cond.op != '<':
@@ -690,8 +759,25 @@ class Executor(object):
             bound = self.value(c.right)
             if not isinstance(bound, int):
                 raise Manual('index bound not constant')
+            if self.index.get('map') is not None and bound != self.index['max']:
+                raise Manual('id lookup and its bound disagree')
             self.index['max'] = bound
             self.run(node.iftrue)
+            # Past the bound, the firmware refuses -- or accepts and writes
+            # nothing, consuming at most what the element would have.
+            if node.iffalse is None:
+                self.index['miss'] = 'ignore'
+            elif not self.is_error_exit(node.iffalse):
+                items = node.iffalse.block_items if isinstance(node.iffalse, c_ast.Compound) else [node.iffalse]
+                width = 0
+                for item in items or []:
+                    v = self.call(item) if isinstance(item, c_ast.FuncCall) else None
+                    if not (isinstance(v, tuple) and v[0] == 'read'):
+                        raise Manual('index miss that does more than skip the request')
+                    width += v[1]
+                if width != sum(o.get('w', 0) for o in self.ops if o['kind'] != 'string_in'):
+                    raise Manual('index miss skips a different width')
+                self.index['miss'] = 'ignore'
             return
         raise Manual('condition')
 
@@ -722,6 +808,16 @@ class Executor(object):
 #   s  the group field is signed          w  the wire value is signed (in)
 # and a range check, when the firmware refused values outside it, follows as
 # a seventh element {"min": a, "max": b} on "f" ops.
+#
+# Beside "ops", a codec has "dir" ("out" reply, "in" setter), and may have:
+#   len / min_len   the request length the firmware requires
+#   index           the request's leading bytes select an element:
+#                   {"w": bytes, "max": elements, "stride": bytes between
+#                   elements when not the group's element size, "map": ids
+#                   when the request names element k by map[k] rather than
+#                   k, "miss": "ignore" when a request selecting no element
+#                   is accepted and changes nothing (else it is refused)}
+#   side_effects    calls the firmware makes after storing, not replayed
 
 def _flags(op):
     return ''.join(letter for key, letter in (('optional', 'o'), ('indexed', 'i'), ('signed', 's'),
@@ -759,10 +855,12 @@ def compact(codec):
 
 # --- driver ------------------------------------------------------------------
 
-def extract(preprocessed_path, pgs, wanted=None, constants=None):
+def extract(preprocessed_path, pgs, wanted=None, constants=None, arrays=None):
     """{opcode: codec} for the opcodes that are mechanical, and
     {opcode: reason} for the rest. `wanted` limits it to a set of opcodes;
-    by default every case of the dispatch functions is tried."""
+    by default every case of the dispatch functions is tried. `constants`
+    maps enumerators to values; `arrays(name)` gives a const integer table's
+    values from the image, or None."""
     if c_parser is None:
         return {}, {op: 'pycparser not installed' for op in wanted}
 
@@ -790,7 +888,7 @@ def extract(preprocessed_path, pgs, wanted=None, constants=None):
                 manual[op] = 'does not parse (%s)' % str(e).split(':')[-1].strip()[:60]
                 continue
             fdef = ast.ext[-1]
-            ex = Executor(groups, direction, constants)
+            ex = Executor(groups, direction, constants, arrays)
             try:
                 ex.run(fdef.body)
                 if not ex.ops:

@@ -51,6 +51,10 @@ PGS = [
 ]
 
 
+# const tables in the image, as wf_manifest reads them
+ARRAYS = {'meterIds': [10, 20, 30], 'flashTable': [7, 8]}
+
+
 def extract(out_cases='', in_cases='', constants=None):
     src = ('static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)\n{\n  switch (cmdMSP) {\n'
            + out_cases + '\n    default:\n        return false;\n  }\n}\n'
@@ -59,7 +63,7 @@ def extract(out_cases='', in_cases='', constants=None):
     with tempfile.NamedTemporaryFile('w', suffix='.i', delete=False) as f:
         f.write(src)
     try:
-        return w.extract(f.name, PGS, constants=constants)
+        return w.extract(f.name, PGS, constants=constants, arrays=ARRAYS.get)
     finally:
         os.unlink(f.name)
 
@@ -285,6 +289,97 @@ class Refusals(unittest.TestCase):
         }'''))
         self.assertNotIn(1, codecs)
         self.assertIn(27, manual)
+
+    def test_sizeof_in_a_length_guard(self):
+        codecs, manual = extract(in_cases=case(40, '''
+        if (dataSize != 2 * sizeof(uint16_t) + sizeof(uint8_t)) {
+            return MSP_RESULT_ERROR;
+        }
+        demoConfigMutable()->b = sbufReadU16(src);
+        demoConfigMutable()->c = sbufReadU16(src);
+        demoConfigMutable()->a = sbufReadU8(src);'''))
+        self.assertEqual(manual, {})
+        self.assertEqual(codecs[40]['len'], 5)
+
+    def test_sizeof_of_a_struct(self):
+        self.assertManual(*extract(in_cases=case(41, '''
+        if (dataSize != sizeof(demo_t)) {
+            return MSP_RESULT_ERROR;
+        }
+        demoConfigMutable()->a = sbufReadU8(src);''')), 41, 'sizeof')
+
+    def test_const_table_elements_are_constants(self):
+        codecs, manual = extract(case(42, '''
+        for (int i = 0; i < 2; i++) {
+            sbufWriteU8(dst, meterIds[i]);
+            sbufWriteU16(dst, rows(i)->p);
+        }'''))
+        self.assertEqual(manual, {})
+        self.assertEqual(w.compact(codecs[42])['ops'], [
+            ['c', 1, 10, ''], ['f', 2, 20, 0, 2, ''], ['c', 1, 20, ''], ['f', 2, 20, 4, 2, '']])
+
+    def test_id_lookup_through_a_const_table(self):
+        # MSP_SET_VOLTAGE_METER_CONFIG: the element is where the id sits in
+        # the table; an unknown id is consumed and ignored.
+        codecs, manual = extract(in_cases=case(43, '''
+        uint8_t id = sbufReadU8(src);
+        int index;
+        for (index = 0; index < 3; index++) {
+            if (id == meterIds[index])
+                break;
+        }
+        if (index < 3) {
+            rowsMutable(index)->p = sbufReadU16(src);
+            rowsMutable(index)->q = sbufReadU8(src);
+        } else {
+            sbufReadU16(src);
+            sbufReadU8(src);
+        }'''))
+        self.assertEqual(manual, {})
+        self.assertEqual(codecs[43]['index'], {'w': 1, 'max': 3, 'map': [10, 20, 30], 'miss': 'ignore'})
+        self.assertEqual(w.compact(codecs[43])['ops'], [['f', 2, 20, 0, 2, 'i'], ['f', 1, 20, 2, 1, 'is']])
+
+    def test_index_miss_that_skips_another_width(self):
+        self.assertManual(*extract(in_cases=case(44, '''
+        uint8_t id = sbufReadU8(src);
+        int index;
+        for (index = 0; index < 3; index++) {
+            if (id == meterIds[index])
+                break;
+        }
+        if (index < 3) {
+            rowsMutable(index)->p = sbufReadU16(src);
+        } else {
+            sbufReadU8(src);
+        }''')), 44, 'different width')
+
+    def test_index_miss_that_is_an_error(self):
+        codecs, manual = extract(in_cases=case(45, '''
+        i = sbufReadU8(src);
+        if (i < 4) {
+            rowsMutable(i)->p = sbufReadU16(src);
+        } else {
+            return MSP_RESULT_ERROR;
+        }'''))
+        self.assertEqual(manual, {})
+        self.assertNotIn('miss', codecs[45]['index'])
+
+    def test_index_miss_without_else_is_ignored(self):
+        codecs, manual = extract(in_cases=case(46, '''
+        i = sbufReadU8(src);
+        if (i < 4) {
+            rowsMutable(i)->p = sbufReadU16(src);
+        }'''))
+        self.assertEqual(manual, {})
+        self.assertEqual(codecs[46]['index']['miss'], 'ignore')
+
+    def test_non_const_table(self):
+        # a table the image does not hold as const data is not a constant
+        self.assertManual(*extract(case(47, 'sbufWriteU8(dst, runtimeTable[0]);')), 47, 'runtimeTable')
+
+    def test_const_table_by_computed_index(self):
+        self.assertManual(*extract(case(48, 'sbufWriteU8(dst, flashTable[demoConfig()->a]);')), 48,
+                          'computed')
 
 
 if __name__ == '__main__':

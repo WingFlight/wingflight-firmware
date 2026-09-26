@@ -165,11 +165,17 @@ class Dwarf(object):
         self.structs = {}     # struct/union name -> (die, cu), first definition wins
         self._typedefs = {}   # typedef name -> (die, cu), for anonymous structs
         self.enum_constants = {}  # enumerator name -> value, for the MSP codec extractor
+        self._definitions = {}    # any global -> (die, cu), for const_int_array()
 
         for cu in self.dwarf.iter_CUs():
             for die in cu.get_top_DIE().iter_children():
                 if die.tag == 'DW_TAG_variable':
                     identifier = name_of(die)
+                    if identifier and 'DW_AT_type' in die.attributes:
+                        # An extern's definition usually names only its
+                        # declaration (DW_AT_specification); the declaration
+                        # carries the same name and type.
+                        self._definitions.setdefault(identifier, (die, cu))
                     if identifier in wanted and 'DW_AT_type' in die.attributes:
                         # A tentative definition can appear in several CUs; the
                         # first one carrying a type is as good as any, they
@@ -210,6 +216,39 @@ class Dwarf(object):
 
     def type_of(self, die, cu):
         return self.strip(*self.resolve(die, cu))
+
+    def const_int_array(self, elf, name):
+        """The values of a `const` one-dimensional integer array in the image,
+        or None if `name` is not one. For the MSP codec extractor: msp.c
+        numbers some wire fields from such tables (currentSensorToMeterMap),
+        and being const, their values are the build's, not the board's."""
+        found = self._definitions.get(name)
+        address = elf.symbols.get(name)
+        if found is None or address is None:
+            return None
+        array, cu = self.type_of(*found)
+        if array is None or array.tag != 'DW_TAG_array_type':
+            return None
+        dims = [attr(c, 'DW_AT_upper_bound') + 1 for c in array.iter_children()
+                if c.tag == 'DW_TAG_subrange_type' and 'DW_AT_upper_bound' in c.attributes]
+        if len(dims) != 1:
+            return None
+        element, element_cu = self.resolve(array, cu)
+        const = False
+        while element is not None and element.tag in TRANSPARENT_TAGS:
+            const = const or element.tag == 'DW_TAG_const_type'
+            element, element_cu = self.resolve(element, element_cu)
+        if not const or element is None or element.tag != 'DW_TAG_base_type':
+            return None
+        size = attr(element, 'DW_AT_byte_size')
+        kind = DWARF_ENCODING.get(attr(element, 'DW_AT_encoding'))
+        if size not in (1, 2, 4) or kind not in ('int', 'uint', 'bool'):
+            return None
+        code = {1: 'b', 2: 'h', 4: 'i'}[size]
+        if kind != 'int':
+            code = code.upper()
+        endian = '<' if elf.little_endian else '>'
+        return list(struct.unpack_from(endian + code * dims[0], elf.read_at(address, size * dims[0])))
 
     def walk(self, die, cu, path, base, out, depth=0):
         """Flatten a type into manifest field records.
@@ -995,7 +1034,8 @@ def main(argv):
     if args.msp_source:
         import wf_msp_codecs
         codecs, manual = wf_msp_codecs.extract(args.msp_source, manifest['pgs'],
-                                               constants=dwarf.enum_constants)
+                                               constants=dwarf.enum_constants,
+                                               arrays=lambda name: dwarf.const_int_array(elf, name))
         manifest['msp_codecs'] = {str(op): wf_msp_codecs.compact(codec) for op, codec in sorted(codecs.items())}
         manifest['msp_manual'] = {str(op): why for op, why in sorted(manual.items())}
         print('MSP codecs: %d mechanical, %d manual' % (len(codecs), len(manual)))

@@ -16,26 +16,28 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | --- | --- | --- | --- | --- | --- |
 | frozen | 16 | 14 | 8 | 2 | 4 |
 | keep | 35 | 29 | 14 | 4 | 1 |
-| runtime | 26 | 23 | 19 | 1 | 0 |
+| runtime | 27 | 24 | 19 | 1 | 0 |
 | live | 28 | 24 | 4 | 4 | 1 |
-| config | 104 | 87 | 56 | 13 | 89 |
+| config | 103 | 86 | 56 | 13 | 94 |
 
 ## What this means for step 5
 
 - **Step 5 deletes *config* only.** The clients' pages and tabs keep sending these opcodes;
   the virtual MSP layers (configurator `src/js/param/virtual_msp.js`, suite
   `tasks/msp/virtual.lua`) answer them from the manifest's codecs instead of the firmware.
-  On STM32F7X2, 89 of the 104 have a codec, 8 are left manual and
+  On STM32F7X2, 94 of the 103 have a codec, 2 are left manual and
   7 are not built. Step 5 cannot land until every *config* opcode marked C or L
   has a codec verified on each target, with setters routed (stage B). Still manual and
-  used by a client: `MSP_CURRENT_METER_CONFIG`, `MSP_SET_CURRENT_METER_CONFIG`, `MSP_VOLTAGE_METER_CONFIG`, `MSP_SET_VOLTAGE_METER_CONFIG`, `MSP_SET_LED_STRIP_MODECOLOR`, `MSP2_WING_SET_TV_PID_CONFIG`.
+  used by a client: none.
 - *Config* opcodes marked neither are used by no Wingflight client; deleting them breaks
   only upstream tools, which §13 accepts.
 - *Runtime* opcodes stay in the firmware. Each reads or writes stored config, but what goes on
   the wire also depends on state only the running firmware has: box IDs resolved against
   the compiled-in box table, ports and servos that exist on this board, channel counts, a
   refusal while logging, RPM filter and XACT state. A codec for them would be a second copy
-  of that logic. The profile actions (`MSP_COPY_PROFILE`, `MSP_SET_BATTERY_PROFILE`,
+  of that logic, as it would be for `MSP_SET_LED_STRIP_MODECOLOR`, whose three address
+  shapes and range checks are `setModeColor()` in `io/ledstrip.c`. The profile actions
+  (`MSP_COPY_PROFILE`, `MSP_SET_BATTERY_PROFILE`,
   `MSP2_WING_COPY_TV_PID_PROFILE`) and `MSP_EXPERIMENTAL` are commands, not a byte layout.
 - *Keep* and *runtime* are what `msp/msp_compat.c` must hold alongside *frozen*. *Keep* is
   longer than §8.2 listed: the configurator's connect flow alone needs
@@ -128,6 +130,7 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | 176 | `MSP_SET_BATTERY_PROFILE` | C | L |  |
 | 183 | `MSP_COPY_PROFILE` | C | L |  |
 | 212 | `MSP_SET_SERVO_CONFIGURATION` | C | L |  |
+| 221 | `MSP_SET_LED_STRIP_MODECOLOR` | C |  |  |
 | 231 | `MSP_SERVO_CURVES` | C | L |  |
 | 232 | `MSP_SET_SERVO_CURVE` | C | L |  |
 | 233 | `MSP_SERVO_TRIM` | C |  |  |
@@ -182,8 +185,8 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | 36 | `MSP_FEATURE_CONFIG` | C | L | codec |
 | 38 | `MSP_BOARD_ALIGNMENT_CONFIG` | C | L | codec |
 | 39 | `MSP_SET_BOARD_ALIGNMENT_CONFIG` | C | L | codec |
-| 40 | `MSP_CURRENT_METER_CONFIG` | C |  | manual |
-| 41 | `MSP_SET_CURRENT_METER_CONFIG` | C |  | manual |
+| 40 | `MSP_CURRENT_METER_CONFIG` | C |  | codec |
+| 41 | `MSP_SET_CURRENT_METER_CONFIG` | C |  | codec |
 | 42 | `MSP_MIXER_CONFIG` | C |  | codec |
 | 43 | `MSP_SET_MIXER_CONFIG` | C |  | codec |
 | 44 | `MSP_RX_CONFIG` | C | L | codec |
@@ -196,8 +199,8 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | 51 | `MSP_SET_RSSI_CONFIG` | C |  | codec |
 | 52 | `MSP_ADJUSTMENT_RANGES` | C | L | codec |
 | 53 | `MSP_SET_ADJUSTMENT_RANGE` | C | L | codec |
-| 56 | `MSP_VOLTAGE_METER_CONFIG` | C |  | manual |
-| 57 | `MSP_SET_VOLTAGE_METER_CONFIG` | C |  | manual |
+| 56 | `MSP_VOLTAGE_METER_CONFIG` | C |  | codec |
+| 57 | `MSP_SET_VOLTAGE_METER_CONFIG` | C |  | codec |
 | 59 | `MSP_DEBUG_CONFIG` | C |  | codec |
 | 60 | `MSP_SET_DEBUG_CONFIG` | C |  | codec |
 | 61 | `MSP_ARMING_CONFIG` | C | L | codec |
@@ -252,7 +255,6 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | 202 | `MSP_SET_PID_TUNING` | C | L | codec |
 | 204 | `MSP_SET_RC_TUNING` | C | L | codec |
 | 220 | `MSP_SET_SENSOR_ALIGNMENT` | C | L | codec |
-| 221 | `MSP_SET_LED_STRIP_MODECOLOR` | C |  | manual |
 | 222 | `MSP_SET_MOTOR_CONFIG` | C | L | codec |
 | 223 | `MSP_SET_GPS_CONFIG` | C |  | codec |
 | 225 | `MSP_SET_GPS_RESCUE` |  |  | not built |
@@ -272,6 +274,6 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | `0x5F09` | `MSP2_WING_FBUS_MASTER_CONFIG` | C |  | codec |
 | `0x5F0A` | `MSP2_WING_SET_FBUS_MASTER_CONFIG` | C |  | codec |
 | `0x5F0B` | `MSP2_WING_TV_PID_CONFIG` | C | L | codec |
-| `0x5F0C` | `MSP2_WING_SET_TV_PID_CONFIG` | C | L | manual |
+| `0x5F0C` | `MSP2_WING_SET_TV_PID_CONFIG` | C | L | codec |
 | `0x5F0E` | `MSP2_WING_RX_INPUT_BACKUP_CONFIG` | C |  | codec |
 | `0x5F0F` | `MSP2_WING_SET_RX_INPUT_BACKUP_CONFIG` | C |  | codec |
