@@ -359,7 +359,14 @@ def read_registry(elf, dwarf):
     SITL build. Reading it out of the debug info means the tool works on both
     without a target-specific table.
     """
-    data = elf.section_data('.pg_registry')
+    # The linker script's own bounds, when it provides them: a PE section is
+    # padded past its contents, so the section alone overstates the registry.
+    start = elf.symbols.get('__pg_registry_start')
+    end = elf.symbols.get('__pg_registry_end')
+    if start is not None and end is not None and end >= start:
+        data = elf.read_at(start, end - start) if end > start else b''
+    else:
+        data = elf.section_data('.pg_registry')
     if data is None:
         raise SystemExit('no .pg_registry section -- is this a linked firmware ELF?')
 
@@ -941,7 +948,9 @@ def main(argv):
                         help='also write a C header defining WF_BUILD_ID_BYTES')
     args = parser.parse_args(argv[1:])
 
-    elf = Elf(args.elf)
+    # The Windows SITL build is PE/COFF; everything else is ELF.
+    import wf_pe
+    elf = wf_pe.PeImage(args.elf) if wf_pe.is_pe(args.elf) else Elf(args.elf)
 
     # PG_REGISTER names the group's storage <name>_System / <name>_SystemArray,
     # so the registry's address field maps straight back to a DWARF variable.
