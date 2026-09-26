@@ -421,8 +421,8 @@ ordinary PG bytes (`a1eefb609`, `bbc08ce1a`, `27fe69ca7`).
 
 "**keep**" marks opcodes that are neither in the §8.1 frozen subset nor live
 data, and so would fall to a literal reading of step 5. They are the CLI
-emulator's action layer and belong in `msp_compat.c` alongside §8.1 — retained,
-not frozen, since only our own configurator depends on their wire shape.
+emulator's action layer and stay in `msp.c` alongside §8.1 — retained, not
+frozen, since only our own configurator depends on their wire shape.
 
 ## 9. Configurator side
 
@@ -489,8 +489,8 @@ window with no working CLI at all. Revised:
    `PARAM_READ` / `PARAM_WRITE`, byte for byte as the firmware did, so tabs,
    FC state and `backup_restore.js` stay untouched. What each opcode's bytes
    mean is extracted at build time from the target's own preprocessed
-   `msp.c` into the manifest (`msp_codecs`, `src/utils/wf_msp_codecs.py`): 100
-   of the handled opcodes on STM32F7X2, 98 on STM32F411, 87 on SITL --
+   `msp_catalogue.c` into the manifest (`msp_codecs`, `src/utils/wf_msp_codecs.py`): 94
+   of its opcodes on STM32F7X2, 92 on STM32F411, 82 on SITL --
    plain and profile fields, getters, indexed setters and `MSP_GET_*`
    replies, an array element picked by a stored selector, strings, 64-bit
    fields, and elements named by an id from a const table in the image
@@ -526,28 +526,38 @@ window with no working CLI at all. Revised:
 5. **Delete.** `cli.c` and `settings.c` *(done, `1caacb9a1`: −65.9 KB on
    STM32F7X2)*. Remaining: the MSP config catalogue *except the frozen subset
    in §8.1, the opcodes marked "keep" in §8.2, and the runtime-dependent
-   ones*, the BOXNAMES/BOXIDS
-   serialisation in `msp_box.c` (not the file — `io/piniobox.c` uses
-   `findBoxByPermanentId()` and `getBoxIdState()`), the `_Copy` buffers in
-   `pg.h`. Before this lands, move §8.1, the §8.2 "keep" and the runtime
-   opcodes into their own translation unit (`msp/msp_compat.c`) so that "the catalogue" and "what
-   stays" are separable by file rather than by `#if` — the deletion then cannot
-   take a kept opcode with it by accident.
+   ones*, and the `_Copy` buffers in `pg.h`. (`MSP_BOXNAMES` / `MSP_BOXIDS`
+   are runtime-dependent, so `msp_box.c`'s serialisation of them stays.)
 
-   The full sort of all 209 handled opcodes is in
+   *Separable by file (done):* the catalogue is `msp/msp_catalogue.c`, moved
+   out of `msp.c` case by case with the `#if` conditions each sat under, and
+   `msp.c`'s dispatchers hand whatever they do not handle to it. Step 5 is
+   then deleting that file and the three hand-overs; the deletion cannot take
+   a kept opcode with it by accident. The move was checked per target on the
+   preprocessed sources -- the same opcodes, each in the same kind of
+   dispatcher with a token-identical body -- and the codecs extracted from
+   the catalogue are identical to those extracted from `msp.c` before.
+   (This inverts the earlier plan of moving the *kept* opcodes into an
+   `msp_compat.c`: the kept ones use `msp.c`'s internals -- reboot,
+   passthrough, box tables, dataflash -- and the config cases use nothing
+   but their parameter groups.)
+
+   The full sort of all 203 handled opcodes is in
    [msp-opcode-classification.md](msp-opcode-classification.md): 16 frozen,
-   35 keep, 27 runtime, 28 live, 103 config. The rule that separates
+   34 keep, 29 runtime, 27 live, 97 config. The rule that separates
    *runtime* from *config*: delete what purely reflects stored config; keep
    what also depends on state only the running firmware has (box IDs against
    the compiled-in box table, the ports and servos this board has, channel
    counts, a refusal while logging, RPM filter and XACT state) and the
    profile actions. A codec for those would be a second copy of the
    firmware's logic (so `MSP_SET_LED_STRIP_MODECOLOR`, whose addressing is
-   `setModeColor()`, stays too). It sets two prerequisites the steps above did not state:
-   - **The configurator's tabs** send 86 of the 103 config opcodes, so step
+   `setModeColor()`, stays too, and so do `MSP_MIXER_CONFIG` and its setter,
+   which report and map bus output channel counts through
+   `busOutChannelCount()` and `getBusServoOutputCount()`). It sets two prerequisites the steps above did not state:
+   - **The configurator's tabs** send 86 of the 97 config opcodes, so step
      3's tab migration must be complete, not just the CLI: their codecs
      verified on each target and setters routed (stage B).
-   - **wingflight-lua-ethos-suite** sends 56 of them. It moves the same way
+   - **wingflight-lua-ethos-suite** sends 60 of them. It moves the same way
      as the configurator (§14): same codecs, shipped as per-build packs.
 
 Custom defaults did not survive step 5: they were CLI text replayed through
@@ -801,15 +811,21 @@ stays.
 - **`verify_msp` on SITL: works locally, not yet in CI.** SITL runs the real
   `msp.c` and speaks MSP over TCP (5761). `wf_pe.py` lets the generator read
   the Windows (PE/COFF) SITL build too, and the configurator's
-  `scripts/verify-msp-sitl.mjs` runs the verifier against it: 48 of 48 reply
-  codecs match (indexed replies at every index), 25 of 25 setters
-  round-trip (indexed and string setters included), and all 39 setter codecs
+  `scripts/verify-msp-sitl.mjs` runs the verifier against it: 44 of 44 reply
+  codecs match (indexed replies at every index), 24 of 24 setters
+  round-trip (indexed and string setters included), and all 38 setter codecs
   store what the firmware's own setters store, after a save (`--effects`), on perturbed configuration
   (on defaults only 12% of fields are distinctive enough to catch a wrong
   offset); a planted one-byte error is caught. SITL only covers the codecs
   its build compiles in, so each ARM target still needs `verify_msp` on a
-  board. Open: a CI job, which spans both repositories.
-- **Lua suite on addressed access — decided, stage A done.** The suite
+  board. `scripts/tab-replay-sitl.mjs` runs the configurator's own MSP stack
+  (MSPHelper decoding into FC state, `crunch()` and the `send*()` helpers
+  encoding) against SITL with both options on: every config read the tabs
+  make is served from `PARAM_READ` with identical FC state, every setter they
+  build verifies on first use and is then written through `PARAM_WRITE`, and
+  tab-style edits show in the firmware's own replies. Open: a CI job, which
+  spans both repositories.
+- **Lua suite on addressed access — decided, stages A and B done (opt-in).** The suite
   (56 config opcodes, [classification](msp-opcode-classification.md)) moves
   to `PARAM_READ` / `PARAM_WRITE` the configurator's way: its pages keep the
   legacy opcodes, and `tasks/msp/virtual.lua` in its MSP queue answers them
