@@ -308,6 +308,16 @@ safe: a write is accepted only if `offset + length <= pgSize(reg)`. Repeated
 structs are addressed as `index * stride + field offset`, the same arithmetic
 the bounds check performs.
 
+The bounds are the *only* check. `PARAM_WRITE` does not know a field's range
+and stores any bytes that fit, so a value the old setter would have refused or
+constrained lands as sent. Most fields tolerate that until the next
+`MSP_EEPROM_WRITE`, whose `validateAndFixConfig()` repairs what it knows about;
+a field the firmware uses as an array index does not: an out-of-range battery
+profile makes the firmware itself read past `batteryCapacity[]` (found on SITL
+by `verify-msp-sitl.mjs --perturb`). Range checking is the client's job, from
+the manifest's `min`/`max` — the configurator's `set` and the codecs' `check`
+entries do it; a client writing raw bytes owns the consequences.
+
 This is ~200 lines of firmware, and it replaces the *possibility* of all 90
 config opcodes in `mspProcessInCommand`.
 
@@ -479,9 +489,13 @@ window with no working CLI at all. Revised:
    `PARAM_READ` / `PARAM_WRITE`, byte for byte as the firmware did, so tabs,
    FC state and `backup_restore.js` stay untouched. What each opcode's bytes
    mean is extracted at build time from the target's own preprocessed
-   `msp.c` into the manifest (`msp_codecs`, `src/utils/wf_msp_codecs.py`): 85
-   of the handled opcodes on STM32F7X2, 83 on STM32F411. The rest need
-   hand-written codecs or stay in the firmware. Setter side effects are not
+   `msp.c` into the manifest (`msp_codecs`, `src/utils/wf_msp_codecs.py`): 95
+   of the handled opcodes on STM32F7X2, 93 on STM32F411, 82 on SITL --
+   plain and profile fields, getters, indexed setters and `MSP_GET_*`
+   replies, an array element picked by a stored selector, strings, 64-bit
+   fields. Of the *config* opcodes a client sends, six still need
+   hand-written codecs ([classification](msp-opcode-classification.md));
+   the *runtime* ones stay in the firmware. Setter side effects are not
    replayed; `MSP_EEPROM_WRITE` re-runs `validateAndFixConfig()` and
    `activateConfig()`, and every tab saves after writing.
 
@@ -501,21 +515,28 @@ window with no working CLI at all. Revised:
    long-term direction for new fields, not a prerequisite.
 5. **Delete.** `cli.c` and `settings.c` *(done, `1caacb9a1`: −65.9 KB on
    STM32F7X2)*. Remaining: the MSP config catalogue *except the frozen subset
-   in §8.1 and the opcodes marked "keep" in §8.2*, the BOXNAMES/BOXIDS
+   in §8.1, the opcodes marked "keep" in §8.2, and the runtime-dependent
+   ones*, the BOXNAMES/BOXIDS
    serialisation in `msp_box.c` (not the file — `io/piniobox.c` uses
    `findBoxByPermanentId()` and `getBoxIdState()`), the `_Copy` buffers in
-   `pg.h`. Before this lands, move §8.1 and the §8.2 "keep" opcodes into their
-   own translation unit (`msp/msp_compat.c`) so that "the catalogue" and "what
+   `pg.h`. Before this lands, move §8.1, the §8.2 "keep" and the runtime
+   opcodes into their own translation unit (`msp/msp_compat.c`) so that "the catalogue" and "what
    stays" are separable by file rather than by `#if` — the deletion then cannot
    take a kept opcode with it by accident.
 
    The full sort of all 209 handled opcodes is in
    [msp-opcode-classification.md](msp-opcode-classification.md): 16 frozen,
-   35 keep, 28 live, 130 config. It sets two prerequisites the steps above did
-   not state:
-   - **The configurator's tabs** send 110 of the 130 config opcodes, so step 3's
-     tab migration must be complete, not just the CLI.
-   - **wingflight-lua-ethos-suite** sends 75 of them. It moves the same way
+   35 keep, 26 runtime, 28 live, 104 config. The rule that separates
+   *runtime* from *config*: delete what purely reflects stored config; keep
+   what also depends on state only the running firmware has (box IDs against
+   the compiled-in box table, the ports and servos this board has, channel
+   counts, a refusal while logging, RPM filter and XACT state) and the
+   profile actions. A codec for those would be a second copy of the
+   firmware's logic. It sets two prerequisites the steps above did not state:
+   - **The configurator's tabs** send 87 of the 104 config opcodes, so step
+     3's tab migration must be complete, not just the CLI: their codecs
+     verified on each target and setters routed (stage B).
+   - **wingflight-lua-ethos-suite** sends 56 of them. It moves the same way
      as the configurator (§14): same codecs, shipped as per-build packs.
 
 Custom defaults did not survive step 5: they were CLI text replayed through
@@ -769,14 +790,15 @@ stays.
 - **`verify_msp` on SITL: works locally, not yet in CI.** SITL runs the real
   `msp.c` and speaks MSP over TCP (5761). `wf_pe.py` lets the generator read
   the Windows (PE/COFF) SITL build too, and the configurator's
-  `scripts/verify-msp-sitl.mjs` runs the verifier against it: 40 of 40 reply
-  codecs match and 22 of 22 setters round-trip, on perturbed configuration
+  `scripts/verify-msp-sitl.mjs` runs the verifier against it: 46 of 46 reply
+  codecs match (indexed replies at every index) and 25 of 25 setters
+  round-trip (indexed and string setters included), on perturbed configuration
   (on defaults only 12% of fields are distinctive enough to catch a wrong
   offset); a planted one-byte error is caught. SITL only covers the codecs
   its build compiles in, so each ARM target still needs `verify_msp` on a
   board. Open: a CI job, which spans both repositories.
 - **Lua suite on addressed access — decided, stage A done.** The suite
-  (75 config opcodes, [classification](msp-opcode-classification.md)) moves
+  (56 config opcodes, [classification](msp-opcode-classification.md)) moves
   to `PARAM_READ` / `PARAM_WRITE` the configurator's way: its pages keep the
   legacy opcodes, and `tasks/msp/virtual.lua` in its MSP queue answers them
   with the same codecs. The radio has no network, so the codecs *ship with
@@ -788,7 +810,8 @@ stays.
   only, each verified against the firmware on first use per connection; the
   Lua translator is checked byte-for-byte against the configurator's layer.
   Still to do, as for the configurator: setters (stage B) and hand-written
-  codecs for the 28 of its opcodes the extractor leaves manual.
+  codecs for the config opcodes the extractor leaves manual (one of them,
+  `MSP2_WING_SET_TV_PID_CONFIG`, is the suite's).
 
 - **`MSP_MULTIPLE_MSP`** — not config, not live data. Confirm it does not reach
   into the catalogue being deleted. (`MSP_PASSTHROUGH_*` and 4-way ESC are no
