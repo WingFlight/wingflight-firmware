@@ -55,6 +55,35 @@ PROFILE_POINTERS = {
 }
 
 
+# Getters msp.c calls in place of a field: each is a single expression over
+# groups, spelled out so the executor can follow it. Checked against their
+# definitions (cited), and by verify_msp like every codec.
+GETTERS = {
+    # sensors/battery.c
+    'getBatteryCapacity': 'batteryConfig()->batteryCapacity[batteryConfig()->batteryProfile]',
+    # config/config.c
+    'getCurrentPidProfileIndex': 'systemConfig()->pidProfileIndex',
+    'getCurrentControlRateProfileIndex': 'systemConfig()->activeRateProfile',
+    'getCurrentTvProfileIndex': 'systemConfig()->tvProfileIndex',
+}
+
+# MIN() expands to a GCC statement expression pycparser cannot read; the
+# preprocessed text is rewritten to a plain call first.
+MIN_EXPANSION = re.compile(
+    r'__extension__\s*\(\{\s*__typeof__\s*\((?P<a>[^()]*)\)\s*_a\s*=\s*\((?P=a)\)\s*;\s*'
+    r'__typeof__\s*\((?P<b>[^()]*)\)\s*_b\s*=\s*\((?P=b)\)\s*;\s*_a\s*<\s*_b\s*\?\s*_a\s*:\s*_b\s*;\s*\}\)')
+
+_getter_parser = None
+
+
+def _getter_ast(name):
+    global _getter_parser
+    if _getter_parser is None:
+        _getter_parser = c_parser.CParser()
+    ast = _getter_parser.parse('int f(void) { return %s; }' % GETTERS[name])
+    return ast.ext[0].body.block_items[0].expr
+
+
 class Manual(Exception):
     """The body does something the executor does not model."""
 
@@ -163,17 +192,32 @@ class Ref(object):
     def __init__(self, pg, element=None, relative=None, path=()):
         self.pg, self.element, self.relative, self.path = pg, element, relative, tuple(path)
 
+    field_indexed = False  # an array element inside the group, chosen by the index byte
+
+    def _derive(self, path):
+        ref = Ref(self.pg, self.element, self.relative, path)
+        ref.field_indexed = self.field_indexed
+        return ref
+
     def member(self, name, index=None):
-        return Ref(self.pg, self.element, self.relative, self.path + ((name, index),))
+        return self._derive(self.path + ((name, index),))
 
     def index_last(self, index):
         name, old = self.path[-1]
         if old is not None:
             raise Manual('two-dimensional index')
-        return Ref(self.pg, self.element, self.relative, self.path[:-1] + ((name, index),))
+        return self._derive(self.path[:-1] + ((name, index),))
 
 
 INDEX = 'INDEX'  # the value of a leading index byte, in an indexed setter
+REMAINING = 'REMAINING'  # sbufBytesRemaining(src) in a reply body
+
+
+class Selected(object):
+    """array[field]: an element chosen by another field's value."""
+
+    def __init__(self, array, selector):
+        self.array, self.selector = array, selector
 
 
 class Executor(object):
@@ -188,6 +232,7 @@ class Executor(object):
         self.optional = False   # inside if (sbufBytesRemaining(src) >= k)
         self.side_effects = []
         self.done = False
+        self.zeroed = None      # memset(ref, 0, ...) awaiting a string copy
 
     # expressions -----------------------------------------------------------
 
@@ -204,7 +249,8 @@ class Executor(object):
                 v = self.value(node.expr)
                 if isinstance(v, int):
                     return -v
-            if node.op == '&':
+            if node.op in ('&', '*'):
+                # &field and *pointer-to-field: both the field itself
                 return self.value(node.expr)
             if node.op == 'sizeof':
                 raise Manual('sizeof')
@@ -237,6 +283,20 @@ class Executor(object):
         if isinstance(node, c_ast.ArrayRef):
             base = self.value(node.name)
             sub = self.value(node.subscript)
+            if isinstance(sub, Ref) and isinstance(base, Ref) and base.path:
+                return Selected(base, sub)
+            if sub == INDEX and isinstance(base, Ref) and base.path and base.element is None                     and not base.relative:
+                # array[i] inside one group, i the leading index byte: element
+                # 0's placement, and the array's stride for the index
+                ref = base.index_last(0)
+                _, size, _, _ = self.place(base.index_last(0))
+                if self.index is None:
+                    raise Manual('array indexed before its index is read')
+                if self.index.get('stride', size) != size:
+                    raise Manual('index strides two different arrays')
+                self.index['stride'] = size
+                ref.field_indexed = True
+                return ref
             if not isinstance(sub, int):
                 raise Manual('non-constant array index')
             if isinstance(base, Ref) and base.path:
@@ -250,14 +310,34 @@ class Executor(object):
         if name is None:
             raise Manual('call through a pointer')
 
-        m = re.fullmatch(r'sbufRead([US])(8|16|32)', name)
+        m = re.fullmatch(r'sbufRead([US])(8|16|32|64)', name)
         if m:
-            if self.direction == 'out':
-                # a request argument (page, index), not reply bytes
+            if self.direction == 'out' and (self.ops or self.index is not None):
+                # a request argument other than a leading index (a page, a
+                # second value): not something a reply codec models
                 raise Manual('reads request arguments')
             return ('read', int(m.group(2)) // 8, m.group(1) == 'S')
 
-        m = re.fullmatch(r'sbufWrite([US])(8|16|32)', name)
+        if want_value and name in GETTERS:
+            return self.value(_getter_ast(name))
+        if want_value and name == 'strlen' and len(args) == 1:
+            ref = self.value(args[0])
+            if isinstance(ref, Ref):
+                return ('strlen', ref)
+        if want_value and name == 'MIN_' and len(args) == 2:
+            a, b = (self.value(x) if not (isinstance(x, c_ast.ID) and x.name == 'dataSize') else 'dataSize'
+                    for x in args)
+            if 'dataSize' in (a, b) and isinstance(a if b == 'dataSize' else b, int):
+                return ('min_datasize', a if b == 'dataSize' else b)
+            raise Manual('MIN of computed values')
+        if name == 'memset' and len(args) == 3:
+            ref, fill = self.value(args[0]), self.value(args[1])
+            if isinstance(ref, Ref) and fill == 0:
+                self.zeroed = ref
+                return None
+            raise Manual('memset of a computed range')
+
+        m = re.fullmatch(r'sbufWrite([US])(8|16|32|64)', name)
         if m:
             self.emit_out(int(m.group(2)) // 8, args[1])
             return None
@@ -274,6 +354,8 @@ class Executor(object):
         if name in ('sbufReadData', 'sbufWriteString', 'sbufReadString'):
             raise Manual(name)
         if name == 'sbufBytesRemaining':
+            if want_value and self.direction == 'out' and not self.ops:
+                return REMAINING  # a reply's request-length check
             raise Manual('sbufBytesRemaining outside an optional-tail check')
 
         # accessor()->  /  accessor(i)->
@@ -332,7 +414,7 @@ class Executor(object):
         if ref.relative:
             op['profile'] = ref.relative
             op['off'] = off
-        elif ref.element == INDEX:
+        elif ref.element == INDEX or getattr(ref, 'field_indexed', False):
             op['indexed'] = True
             op['off'] = off
         else:
@@ -352,7 +434,26 @@ class Executor(object):
                 raise Manual('array written as a scalar')
             self.ops.append(self.field_op({'kind': 'field', 'w': width, 'size': size, 'signed': signed}, v, off))
             return
+        if isinstance(v, Selected):
+            self.ops.append(self.selected_op({'kind': 'selected', 'w': width}, v))
+            return
         raise Manual('write of a computed value')
+
+    def selected_op(self, op, sel):
+        """array[selector]: the array's placement, and the selector field's."""
+        off, size, signed, count = self.place(sel.array)
+        if count is None:
+            raise Manual('selected element of a non-array')
+        if sel.selector.relative or sel.selector.element == INDEX:
+            raise Manual('selector inside a profile or indexed element')
+        s_off, s_size, _, s_count = self.place(sel.selector)
+        if s_count is not None:
+            raise Manual('array used as a selector')
+        op = self.field_op(dict(op, size=size, signed=signed, stride=size, count=count), sel.array, off)
+        s_elem = sel.selector.pg['size'] // sel.selector.pg['length']
+        op['sel'] = {'pgn': sel.selector.pg['pgn'], 'off': s_off + (sel.selector.element or 0) * s_elem,
+                     'size': s_size}
+        return op
 
     def assign(self, lhs, rhs):
         v = self.value(rhs)
@@ -380,6 +481,10 @@ class Executor(object):
             if 'check' in op:
                 placed['check'] = op['check']
             self.ops[v[1]] = placed
+            return
+        if isinstance(v, tuple) and v[0] == 'read' and isinstance(self.value(lhs), Selected):
+            self.ops.append(self.selected_op({'kind': 'selected', 'w': v[1], 'wire_signed': v[2]},
+                                             self.value(lhs)))
             return
         if isinstance(v, tuple) and v[0] == 'read':
             ref = self.value(lhs)
@@ -469,6 +574,11 @@ class Executor(object):
         bound = self.value(c.right)
         if not isinstance(bound, int):
             raise Manual('guard bound not constant')
+        if isinstance(left, c_ast.ID) and self.env.get(left.name) == REMAINING:
+            if c.op != '!=':
+                raise Manual('request length guard %s' % c.op)
+            self.checks['len'] = bound
+            return
         if isinstance(left, c_ast.ID) and left.name == 'dataSize':
             if c.op == '!=':
                 self.checks['len'] = bound
@@ -505,6 +615,9 @@ class Executor(object):
         var = decls[0].name
         start = self.value(decls[0].init)
         end = self.value(cond.right)
+        if isinstance(end, tuple) and end[0] in ('strlen', 'min_datasize') and start == 0:
+            self.string_loop(var, end, node.stmt)
+            return
         if not (isinstance(cond.left, c_ast.ID) and cond.left.name == var):
             raise Manual('loop condition')
         if not (isinstance(nxt, c_ast.UnaryOp) and nxt.op in ('p++', '++') and nxt.expr.name == var):
@@ -517,6 +630,45 @@ class Executor(object):
             if self.done:
                 break
         self.env.pop(var, None)
+
+    def string_loop(self, var, bound, body):
+        """`for (i < strlen(s)) write s[i]` and `memset(s); for (i < MIN(n,
+        dataSize)) s[i] = read` -- a string out, and a string in."""
+        items = body.block_items if isinstance(body, c_ast.Compound) else [body]
+        if len(items or []) != 1:
+            raise Manual('string loop body')
+        stmt = items[0]
+        if bound[0] == 'strlen':
+            ref = bound[1]
+            ok = (isinstance(stmt, c_ast.FuncCall) and isinstance(stmt.name, c_ast.ID)
+                  and stmt.name.name == 'sbufWriteU8' and isinstance(stmt.args.exprs[1], c_ast.ArrayRef))
+            if not ok:
+                raise Manual('strlen loop body')
+            target = stmt.args.exprs[1]
+            if not (isinstance(target.subscript, c_ast.ID) and target.subscript.name == var):
+                raise Manual('strlen loop index')
+            if self.value(target.name).path != ref.path:
+                raise Manual('strlen loop over another array')
+            off, size, _, count = self.place(ref)
+            if count is None or size != 1:
+                raise Manual('strlen of a non-string')
+            self.ops.append(self.field_op({'kind': 'string', 'len': count}, ref, off))
+            return
+        # string in
+        if self.zeroed is None:
+            raise Manual('string copy without clearing the field first')
+        ok = (isinstance(stmt, c_ast.Assignment) and isinstance(stmt.lvalue, c_ast.ArrayRef)
+              and isinstance(stmt.lvalue.subscript, c_ast.ID) and stmt.lvalue.subscript.name == var)
+        if not ok or self.value(stmt.lvalue.name).path != self.zeroed.path:
+            raise Manual('string copy body')
+        rhs = self.value(stmt.rvalue)
+        if not (isinstance(rhs, tuple) and rhs[0] == 'read' and rhs[1] == 1):
+            raise Manual('string copy of a non-byte')
+        off, size, _, count = self.place(self.zeroed)
+        if count is None or size != 1 or bound[1] > count:
+            raise Manual('string copy past its field')
+        self.ops.append(self.field_op({'kind': 'string_in', 'len': bound[1], 'field_len': count}, self.zeroed, off))
+        self.zeroed = None
 
     def run_if(self, node):
         c = node.cond
@@ -554,6 +706,14 @@ class Executor(object):
 #   ["c", w, value, flags]            a constant (out) the firmware writes
 #   ["s", w, flags]                   wire bytes the firmware ignores (in)
 #   ["d", len, pgn, off, flags]       raw group bytes (sbufWriteData)
+#   ["x", w, pgn, off, size, flags, sel_pgn, sel_off, sel_size, stride, count]
+#                                     array element chosen by another field's
+#                                     value: off + value * stride, value < count
+#   ["z", len, pgn, off, flags]       a string out: the field's bytes up to
+#                                     its first NUL, at most len (no NUL sent)
+#   ["Z", len, field_len, pgn, off, flags]
+#                                     a string in: zero field_len bytes, then
+#                                     copy the request's bytes, at most len
 #
 # flags is a string of letters:
 #   o  optional: only present if the request still has bytes (in)
@@ -581,6 +741,14 @@ def compact(codec):
             item = ['c', op['w'], op['value'], _flags(op)]
         elif kind == 'skip':
             item = ['s', op['w'], _flags(op)]
+        elif kind == 'selected':
+            sel = op['sel']
+            item = ['x', op['w'], op['pgn'], op['off'], op['size'], _flags(op),
+                    sel['pgn'], sel['off'], sel['size'], op['stride'], op['count']]
+        elif kind == 'string':
+            item = ['z', op['len'], op['pgn'], op['off'], _flags(op)]
+        elif kind == 'string_in':
+            item = ['Z', op['len'], op['field_len'], op['pgn'], op['off'], _flags(op)]
         else:
             item = ['d', op['len'], op['pgn'], op['off'], _flags(op)]
         ops.append(item)
@@ -614,6 +782,7 @@ def extract(preprocessed_path, pgs, wanted=None, constants=None):
             types = set(re.findall(r'\b(\w+_t|\w+_e)\b', text)) | {'uint8_t', 'uint16_t', 'uint32_t',
                                                                    'int8_t', 'int16_t', 'int32_t', 'uint', 'bool'}
             stub = ''.join('typedef int %s;\n' % t for t in sorted(types))
+            text = MIN_EXPANSION.sub(lambda m: 'MIN_(%s, %s)' % (m.group('a'), m.group('b')), text)
             code = stub + 'void f(void) {\n' + re.sub(r'\bconst\b', '', text) + '\n}\n'
             try:
                 ast = parser.parse(code)

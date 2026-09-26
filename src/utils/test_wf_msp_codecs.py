@@ -26,6 +26,13 @@ PGS = [
         {'name': 'arr', 'kind': 'array', 'off': 8, 'count': 3, 'elem_size': 1, 'elem_kind': 'uint'},
         {'name': 'inner.x', 'kind': 'uint', 'off': 11, 'size': 1},
     ]},
+    {'pgn': 11, 'symbol': 'batteryConfig_System', 'size': 8, 'length': 1, 'fields': [
+        {'name': 'batteryProfile', 'kind': 'uint', 'off': 0, 'size': 1},
+        {'name': 'batteryCapacity', 'kind': 'array', 'off': 2, 'count': 3, 'elem_size': 2, 'elem_kind': 'uint'},
+    ]},
+    {'pgn': 30, 'symbol': 'wide_System', 'size': 8, 'length': 1, 'fields': [
+        {'name': 'v', 'kind': 'uint', 'off': 0, 'size': 8},
+    ]},
     {'pgn': 20, 'symbol': 'rows_SystemArray', 'size': 16, 'length': 4, 'fields': [
         {'name': '', 'kind': 'repeat', 'off': 0, 'stride': 4, 'count': 4, 'fields': [
             {'name': 'p', 'kind': 'uint', 'off': 0, 'size': 2},
@@ -171,6 +178,54 @@ class Extraction(unittest.TestCase):
         self.assertEqual(manual, {})
         self.assertEqual(len(codecs[10]['ops']), 2)
 
+    def test_getter_alias_and_selected_element(self):
+        codecs, manual = extract(case(13, 'sbufWriteU16(dst, getBatteryCapacity());'),
+                                 in_cases=case(14, 'batteryConfigMutable()->batteryCapacity[batteryConfig()->batteryProfile] = sbufReadU16(src);'))
+        self.assertEqual(manual, {})
+        for op in (13, 14):
+            x = codecs[op]['ops'][0]
+            self.assertEqual((x['kind'], x['off'], x['stride'], x['count']), ('selected', 2, 2, 3))
+            self.assertEqual(x['sel'], {'pgn': 11, 'off': 0, 'size': 1})
+
+    def test_request_indexed_reply(self):
+        codecs, manual = extract(case(15, '''
+        {
+            const int rem = sbufBytesRemaining(src);
+            if (rem != 1) {
+                return MSP_RESULT_ERROR;
+            }
+            const uint8_t i = sbufReadU8(src);
+            if (i >= 4) {
+                return MSP_RESULT_ERROR;
+            }
+            sbufWriteU16(dst, rows(i)->p);
+        }'''))
+        self.assertEqual(manual, {})
+        c = codecs[15]
+        self.assertEqual((c['dir'], c['index'], c['len']), ('out', {'w': 1, 'max': 4}, 1))
+        self.assertTrue(c['ops'][0]['indexed'])
+
+    def test_strings_out_and_in(self):
+        codecs, manual = extract(case(16, '''
+        {
+            const int n = strlen(demoConfig()->arr);
+            for (int i = 0; i < n; i++) {
+                sbufWriteU8(dst, demoConfig()->arr[i]);
+            }
+        }'''), in_cases=case(17, '''
+        memset(demoConfigMutable()->arr, 0, 3);
+        for (unsigned int i = 0; i < __extension__ ({ __typeof__ (2U) _a = (2U); __typeof__ (dataSize) _b = (dataSize); _a < _b ? _a : _b; }); i++) {
+            demoConfigMutable()->arr[i] = sbufReadU8(src);
+        }'''))
+        self.assertEqual(manual, {})
+        self.assertEqual(codecs[16]['ops'], [{'kind': 'string', 'len': 3, 'pgn': 10, 'off': 8}])
+        self.assertEqual(codecs[17]['ops'], [{'kind': 'string_in', 'len': 2, 'field_len': 3, 'pgn': 10, 'off': 8}])
+
+    def test_u64_write(self):
+        codecs, manual = extract(case(18, 'sbufWriteU64(dst, wide()->v);'))
+        self.assertEqual(manual, {})
+        self.assertEqual((codecs[18]['ops'][0]['w'], codecs[18]['ops'][0]['size']), (8, 8))
+
     def test_fall_through_labels_share_a_body(self):
         codecs, _ = extract('\n    case 11:\n    case 12:\n        sbufWriteU8(dst, demoConfig()->a);\n        break;')
         self.assertEqual(codecs[11]['ops'], codecs[12]['ops'])
@@ -193,7 +248,7 @@ class Refusals(unittest.TestCase):
         self.assertManual(*extract(case(21, 'sbufWriteU16(dst, demoConfig()->a * 10);')), 21, 'computed')
 
     def test_value_from_a_function(self):
-        self.assertManual(*extract(case(22, 'sbufWriteU16(dst, getBatteryCapacity());')), 22, 'getBatteryCapacity')
+        self.assertManual(*extract(case(22, 'sbufWriteU16(dst, getBatteryVoltage());')), 22, 'getBatteryVoltage')
 
     def test_call_consuming_the_buffer(self):
         self.assertManual(*extract(in_cases=case(23, 'featureConfigReplace(sbufReadU32(src));')), 23, 'consumes')
@@ -210,9 +265,16 @@ class Refusals(unittest.TestCase):
         rowsMutable(i)->p = sbufReadU16(src);''')), 26, 'bound')
 
     def test_out_body_reading_request_arguments(self):
+        # A leading index is a request-indexed reply; a read after data is not.
         self.assertManual(*extract(case(28, '''
-        const uint8_t page = sbufReadU8(src);
-        sbufWriteU8(dst, demoConfig()->a);''')), 28, 'request arguments')
+        sbufWriteU8(dst, demoConfig()->a);
+        const uint8_t page = sbufReadU8(src);''')), 28, 'request arguments')
+
+    def test_string_copy_without_clearing(self):
+        self.assertManual(*extract(in_cases=case(29, '''
+        for (unsigned int i = 0; i < MIN_(3U, dataSize); i++) {
+            demoConfigMutable()->arr[i] = sbufReadU8(src);
+        }''')), 29, 'clearing')
 
     def test_nested_switch_does_not_split_the_case(self):
         codecs, manual = extract(case(27, '''
