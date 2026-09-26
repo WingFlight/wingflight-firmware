@@ -34,6 +34,11 @@ typedef struct positionConfig_s {
     uint8_t gps_offset_lpf;
     uint8_t gps_min_sats;
     uint8_t vario_lpf;
+    // Appended fields -- keep new members at the end so configs saved by older firmware (a
+    // shorter struct, same PG version) still load, with these taking their reset defaults.
+    uint8_t acc_fusion;         // fuse the accelerometer into altitude and vario (flight/alt_fusion.c)
+    uint8_t fusion_baro_tc;     // fusion time constant over a baro measurement, 0.1 s
+    uint8_t fusion_gps_tc;      // fusion time constant over a GPS altitude measurement, 0.1 s
 } positionConfig_t;
 
 PG_DECLARE(positionConfig_t, positionConfig);

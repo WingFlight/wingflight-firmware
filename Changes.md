@@ -3,6 +3,50 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Accelerometer-Fused Altitude and Vario
+
+Altitude and vario now come from a vertical inertial estimator
+(`src/main/flight/alt_fusion.c`, wired in `src/main/flight/position.c`): a
+third-order complementary filter, the same structure as INAV's position
+estimator and ArduPilot's AP_InertialNav. The earth-frame vertical
+acceleration carries the short term; the baro (or GPS altitude on boards
+without one) pulls altitude, velocity and an accelerometer-bias estimate back
+in over a time constant. Vario no longer lags behind a filtered baro
+derivative, which is what GPS nav altitude hold, telemetry vario and Blackbox
+all read.
+
+If the altitude measurement drops out (a GPS-only board losing its fix), the
+estimate coasts on the accelerometer for 5 s, then reports itself invalid and
+holds the last altitude with zero vario. Before, altitude read 0.
+
+Vertical acceleration is clipped at about 3 g and the learned bias at
+2 m/s^2, so a snap or a momentarily lost attitude estimate cannot run the
+estimate away.
+
+New settings (CLI):
+
+- `position_acc_fusion` (`ON`): `OFF` restores the previous filtered-baro/GPS
+  altitude and derivative vario exactly.
+- `position_fusion_baro_tc` (20 = 2.0 s) and `position_fusion_gps_tc`
+  (40 = 4.0 s): how long the accelerometer is trusted over each measurement,
+  in 0.1 s. Longer gives a smoother estimate but slower correction.
+
+Fixes in the same code:
+
+- GPS altitude was never used on the default `position_alt_source`: the test
+  was `source & ALT_SOURCE_DEFAULT`, and `ALT_SOURCE_DEFAULT` is 0. A board
+  without a baro had no altitude at all unless the source was set to GPS
+  only.
+- `position_gps_min_sats` default 12 -> 6, matching `nav_min_sats`. At 12,
+  GPS altitude was unavailable on most fixes.
+- Recorded ground offsets are flagged explicitly instead of testing the offset
+  against 0.0, which a baro zeroed at calibration can legitimately average to.
+
+`DEBUG_ALTITUDE` fields are now: 0 altitude, 1 vario, 2 measured altitude,
+3 measured (derivative) vario, 4 baro altitude, 5 GPS altitude, 6 vertical
+acceleration (cm/s^2), 7 accelerometer bias (cm/s^2). Log with it on to
+compare the fused estimate against the raw sources.
+
 ## GPS Nav Dead Reckoning
 
 LOITER and RTH now ride through short GPS dropouts
