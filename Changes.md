@@ -3,6 +3,38 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## GPS Nav Dead Reckoning
+
+LOITER and RTH now ride through short GPS dropouts
+(`src/main/flight/gps_nav.c`). Every GPS task tick with a good fix records the
+position, ground speed, course and IMU heading. When the fix drops out, the
+position is carried forward at the last ground speed along a course turned by
+the IMU heading change since, for up to 5 s. Only after that does nav report the
+mode unavailable and ease the wings level. Before this, a single bad frame or a
+satellite lost in a bank dropped guidance, and telemetry reported
+"loiter/RTH unavailable", for as long as the blip lasted.
+
+Nav health still needs a 3D fix and `nav_min_sats`, the same on every GPS
+provider (UBLOX, NMEA, CRSF, FBUS, MSP); it does not use HDOP or receiver
+accuracy, which CRSF and FBUS don't supply. While the estimate is fresh, one
+satellite under `nav_min_sats` (never under 4) is still accepted, so a count on
+the threshold no longer flips nav in and out.
+
+Two fixes in the same code:
+
+- Switching LOITER or RTH on during a dropout used to leave nav inactive
+  (flying level at `nav_throttle`) until the switch was cycled. Nav now
+  engages and captures its target once the position is usable. Loiter still
+  holds the altitude from the moment the switch was flipped.
+- RTH switched on with no recorded home no longer steers toward latitude and
+  longitude 0,0; it flies level instead (home is only recorded at arming).
+
+The `nav_min_sats` default drops from 8 to 6 (`src/main/pg/gps_nav.c`), in line
+with INAV's `gps_min_sats`. 8 left a single-satellite margin over a typical
+9-10 satellite fix at arming, and a banked wing easily loses two or three.
+Saved configurations keep their value; set `nav_min_sats = 6` to take the new
+default on an existing model.
+
 ## AUTOHOVER Yaw Authority
 
 While AUTOHOVER is holding, the stabilised-yaw mixer input (`mixer input SY`)

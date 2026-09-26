@@ -32,5 +32,6 @@ void navStop(void);
 void updateGpsNav(void);
 bool navCanRTH(void);
 bool navCanLoiter(void);
+bool navGetEstimatedPosition(int32_t *lat, int32_t *lon);
 float navGetThrottle(void);
 float navTurnCoordinationYawRate(void);
