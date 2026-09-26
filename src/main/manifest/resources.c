@@ -84,6 +84,7 @@
 #include "pg/bus_i2c.h"
 #include "pg/dashboard.h"
 #include "pg/dyn_notch.h"
+#include "pg/esc_serial.h"
 #include "pg/flash.h"
 #include "pg/governor.h"
 #include "pg/gyrodev.h"
