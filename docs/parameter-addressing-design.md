@@ -515,8 +515,8 @@ window with no working CLI at all. Revised:
    not state:
    - **The configurator's tabs** send 110 of the 130 config opcodes, so step 3's
      tab migration must be complete, not just the CLI.
-   - **wingflight-lua-ethos-suite** sends 75 of them. It must be migrated as
-     well, which needs a design of its own (§14).
+   - **wingflight-lua-ethos-suite** sends 75 of them. It moves the same way
+     as the configurator (§14): same codecs, shipped as per-build packs.
 
 Custom defaults did not survive step 5: they were CLI text replayed through
 the parser. Board configs are applied over the wire by the configurator
@@ -736,10 +736,9 @@ concretely, so it is a known cost rather than a surprise:
 - `USE_MSP_OVER_TELEMETRY` keeps working as a *transport* — CRSF, ELRS and
   SmartPort still carry MSP frames, and MSPv2-over-v1 means the new opcodes
   reach through it. But radio-side tools that speak Betaflight *config* opcodes
-  (ELRS Lua scripts in particular) break when step 5 lands — and so does
-  Wingflight's own wingflight-lua-ethos-suite, which is built on them (§14). A
-  Wingflight-specific Lua script can do everything the old one did, via
-  `PARAM_READ`/`PARAM_WRITE`, but it has to be written.
+  (ELRS Lua scripts in particular) break when step 5 lands. Wingflight's own
+  wingflight-lua-ethos-suite does not: it moves to addressed access like the
+  configurator (§14).
 - Third-party tools that drive the firmware CLI over the USB port stop
   working — this already happened when `cli.c` was removed, not at step 5.
   The known case is the ExpressLRS configurator's "Betaflight passthrough"
@@ -776,16 +775,20 @@ stays.
   offset); a planted one-byte error is caught. SITL only covers the codecs
   its build compiles in, so each ARM target still needs `verify_msp` on a
   board. Open: a CI job, which spans both repositories.
-- **Lua suite on addressed access.** wingflight-lua-ethos-suite runs on the
-  radio, over MSP-over-telemetry, and sends 75 config opcodes
-  ([classification](msp-opcode-classification.md)). It cannot use the
-  manifest the configurator's way: there is no network on the radio, and the
-  manifest is ~200 KB of JSON (~22 KB gzipped, F7X2), which is a lot to pull
-  over MSP-over-telemetry and likely more than a radio's Lua heap wants to
-  hold (both unmeasured). Options to weigh: a per-release *slim* manifest shipped with the suite
-  (only the settings its pages edit, keyed by build ID); or keeping the
-  specific config opcodes the suite uses as a small Wingflight-owned set,
-  outside the deleted catalogue. Until this is decided, step 5 cannot land.
+- **Lua suite on addressed access — decided, stage A done.** The suite
+  (75 config opcodes, [classification](msp-opcode-classification.md)) moves
+  to `PARAM_READ` / `PARAM_WRITE` the configurator's way: its pages keep the
+  legacy opcodes, and `tasks/msp/virtual.lua` in its MSP queue answers them
+  with the same codecs. The radio has no network, so the codecs *ship with
+  the suite*: `make manifest` writes a per-build Lua pack
+  (`src/utils/wf_lua_pack.py`, binary strings to spare RAM), each release
+  publishes it, and the suite bundles the packs of the releases it supports
+  by build ID. No flash cost; in exchange suite releases follow firmware
+  releases, and a local build's pack is copied by hand. Opt-in, replies
+  only, each verified against the firmware on first use per connection; the
+  Lua translator is checked byte-for-byte against the configurator's layer.
+  Still to do, as for the configurator: setters (stage B) and hand-written
+  codecs for the 28 of its opcodes the extractor leaves manual.
 
 - **`MSP_MULTIPLE_MSP`** — not config, not live data. Confirm it does not reach
   into the catalogue being deleted. (`MSP_PASSTHROUGH_*` and 4-way ESC are no
