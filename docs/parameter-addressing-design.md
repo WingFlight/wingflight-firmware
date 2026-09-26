@@ -421,8 +421,8 @@ ordinary PG bytes (`a1eefb609`, `bbc08ce1a`, `27fe69ca7`).
 
 "**keep**" marks opcodes that are neither in the §8.1 frozen subset nor live
 data, and so would fall to a literal reading of step 5. They are the CLI
-emulator's action layer and belong in `msp_compat.c` alongside §8.1 — retained,
-not frozen, since only our own configurator depends on their wire shape.
+emulator's action layer and stay in `msp.c` alongside §8.1 — retained, not
+frozen, since only our own configurator depends on their wire shape.
 
 ## 9. Configurator side
 
@@ -489,7 +489,7 @@ window with no working CLI at all. Revised:
    `PARAM_READ` / `PARAM_WRITE`, byte for byte as the firmware did, so tabs,
    FC state and `backup_restore.js` stay untouched. What each opcode's bytes
    mean is extracted at build time from the target's own preprocessed
-   `msp.c` into the manifest (`msp_codecs`, `src/utils/wf_msp_codecs.py`): 100
+   `msp_catalogue.c` into the manifest (`msp_codecs`, `src/utils/wf_msp_codecs.py`): 100
    of the handled opcodes on STM32F7X2, 98 on STM32F411, 87 on SITL --
    plain and profile fields, getters, indexed setters and `MSP_GET_*`
    replies, an array element picked by a stored selector, strings, 64-bit
@@ -526,13 +526,21 @@ window with no working CLI at all. Revised:
 5. **Delete.** `cli.c` and `settings.c` *(done, `1caacb9a1`: −65.9 KB on
    STM32F7X2)*. Remaining: the MSP config catalogue *except the frozen subset
    in §8.1, the opcodes marked "keep" in §8.2, and the runtime-dependent
-   ones*, the BOXNAMES/BOXIDS
-   serialisation in `msp_box.c` (not the file — `io/piniobox.c` uses
-   `findBoxByPermanentId()` and `getBoxIdState()`), the `_Copy` buffers in
-   `pg.h`. Before this lands, move §8.1, the §8.2 "keep" and the runtime
-   opcodes into their own translation unit (`msp/msp_compat.c`) so that "the catalogue" and "what
-   stays" are separable by file rather than by `#if` — the deletion then cannot
-   take a kept opcode with it by accident.
+   ones*, and the `_Copy` buffers in `pg.h`. (`MSP_BOXNAMES` / `MSP_BOXIDS`
+   are runtime-dependent, so `msp_box.c`'s serialisation of them stays.)
+
+   *Separable by file (done):* the catalogue is `msp/msp_catalogue.c`, moved
+   out of `msp.c` case by case with the `#if` conditions each sat under, and
+   `msp.c`'s dispatchers hand whatever they do not handle to it. Step 5 is
+   then deleting that file and the three hand-overs; the deletion cannot take
+   a kept opcode with it by accident. The move was checked per target on the
+   preprocessed sources -- the same opcodes, each in the same kind of
+   dispatcher with a token-identical body -- and the codecs extracted from
+   the catalogue are identical to those extracted from `msp.c` before.
+   (This inverts the earlier plan of moving the *kept* opcodes into an
+   `msp_compat.c`: the kept ones use `msp.c`'s internals -- reboot,
+   passthrough, box tables, dataflash -- and the config cases use nothing
+   but their parameter groups.)
 
    The full sort of all 209 handled opcodes is in
    [msp-opcode-classification.md](msp-opcode-classification.md): 16 frozen,

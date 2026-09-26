@@ -14,10 +14,10 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 
 | class | opcodes | C | L | neither | codec |
 | --- | --- | --- | --- | --- | --- |
-| frozen | 16 | 14 | 8 | 2 | 4 |
-| keep | 35 | 29 | 14 | 4 | 1 |
+| frozen | 16 | 14 | 8 | 2 | 0 |
+| keep | 35 | 29 | 14 | 4 | 0 |
 | runtime | 27 | 24 | 19 | 1 | 0 |
-| live | 28 | 24 | 4 | 4 | 1 |
+| live | 28 | 24 | 4 | 4 | 0 |
 | config | 103 | 86 | 56 | 13 | 94 |
 
 ## What this means for step 5
@@ -39,8 +39,8 @@ the extractor left it to be hand-written; **not built** = not compiled into that
   shapes and range checks are `setModeColor()` in `io/ledstrip.c`. The profile actions
   (`MSP_COPY_PROFILE`, `MSP_SET_BATTERY_PROFILE`,
   `MSP2_WING_COPY_TV_PID_PROFILE`) and `MSP_EXPERIMENTAL` are commands, not a byte layout.
-- *Keep* and *runtime* are what `msp/msp_compat.c` must hold alongside *frozen*. *Keep* is
-  longer than §8.2 listed: the configurator's connect flow alone needs
+- *Config* is `msp/msp_catalogue.c`, which step 5 deletes; *frozen*, *keep* and *runtime* stay in
+  `msp/msp.c`. *Keep* is longer than §8.2 listed: the configurator's connect flow alone needs
   `MSP_SET_ARMING_DISABLED` and `MSP_SET_RTC`, and calibration, overrides and the
   trial/auto-align actions are not config.
 
@@ -48,19 +48,19 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 
 | # | opcode | C | L | codec |
 | --- | --- | --- | --- | --- |
-| 1 | `MSP_API_VERSION` | C | L | codec |
+| 1 | `MSP_API_VERSION` | C | L |  |
 | 2 | `MSP_FC_VARIANT` | C |  |  |
-| 3 | `MSP_FC_VERSION` | C | L | codec |
+| 3 | `MSP_FC_VERSION` | C | L |  |
 | 4 | `MSP_BOARD_INFO` | C |  |  |
 | 5 | `MSP_BUILD_INFO` | C |  |  |
 | 68 | `MSP_REBOOT` | C | L |  |
 | 101 | `MSP_STATUS` | C | L |  |
 | 104 | `MSP_MOTOR` | C |  |  |
-| 123 | `MSP_ESC_SENSOR_CONFIG` | C | L | codec |
+| 123 | `MSP_ESC_SENSOR_CONFIG` | C | L |  |
 | 131 | `MSP_MOTOR_CONFIG` | C | L |  |
 | 160 | `MSP_UID` | C | L |  |
 | 214 | `MSP_SET_MOTOR` |  |  |  |
-| 216 | `MSP_SET_ESC_SENSOR_CONFIG` | C | L | codec |
+| 216 | `MSP_SET_ESC_SENSOR_CONFIG` | C | L |  |
 | 245 | `MSP_SET_PASSTHROUGH` | C |  |  |
 | `0x3003` | `MSP2_SEND_DSHOT_COMMAND` |  |  |  |
 | `0x5F14` | `MSP2_WING_ESC_SENSOR_TRIAL` | C |  |  |
@@ -89,7 +89,7 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | 208 | `MSP_RESET_CONF` | C |  |  |
 | 210 | `MSP_SELECT_SETTING` | C | L |  |
 | 211 | `MSP_SET_HEADING` |  |  |  |
-| 213 | `MSP_SET_SERVO_CENTER` |  | L | codec |
+| 213 | `MSP_SET_SERVO_CENTER` |  | L |  |
 | 217 | `MSP_ESC_PARAMETERS` | C | L |  |
 | 218 | `MSP_SET_ESC_PARAMETERS` | C | L |  |
 | 219 | `MSP_SET_RESET_CURR_PID` | C |  |  |
@@ -141,7 +141,7 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 
 | # | opcode | C | L | codec |
 | --- | --- | --- | --- | --- |
-| 58 | `MSP_SONAR_ALTITUDE` | C |  | codec |
+| 58 | `MSP_SONAR_ALTITUDE` | C |  |  |
 | 70 | `MSP_DATAFLASH_SUMMARY` | C | L |  |
 | 79 | `MSP_SDCARD_SUMMARY` | C | L |  |
 | 102 | `MSP_RAW_IMU` | C |  |  |

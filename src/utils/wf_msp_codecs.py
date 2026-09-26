@@ -9,7 +9,7 @@ to do that it needs, per opcode, which parameter-group bytes each wire field
 is. That is exactly what the serializers in msp.c say, so this reads them
 instead of transcribing them by hand.
 
-Input is msp.c *preprocessed for the target*: every #if resolved, every
+Input is msp_catalogue.c *preprocessed for the target*: every #if resolved, every
 opcode macro a number. Each case body is parsed with pycparser and run
 through a small symbolic executor that understands the shapes the catalogue
 is written in:
@@ -40,8 +40,13 @@ try:
 except ImportError:  # the manifest still builds; it just carries no codecs
     c_parser = c_ast = None
 
-# Dispatch functions whose case bodies are serializers, and their direction.
+# Dispatch functions whose case bodies are serializers, and their direction:
+# the config catalogue's (msp/msp_catalogue.c), and msp.c's, which a source
+# from before the catalogue was split out still has.
 FUNCTIONS = {
+    'mspCatalogueProcessOutCommand': 'out',
+    'mspCatalogueProcessOutCommandWithArg': 'out',
+    'mspCatalogueProcessInCommand': 'in',
     'mspCommonProcessOutCommand': 'out',
     'mspProcessOutCommand': 'out',
     'mspFcProcessOutCommandWithArg': 'out',

@@ -600,9 +600,10 @@ MANIFEST_ELF        := $(MANIFEST_OBJECT_DIR)/$(FORKNAME)_$(TARGET).elf
 MANIFEST_JSON       := $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET)_manifest.json
 BUILD_ID_HEADER     := $(OBJECT_DIR)/$(TARGET)/wf_build_id.h
 WF_MANIFEST_TOOL    := $(ROOT)/src/utils/wf_manifest.py
-# msp.c preprocessed for this target, for the MSP codec extractor
-# (src/utils/wf_msp_codecs.py): every #if resolved, every opcode a number.
-MANIFEST_MSP_SOURCE := $(MANIFEST_OBJECT_DIR)/$(TARGET)/msp/msp.i
+# The MSP config catalogue (msp_catalogue.c) preprocessed for this target,
+# for the MSP codec extractor (src/utils/wf_msp_codecs.py): every #if
+# resolved, every opcode a number.
+MANIFEST_MSP_SOURCE := $(MANIFEST_OBJECT_DIR)/$(TARGET)/msp/msp_catalogue.i
 # The manifest's MSP codecs as a Lua module, for wingflight-lua-ethos-suite,
 # which bundles one per supported release (src/utils/wf_lua_pack.py).
 MANIFEST_LUA_PACK   := $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET)_codecs.lua
@@ -623,7 +624,7 @@ manifest:
 
 # Same flags as the object, minus dependency generation, which -E would
 # otherwise point at the object's .d file.
-$(OBJECT_DIR)/$(TARGET)/msp/msp.i: src/main/msp/msp.c
+$(OBJECT_DIR)/$(TARGET)/msp/%.i: src/main/msp/%.c
 	$(V1) mkdir -p $(dir $@)
 	$(V1) $(CROSS_CC) -E -P -o $@ $(filter-out -MMD -MP,$(CFLAGS)) $<
 
