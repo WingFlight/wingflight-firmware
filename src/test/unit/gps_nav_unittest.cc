@@ -44,6 +44,8 @@ int32_t stubAltitudeCm = 0;
 int getEstimatedAltitudeCm(void) { return stubAltitudeCm; }
 int32_t stubVarioCms = 0;
 int getEstimatedVarioCms(void) { return stubVarioCms; }
+bool stubHasAltitude = true;
+bool hasEstimatedAltitude(void) { return stubHasAltitude; }
 
 // Every millis() call advances the clock by stubMillisStep. The default of 10 s is long enough
 // that the bank slew limit never bites, so tests see the unslewed bank command; the slew test
@@ -239,6 +241,7 @@ class GpsNavAltitudeTest : public ::testing::Test {
         GPS_home[GPS_LONGITUDE] = 0;
         stubAltitudeCm = 0;
         stubVarioCms = 0;
+        stubHasAltitude = true;
         stubMillisStep = 10000;
         // navIsHealthy() requires a fix, not just numSat/link health; RTH needs a home as well.
         stateFlags = GPS_FIX | GPS_FIX_HOME;
@@ -285,6 +288,32 @@ TEST_F(GpsNavAltitudeTest, ClimbRateDampsTheCorrection)
 {
     // 10 m low but already climbing at 3 m/s: 10 deg - 2 deg/(m/s) * 3 m/s = 4 deg nose-up.
     EXPECT_EQ(-400, pitchAt(40, 300));
+}
+
+TEST_F(GpsNavAltitudeTest, NoAltitudeEstimateHoldsLevelPitch)
+{
+    // No baro and no usable GPS altitude: the estimate reads 0, 50 m under the RTH altitude.
+    // That must not become a full nose-up command.
+    stubHasAltitude = false;
+    EXPECT_EQ(0, pitchAt(0));
+}
+
+TEST_F(GpsNavAltitudeTest, LoiterWithoutAltitudeAtEngageHoldsTheFirstRealOne)
+{
+    stubHasAltitude = false;
+    stubAltitudeCm = 0;
+    navLoiterStart();
+    updateGpsNav();
+    EXPECT_EQ(0, navAngle[AI_PITCH]);
+
+    // Altitude appears at 80 m: that becomes the hold altitude, not the 0 read at engage.
+    stubHasAltitude = true;
+    stubAltitudeCm = 8000;
+    updateGpsNav();
+    EXPECT_EQ(0, navAngle[AI_PITCH]);
+    stubAltitudeCm = 7000; // 10 m low -> 10 deg nose-up
+    updateGpsNav();
+    EXPECT_EQ(-1000, navAngle[AI_PITCH]);
 }
 
 TEST_F(GpsNavAltitudeTest, PitchIsClampedToMaxPitchAngleDeg)

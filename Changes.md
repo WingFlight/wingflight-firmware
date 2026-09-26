@@ -29,6 +29,13 @@ Two fixes in the same code:
 - RTH switched on with no recorded home no longer steers toward latitude and
   longitude 0,0; it flies level instead (home is only recorded at arming).
 
+Nav altitude hold now needs a real altitude estimate (`hasEstimatedAltitude()`
+in `src/main/flight/position.c`). Without a baro, and with GPS altitude not
+passing `position_gps_min_sats` (default 12), the estimate reads 0, which the
+altitude hold took as far below its target and answered with full nose-up.
+Nav now holds level pitch until an estimate exists; loiter engaged without one
+holds the first real altitude it gets.
+
 The `nav_min_sats` default drops from 8 to 6 (`src/main/pg/gps_nav.c`), in line
 with INAV's `gps_min_sats`. 8 left a single-satellite margin over a typical
 9-10 satellite fix at arming, and a banked wing easily loses two or three.

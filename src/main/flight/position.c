@@ -93,6 +93,14 @@ int getEstimatedVarioCms(void)
     return lrintf(alt.variometer * 100);
 }
 
+// Whether getAltitude()/getEstimatedAltitudeCm() is a real estimate. Without a baro or a GPS
+// altitude that passes position_gps_min_sats (and has its ground offset recorded), positionUpdate()
+// reports 0, which an altitude controller would read as far below any target.
+bool hasEstimatedAltitude(void)
+{
+    return (alt.haveBaroAlt && alt.baroAltOffset) || (alt.haveGpsAlt && alt.gpsAltOffset);
+}
+
 
 static float calculateVario(float altitude)
 {

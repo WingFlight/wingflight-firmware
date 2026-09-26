@@ -120,7 +120,8 @@ typedef struct {
     int32_t targetLat;
     int32_t targetLon;
     int32_t targetAltitudeCm;
-    float bankDdeg;             // slew-limited bank command
+    bool targetAltitudeSet;     // false until there was a real altitude estimate to hold (loiter)
+    float bankDdeg;            // slew-limited bank command
     timeMs_t lastUpdateMs;
 } navState_t;
 
@@ -273,9 +274,15 @@ static void navBegin(navTargetType_e targetType)
     nav.active = true;
     nav.targetType = targetType;
     nav.targetSet = false;
-    // Altitude doesn't come from the GPS estimate, so loiter holds the altitude at engage even if
-    // the position is captured a moment later.
-    nav.targetAltitudeCm = (targetType == NAV_TARGET_HOME) ? gpsNavConfig()->rthAltitudeM * 100 : getEstimatedAltitudeCm();
+    // Loiter holds the altitude at engage even if the position is captured a moment later -- or,
+    // with no altitude estimate yet, the first real one.
+    if (targetType == NAV_TARGET_HOME) {
+        nav.targetAltitudeCm = gpsNavConfig()->rthAltitudeM * 100;
+        nav.targetAltitudeSet = true;
+    } else {
+        nav.targetAltitudeSet = hasEstimatedAltitude();
+        nav.targetAltitudeCm = getEstimatedAltitudeCm();
+    }
     nav.bankDdeg = 0;
     nav.lastUpdateMs = nowMs;
     navAngle[AI_ROLL] = 0;
@@ -416,6 +423,18 @@ void updateGpsNav(void)
 
     nav.bankDdeg += constrainf(bankTargetDdeg - nav.bankDdeg, -maxStepDdeg, maxStepDdeg);
     navAngle[AI_ROLL] = lrintf(nav.bankDdeg * 10.0f); // decidegrees -> centidegrees
+
+    // No real altitude (no baro, and GPS altitude not passing position_gps_min_sats): the
+    // estimate reads 0, which would look like far below any target and pitch full nose-up --
+    // on a GPS-only board, for the whole of a dead-reckoned dropout. Hold level pitch instead.
+    if (!hasEstimatedAltitude()) {
+        navAngle[AI_PITCH] = 0;
+        return;
+    }
+    if (!nav.targetAltitudeSet) {
+        nav.targetAltitudeCm = getEstimatedAltitudeCm();
+        nav.targetAltitudeSet = true;
+    }
 
     // Altitude: PD on the altitude error, damped by the climb rate. Both gains are centidegrees
     // (of pitch per meter, and per m/s), so /100 gives degrees. This used to treat kp*meters as

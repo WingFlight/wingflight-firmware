@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <stdbool.h>
+
 void positionInit(void);
 void positionUpdate(void);
 
@@ -25,3 +27,4 @@ float getVario(void);
 
 int getEstimatedAltitudeCm(void);
 int getEstimatedVarioCms(void);
+bool hasEstimatedAltitude(void);
