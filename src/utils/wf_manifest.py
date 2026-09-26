@@ -589,6 +589,135 @@ def read_timer_hardware(elf, dwarf):
     return entries
 
 
+def read_cli_tables(elf, dwarf):
+    """What the `feature`, `serial`, `aux` and `map` lines need beyond PG bytes.
+
+    Those lines are in every backup, and each is a parameter group rendered
+    through a table: feature bits by name, baud rates by index, modes by their
+    permanent id rather than the build-specific box id, rcmap as channel
+    letters. The tables are const data in the image, so they extract like the
+    timer map; featureNames and the aux channel count come from
+    manifest/cli_tables.c, having had no other home once cli.c went.
+
+    Anything missing is left out rather than guessed, and the client refuses
+    the matching command.
+    """
+    endian = '<' if elf.little_endian else '>'
+    tables = {}
+
+    names = elf.symbols.get('featureNames')
+    if names is not None:
+        features = []
+        for bit in range(32):
+            pointer = elf.read_pointer(names + bit * elf.pointer_size)
+            if not pointer:
+                break
+            name = elf.read_cstring(pointer)
+            if name:
+                features.append({'bit': bit, 'name': name})
+        tables['features'] = features
+
+    address = elf.symbols.get('baudRates')
+    size = elf.symbol_sizes.get('baudRates')
+    if address and size:
+        raw = elf.read_at(address, size)
+        tables['baud_rates'] = list(struct.unpack_from(endian + 'I' * (size // 4), raw))
+
+    # The ports this target has, in portConfigs order. serialInit() marks
+    # exactly these available, and `serial` skipped any other.
+    variable = dwarf.variables.get('serialPortIdentifiers')
+    address = elf.symbols.get('serialPortIdentifiers')
+    if variable and address:
+        fields = []
+        dwarf.walk(*dwarf.type_of(*variable), path='', base=0, out=fields)
+        if fields and fields[0].get('kind') == 'array':
+            elem = fields[0]['elem_size']
+            raw = elf.read_at(address, elem * fields[0]['count'])
+            code = {1: 'b', 2: 'h', 4: 'i'}[elem]
+            tables['serial_ports'] = list(struct.unpack_from(endian + code * fields[0]['count'], raw))
+
+    # `aux` names a mode by its permanent id; the group stores the box id.
+    address = elf.symbols.get('boxes')
+    size = elf.symbol_sizes.get('boxes')
+    if address and size:
+        try:
+            layout, record_size = dwarf.struct_layout('box_s')
+        except SystemExit:
+            layout, record_size = None, 0
+        if record_size:
+            boxes = []
+            for index in range(size // record_size):
+                base = address + index * record_size
+                record = elf.read_at(base, record_size)
+                pointer = elf.read_pointer(base + layout['boxName'][0])
+                boxes.append({
+                    'id': record[layout['boxId'][0]],
+                    'perm': record[layout['permanentId'][0]],
+                    'name': elf.read_cstring(pointer) if pointer else None,
+                })
+            tables['boxes'] = boxes
+
+    address = elf.symbols.get('rcChannelLetters')
+    if address:
+        tables['rc_letters'] = elf.read_cstring(address)
+
+    address = elf.symbols.get('cliAuxChannelCount')
+    if address:
+        tables['aux_channel_count'] = elf.read_at(address, 1)[0]
+
+    # Name arrays indexed by enum value, sized by their symbol.
+    for symbol, key in (('mixerInputNames', 'mixer_inputs'),
+                        ('mixerOutputNames', 'mixer_outputs'),
+                        ('mixerOpNames', 'mixer_ops'),
+                        # `status`
+                        ('mcuTypeNames', 'mcu_types'),
+                        ('configurationStateNames', 'configuration_states'),
+                        ('armingDisableFlagNames', 'arming_disable_flags'),
+                        ('batteryStateStrings', 'battery_states')):
+        address = elf.symbols.get(symbol)
+        size = elf.symbol_sizes.get(symbol)
+        if address and size:
+            names = []
+            for index in range(size // elf.pointer_size):
+                pointer = elf.read_pointer(address + index * elf.pointer_size)
+                names.append(elf.read_cstring(pointer) if pointer else None)
+            tables[key] = names
+
+    # `beeper` names a condition; the group stores 1 << (mode - 1). Table
+    # order matters: the CLI special-cased the entry at index BEEPER_ALL - 1.
+    address = elf.symbols.get('beeperTable')
+    size = elf.symbol_sizes.get('beeperTable')
+    if address and size:
+        try:
+            layout, record_size = dwarf.struct_layout('beeperTableEntry_s')
+        except SystemExit:
+            layout, record_size = None, 0
+        if record_size:
+            beepers = []
+            for index in range(size // record_size):
+                base = address + index * record_size
+                record = elf.read_at(base, record_size)
+                pointer = elf.read_pointer(base + layout['name'][0])
+                beepers.append({'mode': record[layout['mode'][0]],
+                                'name': elf.read_cstring(pointer) if pointer else None})
+            tables['beepers'] = beepers
+
+    # Every member of cliLimits is an int32_t; read them by name so the
+    # struct's order is free to change.
+    address = elf.symbols.get('cliLimits')
+    if address:
+        try:
+            layout, record_size = dwarf.struct_layout('cliLimits_s')
+        except SystemExit:
+            layout = None
+        if layout:
+            raw = elf.read_at(address, record_size)
+            tables['limits'] = {name: struct.unpack_from(endian + 'i', raw, offset)[0]
+                                for name, (offset, size) in layout.items() if size == 4}
+
+    return tables
+
+
 def read_value_table(elf, dwarf, tables):
     """Decode valueTable -- the CLI's names, ranges and enum labels.
 
@@ -811,7 +940,8 @@ def main(argv):
 
     wanted = set(address_to_symbol.values())
     wanted.update(('pgRegistry_s', 'clivalue_s', 'lookupTableEntry_s',
-                   'cliResourceValue_t', 'timerHardware_s', 'dmaoptEntry_s'))
+                   'cliResourceValue_t', 'timerHardware_s', 'dmaoptEntry_s',
+                   'serialPortIdentifiers'))
     dwarf = Dwarf(elf, wanted)
     groups = read_registry(elf, dwarf)
 
@@ -842,6 +972,7 @@ def main(argv):
     manifest['resources'] = read_resource_table(elf, dwarf)
     manifest['timers'] = read_timer_hardware(elf, dwarf)
     manifest['dmaopts'] = read_dmaopt_table(elf, dwarf)
+    manifest['cli'] = read_cli_tables(elf, dwarf)
     manifest['build']['id'] = build_id(manifest)
 
     leaves = sum(count_leaves(pg['fields']) for pg in manifest['pgs'])

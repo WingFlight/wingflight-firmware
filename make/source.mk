@@ -454,12 +454,22 @@ endif
 # before the generator can read it. These pull it back in by name. They apply
 # only to the manifest build, which is never flashed.
 ifeq ($(MANIFEST_BUILD),yes)
-SRC += manifest/settings.c manifest/resources.c
-SIZE_OPTIMISED_SRC += manifest/settings.c manifest/resources.c
+SRC += manifest/settings.c manifest/resources.c manifest/cli_tables.c
+SIZE_OPTIMISED_SRC += manifest/settings.c manifest/resources.c manifest/cli_tables.c
 EXTRA_LD_FLAGS += -Wl,--undefined=valueTable \
                   -Wl,--undefined=valueTableEntryCount \
                   -Wl,--undefined=lookupTables \
                   -Wl,--undefined=resourceTable \
                   -Wl,--undefined=ownerNames \
-                  -Wl,--undefined=dmaoptEntryTable
+                  -Wl,--undefined=dmaoptEntryTable \
+                  -Wl,--undefined=featureNames \
+                  -Wl,--undefined=cliAuxChannelCount \
+                  -Wl,--undefined=mixerInputNames \
+                  -Wl,--undefined=mixerOutputNames \
+                  -Wl,--undefined=mixerOpNames \
+                  -Wl,--undefined=cliLimits \
+                  -Wl,--undefined=mcuTypeNames \
+                  -Wl,--undefined=configurationStateNames \
+                  -Wl,--undefined=armingDisableFlagNames \
+                  -Wl,--undefined=getBatteryStateString
 endif
