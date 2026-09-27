@@ -446,10 +446,6 @@ static const char * const lookupTableModelType[] = {
     "REGULAR_AIRPLANE", "FLYING_WING", "V_TAIL_AIRPLANE", "DELTA_WING", "RUDDER_ELEVATOR_TRAINER", "CUSTOM",
 };
 
-const char * const lookupTableErrorRelaxType[] = {
-    "OFF", "RP", "RPY",
-};
-
 #ifdef USE_ESC_SENSOR
 static const char * const lookupTableEscSensorProtocol[] = {
     "OFF", "BLHELI32", "HOBBYWINGV4", "HOBBYWINGV5", "SCORPION", "KONTRONIK", "OMPHOBBY", "ZTW", "APD", "OPENYGE", "FLYROTOR", "GRAUPNER", "XDFLY", "FBUS", "SRXL2", "RECORD",
@@ -571,7 +567,6 @@ const lookupTableEntry_t lookupTables[] = {
 #endif
 
     LOOKUP_TABLE_ENTRY(lookupTableModelType),
-    LOOKUP_TABLE_ENTRY(lookupTableErrorRelaxType),
 
 #ifdef USE_ESC_SENSOR
     LOOKUP_TABLE_ENTRY(lookupTableEscSensorProtocol),
@@ -1080,7 +1075,6 @@ const clivalue_t valueTable[] = {
     { "iterm_decay_time",          VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = 3, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_decay_time) },
     { "iterm_decay_limit",         VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_decay_limit) },
 
-    { "iterm_relax_type",           VAR_UINT8  | PROFILE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_ITERM_RELAX_TYPE }, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_relax_type) },
     { "iterm_relax_level",          VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = 3, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_relax_level) },
     { "iterm_relax_cutoff",         VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = 3, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_relax_cutoff) },
 
@@ -1157,7 +1151,6 @@ const clivalue_t valueTable[] = {
     { "tv_iterm_decay_time",        VAR_UINT8  | PROFILE_TV_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_decay_time) },
     { "tv_iterm_decay_limit",       VAR_UINT8  | PROFILE_TV_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_decay_limit) },
 
-    { "tv_iterm_relax_type",        VAR_UINT8  | PROFILE_TV_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_ITERM_RELAX_TYPE }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_type) },
     { "tv_iterm_relax_level",       VAR_UINT8  | PROFILE_TV_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_level) },
     { "tv_iterm_relax_cutoff",      VAR_UINT8  | PROFILE_TV_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_cutoff) },
 

@@ -1562,7 +1562,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             sbufWriteU8(dst, currentTvPidProfile->iterm_decay_time[i]);
         }
         sbufWriteU8(dst, currentTvPidProfile->iterm_decay_limit);
-        sbufWriteU8(dst, currentTvPidProfile->iterm_relax_type);
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
             sbufWriteU8(dst, currentTvPidProfile->iterm_relax_level[i]);
         }
@@ -2148,7 +2147,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->dterm_cutoff[0]);
         sbufWriteU8(dst, currentPidProfile->dterm_cutoff[1]);
         sbufWriteU8(dst, currentPidProfile->dterm_cutoff[2]);
-        sbufWriteU8(dst, currentPidProfile->iterm_relax_type);
+        sbufWriteU8(dst, currentPidProfile->iterm_relax_level[0]);
+        sbufWriteU8(dst, currentPidProfile->iterm_relax_level[1]);
+        sbufWriteU8(dst, currentPidProfile->iterm_relax_level[2]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[0]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[1]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[2]);
@@ -3260,7 +3261,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         currentPidProfile->dterm_cutoff[0] = sbufReadU8(src);
         currentPidProfile->dterm_cutoff[1] = sbufReadU8(src);
         currentPidProfile->dterm_cutoff[2] = sbufReadU8(src);
-        currentPidProfile->iterm_relax_type = sbufReadU8(src);
+        currentPidProfile->iterm_relax_level[0] = sbufReadU8(src);
+        currentPidProfile->iterm_relax_level[1] = sbufReadU8(src);
+        currentPidProfile->iterm_relax_level[2] = sbufReadU8(src);
         currentPidProfile->iterm_relax_cutoff[0] = sbufReadU8(src);
         currentPidProfile->iterm_relax_cutoff[1] = sbufReadU8(src);
         currentPidProfile->iterm_relax_cutoff[2] = sbufReadU8(src);
@@ -3582,7 +3585,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentTvPidProfile->iterm_decay_time[i] = sbufReadU8(src);
         }
         currentTvPidProfile->iterm_decay_limit = sbufReadU8(src);
-        currentTvPidProfile->iterm_relax_type = sbufReadU8(src);
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
             currentTvPidProfile->iterm_relax_level[i] = sbufReadU8(src);
         }

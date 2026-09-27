@@ -44,7 +44,6 @@ typedef struct tvPidProfile_s {
     uint8_t  iterm_decay_time[PID_AXIS_COUNT];
     uint8_t  iterm_decay_limit;
 
-    uint8_t  iterm_relax_type;
     uint8_t  iterm_relax_level[PID_AXIS_COUNT];
     uint8_t  iterm_relax_cutoff[PID_AXIS_COUNT];
 

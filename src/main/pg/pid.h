@@ -43,12 +43,6 @@ typedef enum {
 #define PID_AXIS_COUNT      3
 #define CYCLIC_AXIS_COUNT   2
 
-enum {
-    ITERM_RELAX_OFF,
-    ITERM_RELAX_RP,
-    ITERM_RELAX_RPY,
-};
-
 typedef struct {
     uint16_t P;
     uint16_t I;
@@ -107,6 +101,11 @@ typedef struct {
 #define ITERM_DECAY_TIME_MIN    1
 #define ITERM_DECAY_TIME_MAX    100
 
+// iterm_relax_cutoff range, Hz. Lower suppresses more bounce-back after a stick move, higher keeps
+// more I during sustained high-rate turns. Relax is always on for every axis.
+#define ITERM_RELAX_CUTOFF_MIN  1
+#define ITERM_RELAX_CUTOFF_MAX  100
+
 #define GAIN_CURVE_COUNT   8
 #define GAIN_CURVE_POINTS  6
 
@@ -139,7 +138,6 @@ typedef struct pidProfile_s {
     uint8_t             iterm_decay_time[PID_AXIS_COUNT]; // Per-axis I-term decay time constant, 0.01 s (ITERM_DECAY_TIME_MIN..MAX)
     uint8_t             iterm_decay_limit;
 
-    uint8_t             iterm_relax_type;
     uint8_t             iterm_relax_level[PID_AXIS_COUNT];
     uint8_t             iterm_relax_cutoff[PID_AXIS_COUNT];
 

@@ -127,6 +127,13 @@ float pidItermDecayRate(uint8_t decayTime)
     return 100.0f / constrain(decayTime, ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX);
 }
 
+// I-term relax setpoint filter cutoff (Hz), clamped because MSP writes and CLI array values are
+// not range-checked. Shared with the thrust-vector loop.
+uint8_t pidItermRelaxCutoff(uint8_t cutoff)
+{
+    return constrain(cutoff, ITERM_RELAX_CUTOFF_MIN, ITERM_RELAX_CUTOFF_MAX);
+}
+
 
 //// Adjustment functions
 
@@ -204,6 +211,39 @@ void set_ADJUSTMENT_ITERM_DECAY_TIME_YAW(int value)
 {
     currentPidProfile->iterm_decay_time[PID_YAW] = value;
     pid.itermDecayRate[PID_YAW] = pidItermDecayRate(value);
+}
+
+int get_ADJUSTMENT_ITERM_RELAX_CUTOFF_ROLL(void)
+{
+    return currentPidProfile->iterm_relax_cutoff[PID_ROLL];
+}
+
+void set_ADJUSTMENT_ITERM_RELAX_CUTOFF_ROLL(int value)
+{
+    currentPidProfile->iterm_relax_cutoff[PID_ROLL] = value;
+    pt1FilterUpdate(&pid.relaxFilter[PID_ROLL], pidItermRelaxCutoff(value), pid.freq);
+}
+
+int get_ADJUSTMENT_ITERM_RELAX_CUTOFF_PITCH(void)
+{
+    return currentPidProfile->iterm_relax_cutoff[PID_PITCH];
+}
+
+void set_ADJUSTMENT_ITERM_RELAX_CUTOFF_PITCH(int value)
+{
+    currentPidProfile->iterm_relax_cutoff[PID_PITCH] = value;
+    pt1FilterUpdate(&pid.relaxFilter[PID_PITCH], pidItermRelaxCutoff(value), pid.freq);
+}
+
+int get_ADJUSTMENT_ITERM_RELAX_CUTOFF_YAW(void)
+{
+    return currentPidProfile->iterm_relax_cutoff[PID_YAW];
+}
+
+void set_ADJUSTMENT_ITERM_RELAX_CUTOFF_YAW(int value)
+{
+    currentPidProfile->iterm_relax_cutoff[PID_YAW] = value;
+    pt1FilterUpdate(&pid.relaxFilter[PID_YAW], pidItermRelaxCutoff(value), pid.freq);
 }
 
 int get_ADJUSTMENT_PITCH_P_GAIN(void)
@@ -528,14 +568,11 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
         difFilterUpdate(&pid.btermFilter[i], pidProfile->bterm_cutoff[i], pid.freq);
     }
 
-    // Error relax
-    pid.itermRelaxType = pidProfile->iterm_relax_type;
-    if (pid.itermRelaxType) {
-        for (int i = 0; i < XYZ_AXIS_COUNT; i++) {
-            uint8_t freq = constrain(pidProfile->iterm_relax_cutoff[i], 1, 100);
-            pt1FilterUpdate(&pid.relaxFilter[i], freq, pid.freq);
-            pid.itermRelaxLevel[i] = constrain(pidProfile->iterm_relax_level[i], 10, 250);
-        }
+    // Error relax -- always on for roll, pitch and yaw (a fixed-wing always wants bounce-back
+    // suppression on every axis, so there is no type or off switch)
+    for (int i = 0; i < XYZ_AXIS_COUNT; i++) {
+        pt1FilterUpdate(&pid.relaxFilter[i], pidItermRelaxCutoff(pidProfile->iterm_relax_cutoff[i]), pid.freq);
+        pid.itermRelaxLevel[i] = constrain(pidProfile->iterm_relax_level[i], 10, 250);
     }
 
     // Fixed-wing cross-axis relax: yaw stick activity can soften roll feedback
@@ -624,24 +661,19 @@ static inline void rotateAxisError(void)
 
 static float applyItermRelax(int axis, float itermError, float gyroRate, float setpoint)
 {
-    if ((pid.itermRelaxType == ITERM_RELAX_RPY) ||
-        (pid.itermRelaxType == ITERM_RELAX_RP && axis == PID_ROLL) ||
-        (pid.itermRelaxType == ITERM_RELAX_RP && axis == PID_PITCH))
-    {
-        const float setpointLpf = pt1FilterApply(&pid.relaxFilter[axis], setpoint);
-        const float setpointHpf = setpoint - setpointLpf;
+    const float setpointLpf = pt1FilterApply(&pid.relaxFilter[axis], setpoint);
+    const float setpointHpf = setpoint - setpointLpf;
 
-        const float itermRelaxFactor = MAX(0, 1.0f - fabsf(setpointHpf) / pid.itermRelaxLevel[axis]);
+    const float itermRelaxFactor = MAX(0, 1.0f - fabsf(setpointHpf) / pid.itermRelaxLevel[axis]);
 
-        itermError *= itermRelaxFactor;
+    itermError *= itermRelaxFactor;
 
-        DEBUG_AXIS(ITERM_RELAX, axis, 0, setpoint * 1000);
-        DEBUG_AXIS(ITERM_RELAX, axis, 1, gyroRate * 1000);
-        DEBUG_AXIS(ITERM_RELAX, axis, 2, setpointLpf * 1000);
-        DEBUG_AXIS(ITERM_RELAX, axis, 3, setpointHpf * 1000);
-        DEBUG_AXIS(ITERM_RELAX, axis, 4, itermRelaxFactor * 1000);
-        DEBUG_AXIS(ITERM_RELAX, axis, 5, itermError * 1000);
-    }
+    DEBUG_AXIS(ITERM_RELAX, axis, 0, setpoint * 1000);
+    DEBUG_AXIS(ITERM_RELAX, axis, 1, gyroRate * 1000);
+    DEBUG_AXIS(ITERM_RELAX, axis, 2, setpointLpf * 1000);
+    DEBUG_AXIS(ITERM_RELAX, axis, 3, setpointHpf * 1000);
+    DEBUG_AXIS(ITERM_RELAX, axis, 4, itermRelaxFactor * 1000);
+    DEBUG_AXIS(ITERM_RELAX, axis, 5, itermError * 1000);
 
     return itermError;
 }

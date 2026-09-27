@@ -109,7 +109,6 @@ typedef enum {
     TABLE_SWITCH_MODE,
 #endif
     TABLE_MODEL_TYPE,
-    TABLE_ITERM_RELAX_TYPE,
 #ifdef USE_ESC_SENSOR
     TABLE_ESC_SENSOR_PROTO,
 #endif

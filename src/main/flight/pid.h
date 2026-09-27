@@ -102,7 +102,6 @@ typedef struct pid_s {
     float fwTpaGain;          // Baseline throttle attenuation scale (1.0 = unscaled) - see pidProfile_t.fw_tpa_gain
     uint8_t fwTpaCurveIndex;  // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1) - see pidProfile_t.fw_tpa_curve
 
-    uint8_t itermRelaxType;
     uint8_t itermRelaxLevel[PID_AXIS_COUNT];
     float crossAxisRelaxStrength;
     float crossAxisRelaxPitchStrength;
@@ -150,6 +149,7 @@ float pidGetFeedforward(int axis, float rate);
 
 const pidAxisData_t * pidGetAxisData(void);
 float pidItermDecayRate(uint8_t decayTime);
+uint8_t pidItermRelaxCutoff(uint8_t cutoff);
 float pidGetGainCurveScale(uint8_t curveIndex, uint8_t axis);
 void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);
 
@@ -160,6 +160,9 @@ ADJFUN_DECLARE(MASTER_GAIN_YAW)
 ADJFUN_DECLARE(ITERM_DECAY_TIME_ROLL)
 ADJFUN_DECLARE(ITERM_DECAY_TIME_PITCH)
 ADJFUN_DECLARE(ITERM_DECAY_TIME_YAW)
+ADJFUN_DECLARE(ITERM_RELAX_CUTOFF_ROLL)
+ADJFUN_DECLARE(ITERM_RELAX_CUTOFF_PITCH)
+ADJFUN_DECLARE(ITERM_RELAX_CUTOFF_YAW)
 ADJFUN_DECLARE(PITCH_P_GAIN)
 ADJFUN_DECLARE(ROLL_P_GAIN)
 ADJFUN_DECLARE(YAW_P_GAIN)

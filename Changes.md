@@ -86,6 +86,32 @@ with INAV's `gps_min_sats`. 8 left a single-satellite margin over a typical
 Saved configurations keep their value; set `nav_min_sats = 6` to take the new
 default on an existing model.
 
+## I-Term Relax Always On, Level in MSP (MSP API 22.8)
+
+I-term relax (bounce-back suppression) is always on for roll, pitch and yaw
+in both the main and thrust-vector loops. `iterm_relax_type` and
+`tv_iterm_relax_type` (OFF/RP/RPY) are removed: a fixed-wing always wants
+relax on every axis (`src/main/flight/pid.c`, `src/main/flight/tv_pid.c`).
+A CLI diff that sets `iterm_relax_type` now reports an unknown setting; drop
+that line.
+
+`iterm_relax_cutoff` (Hz, 1-100, default 10) is the per-axis tuning value:
+lower suppresses more bounce-back after a stick move, higher keeps more I
+through sustained high-rate turns. Out-of-range CLI or MSP values are
+clamped on profile load. `iterm_relax_level` is unchanged.
+
+MSP_PID_PROFILE now carries `iterm_relax_level` (three bytes where the type
+byte was), so the main-loop level is no longer CLI-only.
+MSP2_WING_TV_PID_CONFIG drops its type byte. The blackbox header replaces
+`iterm_relax_type` with `iterm_relax_level`.
+
+New per-axis adjustment functions for the cutoff:
+`ITERM_RELAX_CUTOFF_ROLL`/`_PITCH`/`_YAW` (120-122) and
+`TV_ITERM_RELAX_CUTOFF_ROLL`/`_PITCH`/`_YAW` (123-125).
+
+`PG_PID_PROFILE` v14 and `PG_THRUST_VECTOR_PROFILE` v4, so PID and TV
+profiles reset to defaults.
+
 ## Per-Axis I-Term Decay Time (MSP API 22.7)
 
 `iterm_decay_time` and `tv_iterm_decay_time` are now set per axis (roll,

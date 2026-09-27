@@ -52,7 +52,6 @@ typedef struct {
     float masterGain[PID_AXIS_COUNT]; // Live per-axis P/I/D/F scale (1.0 = unscaled) - see tvPidProfile_t.master_gain
     uint8_t gainCurveIndex[PID_AXIS_COUNT]; // 0=none, 1..GAIN_CURVE_COUNT - see tvPidProfile_t.gain_curve
 
-    uint8_t itermRelaxType;
     uint8_t itermRelaxLevel[PID_AXIS_COUNT];
 
     float itermDecayRate[PID_AXIS_COUNT];
@@ -161,6 +160,39 @@ void set_ADJUSTMENT_TV_ITERM_DECAY_TIME_YAW(int value)
 {
     currentTvPidProfile->iterm_decay_time[PID_YAW] = value;
     tvPid.itermDecayRate[PID_YAW] = pidItermDecayRate(value);
+}
+
+int get_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_ROLL(void)
+{
+    return currentTvPidProfile->iterm_relax_cutoff[PID_ROLL];
+}
+
+void set_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_ROLL(int value)
+{
+    currentTvPidProfile->iterm_relax_cutoff[PID_ROLL] = value;
+    pt1FilterUpdate(&tvPid.relaxFilter[PID_ROLL], pidItermRelaxCutoff(value), pidGetPidFrequency());
+}
+
+int get_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_PITCH(void)
+{
+    return currentTvPidProfile->iterm_relax_cutoff[PID_PITCH];
+}
+
+void set_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_PITCH(int value)
+{
+    currentTvPidProfile->iterm_relax_cutoff[PID_PITCH] = value;
+    pt1FilterUpdate(&tvPid.relaxFilter[PID_PITCH], pidItermRelaxCutoff(value), pidGetPidFrequency());
+}
+
+int get_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_YAW(void)
+{
+    return currentTvPidProfile->iterm_relax_cutoff[PID_YAW];
+}
+
+void set_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_YAW(int value)
+{
+    currentTvPidProfile->iterm_relax_cutoff[PID_YAW] = value;
+    pt1FilterUpdate(&tvPid.relaxFilter[PID_YAW], pidItermRelaxCutoff(value), pidGetPidFrequency());
 }
 
 
@@ -398,13 +430,10 @@ void tvPidLoadProfile(const tvPidProfile_t *profile)
         difFilterUpdate(&tvPid.btermFilter[i], profile->bterm_cutoff[i], freq);
     }
 
-    tvPid.itermRelaxType = profile->iterm_relax_type;
-    if (tvPid.itermRelaxType) {
-        for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            const uint8_t cutoff = constrain(profile->iterm_relax_cutoff[i], 1, 100);
-            pt1FilterUpdate(&tvPid.relaxFilter[i], cutoff, freq);
-            tvPid.itermRelaxLevel[i] = constrain(profile->iterm_relax_level[i], 10, 250);
-        }
+    // Always on for roll, pitch and yaw, like the main loop
+    for (int i = 0; i < PID_AXIS_COUNT; i++) {
+        pt1FilterUpdate(&tvPid.relaxFilter[i], pidItermRelaxCutoff(profile->iterm_relax_cutoff[i]), freq);
+        tvPid.itermRelaxLevel[i] = constrain(profile->iterm_relax_level[i], 10, 250);
     }
 }
 
@@ -418,16 +447,11 @@ void tvPidInit(const tvPidProfile_t *profile)
 
 static float tvApplyItermRelax(int axis, float itermError, float setpoint)
 {
-    if ((tvPid.itermRelaxType == ITERM_RELAX_RPY) ||
-        (tvPid.itermRelaxType == ITERM_RELAX_RP && axis == PID_ROLL) ||
-        (tvPid.itermRelaxType == ITERM_RELAX_RP && axis == PID_PITCH))
-    {
-        const float setpointLpf = pt1FilterApply(&tvPid.relaxFilter[axis], setpoint);
-        const float setpointHpf = setpoint - setpointLpf;
-        const float itermRelaxFactor = MAX(0, 1.0f - fabsf(setpointHpf) / tvPid.itermRelaxLevel[axis]);
+    const float setpointLpf = pt1FilterApply(&tvPid.relaxFilter[axis], setpoint);
+    const float setpointHpf = setpoint - setpointLpf;
+    const float itermRelaxFactor = MAX(0, 1.0f - fabsf(setpointHpf) / tvPid.itermRelaxLevel[axis]);
 
-        itermError *= itermRelaxFactor;
-    }
+    itermError *= itermRelaxFactor;
 
     return itermError;
 }
