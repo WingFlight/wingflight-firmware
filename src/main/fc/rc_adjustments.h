@@ -210,13 +210,13 @@ typedef enum {
     ADJUSTMENT_TV_ITERM_DECAY_TIME_PITCH    = 118,
     ADJUSTMENT_TV_ITERM_DECAY_TIME_YAW      = 119,
 
-    // Per-axis I-term relax cutoff (Hz) -- bounce-back suppression, lower = more
-    ADJUSTMENT_ITERM_RELAX_CUTOFF_ROLL      = 120,
-    ADJUSTMENT_ITERM_RELAX_CUTOFF_PITCH     = 121,
-    ADJUSTMENT_ITERM_RELAX_CUTOFF_YAW       = 122,
-    ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_ROLL   = 123,
-    ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_PITCH  = 124,
-    ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_YAW    = 125,
+    // Per-axis Bounce-back Suppression score (1-10, higher = less bounce-back)
+    ADJUSTMENT_BOUNCEBACK_ROLL              = 120,
+    ADJUSTMENT_BOUNCEBACK_PITCH             = 121,
+    ADJUSTMENT_BOUNCEBACK_YAW               = 122,
+    ADJUSTMENT_TV_BOUNCEBACK_ROLL           = 123,
+    ADJUSTMENT_TV_BOUNCEBACK_PITCH          = 124,
+    ADJUSTMENT_TV_BOUNCEBACK_YAW            = 125,
 
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;

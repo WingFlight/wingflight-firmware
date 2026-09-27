@@ -72,7 +72,7 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // autohover.throttle_assist_gain/_max/_trigger_ms (3 new fields appended at
 // the tail of the autohover sub-struct, widening it again) - old saved
 // profiles reset to defaults, matching the v9->v10 precedent.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 14);
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 15);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -91,7 +91,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .iterm_decay_time = { 60, 60, 60 },
         .iterm_decay_limit = 35,
         .iterm_relax_level = { 22, 22, 22 },
-        .iterm_relax_cutoff = { 10, 10, 10 },
+        .bounceback = { BOUNCEBACK_DEFAULT, BOUNCEBACK_DEFAULT, BOUNCEBACK_DEFAULT },
         .error_limit = { 45, 45, 60 },
         .dterm_cutoff = { 15, 15, 20 },
         .bterm_cutoff = { 15, 15, 20 },

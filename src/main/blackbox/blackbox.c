@@ -1711,7 +1711,7 @@ static bool blackboxWriteSysinfo(void)
                                                                             currentPidProfile->dterm_cutoff[PID_YAW],
                                                                             currentPidProfile->bterm_cutoff[PID_YAW]);
         BLACKBOX_PRINT_HEADER_ARRAY("iterm_relax_level", "%d", 3,           currentPidProfile->iterm_relax_level);
-        BLACKBOX_PRINT_HEADER_ARRAY("iterm_relax_cutoff", "%d", 3,          currentPidProfile->iterm_relax_cutoff);
+        BLACKBOX_PRINT_HEADER_ARRAY("bounceback", "%d", 3,                  currentPidProfile->bounceback);
         BLACKBOX_PRINT_HEADER_ARRAY("error_limit", "%d", 3,                 currentPidProfile->error_limit);
         BLACKBOX_PRINT_HEADER_LINE("iterm_decay", "%d,%d,%d,%d",            currentPidProfile->iterm_decay_time[PID_ROLL],
                                                                             currentPidProfile->iterm_decay_time[PID_PITCH],

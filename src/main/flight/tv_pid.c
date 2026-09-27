@@ -162,37 +162,37 @@ void set_ADJUSTMENT_TV_ITERM_DECAY_TIME_YAW(int value)
     tvPid.itermDecayRate[PID_YAW] = pidItermDecayRate(value);
 }
 
-int get_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_ROLL(void)
+int get_ADJUSTMENT_TV_BOUNCEBACK_ROLL(void)
 {
-    return currentTvPidProfile->iterm_relax_cutoff[PID_ROLL];
+    return currentTvPidProfile->bounceback[PID_ROLL];
 }
 
-void set_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_ROLL(int value)
+void set_ADJUSTMENT_TV_BOUNCEBACK_ROLL(int value)
 {
-    currentTvPidProfile->iterm_relax_cutoff[PID_ROLL] = value;
-    pt1FilterUpdate(&tvPid.relaxFilter[PID_ROLL], pidItermRelaxCutoff(value), pidGetPidFrequency());
+    currentTvPidProfile->bounceback[PID_ROLL] = value;
+    pt1FilterUpdate(&tvPid.relaxFilter[PID_ROLL], pidBouncebackCutoff(value), pidGetPidFrequency());
 }
 
-int get_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_PITCH(void)
+int get_ADJUSTMENT_TV_BOUNCEBACK_PITCH(void)
 {
-    return currentTvPidProfile->iterm_relax_cutoff[PID_PITCH];
+    return currentTvPidProfile->bounceback[PID_PITCH];
 }
 
-void set_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_PITCH(int value)
+void set_ADJUSTMENT_TV_BOUNCEBACK_PITCH(int value)
 {
-    currentTvPidProfile->iterm_relax_cutoff[PID_PITCH] = value;
-    pt1FilterUpdate(&tvPid.relaxFilter[PID_PITCH], pidItermRelaxCutoff(value), pidGetPidFrequency());
+    currentTvPidProfile->bounceback[PID_PITCH] = value;
+    pt1FilterUpdate(&tvPid.relaxFilter[PID_PITCH], pidBouncebackCutoff(value), pidGetPidFrequency());
 }
 
-int get_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_YAW(void)
+int get_ADJUSTMENT_TV_BOUNCEBACK_YAW(void)
 {
-    return currentTvPidProfile->iterm_relax_cutoff[PID_YAW];
+    return currentTvPidProfile->bounceback[PID_YAW];
 }
 
-void set_ADJUSTMENT_TV_ITERM_RELAX_CUTOFF_YAW(int value)
+void set_ADJUSTMENT_TV_BOUNCEBACK_YAW(int value)
 {
-    currentTvPidProfile->iterm_relax_cutoff[PID_YAW] = value;
-    pt1FilterUpdate(&tvPid.relaxFilter[PID_YAW], pidItermRelaxCutoff(value), pidGetPidFrequency());
+    currentTvPidProfile->bounceback[PID_YAW] = value;
+    pt1FilterUpdate(&tvPid.relaxFilter[PID_YAW], pidBouncebackCutoff(value), pidGetPidFrequency());
 }
 
 
@@ -432,7 +432,7 @@ void tvPidLoadProfile(const tvPidProfile_t *profile)
 
     // Always on for roll, pitch and yaw, like the main loop
     for (int i = 0; i < PID_AXIS_COUNT; i++) {
-        pt1FilterUpdate(&tvPid.relaxFilter[i], pidItermRelaxCutoff(profile->iterm_relax_cutoff[i]), freq);
+        pt1FilterUpdate(&tvPid.relaxFilter[i], pidBouncebackCutoff(profile->bounceback[i]), freq);
         tvPid.itermRelaxLevel[i] = constrain(profile->iterm_relax_level[i], 10, 250);
     }
 }

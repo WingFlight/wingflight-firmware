@@ -1566,7 +1566,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             sbufWriteU8(dst, currentTvPidProfile->iterm_relax_level[i]);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            sbufWriteU8(dst, currentTvPidProfile->iterm_relax_cutoff[i]);
+            sbufWriteU8(dst, currentTvPidProfile->bounceback[i]);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
             sbufWriteU8(dst, currentTvPidProfile->error_limit[i]);
@@ -2150,9 +2150,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->iterm_relax_level[0]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_level[1]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax_level[2]);
-        sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[0]);
-        sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[1]);
-        sbufWriteU8(dst, currentPidProfile->iterm_relax_cutoff[2]);
+        sbufWriteU8(dst, currentPidProfile->bounceback[0]);
+        sbufWriteU8(dst, currentPidProfile->bounceback[1]);
+        sbufWriteU8(dst, currentPidProfile->bounceback[2]);
         /* Angle mode */
         sbufWriteU8(dst, currentPidProfile->angle.level_strength);
         sbufWriteU8(dst, currentPidProfile->angle.level_limit);
@@ -3264,9 +3264,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         currentPidProfile->iterm_relax_level[0] = sbufReadU8(src);
         currentPidProfile->iterm_relax_level[1] = sbufReadU8(src);
         currentPidProfile->iterm_relax_level[2] = sbufReadU8(src);
-        currentPidProfile->iterm_relax_cutoff[0] = sbufReadU8(src);
-        currentPidProfile->iterm_relax_cutoff[1] = sbufReadU8(src);
-        currentPidProfile->iterm_relax_cutoff[2] = sbufReadU8(src);
+        currentPidProfile->bounceback[0] = sbufReadU8(src);
+        currentPidProfile->bounceback[1] = sbufReadU8(src);
+        currentPidProfile->bounceback[2] = sbufReadU8(src);
         /* Angle mode */
         currentPidProfile->angle.level_strength = sbufReadU8(src);
         currentPidProfile->angle.level_limit = sbufReadU8(src);
@@ -3589,7 +3589,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentTvPidProfile->iterm_relax_level[i] = sbufReadU8(src);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
-            currentTvPidProfile->iterm_relax_cutoff[i] = sbufReadU8(src);
+            currentTvPidProfile->bounceback[i] = sbufReadU8(src);
         }
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
             currentTvPidProfile->error_limit[i] = sbufReadU8(src);

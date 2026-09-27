@@ -1076,7 +1076,7 @@ const clivalue_t valueTable[] = {
     { "iterm_decay_limit",         VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_decay_limit) },
 
     { "iterm_relax_level",          VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = 3, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_relax_level) },
-    { "iterm_relax_cutoff",         VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = 3, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_relax_cutoff) },
+    { "bounceback",                 VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = 3, PG_PID_PROFILE, offsetof(pidProfile_t, bounceback) },
 
     { "cross_axis_relax_strength",  VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, cross_axis_relax_strength) },
     { "cross_axis_relax_level",     VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 250 }, PG_PID_PROFILE, offsetof(pidProfile_t, cross_axis_relax_level) },
@@ -1152,7 +1152,7 @@ const clivalue_t valueTable[] = {
     { "tv_iterm_decay_limit",       VAR_UINT8  | PROFILE_TV_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_decay_limit) },
 
     { "tv_iterm_relax_level",       VAR_UINT8  | PROFILE_TV_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_level) },
-    { "tv_iterm_relax_cutoff",      VAR_UINT8  | PROFILE_TV_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_cutoff) },
+    { "tv_bounceback",              VAR_UINT8  | PROFILE_TV_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, bounceback) },
 
     { "tv_hold_gain",               VAR_UINT8  | PROFILE_TV_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, hold.gain) },
     { "tv_hold_deadband",           VAR_UINT8  | PROFILE_TV_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, hold.deadband) },
