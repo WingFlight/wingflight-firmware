@@ -3,6 +3,19 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Minimum F Gain of 50
+
+MANUAL mode moves the surfaces by the F-term alone (`getManualDeflection()`
+in `src/main/flight/setpoint.c`), so an F gain of 0 left MANUAL with no
+surface movement at all. Roll, pitch and yaw F gain now have a floor of 50
+(`PID_F_GAIN_MIN` in `src/main/flight/pid.h`), which at 400 deg/s rates still
+gives half surface travel at full stick.
+
+The floor applies to the CLI (`roll_f_gain`, `pitch_f_gain`, `yaw_f_gain`),
+in-flight adjustments and `MSP_SET_PID_TUNING`. A profile saved below 50 is
+raised to 50 when the config loads. The default (100) is unchanged. Thrust
+Vector F gains do not drive MANUAL and can still be 0.
+
 ## Accelerometer-Fused Altitude and Vario
 
 Altitude and vario now come from a vertical inertial estimator

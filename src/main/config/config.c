@@ -205,6 +205,18 @@ static void validateAndFixRatesSettings(void)
     }
 }
 
+// MANUAL mode's surface deflection is the F-term alone (see setpoint.c's getManualDeflection()),
+// so an F gain at or near 0 left MANUAL with no control authority at all. Lift any profile saved
+// below the floor before it's loaded.
+static void validateAndFixPidSettings(void)
+{
+    for (unsigned profileIndex = 0; profileIndex < PID_PROFILE_COUNT; profileIndex++) {
+        for (unsigned axis = PID_ROLL; axis <= PID_YAW; axis++) {
+            pidProfilesMutable(profileIndex)->pid[axis].F = constrain(pidProfilesMutable(profileIndex)->pid[axis].F, PID_F_GAIN_MIN, PID_GAIN_MAX);
+        }
+    }
+}
+
 static void validateAndFixPositionConfig(void)
 {
 
@@ -558,6 +570,7 @@ static void validateAndFixConfig(void)
 
 
     validateAndFixRatesSettings();  // constrain the various rates settings to limits imposed by the rates type
+    validateAndFixPidSettings();
 
 #ifdef USE_SMARTFUEL
     validateAndFixSmartFuelConfig();

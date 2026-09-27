@@ -35,6 +35,10 @@
 
 #define PID_GAIN_MAX                1000
 
+// Floor on roll/pitch/yaw F gain. MANUAL mode flies on the F-term alone, so this keeps at least
+// half surface travel at full stick (with 400 deg/s rates) whatever the tune.
+#define PID_F_GAIN_MIN              50
+
 #define ROLL_P_TERM_SCALE           0.00000666666f
 #define ROLL_I_TERM_SCALE           0.0002f
 #define ROLL_D_TERM_SCALE           0.1e-6f

@@ -2847,7 +2847,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->pid[i].P = sbufReadU16(src);
             currentPidProfile->pid[i].I = sbufReadU16(src);
             currentPidProfile->pid[i].D = sbufReadU16(src);
-            currentPidProfile->pid[i].F = sbufReadU16(src);
+            currentPidProfile->pid[i].F = constrain(sbufReadU16(src), PID_F_GAIN_MIN, PID_GAIN_MAX);
         }
         if (sbufBytesRemaining(src) >= 6) {
             for (int i = 0; i < PID_AXIS_COUNT; i++) {
