@@ -50,6 +50,7 @@ typedef struct {
     tvPidAxisData_t data[PID_AXIS_COUNT];
 
     float masterGain[PID_AXIS_COUNT]; // Live per-axis P/I/D/F scale (1.0 = unscaled) - see tvPidProfile_t.master_gain
+    uint8_t gainCurveIndex[PID_AXIS_COUNT]; // 0=none, 1..GAIN_CURVE_COUNT - see tvPidProfile_t.gain_curve
 
     uint8_t itermRelaxType;
     uint8_t itermRelaxLevel[PID_AXIS_COUNT];
@@ -358,6 +359,11 @@ void tvPidLoadProfile(const tvPidProfile_t *profile)
     for (int i = 0; i < PID_AXIS_COUNT; i++)
         tvPid.masterGain[i] = profile->master_gain[i] * 0.01f;
 
+    // Optional per-axis curve that further scales master gain by |stick deflection|,
+    // from the same gain-curve pool as the main loop (pidGetGainCurveScale)
+    for (int i = 0; i < PID_AXIS_COUNT; i++)
+        tvPid.gainCurveIndex[i] = profile->gain_curve[i];
+
     tvPid.coef[PID_ROLL].Kp = ROLL_P_TERM_SCALE * profile->pid[PID_ROLL].P;
     tvPid.coef[PID_ROLL].Ki = ROLL_I_TERM_SCALE * profile->pid[PID_ROLL].I;
     tvPid.coef[PID_ROLL].Kd = ROLL_D_TERM_SCALE * profile->pid[PID_ROLL].D;
@@ -447,7 +453,7 @@ static void tvPidApplyAxis(uint8_t axis)
 
     const float errorRate = setpoint - gyroRate;
 
-    const float masterGain = tvPid.masterGain[axis];
+    const float masterGain = tvPid.masterGain[axis] * pidGetGainCurveScale(tvPid.gainCurveIndex[axis], axis);
 
   //// P-term
 

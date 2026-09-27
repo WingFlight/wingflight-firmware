@@ -48,6 +48,7 @@ void resetTvPidProfile(tvPidProfile_t *tvPidProfile)
             [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 100, .B = 0, },
         },
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
+        .gain_curve = { [PID_ROLL] = 0, [PID_PITCH] = 0, [PID_YAW] = 0 },
         .iterm_decay_time = { 60, 60, 60 },
         .iterm_decay_limit = 35,
         .iterm_relax_type = ITERM_RELAX_RPY,

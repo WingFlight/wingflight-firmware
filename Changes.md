@@ -25,6 +25,19 @@ The adjustment functions are per axis too, replacing 114/115 from API 22.6:
 `TV_ITERM_DECAY_TIME_ROLL`/`_PITCH`/`_YAW` (117-119). A 22.6 adjustment range
 on 115 (TV decay) now tunes main-loop pitch decay.
 
+## Thrust Vector Gain Curves (MSP API 22.7)
+
+The thrust-vector loop's master gain can now be shaped by a gain curve per
+axis, like the main loop: `tv_gain_curve` (0 = none, 1-8 = a slot of the
+shared gain-curve pool) scales `tv_master_gain` by |stick deflection|
+(`src/main/pg/tv_pid.h`, `src/main/flight/tv_pid.c`). Both loops evaluate the
+curve through `pidGetGainCurveScale()` in `src/main/flight/pid.c`. As with
+`tv_master_gain`, the curve scales the TV loop's F term too.
+MSP2_WING_TV_PID_CONFIG appends three bytes for it.
+
+The main loop's `gain_curve` also gets a CLI entry (`gain_curve = 0,0,0`); it
+was MSP-only before, so it was missing from `diff`.
+
 ## I-Term Decay Time in 0.01 s, Capped at 1 s (MSP API 22.6)
 
 `iterm_decay_time` and `tv_iterm_decay_time` are now in 0.01 s units with a

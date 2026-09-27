@@ -791,12 +791,20 @@ static float pidAxisGainCurvePosition(uint8_t axis)
     return fminf(1.0f, fabsf(getRcDeflection(axis)));
 }
 
+// Scale from a gain curve (1..GAIN_CURVE_COUNT, 0 = none) at this axis's
+// |stick deflection|. Shared with the thrust-vector loop's tv_gain_curve, so
+// both loops read the same curve pool the same way. Out-of-range indices (MSP
+// and CLI array writes are unchecked) count as no curve.
+float pidGetGainCurveScale(uint8_t curveIndex, uint8_t axis)
+{
+    return (curveIndex > 0 && curveIndex <= GAIN_CURVE_COUNT)
+        ? pidEvaluateGainCurve(gainCurves(curveIndex - 1), pidAxisGainCurvePosition(axis))
+        : 1.0f;
+}
+
 static float pidAxisGainCurve(uint8_t axis)
 {
-    const uint8_t curveIdx = pid.gainCurveIndex[axis];
-    return curveIdx > 0
-        ? pidEvaluateGainCurve(gainCurves(curveIdx - 1), pidAxisGainCurvePosition(axis))
-        : 1.0f;
+    return pidGetGainCurveScale(pid.gainCurveIndex[axis], axis);
 }
 
 static float pidThrottleAttenuation(void)

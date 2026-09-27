@@ -1584,6 +1584,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentTvPidProfile->hold.gain);
         sbufWriteU8(dst, currentTvPidProfile->hold.deadband);
         sbufWriteU16(dst, currentTvPidProfile->hold.max_rate);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, currentTvPidProfile->gain_curve[i]);
+        }
         break;
 
     case MSP_DEBUG_CONFIG:
@@ -3601,6 +3604,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         currentTvPidProfile->hold.gain = sbufReadU8(src);
         currentTvPidProfile->hold.deadband = sbufReadU8(src);
         currentTvPidProfile->hold.max_rate = sbufReadU16(src);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            currentTvPidProfile->gain_curve[i] = sbufReadU8(src);
+        }
         tvPidLoadProfile(currentTvPidProfile);
         tvHoldInit(currentTvPidProfile);
         break;

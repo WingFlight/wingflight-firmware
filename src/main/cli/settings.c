@@ -642,6 +642,8 @@ const clivalue_t valueTable[] = {
 
     // 4 elements are output for the ACC calibration - The 3 axis values and the 4th representing whether calibration has been performed
     { "acc_calibration",            VAR_INT16  | MASTER_VALUE | MODE_ARRAY, .config.array.length = 4, PG_ACCELEROMETER_CONFIG, offsetof(accelerometerConfig_t, accZero.raw) },
+    { "tv_gain_curve",              VAR_UINT8  | PROFILE_TV_VALUE | MODE_ARRAY, .config.array.length = PID_AXIS_COUNT, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, gain_curve) },
+    { "gain_curve",                 VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = PID_AXIS_COUNT, PG_PID_PROFILE, offsetof(pidProfile_t, gain_curve) },
 #endif
 
 // PG_COMPASS_CONFIG

@@ -150,6 +150,7 @@ float pidGetFeedforward(int axis, float rate);
 
 const pidAxisData_t * pidGetAxisData(void);
 float pidItermDecayRate(uint8_t decayTime);
+float pidGetGainCurveScale(uint8_t curveIndex, uint8_t axis);
 void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);
 
 ADJFUN_DECLARE(PID_PROFILE)
