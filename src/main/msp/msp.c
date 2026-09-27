@@ -1558,7 +1558,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, currentTvPidProfile->master_gain[PID_ROLL]);
         sbufWriteU16(dst, currentTvPidProfile->master_gain[PID_PITCH]);
         sbufWriteU16(dst, currentTvPidProfile->master_gain[PID_YAW]);
-        sbufWriteU8(dst, currentTvPidProfile->iterm_decay_time);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, currentTvPidProfile->iterm_decay_time[i]);
+        }
         sbufWriteU8(dst, currentTvPidProfile->iterm_decay_limit);
         sbufWriteU8(dst, currentTvPidProfile->iterm_relax_type);
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
@@ -1582,6 +1584,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentTvPidProfile->hold.gain);
         sbufWriteU8(dst, currentTvPidProfile->hold.deadband);
         sbufWriteU16(dst, currentTvPidProfile->hold.max_rate);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            sbufWriteU8(dst, currentTvPidProfile->gain_curve[i]);
+        }
         break;
 
     case MSP_DEBUG_CONFIG:
@@ -2130,7 +2135,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 
     case MSP_PID_PROFILE:
         sbufWriteU8(dst, currentPidProfile->pid_mode);
-        sbufWriteU8(dst, currentPidProfile->iterm_decay_time);
+        sbufWriteU8(dst, currentPidProfile->iterm_decay_time[0]);
+        sbufWriteU8(dst, currentPidProfile->iterm_decay_time[1]);
+        sbufWriteU8(dst, currentPidProfile->iterm_decay_time[2]);
         sbufWriteU8(dst, currentPidProfile->iterm_decay_limit);
         sbufWriteU8(dst, currentPidProfile->error_limit[0]);
         sbufWriteU8(dst, currentPidProfile->error_limit[1]);
@@ -3240,7 +3247,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
     case MSP_SET_PID_PROFILE:
         currentPidProfile->pid_mode = sbufReadU8(src);
-        currentPidProfile->iterm_decay_time = sbufReadU8(src);
+        currentPidProfile->iterm_decay_time[0] = sbufReadU8(src);
+        currentPidProfile->iterm_decay_time[1] = sbufReadU8(src);
+        currentPidProfile->iterm_decay_time[2] = sbufReadU8(src);
         currentPidProfile->iterm_decay_limit = sbufReadU8(src);
         currentPidProfile->error_limit[0] = sbufReadU8(src);
         currentPidProfile->error_limit[1] = sbufReadU8(src);
@@ -3569,7 +3578,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         currentTvPidProfile->master_gain[PID_ROLL] = sbufReadU16(src);
         currentTvPidProfile->master_gain[PID_PITCH] = sbufReadU16(src);
         currentTvPidProfile->master_gain[PID_YAW] = sbufReadU16(src);
-        currentTvPidProfile->iterm_decay_time = sbufReadU8(src);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            currentTvPidProfile->iterm_decay_time[i] = sbufReadU8(src);
+        }
         currentTvPidProfile->iterm_decay_limit = sbufReadU8(src);
         currentTvPidProfile->iterm_relax_type = sbufReadU8(src);
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
@@ -3593,6 +3604,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         currentTvPidProfile->hold.gain = sbufReadU8(src);
         currentTvPidProfile->hold.deadband = sbufReadU8(src);
         currentTvPidProfile->hold.max_rate = sbufReadU16(src);
+        for (int i = 0; i < PID_AXIS_COUNT; i++) {
+            currentTvPidProfile->gain_curve[i] = sbufReadU8(src);
+        }
         tvPidLoadProfile(currentTvPidProfile);
         tvHoldInit(currentTvPidProfile);
         break;

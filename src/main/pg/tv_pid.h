@@ -39,8 +39,9 @@ typedef struct tvPidProfile_s {
     pidf_t   pid[PID_ITEM_COUNT];
 
     uint16_t master_gain[PID_AXIS_COUNT]; // Live per-axis P/I/D/F scale, percent (100 = unscaled) - in-flight tuning aid, doesn't alter the underlying gains
+    uint8_t  gain_curve[PID_AXIS_COUNT];  // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1), scales master_gain by |stick deflection| - mirrors pidProfile_t.gain_curve
 
-    uint8_t  iterm_decay_time;
+    uint8_t  iterm_decay_time[PID_AXIS_COUNT];
     uint8_t  iterm_decay_limit;
 
     uint8_t  iterm_relax_type;

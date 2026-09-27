@@ -86,6 +86,62 @@ with INAV's `gps_min_sats`. 8 left a single-satellite margin over a typical
 Saved configurations keep their value; set `nav_min_sats = 6` to take the new
 default on an existing model.
 
+## Per-Axis I-Term Decay Time (MSP API 22.7)
+
+`iterm_decay_time` and `tv_iterm_decay_time` are now set per axis (roll,
+pitch, yaw), in the same 0.01 s units and 1-100 range, default `60,60,60`
+(`src/main/pg/pid.h`, `src/main/flight/pid.c`, `src/main/flight/tv_pid.c`).
+Yaw is the axis a 3D pilot is most likely to want different, for example a
+longer memory for rudder lock in knife-edge and hover while roll stays free.
+`iterm_decay_limit` stays a single value.
+
+The CLI takes three values (`iterm_decay_time = 40,40,70`). Array settings
+are not range-checked by the CLI, so out-of-range values are clamped when the
+profile loads.
+
+MSP_PID_PROFILE and MSP2_WING_TV_PID_CONFIG carry three bytes where they
+carried one. `PG_PID_PROFILE` v13 and `PG_THRUST_VECTOR_PROFILE` v3, so PID
+and TV profiles reset to defaults again.
+
+The adjustment functions are per axis too, replacing 114/115 from API 22.6:
+`ITERM_DECAY_TIME_ROLL`/`_PITCH`/`_YAW` (114-116) and
+`TV_ITERM_DECAY_TIME_ROLL`/`_PITCH`/`_YAW` (117-119). A 22.6 adjustment range
+on 115 (TV decay) now tunes main-loop pitch decay.
+
+## Thrust Vector Gain Curves (MSP API 22.7)
+
+The thrust-vector loop's master gain can now be shaped by a gain curve per
+axis, like the main loop: `tv_gain_curve` (0 = none, 1-8 = a slot of the
+shared gain-curve pool) scales `tv_master_gain` by |stick deflection|
+(`src/main/pg/tv_pid.h`, `src/main/flight/tv_pid.c`). Both loops evaluate the
+curve through `pidGetGainCurveScale()` in `src/main/flight/pid.c`. As with
+`tv_master_gain`, the curve scales the TV loop's F term too.
+MSP2_WING_TV_PID_CONFIG appends three bytes for it.
+
+The main loop's `gain_curve` also gets a CLI entry (`gain_curve = 0,0,0`); it
+was MSP-only before, so it was missing from `diff`.
+
+## I-Term Decay Time in 0.01 s, Capped at 1 s (MSP API 22.6)
+
+`iterm_decay_time` and `tv_iterm_decay_time` are now in 0.01 s units with a
+range of 1-100 (0.01-1.00 s). The default stays 0.6 s, now stored as `60`
+(`src/main/pg/pid.h`, `src/main/flight/pid.c`, `src/main/flight/tv_pid.c`).
+This time constant sets how long the rate loop remembers a disturbance: longer
+feels more locked, shorter feels freer. 3D pilots typically want less than the
+default, so the finer steps are in the range they tune in. Above about 1 s the
+rate loop starts to feel like attitude hold, which is ATTHOLD's job, so the
+range stops there. `0` no longer means "decay off" (unlimited lock); MSP writes
+outside the range are clamped.
+
+The meaning of the stored byte changed, so the PID profile (`PG_PID_PROFILE`
+v12) and the thrust-vector profile (`PG_THRUST_VECTOR_PROFILE` v2) reset to
+defaults on upgrade. A CLI diff from older firmware that sets
+`iterm_decay_time` must be multiplied by 10 before it is restored (an old `4`
+is now `40`). Otherwise it is read as a tenth of the intended time.
+
+New adjustment functions `ITERM_DECAY_TIME` (114) and `TV_ITERM_DECAY_TIME`
+(115) tune the value in flight, in the same 0.01 s units.
+
 ## AUTOHOVER Yaw Authority
 
 While AUTOHOVER is holding, the stabilised-yaw mixer input (`mixer input SY`)

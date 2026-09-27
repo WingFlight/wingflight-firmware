@@ -50,11 +50,12 @@ typedef struct {
     tvPidAxisData_t data[PID_AXIS_COUNT];
 
     float masterGain[PID_AXIS_COUNT]; // Live per-axis P/I/D/F scale (1.0 = unscaled) - see tvPidProfile_t.master_gain
+    uint8_t gainCurveIndex[PID_AXIS_COUNT]; // 0=none, 1..GAIN_CURVE_COUNT - see tvPidProfile_t.gain_curve
 
     uint8_t itermRelaxType;
     uint8_t itermRelaxLevel[PID_AXIS_COUNT];
 
-    float itermDecayRate;
+    float itermDecayRate[PID_AXIS_COUNT];
     float itermDecayLimit;
 
     float errorLimit[PID_AXIS_COUNT];
@@ -127,6 +128,39 @@ void set_ADJUSTMENT_TV_MASTER_GAIN_YAW(int value)
 {
     currentTvPidProfile->master_gain[PID_YAW] = value;
     tvPid.masterGain[PID_YAW] = value * 0.01f;
+}
+
+int get_ADJUSTMENT_TV_ITERM_DECAY_TIME_ROLL(void)
+{
+    return currentTvPidProfile->iterm_decay_time[PID_ROLL];
+}
+
+void set_ADJUSTMENT_TV_ITERM_DECAY_TIME_ROLL(int value)
+{
+    currentTvPidProfile->iterm_decay_time[PID_ROLL] = value;
+    tvPid.itermDecayRate[PID_ROLL] = pidItermDecayRate(value);
+}
+
+int get_ADJUSTMENT_TV_ITERM_DECAY_TIME_PITCH(void)
+{
+    return currentTvPidProfile->iterm_decay_time[PID_PITCH];
+}
+
+void set_ADJUSTMENT_TV_ITERM_DECAY_TIME_PITCH(int value)
+{
+    currentTvPidProfile->iterm_decay_time[PID_PITCH] = value;
+    tvPid.itermDecayRate[PID_PITCH] = pidItermDecayRate(value);
+}
+
+int get_ADJUSTMENT_TV_ITERM_DECAY_TIME_YAW(void)
+{
+    return currentTvPidProfile->iterm_decay_time[PID_YAW];
+}
+
+void set_ADJUSTMENT_TV_ITERM_DECAY_TIME_YAW(int value)
+{
+    currentTvPidProfile->iterm_decay_time[PID_YAW] = value;
+    tvPid.itermDecayRate[PID_YAW] = pidItermDecayRate(value);
 }
 
 
@@ -325,6 +359,11 @@ void tvPidLoadProfile(const tvPidProfile_t *profile)
     for (int i = 0; i < PID_AXIS_COUNT; i++)
         tvPid.masterGain[i] = profile->master_gain[i] * 0.01f;
 
+    // Optional per-axis curve that further scales master gain by |stick deflection|,
+    // from the same gain-curve pool as the main loop (pidGetGainCurveScale)
+    for (int i = 0; i < PID_AXIS_COUNT; i++)
+        tvPid.gainCurveIndex[i] = profile->gain_curve[i];
+
     tvPid.coef[PID_ROLL].Kp = ROLL_P_TERM_SCALE * profile->pid[PID_ROLL].P;
     tvPid.coef[PID_ROLL].Ki = ROLL_I_TERM_SCALE * profile->pid[PID_ROLL].I;
     tvPid.coef[PID_ROLL].Kd = ROLL_D_TERM_SCALE * profile->pid[PID_ROLL].D;
@@ -346,8 +385,9 @@ void tvPidLoadProfile(const tvPidProfile_t *profile)
     for (int i = 0; i < PID_AXIS_COUNT; i++)
         tvPid.errorLimit[i] = profile->error_limit[i];
 
-    // Exponential I-term decay rate
-    tvPid.itermDecayRate = (profile->iterm_decay_time) ? (10.0f / profile->iterm_decay_time) : 0;
+    // Per-axis exponential I-term decay rate
+    for (int i = 0; i < PID_AXIS_COUNT; i++)
+        tvPid.itermDecayRate[i] = pidItermDecayRate(profile->iterm_decay_time[i]);
 
     // Max I-term decay speed in degs/s (linear decay)
     tvPid.itermDecayLimit = (profile->iterm_decay_limit) ? profile->iterm_decay_limit : 3600;
@@ -413,7 +453,7 @@ static void tvPidApplyAxis(uint8_t axis)
 
     const float errorRate = setpoint - gyroRate;
 
-    const float masterGain = tvPid.masterGain[axis];
+    const float masterGain = tvPid.masterGain[axis] * pidGetGainCurveScale(tvPid.gainCurveIndex[axis], axis);
 
   //// P-term
 
@@ -440,7 +480,7 @@ static void tvPidApplyAxis(uint8_t axis)
     // seconds), while no decay at all would leave stale I parking the nozzle off-center forever.
     // Same reasoning as pid.c's ATT HOLD handling.
     const float decayScale = tvHoldIDecayScale(axis);
-    const float errorDecay = limitf(tvPid.data[axis].axisError * tvPid.itermDecayRate * decayScale, tvPid.itermDecayLimit * decayScale);
+    const float errorDecay = limitf(tvPid.data[axis].axisError * tvPid.itermDecayRate[axis] * decayScale, tvPid.itermDecayLimit * decayScale);
     tvPid.data[axis].axisError -= errorDecay * pidGetDT();
 
   //// Feedforward
