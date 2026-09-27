@@ -165,6 +165,17 @@ void set_ADJUSTMENT_MASTER_GAIN_YAW(int value)
     pid.masterGain[PID_YAW] = value * 0.01f;
 }
 
+int get_ADJUSTMENT_ITERM_DECAY_TIME(void)
+{
+    return currentPidProfile->iterm_decay_time;
+}
+
+void set_ADJUSTMENT_ITERM_DECAY_TIME(int value)
+{
+    currentPidProfile->iterm_decay_time = value;
+    pid.itermDecayRate = 100.0f / constrain(value, ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX);
+}
+
 int get_ADJUSTMENT_PITCH_P_GAIN(void)
 {
     return currentPidProfile->pid[PID_PITCH].P;
@@ -473,8 +484,8 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     for (int i = 0; i < XYZ_AXIS_COUNT; i++)
         pid.errorLimit[i] = pidProfile->error_limit[i];
 
-    // Exponential I-term decay rate
-    pid.itermDecayRate = (pidProfile->iterm_decay_time) ? (10.0f / pidProfile->iterm_decay_time) : 0;
+    // Exponential I-term decay rate (time constant in 0.01 s; clamped since MSP writes are unchecked)
+    pid.itermDecayRate = 100.0f / constrain(pidProfile->iterm_decay_time, ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX);
 
     // Max I-term decay speed in degs/s (linear decay)
     pid.itermDecayLimit = (pidProfile->iterm_decay_limit) ? pidProfile->iterm_decay_limit : 3600;

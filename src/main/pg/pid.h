@@ -101,6 +101,12 @@ typedef struct {
 
 #define MAX_PROFILE_NAME_LENGTH 8u
 
+// iterm_decay_time range, in 0.01 s. Capped at 1 s so the rate loop keeps rate-mode feel (longer
+// memory is what ATTHOLD is for), and no 0 = "decay off", which would silently be the most locked
+// setting at the bottom of the scale.
+#define ITERM_DECAY_TIME_MIN    1
+#define ITERM_DECAY_TIME_MAX    100
+
 #define GAIN_CURVE_COUNT   8
 #define GAIN_CURVE_POINTS  6
 
@@ -130,7 +136,7 @@ typedef struct pidProfile_s {
     uint8_t             fw_tpa_gain;                  // Baseline throttle attenuation scale, percent (100 = unscaled) - mirrors master_gain
     uint8_t             fw_tpa_curve;                 // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1), further scales fw_tpa_gain by throttle - mirrors gain_curve
 
-    uint8_t             iterm_decay_time;
+    uint8_t             iterm_decay_time;             // I-term decay time constant, 0.01 s (ITERM_DECAY_TIME_MIN..MAX)
     uint8_t             iterm_decay_limit;
 
     uint8_t             iterm_relax_type;

@@ -129,6 +129,17 @@ void set_ADJUSTMENT_TV_MASTER_GAIN_YAW(int value)
     tvPid.masterGain[PID_YAW] = value * 0.01f;
 }
 
+int get_ADJUSTMENT_TV_ITERM_DECAY_TIME(void)
+{
+    return currentTvPidProfile->iterm_decay_time;
+}
+
+void set_ADJUSTMENT_TV_ITERM_DECAY_TIME(int value)
+{
+    currentTvPidProfile->iterm_decay_time = value;
+    tvPid.itermDecayRate = 100.0f / constrain(value, ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX);
+}
+
 
 int get_ADJUSTMENT_TV_ROLL_P_GAIN(void)
 {
@@ -346,8 +357,8 @@ void tvPidLoadProfile(const tvPidProfile_t *profile)
     for (int i = 0; i < PID_AXIS_COUNT; i++)
         tvPid.errorLimit[i] = profile->error_limit[i];
 
-    // Exponential I-term decay rate
-    tvPid.itermDecayRate = (profile->iterm_decay_time) ? (10.0f / profile->iterm_decay_time) : 0;
+    // Exponential I-term decay rate (time constant in 0.01 s; clamped since MSP writes are unchecked)
+    tvPid.itermDecayRate = 100.0f / constrain(profile->iterm_decay_time, ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX);
 
     // Max I-term decay speed in degs/s (linear decay)
     tvPid.itermDecayLimit = (profile->iterm_decay_limit) ? profile->iterm_decay_limit : 3600;

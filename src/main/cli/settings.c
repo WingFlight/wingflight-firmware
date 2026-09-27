@@ -1075,7 +1075,7 @@ const clivalue_t valueTable[] = {
 
     { "error_limit",                VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = 3, PG_PID_PROFILE, offsetof(pidProfile_t, error_limit) },
 
-    { "iterm_decay_time",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_decay_time) },
+    { "iterm_decay_time",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX }, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_decay_time) },
     { "iterm_decay_limit",         VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_decay_limit) },
 
     { "iterm_relax_type",           VAR_UINT8  | PROFILE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_ITERM_RELAX_TYPE }, PG_PID_PROFILE, offsetof(pidProfile_t, iterm_relax_type) },
@@ -1152,7 +1152,7 @@ const clivalue_t valueTable[] = {
 
     { "tv_error_limit",             VAR_UINT8  | PROFILE_TV_VALUE | MODE_ARRAY, .config.array.length = 3, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, error_limit) },
 
-    { "tv_iterm_decay_time",        VAR_UINT8  | PROFILE_TV_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_decay_time) },
+    { "tv_iterm_decay_time",        VAR_UINT8  | PROFILE_TV_VALUE, .config.minmaxUnsigned = { ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_decay_time) },
     { "tv_iterm_decay_limit",       VAR_UINT8  | PROFILE_TV_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_decay_limit) },
 
     { "tv_iterm_relax_type",        VAR_UINT8  | PROFILE_TV_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_ITERM_RELAX_TYPE }, PG_THRUST_VECTOR_PROFILE, offsetof(tvPidProfile_t, iterm_relax_type) },

@@ -33,7 +33,7 @@
 // switchable profiles (see currentTvPidProfile/changeTvProfile() in
 // config/config.c) -- old single-profile saves reset to defaults rather than
 // reinterpreting their stored bytes as profile 0 of the new array.
-PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 1);
+PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 2);
 
 // Nominal starting gains, mirroring the main loop's defaults
 // (resetPidProfile() in pg/pid.c) -- a reasonable bench-tuning starting point
@@ -48,7 +48,7 @@ void resetTvPidProfile(tvPidProfile_t *tvPidProfile)
             [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 100, .B = 0, },
         },
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
-        .iterm_decay_time = 6,
+        .iterm_decay_time = 60,
         .iterm_decay_limit = 35,
         .iterm_relax_type = ITERM_RELAX_RPY,
         .iterm_relax_level = { 22, 22, 22 },
