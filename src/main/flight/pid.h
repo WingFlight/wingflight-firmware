@@ -109,7 +109,7 @@ typedef struct pid_s {
     uint8_t crossAxisRelaxLevel;
     float crossAxisRelaxYawActivity;
 
-    float itermDecayRate;
+    float itermDecayRate[PID_AXIS_COUNT];
     float itermDecayLimit;
 
     float errorLimit[PID_AXIS_COUNT];
@@ -149,13 +149,16 @@ float pidGetOutput(int axis);
 float pidGetFeedforward(int axis, float rate);
 
 const pidAxisData_t * pidGetAxisData(void);
+float pidItermDecayRate(uint8_t decayTime);
 void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);
 
 ADJFUN_DECLARE(PID_PROFILE)
 ADJFUN_DECLARE(MASTER_GAIN_PITCH)
 ADJFUN_DECLARE(MASTER_GAIN_ROLL)
 ADJFUN_DECLARE(MASTER_GAIN_YAW)
-ADJFUN_DECLARE(ITERM_DECAY_TIME)
+ADJFUN_DECLARE(ITERM_DECAY_TIME_ROLL)
+ADJFUN_DECLARE(ITERM_DECAY_TIME_PITCH)
+ADJFUN_DECLARE(ITERM_DECAY_TIME_YAW)
 ADJFUN_DECLARE(PITCH_P_GAIN)
 ADJFUN_DECLARE(ROLL_P_GAIN)
 ADJFUN_DECLARE(YAW_P_GAIN)

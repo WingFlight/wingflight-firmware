@@ -120,6 +120,14 @@ void INIT_CODE pidResetAxisErrors(void)
 }
 
 
+// Exponential I-term decay rate (1/s) for a decay time constant in 0.01 s. Clamped because MSP
+// writes and CLI array values are not range-checked. Shared with the thrust-vector loop.
+float pidItermDecayRate(uint8_t decayTime)
+{
+    return 100.0f / constrain(decayTime, ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX);
+}
+
+
 //// Adjustment functions
 
 int get_ADJUSTMENT_PID_PROFILE(void)
@@ -165,15 +173,37 @@ void set_ADJUSTMENT_MASTER_GAIN_YAW(int value)
     pid.masterGain[PID_YAW] = value * 0.01f;
 }
 
-int get_ADJUSTMENT_ITERM_DECAY_TIME(void)
+int get_ADJUSTMENT_ITERM_DECAY_TIME_ROLL(void)
 {
-    return currentPidProfile->iterm_decay_time;
+    return currentPidProfile->iterm_decay_time[PID_ROLL];
 }
 
-void set_ADJUSTMENT_ITERM_DECAY_TIME(int value)
+void set_ADJUSTMENT_ITERM_DECAY_TIME_ROLL(int value)
 {
-    currentPidProfile->iterm_decay_time = value;
-    pid.itermDecayRate = 100.0f / constrain(value, ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX);
+    currentPidProfile->iterm_decay_time[PID_ROLL] = value;
+    pid.itermDecayRate[PID_ROLL] = pidItermDecayRate(value);
+}
+
+int get_ADJUSTMENT_ITERM_DECAY_TIME_PITCH(void)
+{
+    return currentPidProfile->iterm_decay_time[PID_PITCH];
+}
+
+void set_ADJUSTMENT_ITERM_DECAY_TIME_PITCH(int value)
+{
+    currentPidProfile->iterm_decay_time[PID_PITCH] = value;
+    pid.itermDecayRate[PID_PITCH] = pidItermDecayRate(value);
+}
+
+int get_ADJUSTMENT_ITERM_DECAY_TIME_YAW(void)
+{
+    return currentPidProfile->iterm_decay_time[PID_YAW];
+}
+
+void set_ADJUSTMENT_ITERM_DECAY_TIME_YAW(int value)
+{
+    currentPidProfile->iterm_decay_time[PID_YAW] = value;
+    pid.itermDecayRate[PID_YAW] = pidItermDecayRate(value);
 }
 
 int get_ADJUSTMENT_PITCH_P_GAIN(void)
@@ -484,8 +514,9 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     for (int i = 0; i < XYZ_AXIS_COUNT; i++)
         pid.errorLimit[i] = pidProfile->error_limit[i];
 
-    // Exponential I-term decay rate (time constant in 0.01 s; clamped since MSP writes are unchecked)
-    pid.itermDecayRate = 100.0f / constrain(pidProfile->iterm_decay_time, ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX);
+    // Per-axis exponential I-term decay rate
+    for (int i = 0; i < PID_AXIS_COUNT; i++)
+        pid.itermDecayRate[i] = pidItermDecayRate(pidProfile->iterm_decay_time[i]);
 
     // Max I-term decay speed in degs/s (linear decay)
     pid.itermDecayLimit = (pidProfile->iterm_decay_limit) ? pidProfile->iterm_decay_limit : 3600;
@@ -924,7 +955,7 @@ static void pidApplyMode1(uint8_t axis)
         || (!isYaw && FLIGHT_MODE(rollPitchLevelingModes));
 
     if (!levelingModeShapingThisAxis) {
-        const float errorDecay = limitf(pid.data[axis].axisError * pid.itermDecayRate * attHoldDecayScale, pid.itermDecayLimit * attHoldDecayScale);
+        const float errorDecay = limitf(pid.data[axis].axisError * pid.itermDecayRate[axis] * attHoldDecayScale, pid.itermDecayLimit * attHoldDecayScale);
 
         pid.data[axis].axisError -= errorDecay * pid.dT;
     }

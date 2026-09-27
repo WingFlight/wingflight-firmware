@@ -202,9 +202,13 @@ typedef enum {
     ADJUSTMENT_FLAP_COMPENSATION_GAIN       = 112,
     ADJUSTMENT_DIFF_THRUST_YAW_GAIN         = 113,
 
-    // I-term decay time (0.01 s) -- how long the rate loop remembers a disturbance
-    ADJUSTMENT_ITERM_DECAY_TIME             = 114,
-    ADJUSTMENT_TV_ITERM_DECAY_TIME          = 115,
+    // Per-axis I-term decay time (0.01 s) -- how long the rate loop remembers a disturbance
+    ADJUSTMENT_ITERM_DECAY_TIME_ROLL        = 114,
+    ADJUSTMENT_ITERM_DECAY_TIME_PITCH       = 115,
+    ADJUSTMENT_ITERM_DECAY_TIME_YAW         = 116,
+    ADJUSTMENT_TV_ITERM_DECAY_TIME_ROLL     = 117,
+    ADJUSTMENT_TV_ITERM_DECAY_TIME_PITCH    = 118,
+    ADJUSTMENT_TV_ITERM_DECAY_TIME_YAW      = 119,
 
     ADJUSTMENT_FUNCTION_COUNT
 } adjustmentFunc_e;

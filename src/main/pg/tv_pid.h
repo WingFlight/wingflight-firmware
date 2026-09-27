@@ -40,7 +40,7 @@ typedef struct tvPidProfile_s {
 
     uint16_t master_gain[PID_AXIS_COUNT]; // Live per-axis P/I/D/F scale, percent (100 = unscaled) - in-flight tuning aid, doesn't alter the underlying gains
 
-    uint8_t  iterm_decay_time;
+    uint8_t  iterm_decay_time[PID_AXIS_COUNT];
     uint8_t  iterm_decay_limit;
 
     uint8_t  iterm_relax_type;
