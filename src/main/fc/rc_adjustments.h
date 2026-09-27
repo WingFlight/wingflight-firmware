@@ -210,7 +210,7 @@ typedef enum {
     ADJUSTMENT_TV_ITERM_DECAY_TIME_PITCH    = 118,
     ADJUSTMENT_TV_ITERM_DECAY_TIME_YAW      = 119,
 
-    // Per-axis Bounce-back Suppression score (1-10, higher = less bounce-back)
+    // Per-axis Bounce Back score (1-10, higher = less bounce-back)
     ADJUSTMENT_BOUNCEBACK_ROLL              = 120,
     ADJUSTMENT_BOUNCEBACK_PITCH             = 121,
     ADJUSTMENT_BOUNCEBACK_YAW               = 122,

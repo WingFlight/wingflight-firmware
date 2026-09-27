@@ -101,7 +101,7 @@ typedef struct {
 #define ITERM_DECAY_TIME_MIN    1
 #define ITERM_DECAY_TIME_MAX    100
 
-// Bounce-back Suppression, a 1-10 score per axis (higher = less bounce-back after a fast stick
+// Bounce Back, a 1-10 score per axis (higher = less bounce-back after a fast stick
 // move). pidBouncebackCutoff() turns it into the I-term relax setpoint filter cutoff. The score,
 // not the Hz, is what pilots, the CLI, MSP and the adjustment functions see. Relax is always on.
 #define BOUNCEBACK_MIN      1
@@ -141,7 +141,7 @@ typedef struct pidProfile_s {
     uint8_t             iterm_decay_limit;
 
     uint8_t             iterm_relax_level[PID_AXIS_COUNT];
-    uint8_t             bounceback[PID_AXIS_COUNT];   // Bounce-back Suppression score, BOUNCEBACK_MIN..MAX
+    uint8_t             bounceback[PID_AXIS_COUNT];   // Bounce Back score, BOUNCEBACK_MIN..MAX
 
     uint8_t             error_limit[PID_AXIS_COUNT];
 

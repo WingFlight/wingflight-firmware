@@ -86,9 +86,9 @@ with INAV's `gps_min_sats`. 8 left a single-satellite margin over a typical
 Saved configurations keep their value; set `nav_min_sats = 6` to take the new
 default on an existing model.
 
-## Bounce-back Suppression Score (MSP API 22.9)
+## Bounce Back Score (MSP API 22.9)
 
-The per-axis I-term relax cutoff is replaced by a **Bounce-back Suppression**
+The per-axis I-term relax cutoff is replaced by a **Bounce Back**
 score, 1-10, default 5, where higher means less bounce-back after a fast stick
 move (`src/main/pg/pid.h`, `src/main/flight/pid.c`). The firmware turns the
 score into the relax filter cutoff through one table in

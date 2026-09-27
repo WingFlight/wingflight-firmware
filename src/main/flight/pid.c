@@ -127,7 +127,7 @@ float pidItermDecayRate(uint8_t decayTime)
     return 100.0f / constrain(decayTime, ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX);
 }
 
-// I-term relax setpoint filter cutoff (Hz) for a Bounce-back Suppression score. A lower cutoff
+// I-term relax setpoint filter cutoff (Hz) for a Bounce Back score. A lower cutoff
 // treats more of each stick move as "fast" and suppresses I build-up for longer, so less
 // bounce-back. Score 5 (default) is the long-standing 10 Hz; 5-9 cover the 10-5 Hz range wing
 // pilots actually tune in, one Hz per step. The score is clamped because MSP writes and CLI array
