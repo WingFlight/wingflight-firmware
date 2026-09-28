@@ -34,7 +34,7 @@
 
 // Independent quaternion-based attitude/heading hold for the Thrust Vector loop
 // (FEATURE_THRUST_VECTOR) -- engaged by its own switch (BOXTVHOLD, "THRUST VECTOR
-// ATTITUDE HOLD"), completely decoupled from the main loop's ANGLE/AUTOHOVER/
+// ATTITUDE HOLD"), completely decoupled from the main loop's ANGLE/
 // ATTHOLD chain in pid.c. This is what makes it possible to hold heading/attitude
 // on the vectored nozzle while the aerodynamic control surfaces stay in plain
 // rate/acro under the pilot's stick.

@@ -71,7 +71,8 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // bytes at the new layout, matching the v6->v7 precedent. v10->v11: added
 // autohover.throttle_assist_gain/_max/_trigger_ms (3 new fields appended at
 // the tail of the autohover sub-struct, widening it again) - old saved
-// profiles reset to defaults, matching the v9->v10 precedent.
+// profiles reset to defaults, matching the v9->v10 precedent. AUTO HOVER was
+// later removed without a version bump: its bytes stay as autohover_reserved.
 PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 15);
 
 void resetPidProfile(pidProfile_t *pidProfile)
@@ -105,13 +106,6 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .trainer.gain = 75,
         .trainer.angle_limit = 20,
         .trainer.lookahead_ms = 50,
-        .autohover.gain = 50,
-        .autohover.max_angle = 30,
-        .autohover.max_rate = 120,
-        .autohover.roll_deadband = 5,
-        .autohover.throttle_assist_gain = 0,
-        .autohover.throttle_assist_max = 15,
-        .autohover.throttle_assist_trigger_ms = 300,
         .atthold.gain = 40,
         .atthold.deadband = 5,
         .atthold.max_rate = 300,

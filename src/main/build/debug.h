@@ -123,7 +123,7 @@ typedef enum {
     DEBUG_UNUSED_76,    // was HS_BLEED -- slot kept so later modes keep their numbers
     DEBUG_UNUSED_77,    // was GOV_MOTOR -- slot kept so later modes keep their numbers
     DEBUG_GYRO_CALIBRATION,
-    DEBUG_AUTOHOVER,
+    DEBUG_UNUSED_79,    // was AUTOHOVER -- slot kept so later modes keep their numbers
     DEBUG_ATTHOLD,
     DEBUG_TVHOLD,
     DEBUG_GAIN_ATTEN,

@@ -396,9 +396,8 @@ static float imuCalcKpGain(timeUs_t currentTimeUs, bool useAcc, const float *gyr
     return ret;
 }
 
-// Converts Euler angles (decidegrees) to a quaternion. Shared by imuComputeQuaternionFromRPY
-// (GPS heading reinit, below) and flight/autohover.c (builds its held vertical-attitude target) --
-// exposed unconditionally since autohover doesn't depend on USE_GPS. The yaw negation matches
+// Converts Euler angles (decidegrees) to a quaternion. Used by imuComputeQuaternionFromRPY
+// (GPS heading reinit, below) and exposed unconditionally, not only under USE_GPS. The yaw negation matches
 // imuUpdateEulerAngles()/setpoint.c's documented CW-stick-vs-gyro-sign convention; don't re-derive
 // this elsewhere, it's easy to get the sign wrong in a way that only shows up as a wrong heading.
 void imuEulerToQuaternion(int16_t roll, int16_t pitch, int16_t yaw, quaternion *out)

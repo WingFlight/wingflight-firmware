@@ -221,8 +221,8 @@ TEST_F(GpsNavLoiterTest, BankCommandIsSlewLimited)
 
 // Altitude hold (regression tests for H-3, see Flight Dynamics tech reference, and for the gain
 // being applied in the wrong unit). Pitch in this codebase's convention is positive NOSE-DOWN,
-// same as attitude.raw[]/navAngle[] throughout (see gps_nav.c's own comment, cross-referenced
-// against autohover.c's bench-confirmed +900 = nose-down / -900 = nose-up). Below target altitude
+// same as attitude.raw[]/navAngle[] throughout (see gps_nav.c's own comment: bench-confirmed
+// +900 = nose-down / -900 = nose-up). Below target altitude
 // must command a negative (nose-up, climb) pitch target; above target must command positive.
 class GpsNavAltitudeTest : public ::testing::Test {
   protected:

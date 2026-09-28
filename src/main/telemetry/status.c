@@ -37,7 +37,6 @@
 
 #include "flight/airborne.h"
 #include "flight/atthold.h"
-#include "flight/autohover.h"
 #include "flight/autotrim.h"
 #include "flight/failsafe.h"
 #include "flight/gps_nav.h"
@@ -130,7 +129,7 @@ static bool assistHolding(void)
 {
     for (int axis = 0; axis < 3; axis++) {
 #ifdef USE_ACC
-        if (attHoldIsHolding(axis) || tvHoldIsHolding(axis) || autoHoverIsHolding(axis)) {
+        if (attHoldIsHolding(axis) || tvHoldIsHolding(axis)) {
             return true;
         }
 #endif

@@ -3,6 +3,35 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## AUTO HOVER Removed (MSP API 22.11)
+
+The AUTO HOVER flight mode (`flight/autohover.c`) is removed, along with its
+throttle assist and the rudder-travel widening the mixer applied while it
+held. ATT HOLD and THRUST VECTOR ATTITUDE HOLD are unchanged.
+
+Every slot it used is reserved rather than reused or renumbered, so the MSP
+and storage layouts do not move:
+
+- Mode: box permanent ID 58 ("AUTO HOVER") is no longer offered. A saved mode
+  range on it is inert. `BOXAUTOHOVER` stays in `boxId_e` as a placeholder.
+- Flight mode bit 9 is reserved and never set.
+- Adjustment function 87 (Auto Hover gain) has no entry; a saved adjustment
+  range on it does nothing.
+- Debug mode 79 is `UNUSED_79`.
+- CLI: `autohover_gain`, `autohover_max_angle`, `autohover_max_rate`,
+  `autohover_roll_deadband`, `autohover_throttle_assist_gain`,
+  `autohover_throttle_assist_max` and `autohover_throttle_assist_trigger_ms`
+  are removed. Restoring an older diff reports them as unknown settings.
+- MSP_PID_PROFILE keeps the 9 bytes (4 after the master gains, 5 after the
+  ATT HOLD max rate): the FC sends zeros and ignores what a client writes.
+- Storage: the 10 bytes in `pidProfile_t` become `autohover_reserved`, same
+  size and alignment, so `PG_PID_PROFILE` stays at v15 and saved profiles
+  are kept.
+- CRSF flight mode text no longer reports `AUTOHOVER`.
+
+The API minor goes to 22.11 only so clients can tell the mode is gone and
+hide its settings; the payload is unchanged.
+
 ## GPS Speed Attenuation (MSP API 22.10)
 
 A second gain attenuation next to TPA, driven by GPS speed instead of

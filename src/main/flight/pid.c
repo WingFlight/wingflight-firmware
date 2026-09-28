@@ -54,7 +54,6 @@
 #include "flight/mixer.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
-#include "flight/autohover.h"
 #include "flight/atthold.h"
 #include "flight/hold_engine.h"
 #include "flight/rpm_filter.h"
@@ -598,7 +597,6 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     // Initialise sub-profiles
 #ifdef USE_ACC
     levelingInit(pidProfile);
-    autoHoverInit(pidProfile);
     attHoldInit(pidProfile);
 #endif
 #ifdef USE_ACRO_TRAINER
@@ -724,13 +722,9 @@ static float pidApplySetpoint(uint8_t axis)
 #ifdef USE_ACC
     // Apply leveling modes
     if (FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE)) {
-        // Failsafe/GPS rescue/GPS nav take priority over AUTO HOVER/ATT HOLD and force recovery to
-        // level, even while genuinely hovering or holding an off-level attitude -- a deliberate
-        // safety choice.
+        // Failsafe/GPS rescue/GPS nav take priority over ATT HOLD and force recovery to level,
+        // even while holding an off-level attitude -- a deliberate safety choice.
         setpoint = angleModeApply(axis, setpoint);
-    }
-    else if (FLIGHT_MODE(AUTOHOVER_MODE)) {
-        setpoint = autoHoverApply(axis, setpoint);
     }
     else if (FLIGHT_MODE(ATTHOLD_MODE)) {
         setpoint = attHoldApply(axis, setpoint);
@@ -977,7 +971,7 @@ static void pidApplyMode1(uint8_t axis)
     // while landed) -- but suspended while a leveling/attitude-hold layer is
     // actively shaping this axis's setpoint. Those layers (ANGLE/HORIZON/GPS
     // rescue/failsafe/loiter/RTH's shared angleModeApply on roll+pitch, the
-    // acro trainer only while limiting, and ATTHOLD/AUTOHOVER on an axis that is actually
+    // acro trainer only while limiting, and ATTHOLD on an axis that is actually
     // holding a target) fundamentally need a sustained I-term to hold a
     // corrected attitude against a persistent disturbance once the rate error
     // itself has settled to ~0 -- an unconditional decay quietly erodes exactly
@@ -985,7 +979,7 @@ static void pidApplyMode1(uint8_t axis)
     // giving up after a couple of seconds even though the true attitude error
     // never went away. Plain acro/manual flight (and TRADITIONAL_MODE, which
     // only masks the I *output* above, not axisError itself) still decay
-    // normally -- and so does an ATTHOLD/AUTOHOVER axis that's free-tracking
+    // normally -- and so does an ATTHOLD axis that's free-tracking
     // (stick active, or still settling after release): there it's plain rate
     // flight, so it should bleed I exactly like normal mode rather than carry
     // stale I from an earlier maneuver into the next hold.
@@ -1007,15 +1001,13 @@ static void pidApplyMode1(uint8_t axis)
     trainerLimitingThisAxis = FLIGHT_MODE(TRAINER_MODE) && acroTrainerIsLimiting(axis);
 #endif
 
-    bool autoHoverHoldingThisAxis = false;
     float attHoldDecayScale = 1.0f;
 #ifdef USE_ACC
-    autoHoverHoldingThisAxis = autoHoverIsHolding(axis);
     attHoldDecayScale = attHoldIDecayScale(axis);
 #endif
 
     const bool isYaw = (axis == FD_YAW);
-    const bool levelingModeShapingThisAxis = trainerLimitingThisAxis || autoHoverHoldingThisAxis
+    const bool levelingModeShapingThisAxis = trainerLimitingThisAxis
         || (!isYaw && FLIGHT_MODE(rollPitchLevelingModes));
 
     if (!levelingModeShapingThisAxis) {

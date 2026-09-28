@@ -28,7 +28,7 @@
 // currentTvPidProfile/changeTvProfile() in config/config.c.
 //
 // The one exception is `hold`: an independent attitude/heading hold, engaged by
-// its own switch (BOXTVHOLD) rather than the main loop's ANGLE/AUTOHOVER/ATTHOLD
+// its own switch (BOXTVHOLD) rather than the main loop's ANGLE/ATTHOLD
 // chain, so the vectored nozzle can hold heading/attitude while the aerodynamic
 // control surfaces stay in plain rate/acro under the pilot's stick. See
 // flight/tv_hold.c -- it deliberately re-derives atthold.c's quaternion

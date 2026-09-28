@@ -34,32 +34,29 @@
 #include "hold_engine.h"
 
 // Quaternion-based hold of *whatever attitude the aircraft was in* -- any orientation, not just
-// level or vertical. Generalizes autohover.c's quaternion approach (needed here too, for the same
-// reason: this must work right through inverted/knife-edge/harrier attitudes where Euler roll/pitch
-// error terms couple and leveling.c's Euler math would misbehave) but replaces autohover's
-// always-on bounded-stick-offset model with a deadband-gated track/freeze model, so a hold gives
+// level or vertical. Quaternion-based because this must work right through inverted/knife-edge/
+// harrier attitudes where Euler roll/pitch error terms couple and leveling.c's Euler math would
+// misbehave. It uses a deadband-gated track/freeze model, so a hold gives
 // full, zero-lag stick authority while the pilot is actively flying and locks onto an attitude
 // once a stick returns to center and that axis has stopped rotating (see HOLD_SETTLE_RATE
 // below -- capturing mid-rotation would snap the aircraft back). That behavioral model
 // (continuously recapture the hold target while a stick is deflected so a future freeze is
 // seamless; freeze and correct only inside a deadband) is carried over from an older Euler-angle-
-// based attitude hold (removed in commit e10a57cd4) -- this file reimplements that behavior on
-// autohover's quaternion math instead, since the old Euler implementation could not survive
-// attitudes away from level.
+// based attitude hold (removed in commit e10a57cd4) -- this file reimplements that behavior in
+// quaternion math instead, since the old Euler implementation could not survive attitudes away
+// from level.
 //
-// Unlike autohover (which deliberately frees the roll axis, since roll coincides with the world
-// vertical axis exactly at hover and is the pilot's pirouette control there), the engine can hold
-// any subset of the three axes at once -- each axis tracks or freezes independently based on its
+// The engine can hold any subset of the three axes at once -- each axis tracks or freezes independently based on its
 // own stick, e.g. holding pitch/yaw attitude while aileron alone is worked (a clean axial roll or
 // rifle roll), or holding roll/yaw while riding the elevator through a high-alpha attitude. There
-// is no fixed reference attitude to decompose into independent per-axis offsets the way autohover
-// does for roll (that always-vertical target IS the reference), so per-axis freezing is done
+// is no fixed reference attitude to decompose into independent per-axis offsets, so per-axis
+// freezing is done
 // directly in quaternion space instead (see the qKeep construction below), never by extracting or
 // composing Euler angles -- that's what keeps this safe through inverted/knife-edge attitudes
 // where an Euler decomposition would couple axes or hit gimbal lock.
 //
 // Known limitation (documented, not fixed here):
-// - Like autohover, does not subtract accelerometerConfig()->accelerometerTrims, so a pilot with
+// - Does not subtract accelerometerConfig()->accelerometerTrims, so a pilot with
 //   board-mount trim dialled in will hold systematically off from where they released the sticks.
 
 // After an axis's stick returns to center, its target keeps free-tracking until the aircraft has
@@ -108,7 +105,7 @@ void quatHoldSetGain(quatHold_t *hold, float gain)
 }
 
 // Called once on the rising edge of the mode so a stale target from a previous engagement can
-// never linger -- mirrors autoHoverSetState's rising-edge capture.
+// never linger.
 void quatHoldSetState(quatHold_t *hold, bool state)
 {
     if (state && !hold->Active) {
@@ -160,12 +157,12 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
 
     // The per-axis activity gate and the shared quaternion-error work only need computing once
     // per PID loop iteration, not once per axis call -- do that work on the first axis touched
-    // each iteration and cache it, same pattern autoHoverApply uses for its pitch/yaw correction.
+    // each iteration and cache it.
     if (axis == FD_ROLL) {
         // Deliberately not gated on isAirborne() -- see the pre-airborne attenuation below
         // instead. Forcing tracking (pure passthrough) whenever grounded, as this used to, meant
         // a hold gave zero correction authority on the bench no matter how long you sat there,
-        // unlike angleModeApply/horizonModeApply/autoHoverApply's pitch+yaw, which all still
+        // unlike angleModeApply/horizonModeApply, which both still
         // correct pre-airborne, just at reduced strength.
         const pidAxisData_t *pidData = pidGetAxisData();
         const float dT = pidGetDT();
@@ -197,7 +194,7 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
 
         // Shortest-path sign correction -- q and -q represent the same physical rotation, but
         // without this the error can decompose onto the "long way around" axis instead of the
-        // direct one (see autoHoverApply for the same fix).
+        // direct one.
         if (qError.w < 0.0f) {
             qError.w = -qError.w;
             qError.x = -qError.x;
@@ -206,9 +203,8 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
         }
 
         // Standard geometric attitude-control error term (2 * vector part), singularity-free
-        // across the full 0-180 degree range -- see autoHoverApply for why this is preferred
-        // over an axis-angle/acos decomposition. All three axes feed this vector here (unlike
-        // autohover, which leaves roll/index 0 unused).
+        // across the full 0-180 degree range, unlike an axis-angle/acos decomposition. All three
+        // axes feed this vector.
         float errorDeg[3] = {
             (2.0f * qError.x) / M_RADf,
             (2.0f * qError.y) / M_RADf,
@@ -241,12 +237,11 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
             }
         }
 
-        // Same pre-airborne attenuation angleModeApply/horizonModeApply/autoHoverApply's pitch+yaw
+        // Same pre-airborne attenuation angleModeApply/horizonModeApply
         // use, so the mode can be armed/tested on the ground without snapping at full strength --
         // reduced authority, not the zero authority a hard isAirborne() gate on tracking used to
-        // give (see above). Applied to all three axes uniformly, unlike autohover.c, since here
-        // there's no single "always-on" axis to treat differently -- all three go through the same
-        // track/freeze machinery.
+        // give (see above). Applied to all three axes uniformly, since all three go through the
+        // same track/freeze machinery.
         if (!isAirborne()) {
             errorDeg[0] *= 0.25f;
             errorDeg[1] *= 0.25f;
@@ -284,10 +279,9 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
         // qCurrent along each body axis. Zeroing a tracking axis's component before recomposing
         // says "close that gap"; leaving a frozen axis's component untouched says "keep exactly
         // the offset already held on that axis". Re-deriving qTarget = qCurrent (x) qKeep this
-        // way (rather than integrating a running per-axis offset, which is how autohover.c
-        // tracks its one live axis) avoids ever constructing an intermediate Euler triple, which
-        // is what would reintroduce gimbal lock/coupling here since -- unlike autohover's fixed
-        // vertical reference -- any of this mode's 3 axes can legitimately end up frozen near a
+        // way (rather than integrating a running per-axis offset) avoids ever constructing an
+        // intermediate Euler triple, which is what would reintroduce gimbal lock/coupling here
+        // since any of this mode's 3 axes can legitimately end up frozen near a
         // 90 degree offset from the other two.
         if (hold->Tracking[FD_ROLL] || hold->Tracking[FD_PITCH] || hold->Tracking[FD_YAW]) {
             quaternion qKeep = {

@@ -140,7 +140,7 @@ Feature branch dev builds embed `FC_VER_SUFFIX` from the `feature/<name>` branch
 the workflow fail with `fc_version_string_too_long`. This is a real compile failure, not a superseded run; either
 keep feature branch names short or update `.github/workflows/dev-build.yml` to truncate the generated suffix.
 
-Unit tests exist for PID, setpoint, curves, maths and the acro trainer. The hold engine, AUTOHOVER, ATTHOLD,
+Unit tests exist for PID, setpoint, curves, maths and the acro trainer. The hold engine, ATTHOLD,
 the thrust-vector loop, leveling, airborne detection, servos and GPS navigation have none, so changes there
 need extra care and, where possible, a new test.
 

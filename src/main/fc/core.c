@@ -75,7 +75,6 @@
 #include "flight/mixer.h"
 #include "flight/pid.h"
 #include "flight/trainer.h"
-#include "flight/autohover.h"
 #include "flight/atthold.h"
 #include "flight/autotrim.h"
 #include "flight/position.h"
@@ -804,32 +803,22 @@ void processRxModes(timeUs_t currentTimeUs)
         }
 #endif
 
-        if (IS_RC_MODE_ACTIVE(BOXAUTOHOVER)) {
+        if (IS_RC_MODE_ACTIVE(BOXATTHOLD)) {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
-            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
-            ENABLE_FLIGHT_MODE(AUTOHOVER_MODE);
-        }
-        else if (IS_RC_MODE_ACTIVE(BOXATTHOLD)) {
-            DISABLE_FLIGHT_MODE(ANGLE_MODE);
-            DISABLE_FLIGHT_MODE(HORIZON_MODE);
-            DISABLE_FLIGHT_MODE(TRAINER_MODE);
-            DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
             ENABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
         else if (IS_RC_MODE_ACTIVE(BOXANGLE)) {
             ENABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
-            DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
             DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
         else if (IS_RC_MODE_ACTIVE(BOXHORIZON)) {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             ENABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
-            DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
             DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
 #ifdef USE_ACRO_TRAINER
@@ -837,7 +826,6 @@ void processRxModes(timeUs_t currentTimeUs)
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             ENABLE_FLIGHT_MODE(TRAINER_MODE);
-            DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
             DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
 #endif
@@ -845,7 +833,6 @@ void processRxModes(timeUs_t currentTimeUs)
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
             DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
-            DISABLE_FLIGHT_MODE(AUTOHOVER_MODE);
             DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
     }
@@ -909,17 +896,15 @@ void processRxModes(timeUs_t currentTimeUs)
     acroTrainerSetState(FLIGHT_MODE(TRAINER_MODE));
 #endif // USE_ACRO_TRAINER
 #ifdef USE_ACC
-    // GPS rescue/failsafe/RTH/loiter take priority over AUTOHOVER/ATTHOLD for the actual setpoint
-    // (see pidApplySetpoint's angleModeApply branch in pid.c), but AUTOHOVER_MODE/ATTHOLD_MODE's
+    // GPS rescue/failsafe/RTH/loiter take priority over ATTHOLD for the actual setpoint
+    // (see pidApplySetpoint's angleModeApply branch in pid.c), but ATTHOLD_MODE's
     // flightModeFlags bit stays set the whole time it's preempted -- the box-selection chain above
     // only clears it when a different BOX switch position is chosen, not when a safety mode merely
-    // takes priority. Left unguarded, autoHoverSetState/attHoldSetState would see the mode as
+    // takes priority. Left unguarded, attHoldSetState would see the mode as
     // continuously active and never re-capture a fresh target, so once the safety mode clears and
-    // priority falls back to the hold, it resumes whatever heading/roll/attitude target (and, for
-    // AUTOHOVER, throttle assist ramp -- see autoHoverThrottleBoost) was captured before the
+    // priority falls back to the hold, it resumes whatever attitude target was captured before the
     // preemption instead of the aircraft's current attitude. Mirrors pid.c's own priority mask.
     const bool safetyLevelingActive = FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE);
-    autoHoverSetState(FLIGHT_MODE(AUTOHOVER_MODE) && !safetyLevelingActive);
     attHoldSetState(FLIGHT_MODE(ATTHOLD_MODE) && !safetyLevelingActive);
 #endif // USE_ACC
 #ifdef USE_SERVOS
@@ -1009,7 +994,7 @@ static void subTaskPidController(timeUs_t currentTimeUs)
     if (featureIsEnabled(FEATURE_THRUST_VECTOR)) {
         if (IS_RC_MODE_ACTIVE(BOXTHRUSTVECTOR) && !gyroOverflowDetected()) {
             // BOXTVHOLD: independent attitude/heading hold for this loop only, decoupled
-            // from the main loop's ANGLE/AUTOHOVER/ATTHOLD chain -- see flight/tv_hold.c.
+            // from the main loop's ANGLE/ATTHOLD chain -- see flight/tv_hold.c.
             // Not engaged while a safety mode has priority (tvPidApplyAxis skips the hold
             // then -- same mask as attHoldSetState's below/above): leaving it "engaged" but
             // unapplied would let the target go stale, and the nozzle would head back to the

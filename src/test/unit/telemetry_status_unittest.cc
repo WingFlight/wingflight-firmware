@@ -44,7 +44,7 @@ static struct {
     timeMs_t now;
     bool gyroOverflow, accCalibrated;
     bool servoOverride, mixerOverride, motorOverride;
-    bool attHold, tvHold, autoHover, trainer;
+    bool attHold, tvHold, trainer;
     autoTrimState_e autoTrim;
     bool blackboxLogging, blackboxFull;
     bool logic[16];
@@ -83,7 +83,6 @@ bool isServoOverrideActive(void) { return fc.servoOverride; }
 bool isMixerOverrideActive(void) { return fc.mixerOverride; }
 bool attHoldIsHolding(int axis) { return fc.attHold && axis == 0; }
 bool tvHoldIsHolding(int axis) { return fc.tvHold && axis == 1; }
-bool autoHoverIsHolding(int axis) { return fc.autoHover && axis == 2; }
 bool acroTrainerIsLimiting(int axis) { return fc.trainer && axis == 1; }
 autoTrimState_e autoTrimGetState(void) { return fc.autoTrim; }
 bool blackboxIsLogging(void) { return fc.blackboxLogging; }
@@ -246,9 +245,6 @@ TEST_F(TelemetryStatusTest, AnyOverrideOrAssistSetsItsBit)
     fc.attHold = false;
     fc.tvHold = true;
     EXPECT_EQ(TELEM_STATUS_ASSIST_HOLDING, telemetrySystemStatus());
-    fc.tvHold = false;
-    fc.autoHover = true;
-    EXPECT_EQ(TELEM_STATUS_ASSIST_HOLDING, telemetrySystemStatus());
 }
 
 TEST_F(TelemetryStatusTest, ConfigLayoutIsFixed)
@@ -277,7 +273,7 @@ TEST_F(TelemetryStatusTest, SignBitIsNeverSet)
     for (bool *flag : {&fc.airborne, &fc.motorsRunning, &fc.rxLink, &fc.backupEnabled, &fc.backupActive,
             &fc.gpsHealthy, &fc.canRth, &fc.canLoiter, &fc.rthSwitch, &fc.loiterSwitch, &fc.saturationLatch,
             &fc.gyroOverflow, &fc.servoOverride, &fc.mixerOverride, &fc.motorOverride, &fc.attHold,
-            &fc.tvHold, &fc.autoHover, &fc.trainer, &fc.blackboxLogging, &fc.blackboxFull,
+            &fc.tvHold, &fc.trainer, &fc.blackboxLogging, &fc.blackboxFull,
             &fc.dirty, &fc.saving, &fc.reboot, &fc.beeper, &fc.rpm}) {
         *flag = true;
     }

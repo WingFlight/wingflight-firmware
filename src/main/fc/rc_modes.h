@@ -73,7 +73,7 @@ typedef enum {
     BOXUSER2,
     BOXUSER3,
     BOXUSER4,
-    BOXAUTOHOVER,       // AUTO HOVER: quaternion-based vertical prop-hang attitude/heading hold
+    BOXAUTOHOVER,       // reserved (AUTO HOVER removed) -- kept to avoid renumbering later ids
     BOXMANUAL,          // MANUAL: same rates/expo curve as stabilised flight, but no gyro correction
     BOXAUTOTRIM,        // AUTO TRIM: while armed, captures actual servo output over a fixed window
                          // and writes it as the new center (see flight/autotrim.c)
@@ -82,7 +82,7 @@ typedef enum {
                          // (see subTaskPidController() in fc/core.c)
     BOXTVHOLD,          // THRUST VECTOR ATTITUDE HOLD: independent quaternion attitude/heading hold for the
                          // Thrust Vector loop only (flight/tv_hold.c) -- decoupled from the
-                         // main loop's ANGLE/AUTOHOVER/ATTHOLD chain, so the vectored nozzle
+                         // main loop's ANGLE/ATTHOLD chain, so the vectored nozzle
                          // can hold while control surfaces stay in plain rate/acro. Only
                          // meaningful while BOXTHRUSTVECTOR is also active.
     BOXTRADITIONAL,     // TRADITIONAL: forces I-term output to zero while layered on top of

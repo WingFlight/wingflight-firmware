@@ -46,7 +46,6 @@
 #include "flight/servos.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
-#include "flight/autohover.h"
 #include "flight/atthold.h"
 
 #include "io/beeper.h"
@@ -250,7 +249,8 @@ static const adjustmentConfig_t adjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT] =
     ADJ_ENTRY(ITERM_RELAX_PITCH,     ITERM_RELAX_MIN, ITERM_RELAX_MAX),
     ADJ_ENTRY(ITERM_RELAX_YAW,       ITERM_RELAX_MIN, ITERM_RELAX_MAX),
 
-    ADJ_ENTRY(AUTOHOVER_GAIN,               0, 250),
+    // ADJUSTMENT_AUTOHOVER_GAIN (87) intentionally has no entry -- reserved, like
+    // ADJUSTMENT_OSD_PROFILE above.
 
     ADJ_ENTRY(ATTHOLD_GAIN,                 0, 250),
 

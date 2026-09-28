@@ -115,7 +115,6 @@ COMMON_SRC = \
             flight/servos.c \
             flight/trainer.c \
             flight/leveling.c \
-            flight/autohover.c \
             flight/hold_engine.c \
             flight/atthold.c \
             flight/tv_hold.c \

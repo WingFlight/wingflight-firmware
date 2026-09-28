@@ -89,7 +89,7 @@ typedef enum {
     GPS_RESCUE_MODE_BIT  = 6,
     PASSTHROUGH_MODE_BIT = 7,
     INFLIGHT_MODE_BIT    = 8,
-    AUTOHOVER_MODE_BIT   = 9,
+    // bit 9 reserved (was AUTOHOVER_MODE, removed) -- do not reuse, telemetry and logs still carry it
     MANUAL_MODE_BIT      = 10,
     AUTOTRIM_MODE_BIT    = 11,
     LOITER_MODE_BIT      = 12,
@@ -105,9 +105,8 @@ typedef enum {
     ALTHOLD_MODE         = BIT(ALTHOLD_MODE_BIT),
     // ATT HOLD: quaternion-based hold of whatever attitude the aircraft was in when every stick
     // last returned to center -- any orientation, not just level or vertical. See flight/atthold.c;
-    // generalizes AUTOHOVER_MODE's quaternion approach (same gimbal-lock reasoning applies here,
-    // since this must survive inverted/knife-edge attitudes too) but freezes/tracks based on a
-    // stick deadband instead of AUTOHOVER's always-on bounded offset.
+    // quaternions because this must survive inverted/knife-edge attitudes, where Euler angles
+    // hit gimbal lock. Freezes/tracks each axis based on a stick deadband.
     ATTHOLD_MODE         = BIT(ATTHOLD_MODE_BIT),
     GPS_RESCUE_MODE      = BIT(GPS_RESCUE_MODE_BIT),
     PASSTHROUGH_MODE     = BIT(PASSTHROUGH_MODE_BIT),
@@ -122,10 +121,6 @@ typedef enum {
     // switch was used this flight and gets switched off with throttle back at idle (read as
     // "landed", since some pilots delay disarming while taxiing back).
     INFLIGHT_MODE        = BIT(INFLIGHT_MODE_BIT),
-    // AUTO HOVER: quaternion-based hold of a vertical (90 degree pitch) attitude and heading, for
-    // 3D "prop hang" hover. See flight/autohover.c for why this can't reuse ANGLE_MODE/HORIZON_MODE's
-    // Euler-angle leveling code (gimbal lock exactly at the target attitude).
-    AUTOHOVER_MODE       = BIT(AUTOHOVER_MODE_BIT),
     // MANUAL: pilot flies the same rate/expo curve as stabilised (rate) flight, but the mixer
     // takes that shaped setpoint directly instead of the gyro-corrected PID output -- no
     // stabilisation at all, unlike PASSTHROUGH_MODE which also strips the rates/expo curve itself

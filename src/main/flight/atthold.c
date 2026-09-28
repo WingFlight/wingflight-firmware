@@ -62,7 +62,7 @@ INIT_CODE void attHoldInit(const pidProfile_t *pidProfile)
 }
 
 // Called once on the rising edge of ATTHOLD_MODE so a stale target from a previous engagement
-// can never linger -- mirrors autoHoverSetState's rising-edge capture.
+// can never linger.
 void attHoldSetState(bool state)
 {
     quatHoldSetState(&attHold, state);

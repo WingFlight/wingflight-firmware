@@ -40,8 +40,6 @@
 #include "fc/rc_modes.h"
 #include "fc/rc.h"
 
-#include "flight/autohover.h"
-#include "flight/autohover_authority.h"
 #include "flight/failsafe.h"
 #include "flight/gps_nav.h"
 #include "flight/pid.h"
@@ -156,18 +154,6 @@ static inline void mixerApplyInputLimit(int index, float value)
     // Input limits
     float in_min = in->min / 1000.0f;
     float in_max = in->max / 1000.0f;
-
-#ifdef USE_ACC
-    // While AUTOHOVER is holding, the stabilised-yaw input's rate stops acting as a ceiling on rudder
-    // travel (it still acts as gain) -- see autohover_authority.h. Applied here rather than in
-    // mixerUpdateRules() so PASSTHROUGH/MANUAL, which write their inputs directly, are unaffected and
-    // so mixer.input[] (and the blackbox mixer[] field) stay in plain PID-output units.
-    if (index == MIXER_IN_STABILIZED_YAW && autoHoverIsHolding(FD_YAW)) {
-        const float scale = autoHoverYawAuthorityScale(in->rate);
-        in_min *= scale;
-        in_max *= scale;
-    }
-#endif
 
     // Constrain and saturate. +-Inf are still correctly caught below even
     // under -ffast-math (see constrainf() in common/maths.h). A NaN input
@@ -377,12 +363,6 @@ static void mixerUpdateInputs(void)
 
     // Update throttle (governor holds RPM/throttle per its configured mode when BOXGOVERNOR is engaged)
     float throttle = getThrottle();
-#ifdef USE_ACC
-    // AUTOHOVER's optional throttle assist (disabled by default) is added here, before governorApply,
-    // so any governor-side slew/ceiling still applies on top as a second layer of limiting. It's a
-    // no-op (returns 0) whenever the mode is inactive or the assist isn't configured/triggered.
-    throttle = constrainf(throttle + autoHoverThrottleBoost(), 0.0f, 1.0f);
-#endif
 #ifdef USE_GPS_NAV
     // GPS LOITER/RTH fly at the configured nav_throttle rather than wherever the pilot's stick
     // happened to be when the switch was flipped -- nav only commands attitude, so manual

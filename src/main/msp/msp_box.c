@@ -97,7 +97,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     BOXITEM(BOXPARALYZE, "PARALYZE", 45),
 //    BOXITEM(BOXGPSRESCUE, "GPS RESCUE", 46), // reserved (redundant alias for BOXRTH removed)
     // permanentId 61/62 also reserved below, near BOXTHRUSTVECTOR -- kept out of numeric order here
-    // since these predate the AUTOHOVER/MANUAL/AUTOTRIM/THRUSTVECTOR cluster; see the matching note there
+    // since these predate the MANUAL/AUTOTRIM/THRUSTVECTOR cluster; see the matching note there
     BOXITEM(BOXLOITER, "GPS LOITER", 61),
     BOXITEM(BOXRTH, "GPS RTH", 62),
     BOXITEM(BOXTRAINER, "TRAINER", 47),
@@ -111,7 +111,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     BOXITEM(BOXGOVERNOR, "GOVERNOR", 55),
 //    BOXITEM(BOXGOVSUSPEND, "GOVERNOR SUSPEND", 56), // heli governor removed
 //    BOXITEM(BOXGOVBYPASS, "GOVERNOR BYPASS", 57), // heli governor removed
-    BOXITEM(BOXAUTOHOVER, "AUTO HOVER", 58),
+//    BOXITEM(BOXAUTOHOVER, "AUTO HOVER", 58), // reserved (AUTO HOVER removed)
     BOXITEM(BOXMANUAL, "MANUAL", 59),
     BOXITEM(BOXAUTOTRIM, "AUTO TRIM", 60),
     // permanentId 46 is BOXGPSRESCUE "GPS RESCUE" (see above) -- reserved, do not reuse
@@ -216,7 +216,6 @@ void initActiveBoxIds(void)
 #ifdef USE_ACRO_TRAINER
         BME(BOXTRAINER);
 #endif
-        BME(BOXAUTOHOVER);
     }
 
 #ifdef USE_GPS

@@ -447,8 +447,8 @@ void updateGpsNav(void)
     const float altitudeKd = gpsNavConfig()->altitudeKd / 100.0f;
     const float maxPitchDeg = gpsNavConfig()->maxPitchAngleDeg;
     // altitudeErrorM is positive when below target (need to climb). Pitch in this codebase's
-    // convention is positive NOSE-DOWN (bench-confirmed in autohover.c: +900 drives the elevator
-    // toward nose-down, -900 is the physically-vertical nose-up target -- same convention
+    // convention is positive NOSE-DOWN (bench-confirmed: +900 drives the elevator toward
+    // nose-down, -900 is physically vertical nose-up -- same convention
     // attitude.raw[]/navAngle[] use throughout, see leveling.c's calcLevelErrorAngle()), so
     // climbing needs a NEGATIVE pitch target. Negate here, rather than folding the sign into
     // altitudeKp, so a positive altitudeKp in the config still reads as "more correction". A

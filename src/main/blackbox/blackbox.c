@@ -338,7 +338,7 @@ static const blackboxSimpleFieldDefinition_t blackboxGpsHFields[] = {
 static const blackboxSimpleFieldDefinition_t blackboxSlowFields[] = {
     {"flightModeFlags",       -1, UNSIGNED, PREDICT(0),      ENCODING(UNSIGNED_VB)},
     // rcModeActivationMask (see loadSlowState()) is a boxBitmask_t -- wider than one uint32_t once
-    // CHECKBOX_ITEM_COUNT (currently 42) passes 32 boxes, which BOXAUTOHOVER and several others
+    // CHECKBOX_ITEM_COUNT (currently 42) passes 32 boxes, which BOXMANUAL and several others
     // already do. This second word carries boxId 32-63 so those modes are actually recoverable
     // from the log instead of silently vanishing.
     {"flightModeFlags2",      -1, UNSIGNED, PREDICT(0),      ENCODING(UNSIGNED_VB)},
@@ -469,7 +469,7 @@ static bool blackboxStarted = false;
 
 static uint32_t blackboxLastArmingBeep = 0;
 // Same 32-bit-vs-boxBitmask_t truncation this file's slowHistory.flightModeFlags used to have (see
-// loadSlowState()) -- boxId >= 32 (BOXAUTOHOVER etc.) never trips the FLIGHT_LOG_EVENT_FLIGHTMODE
+// loadSlowState()) -- boxId >= 32 (BOXMANUAL etc.) never trips the FLIGHT_LOG_EVENT_FLIGHTMODE
 // change event below. Left as-is rather than widened alongside the slow frame fix: unlike that
 // generic, self-describing S-frame field, this "E" event's wire format is a hardcoded 2-VB layout
 // in the log viewer's parser, so widening it here would desync event-frame parsing for any log
@@ -1124,7 +1124,7 @@ static void loadSlowState(blackboxSlowState_t *slow)
 {
     // rcModeActivationMask is a boxBitmask_t, i.e. bits[(CHECKBOX_ITEM_COUNT + 31) / 32] uint32_t
     // words -- currently 2 words (CHECKBOX_ITEM_COUNT=42), not 1. A memcpy sized to
-    // slow->flightModeFlags alone silently dropped every boxId >= 32 (BOXAUTOHOVER among them);
+    // slow->flightModeFlags alone silently dropped every boxId >= 32 (BOXMANUAL among them);
     // assign both words explicitly instead so a future memcpy-by-sizeof mistake can't reintroduce
     // that silently. The assert catches the case where CHECKBOX_ITEM_COUNT grows past 64 boxes and
     // a third word would be needed.

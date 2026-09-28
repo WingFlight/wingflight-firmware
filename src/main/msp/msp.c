@@ -2179,10 +2179,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, currentPidProfile->master_gain[PID_ROLL]);
         sbufWriteU16(dst, currentPidProfile->master_gain[PID_PITCH]);
         sbufWriteU16(dst, currentPidProfile->master_gain[PID_YAW]);
-        /* Auto Hover */
-        sbufWriteU8(dst, currentPidProfile->autohover.gain);
-        sbufWriteU8(dst, currentPidProfile->autohover.max_angle);
-        sbufWriteU16(dst, currentPidProfile->autohover.max_rate);
+        /* Reserved (was Auto Hover gain, max angle, max rate) */
+        sbufWriteU8(dst, 0);
+        sbufWriteU8(dst, 0);
+        sbufWriteU16(dst, 0);
         /* Cross-axis relax */
         sbufWriteU8(dst, currentPidProfile->cross_axis_relax_strength);
         sbufWriteU8(dst, currentPidProfile->cross_axis_relax_level);
@@ -2194,12 +2194,11 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->gain_curve[PID_YAW]);
         /* Att Hold max rate */
         sbufWriteU16(dst, currentPidProfile->atthold.max_rate);
-        /* Auto Hover roll deadband */
-        sbufWriteU8(dst, currentPidProfile->autohover.roll_deadband);
-        /* Auto Hover throttle assist */
-        sbufWriteU8(dst, currentPidProfile->autohover.throttle_assist_gain);
-        sbufWriteU8(dst, currentPidProfile->autohover.throttle_assist_max);
-        sbufWriteU16(dst, currentPidProfile->autohover.throttle_assist_trigger_ms);
+        /* Reserved (was Auto Hover roll deadband and throttle assist gain, max, trigger) */
+        sbufWriteU8(dst, 0);
+        sbufWriteU8(dst, 0);
+        sbufWriteU8(dst, 0);
+        sbufWriteU16(dst, 0);
         /* API 22.4: optional per-axis attitude limits. Zero inherits the shared limit. */
         sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->angle_roll);
         sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->angle_pitch);
@@ -3306,11 +3305,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentPidProfile->master_gain[PID_PITCH] = sbufReadU16(src);
             currentPidProfile->master_gain[PID_YAW] = sbufReadU16(src);
         }
-        /* Auto Hover */
+        /* Reserved (was Auto Hover gain, max angle, max rate) */
         if (sbufBytesRemaining(src) >= 4) {
-            currentPidProfile->autohover.gain = sbufReadU8(src);
-            currentPidProfile->autohover.max_angle = sbufReadU8(src);
-            currentPidProfile->autohover.max_rate = sbufReadU16(src);
+            sbufAdvance(src, 4);
         }
         /* Cross-axis relax */
         if (sbufBytesRemaining(src) >= 3) {
@@ -3331,15 +3328,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (sbufBytesRemaining(src) >= 2) {
             currentPidProfile->atthold.max_rate = sbufReadU16(src);
         }
-        /* Auto Hover roll deadband */
+        /* Reserved (was Auto Hover roll deadband) */
         if (sbufBytesRemaining(src) >= 1) {
-            currentPidProfile->autohover.roll_deadband = sbufReadU8(src);
+            sbufAdvance(src, 1);
         }
-        /* Auto Hover throttle assist */
+        /* Reserved (was Auto Hover throttle assist gain, max, trigger) */
         if (sbufBytesRemaining(src) >= 4) {
-            currentPidProfile->autohover.throttle_assist_gain = sbufReadU8(src);
-            currentPidProfile->autohover.throttle_assist_max = sbufReadU8(src);
-            currentPidProfile->autohover.throttle_assist_trigger_ms = sbufReadU16(src);
+            sbufAdvance(src, 4);
         }
         /* Older clients omit this extension and must not erase the axis limits. */
         if (sbufBytesRemaining(src) >= 4) {

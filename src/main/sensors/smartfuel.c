@@ -134,7 +134,7 @@ static float smartFuelChargeLevelFromVoltage(float cellVoltage)
 }
 
 // Voltage sag follows current, and on a wing current follows the motors. Use the motor outputs
-// actually being sent (after governor, AUTOHOVER assist and slew), averaged so the gain always
+// actually being sent (after governor and slew), averaged so the gain always
 // means "sag at full power on every motor". A model with no motor gets no compensation, and a
 // throttle channel that drives something else (airbrakes, say) can not inject any.
 // The gain is the sag, in volts per cell, expected at full power.

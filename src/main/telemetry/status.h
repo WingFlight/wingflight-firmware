@@ -56,7 +56,7 @@
 #define TELEM_STATUS_GYRO_OVERFLOW          (1u << 18)  // gyroOverflowDetected()
 #define TELEM_STATUS_ACC_NOT_CALIBRATED     (1u << 19)  // ACC present but never calibrated
 #define TELEM_STATUS_OVERRIDE_ACTIVE        (1u << 20)  // Configurator servo/motor/mixer test override on
-#define TELEM_STATUS_ASSIST_HOLDING         (1u << 21)  // ATTHOLD/TV hold/autohover holding, or acro trainer limiting
+#define TELEM_STATUS_ASSIST_HOLDING         (1u << 21)  // ATTHOLD/TV hold holding, or acro trainer limiting
 
 #define TELEM_STATUS_AUTOTRIM_SHIFT         22          // autoTrimState_e
 #define TELEM_STATUS_AUTOTRIM_MASK          0x3u
