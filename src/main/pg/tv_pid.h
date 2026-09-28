@@ -45,7 +45,7 @@ typedef struct tvPidProfile_s {
     uint8_t  iterm_decay_limit;
 
     uint8_t  iterm_relax_level[PID_AXIS_COUNT];
-    uint8_t  bounceback[PID_AXIS_COUNT];  // Bounce Back score, BOUNCEBACK_MIN..MAX
+    uint8_t  iterm_relax[PID_AXIS_COUNT];  // I-term relax score, ITERM_RELAX_MIN..MAX
 
     uint8_t  error_limit[PID_AXIS_COUNT];
 

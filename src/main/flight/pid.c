@@ -127,16 +127,16 @@ float pidItermDecayRate(uint8_t decayTime)
     return 100.0f / constrain(decayTime, ITERM_DECAY_TIME_MIN, ITERM_DECAY_TIME_MAX);
 }
 
-// I-term relax setpoint filter cutoff (Hz) for a Bounce Back score. A lower cutoff
+// I-term relax setpoint filter cutoff (Hz) for an I-term relax score. A lower cutoff
 // treats more of each stick move as "fast" and suppresses I build-up for longer, so less
 // bounce-back. Score 5 (default) is the long-standing 10 Hz; 5-9 cover the 10-5 Hz range wing
 // pilots actually tune in, one Hz per step. The score is clamped because MSP writes and CLI array
 // values are not range-checked. Shared with the thrust-vector loop.
-uint8_t pidBouncebackCutoff(uint8_t score)
+uint8_t pidItermRelaxCutoff(uint8_t score)
 {
-    static const uint8_t cutoffHz[BOUNCEBACK_MAX] = { 50, 30, 20, 15, 10, 8, 7, 6, 5, 3 };
+    static const uint8_t cutoffHz[ITERM_RELAX_MAX] = { 50, 30, 20, 15, 10, 8, 7, 6, 5, 3 };
 
-    return cutoffHz[constrain(score, BOUNCEBACK_MIN, BOUNCEBACK_MAX) - 1];
+    return cutoffHz[constrain(score, ITERM_RELAX_MIN, ITERM_RELAX_MAX) - 1];
 }
 
 
@@ -218,37 +218,37 @@ void set_ADJUSTMENT_ITERM_DECAY_TIME_YAW(int value)
     pid.itermDecayRate[PID_YAW] = pidItermDecayRate(value);
 }
 
-int get_ADJUSTMENT_BOUNCEBACK_ROLL(void)
+int get_ADJUSTMENT_ITERM_RELAX_ROLL(void)
 {
-    return currentPidProfile->bounceback[PID_ROLL];
+    return currentPidProfile->iterm_relax[PID_ROLL];
 }
 
-void set_ADJUSTMENT_BOUNCEBACK_ROLL(int value)
+void set_ADJUSTMENT_ITERM_RELAX_ROLL(int value)
 {
-    currentPidProfile->bounceback[PID_ROLL] = value;
-    pt1FilterUpdate(&pid.relaxFilter[PID_ROLL], pidBouncebackCutoff(value), pid.freq);
+    currentPidProfile->iterm_relax[PID_ROLL] = value;
+    pt1FilterUpdate(&pid.relaxFilter[PID_ROLL], pidItermRelaxCutoff(value), pid.freq);
 }
 
-int get_ADJUSTMENT_BOUNCEBACK_PITCH(void)
+int get_ADJUSTMENT_ITERM_RELAX_PITCH(void)
 {
-    return currentPidProfile->bounceback[PID_PITCH];
+    return currentPidProfile->iterm_relax[PID_PITCH];
 }
 
-void set_ADJUSTMENT_BOUNCEBACK_PITCH(int value)
+void set_ADJUSTMENT_ITERM_RELAX_PITCH(int value)
 {
-    currentPidProfile->bounceback[PID_PITCH] = value;
-    pt1FilterUpdate(&pid.relaxFilter[PID_PITCH], pidBouncebackCutoff(value), pid.freq);
+    currentPidProfile->iterm_relax[PID_PITCH] = value;
+    pt1FilterUpdate(&pid.relaxFilter[PID_PITCH], pidItermRelaxCutoff(value), pid.freq);
 }
 
-int get_ADJUSTMENT_BOUNCEBACK_YAW(void)
+int get_ADJUSTMENT_ITERM_RELAX_YAW(void)
 {
-    return currentPidProfile->bounceback[PID_YAW];
+    return currentPidProfile->iterm_relax[PID_YAW];
 }
 
-void set_ADJUSTMENT_BOUNCEBACK_YAW(int value)
+void set_ADJUSTMENT_ITERM_RELAX_YAW(int value)
 {
-    currentPidProfile->bounceback[PID_YAW] = value;
-    pt1FilterUpdate(&pid.relaxFilter[PID_YAW], pidBouncebackCutoff(value), pid.freq);
+    currentPidProfile->iterm_relax[PID_YAW] = value;
+    pt1FilterUpdate(&pid.relaxFilter[PID_YAW], pidItermRelaxCutoff(value), pid.freq);
 }
 
 int get_ADJUSTMENT_PITCH_P_GAIN(void)
@@ -576,7 +576,7 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     // Error relax -- always on for roll, pitch and yaw (a fixed-wing always wants bounce-back
     // suppression on every axis, so there is no type or off switch)
     for (int i = 0; i < XYZ_AXIS_COUNT; i++) {
-        pt1FilterUpdate(&pid.relaxFilter[i], pidBouncebackCutoff(pidProfile->bounceback[i]), pid.freq);
+        pt1FilterUpdate(&pid.relaxFilter[i], pidItermRelaxCutoff(pidProfile->iterm_relax[i]), pid.freq);
         pid.itermRelaxLevel[i] = constrain(pidProfile->iterm_relax_level[i], 10, 250);
     }
 

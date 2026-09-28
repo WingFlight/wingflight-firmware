@@ -99,13 +99,13 @@ with INAV's `gps_min_sats`. 8 left a single-satellite margin over a typical
 Saved configurations keep their value; set `nav_min_sats = 6` to take the new
 default on an existing model.
 
-## Bounce Back Score (MSP API 22.9)
+## I-Term Relax Score (MSP API 22.9)
 
-The per-axis I-term relax cutoff is replaced by a **Bounce Back**
-score, 1-10, default 5, where higher means less bounce-back after a fast stick
-move (`src/main/pg/pid.h`, `src/main/flight/pid.c`). The firmware turns the
+The per-axis I-term relax cutoff is replaced by an **I-term relax** score,
+1-10, default 5, where higher means more relax, so less bounce-back after a
+fast stick move (`src/main/pg/pid.h`, `src/main/flight/pid.c`). The firmware turns the
 score into the relax filter cutoff through one table in
-`pidBouncebackCutoff()`:
+`pidItermRelaxCutoff()`:
 
 | Score | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -115,16 +115,17 @@ Score 5 is the previous 10 Hz default, and 5-9 cover the 10-5 Hz range wing
 pilots tune in. The CLI, MSP, adjustment functions and blackbox all carry the
 score, so every tool shows the same number in the same direction.
 
-- CLI: `iterm_relax_cutoff` / `tv_iterm_relax_cutoff` become `bounceback` /
-  `tv_bounceback` (three values, 1-10). Out-of-range values are clamped.
+- CLI: `iterm_relax_cutoff` / `tv_iterm_relax_cutoff` become `iterm_relax` /
+  `tv_iterm_relax` (three values, 1-10). Out-of-range values are clamped.
 - MSP: same byte positions in MSP_PID_PROFILE and MSP2_WING_TV_PID_CONFIG,
   now the score.
-- Adjustment functions 120-125 are `BOUNCEBACK_ROLL`/`_PITCH`/`_YAW` and
-  `TV_BOUNCEBACK_*`, range 1-10.
-- Blackbox header `iterm_relax_cutoff` becomes `bounceback`.
+- Adjustment functions 120-125 are `ITERM_RELAX_ROLL`/`_PITCH`/`_YAW` and
+  `TV_ITERM_RELAX_*`, range 1-10.
+- Blackbox header `iterm_relax_cutoff` becomes `iterm_relax`.
 - `PG_PID_PROFILE` v15, `PG_THRUST_VECTOR_PROFILE` v5 (profiles reset).
 
-`iterm_relax_level` is unchanged.
+`iterm_relax_level` is unchanged. Pilot-facing tools show the score as I-Term
+Relax in the Flight Feel panel.
 
 ## I-Term Relax Always On, Level in MSP (MSP API 22.8)
 

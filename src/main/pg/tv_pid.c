@@ -52,7 +52,7 @@ void resetTvPidProfile(tvPidProfile_t *tvPidProfile)
         .iterm_decay_time = { 60, 60, 60 },
         .iterm_decay_limit = 35,
         .iterm_relax_level = { 22, 22, 22 },
-        .bounceback = { BOUNCEBACK_DEFAULT, BOUNCEBACK_DEFAULT, BOUNCEBACK_DEFAULT },
+        .iterm_relax = { ITERM_RELAX_DEFAULT, ITERM_RELAX_DEFAULT, ITERM_RELAX_DEFAULT },
         .error_limit = { 45, 45, 60 },
         .dterm_cutoff = { 15, 15, 20 },
         .bterm_cutoff = { 15, 15, 20 },

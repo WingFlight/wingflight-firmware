@@ -153,7 +153,7 @@ float pidGetFeedforward(int axis, float rate);
 
 const pidAxisData_t * pidGetAxisData(void);
 float pidItermDecayRate(uint8_t decayTime);
-uint8_t pidBouncebackCutoff(uint8_t score);
+uint8_t pidItermRelaxCutoff(uint8_t score);
 float pidGetGainCurveScale(uint8_t curveIndex, uint8_t axis);
 void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);
 
@@ -164,9 +164,9 @@ ADJFUN_DECLARE(MASTER_GAIN_YAW)
 ADJFUN_DECLARE(ITERM_DECAY_TIME_ROLL)
 ADJFUN_DECLARE(ITERM_DECAY_TIME_PITCH)
 ADJFUN_DECLARE(ITERM_DECAY_TIME_YAW)
-ADJFUN_DECLARE(BOUNCEBACK_ROLL)
-ADJFUN_DECLARE(BOUNCEBACK_PITCH)
-ADJFUN_DECLARE(BOUNCEBACK_YAW)
+ADJFUN_DECLARE(ITERM_RELAX_ROLL)
+ADJFUN_DECLARE(ITERM_RELAX_PITCH)
+ADJFUN_DECLARE(ITERM_RELAX_YAW)
 ADJFUN_DECLARE(PITCH_P_GAIN)
 ADJFUN_DECLARE(ROLL_P_GAIN)
 ADJFUN_DECLARE(YAW_P_GAIN)
