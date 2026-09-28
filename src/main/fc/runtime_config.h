@@ -82,7 +82,7 @@ armingDisableFlags_e getArmingDisableFlags(void);
 typedef enum {
     FAILSAFE_MODE_BIT    = 0,
     ANGLE_MODE_BIT       = 1,
-    HORIZON_MODE_BIT     = 2,
+    // bit 2 reserved (was HORIZON_MODE, removed) -- do not reuse, telemetry and logs still carry it
     TRAINER_MODE_BIT     = 3,
     ALTHOLD_MODE_BIT     = 4,
     ATTHOLD_MODE_BIT     = 5,
@@ -100,7 +100,6 @@ typedef enum {
 typedef enum {
     FAILSAFE_MODE        = BIT(FAILSAFE_MODE_BIT),
     ANGLE_MODE           = BIT(ANGLE_MODE_BIT),
-    HORIZON_MODE         = BIT(HORIZON_MODE_BIT),
     TRAINER_MODE         = BIT(TRAINER_MODE_BIT),
     ALTHOLD_MODE         = BIT(ALTHOLD_MODE_BIT),
     // ATT HOLD: quaternion-based hold of whatever attitude the aircraft was in when every stick
@@ -135,8 +134,8 @@ typedef enum {
     // inject a bank/pitch angle on top of the pilot's stick input, throttle stays manual.
     LOITER_MODE          = BIT(LOITER_MODE_BIT),
     RTH_MODE             = BIT(RTH_MODE_BIT),
-    // TRADITIONAL: layers on top of whatever stabilisation is already active (default rate PID,
-    // ANGLE, or HORIZON) and forces that axis's I-term output to zero, so the servo snaps back
+    // TRADITIONAL: layers on top of whatever stabilisation is already active (default rate PID
+    // or ANGLE) and forces that axis's I-term output to zero, so the servo snaps back
     // immediately on stick release instead of holding -- a more traditional RC-gyro feel. Does not
     // touch iterm_relax/iterm_decay bookkeeping, so I resumes smoothly if this mode is switched off.
     TRADITIONAL_MODE     = BIT(TRADITIONAL_MODE_BIT),
@@ -149,10 +148,9 @@ extern uint16_t flightModeFlags;
 #define FLIGHT_MODE(mask) (flightModeFlags & (mask))
 
 // macro to initialize map from boxId_e flightModeBits. Keep it in sync with flightModeFlags_e enum.
-// [BOXARM] and [BOXRESCUE] (heli rescue removed) are left unpopulated
+// [BOXARM], [BOXHORIZON] (HORIZON removed) and [BOXRESCUE] (heli rescue removed) are left unpopulated
 #define BOXID_TO_FLIGHT_MODE_MAP_INITIALIZER {           \
    [BOXANGLE]       = ANGLE_MODE_BIT,                    \
-   [BOXHORIZON]     = HORIZON_MODE_BIT,                  \
    [BOXTRAINER]     = TRAINER_MODE_BIT,                  \
    [BOXATTHOLD]     = ATTHOLD_MODE_BIT,                  \
    [BOXALTHOLD]     = ALTHOLD_MODE_BIT,                  \

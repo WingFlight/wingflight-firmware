@@ -2160,8 +2160,8 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         /* Angle mode */
         sbufWriteU8(dst, currentPidProfile->angle.level_strength);
         sbufWriteU8(dst, currentPidProfile->angle.level_limit);
-        /* Horizon mode */
-        sbufWriteU8(dst, currentPidProfile->horizon.level_strength);
+        /* Reserved (was HORIZON level strength) */
+        sbufWriteU8(dst, 0);
         /* Acro trainer */
         sbufWriteU8(dst, currentPidProfile->trainer.gain);
         sbufWriteU8(dst, currentPidProfile->trainer.angle_limit);
@@ -3278,8 +3278,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         /* Angle mode */
         currentPidProfile->angle.level_strength = sbufReadU8(src);
         currentPidProfile->angle.level_limit = sbufReadU8(src);
-        /* Horizon mode */
-        currentPidProfile->horizon.level_strength = sbufReadU8(src);
+        /* Reserved (was HORIZON level strength) */
+        sbufReadU8(src);
         /* Acro trainer */
         currentPidProfile->trainer.gain = sbufReadU8(src);
         currentPidProfile->trainer.angle_limit = sbufReadU8(src);

@@ -729,9 +729,6 @@ static float pidApplySetpoint(uint8_t axis)
     else if (FLIGHT_MODE(ATTHOLD_MODE)) {
         setpoint = attHoldApply(axis, setpoint);
     }
-    else if (FLIGHT_MODE(HORIZON_MODE)) {
-        setpoint = horizonModeApply(axis, setpoint);
-    }
 #ifdef USE_ACRO_TRAINER
     else if (FLIGHT_MODE(TRAINER_MODE)) {
         setpoint = acroTrainerApply(axis, setpoint);
@@ -969,8 +966,8 @@ static void pidApplyMode1(uint8_t axis)
     // sitting on its wheels isn't at risk of tipping over from I-term windup
     // the way a loaded heli rotor disk is, so there's no need to decay faster
     // while landed) -- but suspended while a leveling/attitude-hold layer is
-    // actively shaping this axis's setpoint. Those layers (ANGLE/HORIZON/GPS
-    // rescue/failsafe/loiter/RTH's shared angleModeApply on roll+pitch, the
+    // actively shaping this axis's setpoint. Those layers (ANGLE/GPS rescue/
+    // failsafe/loiter/RTH's shared angleModeApply on roll+pitch, the
     // acro trainer only while limiting, and ATTHOLD on an axis that is actually
     // holding a target) fundamentally need a sustained I-term to hold a
     // corrected attitude against a persistent disturbance once the rate error
@@ -993,7 +990,7 @@ static void pidApplyMode1(uint8_t axis)
     // slow bleed still lets the hold carry a real steady disturbance (torque
     // roll): the outer attitude loop just re-grows whatever I is needed, at the
     // cost of a small sag -- while anything not actually needed drains away.
-    const flightModeFlags_e rollPitchLevelingModes = ANGLE_MODE | HORIZON_MODE | GPS_RESCUE_MODE
+    const flightModeFlags_e rollPitchLevelingModes = ANGLE_MODE | GPS_RESCUE_MODE
         | FAILSAFE_MODE | LOITER_MODE | RTH_MODE;
 
     bool trainerLimitingThisAxis = false;

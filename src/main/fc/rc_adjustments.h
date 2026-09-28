@@ -95,7 +95,7 @@ typedef enum {
 
     // Leveling
     ADJUSTMENT_ANGLE_LEVEL_GAIN         = 45,
-    ADJUSTMENT_HORIZON_LEVEL_GAIN       = 46,
+    ADJUSTMENT_HORIZON_LEVEL_GAIN       = 46,  // reserved (HORIZON removed) -- do not reuse
     ADJUSTMENT_ACRO_TRAINER_GAIN        = 47,
 
     // Governor

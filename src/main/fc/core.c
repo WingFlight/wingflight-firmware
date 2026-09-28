@@ -247,7 +247,6 @@ static bool accNeedsCalibration(void)
 
         // Check for any configured modes that use the ACC
         if (isModeActivationConditionPresent(BOXANGLE) ||
-            isModeActivationConditionPresent(BOXHORIZON) ||
             isModeActivationConditionPresent(BOXTRAINER) ||
             isModeActivationConditionPresent(BOXGPSRESCUE) ||
             isModeActivationConditionPresent(BOXCALIB)) {
@@ -805,33 +804,23 @@ void processRxModes(timeUs_t currentTimeUs)
 
         if (IS_RC_MODE_ACTIVE(BOXATTHOLD)) {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
-            DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
             ENABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
         else if (IS_RC_MODE_ACTIVE(BOXANGLE)) {
             ENABLE_FLIGHT_MODE(ANGLE_MODE);
-            DISABLE_FLIGHT_MODE(HORIZON_MODE);
-            DISABLE_FLIGHT_MODE(TRAINER_MODE);
-            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
-        }
-        else if (IS_RC_MODE_ACTIVE(BOXHORIZON)) {
-            DISABLE_FLIGHT_MODE(ANGLE_MODE);
-            ENABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
             DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
 #ifdef USE_ACRO_TRAINER
         else if (IS_RC_MODE_ACTIVE(BOXTRAINER)) {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
-            DISABLE_FLIGHT_MODE(HORIZON_MODE);
             ENABLE_FLIGHT_MODE(TRAINER_MODE);
             DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
 #endif
         else {
             DISABLE_FLIGHT_MODE(ANGLE_MODE);
-            DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
             DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }

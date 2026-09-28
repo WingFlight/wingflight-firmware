@@ -104,7 +104,7 @@ typedef enum {
 
 typedef enum {
     LED_MODE_ORIENTATION = 0,
-    LED_MODE_HORIZON,
+    LED_MODE_HORIZON,       // reserved (HORIZON removed) -- unused slot, keeps stored mode colors in place
     LED_MODE_ANGLE,
     LED_MODE_RESCUE,
     LED_SPECIAL,

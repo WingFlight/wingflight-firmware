@@ -162,8 +162,8 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
         // Deliberately not gated on isAirborne() -- see the pre-airborne attenuation below
         // instead. Forcing tracking (pure passthrough) whenever grounded, as this used to, meant
         // a hold gave zero correction authority on the bench no matter how long you sat there,
-        // unlike angleModeApply/horizonModeApply, which both still
-        // correct pre-airborne, just at reduced strength.
+        // unlike angleModeApply, which still
+        // corrects pre-airborne, just at reduced strength.
         const pidAxisData_t *pidData = pidGetAxisData();
         const float dT = pidGetDT();
 
@@ -237,7 +237,7 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
             }
         }
 
-        // Same pre-airborne attenuation angleModeApply/horizonModeApply
+        // Same pre-airborne attenuation angleModeApply
         // use, so the mode can be armed/tested on the ground without snapping at full strength --
         // reduced authority, not the zero authority a hard isAirborne() gate on tracking used to
         // give (see above). Applied to all three axes uniformly, since all three go through the

@@ -3,6 +3,34 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## HORIZON Removed (MSP API 22.12)
+
+The HORIZON flight mode (`horizonModeApply` in `flight/leveling.c`) is
+removed. ANGLE, ATT HOLD, TRAINER and the GPS modes are unchanged.
+
+Every slot it used is reserved rather than reused or renumbered, so the MSP
+and storage layouts do not move:
+
+- Mode: box permanent ID 2 ("HORIZON") is no longer offered. A saved mode
+  range on it is inert. `BOXHORIZON` stays in `boxId_e` as a placeholder.
+- Flight mode bit 2 is reserved and never set.
+- Adjustment function 46 (Horizon level gain) has no entry; a saved
+  adjustment range on it does nothing.
+- LED strip mode colour slot 1 (`LED_MODE_HORIZON`) is kept but never used,
+  so the stored ANGLE and RESCUE colours stay at their indexes.
+- CLI: `horizon_level_strength`, `horizon_transition`, `horizon_tilt_effect`
+  and `horizon_tilt_expert_mode` are removed. Restoring an older diff reports
+  them as unknown settings.
+- MSP_PID_PROFILE keeps the byte after the ANGLE level limit: the FC sends
+  zero and ignores what a client writes.
+- Storage: the 4 bytes in `pidProfile_t` become `horizon_reserved`, same size
+  and alignment, so `PG_PID_PROFILE` stays at v15 and saved profiles are kept.
+- Blackbox header `levelPID` carries only the ANGLE level strength and limit.
+- Telemetry (CRSF, LTM, iBUS, iBUS2) no longer reports a HORIZON mode.
+
+The API minor goes to 22.12 only so clients can tell the mode is gone and
+hide its settings; the payload is unchanged.
+
 ## AUTO HOVER Removed (MSP API 22.11)
 
 The AUTO HOVER flight mode (`flight/autohover.c`) is removed, along with its
