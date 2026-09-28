@@ -174,5 +174,22 @@ typedef struct {
 
 PG_DECLARE_ARRAY(attitudeLimits_t, PID_PROFILE_COUNT, attitudeLimits);
 
+// GPS speed attenuation (SPA), one per PID profile. Separate storage, like
+// attitudeLimits_t, so adding it did not reset existing PID profiles.
+// Mirrors fw_tpa_gain/fw_tpa_curve with GPS speed in place of throttle.
+#define FW_SPA_SPEED_MAX_MIN      10
+#define FW_SPA_SPEED_MAX_MAX      600
+#define FW_SPA_SPEED_MAX_DEFAULT  150
+
+typedef struct {
+    uint8_t  gain;       // Baseline scale, percent (100 = unscaled) - mirrors fw_tpa_gain
+    uint8_t  curve;      // 0=none (SPA off), 1..GAIN_CURVE_COUNT = gainCurves(idx-1), scales gain by GPS speed
+    uint16_t speed_max;  // GPS speed, km/h, at the curve's right edge (x = 1000)
+} fwSpaConfig_t;
+
+PG_DECLARE_ARRAY(fwSpaConfig_t, PID_PROFILE_COUNT, fwSpaConfigs);
+
+void resetFwSpaConfig(fwSpaConfig_t *config);
+
 // Positive axis overrides use the SAFE-style range; zero preserves the legacy shared value.
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis);

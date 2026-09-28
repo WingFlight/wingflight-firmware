@@ -1296,7 +1296,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         pidRuntimeGains_t runtimeGains;
         pidGetRuntimeGains(&runtimeGains);
 
-        sbufWriteU8(dst, 2); // payload version
+        sbufWriteU8(dst, 3); // payload version (3: GPS speed attenuation appended)
         sbufWriteU8(dst, currentPidProfile->pid_mode);
         sbufWriteU32(dst, runtimeGains.fwTpa);
 
@@ -1315,6 +1315,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             sbufWriteU32(dst, runtimeGains.effective[axis].F);
             sbufWriteU32(dst, runtimeGains.effective[axis].B);
         }
+        // v3: GPS speed attenuation, appended so v2 parsers still read the axes
+        sbufWriteU32(dst, runtimeGains.fwSpa);
+        sbufWriteU16(dst, runtimeGains.fwSpaSpeed);
+        sbufWriteU8(dst, runtimeGains.fwSpaEnabled);
         break;
     }
 
@@ -2201,6 +2205,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->angle_pitch);
         sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->trainer_roll);
         sbufWriteU8(dst, attitudeLimits(getCurrentPidProfileIndex())->trainer_pitch);
+        /* API 22.10: GPS speed attenuation (separate per-profile storage) */
+        sbufWriteU8(dst, fwSpaConfigs(getCurrentPidProfileIndex())->gain);
+        sbufWriteU8(dst, fwSpaConfigs(getCurrentPidProfileIndex())->curve);
+        sbufWriteU16(dst, fwSpaConfigs(getCurrentPidProfileIndex())->speed_max);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -3166,6 +3174,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
     case MSP_SET_RESET_CURR_PID:
         resetPidProfile(currentPidProfile);
         memset(attitudeLimitsMutable(getCurrentPidProfileIndex()), 0, sizeof(attitudeLimits_t));
+        resetFwSpaConfig(fwSpaConfigsMutable(getCurrentPidProfileIndex()));
         break;
 
     case MSP_SET_SENSOR_ALIGNMENT:
@@ -3339,6 +3348,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             limits->angle_pitch = sbufReadU8(src);
             limits->trainer_roll = sbufReadU8(src);
             limits->trainer_pitch = sbufReadU8(src);
+        }
+        /* API 22.10 extension; older clients omit it and leave SPA untouched. */
+        if (sbufBytesRemaining(src) >= 4) {
+            fwSpaConfig_t *spa = fwSpaConfigsMutable(getCurrentPidProfileIndex());
+            spa->gain = constrain(sbufReadU8(src), 25, 200);
+            spa->curve = MIN(sbufReadU8(src), GAIN_CURVE_COUNT);
+            spa->speed_max = constrain(sbufReadU16(src), FW_SPA_SPEED_MAX_MIN, FW_SPA_SPEED_MAX_MAX);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

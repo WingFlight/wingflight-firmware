@@ -28,7 +28,9 @@ float throttle;
 extern "C" {
 #include "pg/pid.h"
 #include "sensors/gyro.h"
+#include "io/gps.h"
 
+gpsSolutionData_t gpsSol;
 bool gyroOverflowDetected(void) { return false; }
 void beeperConfirmationBeeps(uint8_t) {}
 float getThrottle(void) { return throttle; }

@@ -58,6 +58,9 @@
 #include "flight/atthold.h"
 #include "flight/hold_engine.h"
 #include "flight/rpm_filter.h"
+#include "flight/speed_atten.h"
+
+#include "io/gps.h"
 
 #include "pid.h"
 
@@ -534,6 +537,9 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     pid.fwTpaGain = pidProfile->fw_tpa_gain * 0.01f;
     pid.fwTpaCurveIndex = pidProfile->fw_tpa_curve;
 
+    // GPS speed attenuation (separate per-profile storage, see fwSpaConfig_t)
+    speedAttenInit(fwSpaConfigs(getCurrentPidProfileIndex()), pid.freq);
+
     // Roll axis
     pid.coef[PID_ROLL].Kp = ROLL_P_TERM_SCALE * pidProfile->pid[PID_ROLL].P;
     pid.coef[PID_ROLL].Ki = ROLL_I_TERM_SCALE * pidProfile->pid[PID_ROLL].I;
@@ -609,6 +615,7 @@ void INIT_CODE pidChangeProfile(const pidProfile_t *pidProfile)
 void INIT_CODE pidInit(const pidProfile_t *pidProfile)
 {
     pidReset();
+    speedAttenReset();
     pidSetLooptime(gyro.targetLooptime);
     pidInitFilters(pidProfile);
     pidChangeProfile(pidProfile);
@@ -620,6 +627,7 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
         dstPidProfileIndex != srcPidProfileIndex) {
         memcpy(pidProfilesMutable(dstPidProfileIndex), pidProfilesMutable(srcPidProfileIndex), sizeof(pidProfile_t));
         memcpy(attitudeLimitsMutable(dstPidProfileIndex), attitudeLimits(srcPidProfileIndex), sizeof(attitudeLimits_t));
+        memcpy(fwSpaConfigsMutable(dstPidProfileIndex), fwSpaConfigs(srcPidProfileIndex), sizeof(fwSpaConfig_t));
     }
 }
 
@@ -834,8 +842,14 @@ static float pidAxisGainCurvePosition(uint8_t axis)
 // and CLI array writes are unchecked) count as no curve.
 float pidGetGainCurveScale(uint8_t curveIndex, uint8_t axis)
 {
+    return pidGetGainCurveScaleAt(curveIndex, pidAxisGainCurvePosition(axis));
+}
+
+// Same, at a caller-supplied 0..1 position (GPS speed attenuation's speed / speed_max).
+float pidGetGainCurveScaleAt(uint8_t curveIndex, float position)
+{
     return (curveIndex > 0 && curveIndex <= GAIN_CURVE_COUNT)
-        ? pidEvaluateGainCurve(gainCurves(curveIndex - 1), pidAxisGainCurvePosition(axis))
+        ? pidEvaluateGainCurve(gainCurves(curveIndex - 1), position)
         : 1.0f;
 }
 
@@ -875,7 +889,12 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
     memset(runtimeGains, 0, sizeof(*runtimeGains));
 
     const float fwTpa = pidThrottleAttenuation();
+    const float fwSpa = speedAttenGetScale();
+    const float atten = fwTpa * fwSpa;
     runtimeGains->fwTpa = pidScaleToCentiPercent(fwTpa);
+    runtimeGains->fwSpa = pidScaleToCentiPercent(fwSpa);
+    runtimeGains->fwSpaSpeed = lrintf(speedAttenGetSpeed() * 10.0f);
+    runtimeGains->fwSpaEnabled = speedAttenIsEnabled();
 
     for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
         const pidf_t *raw = &currentPidProfile->pid[axis];
@@ -887,9 +906,9 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
         runtimeGains->gainCurve[axis] = pidScaleToCentiPercent(gainCurve);
         runtimeGains->gainCurvePosition[axis] = pidScaleToCentiPercent(pidAxisGainCurvePosition(axis));
 
-        runtimeGains->effective[axis].P = pidGainToCenti(raw->P * masterGain * fwTpa);
+        runtimeGains->effective[axis].P = pidGainToCenti(raw->P * masterGain * atten);
         runtimeGains->effective[axis].I = pidGainToCenti(raw->I * masterGain);
-        runtimeGains->effective[axis].D = pidGainToCenti(raw->D * masterGain * fwTpa);
+        runtimeGains->effective[axis].D = pidGainToCenti(raw->D * masterGain * atten);
         runtimeGains->effective[axis].F = pidGainToCenti(raw->F);
         runtimeGains->effective[axis].B = pidGainToCenti(raw->B);
     }
@@ -906,8 +925,8 @@ static void pidApplyMode1(uint8_t axis)
     // Calculate error rate
     const float errorRate = setpoint - gyroRate;
 
-    // Throttle-based gain attenuation
-    const float atten = pidThrottleAttenuation();
+    // Throttle- and GPS speed-based gain attenuation
+    const float atten = pidThrottleAttenuation() * speedAttenGetScale();
 
     // Cross-axis relax
     const float crossAxisRelax = getCrossAxisRelaxFactor(axis);
@@ -1038,6 +1057,16 @@ void pidController(const pidProfile_t *pidProfile, timeUs_t currentTimeUs)
     rotateAxisError();
 
     updateCrossAxisRelax();
+
+    speedAttenUpdate(pid.dT);
+
+    DEBUG(GAIN_ATTEN, 0, lrintf(pidThrottleAttenuation() * 1000));
+    DEBUG(GAIN_ATTEN, 1, lrintf(speedAttenGetScale() * 1000));
+    DEBUG(GAIN_ATTEN, 2, lrintf(speedAttenGetSpeed() * 10));
+#ifdef USE_GPS
+    DEBUG(GAIN_ATTEN, 3, MAX(gpsSol.speed3d, gpsSol.groundSpeed));
+    DEBUG(GAIN_ATTEN, 4, STATE(GPS_FIX) ? 1 : 0);
+#endif
 
     // Apply PID for each axis
     switch (pid.pidMode) {

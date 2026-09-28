@@ -3,6 +3,33 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## GPS Speed Attenuation (MSP API 22.10)
+
+A second gain attenuation next to TPA, driven by GPS speed instead of
+throttle (`src/main/flight/speed_atten.c`). It scales P and D, multiplied
+with TPA, so a tune that is right at cruise does not oscillate in a fast
+dive with the throttle closed. The shape mirrors `fw_tpa_gain` /
+`fw_tpa_curve`: a baseline gain times a curve from the shared gain-curve
+pool, evaluated at `speed / fw_spa_speed_max`.
+
+- CLI (per PID profile, not on targets without GPS): `fw_spa_gain` (25-200 %,
+  default 100), `fw_spa_curve` (0-8, default 0 = off), `fw_spa_speed_max`
+  (10-600 km/h, default 150).
+- Speed is 3D speed where the receiver reports it (u-blox), otherwise ground
+  speed. It is low-passed at 1 Hz. GPS speed is not airspeed; wind shifts it.
+- No fix: SPA holds its last scale for 3 s, then eases back to 100 % at
+  20 %/s. When SPA engages (first fix, fix regained, profile change) it eases
+  onto the curve at the same rate.
+- Storage: new `PG_FW_SPA_CONFIG` (one entry per PID profile), so existing
+  PID profiles are kept.
+- MSP: 4 bytes appended to MSP_PID_PROFILE / MSP_SET_PID_PROFILE (gain U8,
+  curve U8, speed_max U16). MSP2_WING_EFFECTIVE_PID_GAINS payload v3 appends
+  the SPA scale (U32, centi-percent), filtered speed (U16, 0.1 km/h) and an
+  enabled flag (U8); P and D effective gains now include SPA.
+- Blackbox: header `fw_spa` (gain, curve, speed_max) and debug mode
+  `GAIN_ATTEN`: [0] TPA x1000, [1] SPA x1000, [2] filtered speed 0.1 km/h,
+  [3] raw GPS speed cm/s, [4] GPS fix.
+
 ## Minimum F Gain of 50
 
 MANUAL mode moves the surfaces by the F-term alone (`getManualDeflection()`

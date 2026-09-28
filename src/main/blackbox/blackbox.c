@@ -1719,6 +1719,9 @@ static bool blackboxWriteSysinfo(void)
                                                                             currentPidProfile->iterm_decay_limit);
         BLACKBOX_PRINT_HEADER_LINE("fw_tpa", "%d,%d",                       currentPidProfile->fw_tpa_gain,
                                                                             currentPidProfile->fw_tpa_curve);
+        BLACKBOX_PRINT_HEADER_LINE("fw_spa", "%d,%d,%d",                    fwSpaConfigs(getCurrentPidProfileIndex())->gain,
+                                                                            fwSpaConfigs(getCurrentPidProfileIndex())->curve,
+                                                                            fwSpaConfigs(getCurrentPidProfileIndex())->speed_max);
         BLACKBOX_PRINT_HEADER_LINE("cross_axis_relax", "%d,%d,%d,%d",       currentPidProfile->cross_axis_relax_strength,
                                                                             currentPidProfile->cross_axis_relax_level,
                                                                             currentPidProfile->cross_axis_relax_cutoff,

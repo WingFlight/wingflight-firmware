@@ -131,6 +131,24 @@ void pgResetFn_pidProfiles(pidProfile_t *pidProfiles)
 
 PG_REGISTER_ARRAY(attitudeLimits_t, PID_PROFILE_COUNT, attitudeLimits, PG_ATTITUDE_LIMITS, 0);
 
+PG_REGISTER_ARRAY_WITH_RESET_FN(fwSpaConfig_t, PID_PROFILE_COUNT, fwSpaConfigs, PG_FW_SPA_CONFIG, 0);
+
+void resetFwSpaConfig(fwSpaConfig_t *config)
+{
+    RESET_CONFIG(fwSpaConfig_t, config,
+        .gain = 100,
+        .curve = 0,
+        .speed_max = FW_SPA_SPEED_MAX_DEFAULT,
+    );
+}
+
+void pgResetFn_fwSpaConfigs(fwSpaConfig_t *configs)
+{
+    for (int i = 0; i < PID_PROFILE_COUNT; i++) {
+        resetFwSpaConfig(&configs[i]);
+    }
+}
+
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis)
 {
     if (!override) {

@@ -1041,6 +1041,12 @@ const clivalue_t valueTable[] = {
 
     { "fw_tpa_gain",                VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 25, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_gain) },
     { "fw_tpa_curve",               VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, GAIN_CURVE_COUNT }, PG_PID_PROFILE, offsetof(pidProfile_t, fw_tpa_curve) },
+#ifdef USE_GPS
+    // GPS speed attenuation. fw_spa_curve = 0 turns it off.
+    { "fw_spa_gain",                VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 25, 200 }, PG_FW_SPA_CONFIG, offsetof(fwSpaConfig_t, gain) },
+    { "fw_spa_curve",               VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, GAIN_CURVE_COUNT }, PG_FW_SPA_CONFIG, offsetof(fwSpaConfig_t, curve) },
+    { "fw_spa_speed_max",           VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { FW_SPA_SPEED_MAX_MIN, FW_SPA_SPEED_MAX_MAX }, PG_FW_SPA_CONFIG, offsetof(fwSpaConfig_t, speed_max) },
+#endif
 
     { "pitch_p_gain",               VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_PID_PROFILE, offsetof(pidProfile_t, pid[PID_PITCH].P) },
     { "pitch_i_gain",               VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PID_GAIN_MAX }, PG_PID_PROFILE, offsetof(pidProfile_t, pid[PID_PITCH].I) },

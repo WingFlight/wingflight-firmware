@@ -115,4 +115,5 @@ const char * const debugModeNames[DEBUG_COUNT] = {
     DEBUG_NAME(AUTOHOVER),
     DEBUG_NAME(ATTHOLD),
     DEBUG_NAME(TVHOLD),
+    DEBUG_NAME(GAIN_ATTEN),
 };

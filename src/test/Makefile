@@ -407,6 +407,7 @@ pid_unittest_SRC :=  \
 		$(USER_DIR)/drivers/accgyro/gyro_sync.c \
 		$(USER_DIR)/fc/runtime_config.c \
 		$(USER_DIR)/flight/pid.c \
+		$(USER_DIR)/flight/speed_atten.c \
 		$(USER_DIR)/pg/pid.c \
 		$(USER_DIR)/pg/pg.c \
 		$(USER_DIR)/common/crc.c \
@@ -418,6 +419,11 @@ airborne_unittest_SRC := \
         $(USER_DIR)/common/filter.c \
         $(USER_DIR)/common/maths.c \
         $(USER_DIR)/flight/airborne.c
+
+speed_atten_unittest_SRC := \
+        $(USER_DIR)/common/filter.c \
+        $(USER_DIR)/common/maths.c \
+        $(USER_DIR)/flight/speed_atten.c
 
 # Header-only helper (flight/autohover_authority.h); maths.c only satisfies the non-empty _SRC rule.
 autohover_authority_unittest_SRC := \

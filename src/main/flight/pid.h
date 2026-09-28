@@ -91,6 +91,9 @@ typedef struct {
     uint32_t gainCurve[PID_AXIS_COUNT];         // Current per-axis gain curve scale, centi-percent (10000 = 100.00%)
     uint32_t gainCurvePosition[PID_AXIS_COUNT]; // Current per-axis gain curve position, centi-percent
     uint32_t fwTpa;                             // Current throttle attenuation scale, centi-percent
+    uint32_t fwSpa;                             // Current GPS speed attenuation scale, centi-percent
+    uint16_t fwSpaSpeed;                        // Filtered GPS speed used by SPA, 0.1 km/h
+    bool fwSpaEnabled;                          // A speed curve is assigned (SPA is active)
     pidfCenti_t effective[PID_AXIS_COUNT];      // Final effective PID gain values, centi-gain
 } pidRuntimeGains_t;
 
@@ -155,6 +158,7 @@ const pidAxisData_t * pidGetAxisData(void);
 float pidItermDecayRate(uint8_t decayTime);
 uint8_t pidItermRelaxCutoff(uint8_t score);
 float pidGetGainCurveScale(uint8_t curveIndex, uint8_t axis);
+float pidGetGainCurveScaleAt(uint8_t curveIndex, float position);
 void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);
 
 ADJFUN_DECLARE(PID_PROFILE)
