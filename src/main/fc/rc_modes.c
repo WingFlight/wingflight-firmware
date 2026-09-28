@@ -43,10 +43,7 @@
 
 #include "rc_modes.h"
 
-#define STICKY_MODE_BOOT_DELAY_US 5e6
-
 boxBitmask_t rcModeActivationMask; // one bit per mode defined in boxId_e
-static boxBitmask_t stickyModesEverDisabled;
 
 static int activeMacCount = 0;
 static uint8_t activeMacArray[MAX_MODE_ACTIVATION_CONDITION_COUNT];
@@ -93,39 +90,17 @@ void updateMasksForMac(const modeActivationCondition_t *mac, boxBitmask_t *andMa
     }
 }
 
-void updateMasksForStickyModes(const modeActivationCondition_t *mac, boxBitmask_t *andMask, boxBitmask_t *newMask)
-{
-    if (IS_RC_MODE_ACTIVE(mac->modeId)) {
-        bitArrayClr(andMask, mac->modeId);
-        bitArraySet(newMask, mac->modeId);
-    } else {
-        bool bActive = isRangeActive(mac->auxChannelIndex, &mac->range);
-
-        if (bitArrayGet(&stickyModesEverDisabled, mac->modeId)) {
-            updateMasksForMac(mac, andMask, newMask, bActive);
-        } else {
-            if (micros() >= STICKY_MODE_BOOT_DELAY_US && !bActive) {
-                bitArraySet(&stickyModesEverDisabled, mac->modeId);
-            }
-        }
-    }
-}
-
 void updateActivatedModes(void)
 {
-    boxBitmask_t newMask, andMask, stickyModes;
+    boxBitmask_t newMask, andMask;
     memset(&andMask, 0, sizeof(andMask));
     memset(&newMask, 0, sizeof(newMask));
-    memset(&stickyModes, 0, sizeof(stickyModes));
-    bitArraySet(&stickyModes, BOXPARALYZE);
 
     // determine which conditions set/clear the mode
     for (int i = 0; i < activeMacCount; i++) {
         const modeActivationCondition_t *mac = modeActivationConditions(activeMacArray[i]);
 
-        if (bitArrayGet(&stickyModes, mac->modeId)) {
-            updateMasksForStickyModes(mac, &andMask, &newMask);
-        } else if (mac->modeId < CHECKBOX_ITEM_COUNT) {
+        if (mac->modeId < CHECKBOX_ITEM_COUNT) {
             bool bActive = isRangeActive(mac->auxChannelIndex, &mac->range);
             updateMasksForMac(mac, &andMask, &newMask, bActive);
         }

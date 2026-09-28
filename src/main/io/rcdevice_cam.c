@@ -228,7 +228,7 @@ static void rcdevice5KeySimulationProcess(timeUs_t currentTimeUs)
 {
     UNUSED(currentTimeUs);
 
-    if (ARMING_FLAG(ARMED) || IS_RC_MODE_ACTIVE(BOXSTICKCOMMANDDISABLE)) {
+    if (ARMING_FLAG(ARMED)) {
         return;
     }
 

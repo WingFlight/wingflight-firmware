@@ -248,8 +248,7 @@ static bool accNeedsCalibration(void)
         // Check for any configured modes that use the ACC
         if (isModeActivationConditionPresent(BOXANGLE) ||
             isModeActivationConditionPresent(BOXTRAINER) ||
-            isModeActivationConditionPresent(BOXGPSRESCUE) ||
-            isModeActivationConditionPresent(BOXCALIB)) {
+            isModeActivationConditionPresent(BOXGPSRESCUE)) {
             return true;
         }
 
@@ -403,10 +402,6 @@ void updateArmingStatus(void)
             unsetArmingDisabled(ARMING_DISABLED_DSHOT_BITBANG);
         }
 #endif
-
-        if (IS_RC_MODE_ACTIVE(BOXPARALYZE)) {
-            setArmingDisabled(ARMING_DISABLED_PARALYZE);
-        }
 
 #ifdef USE_ACC
         if (accNeedsCalibration()) {
@@ -701,9 +696,7 @@ void processRxModes(timeUs_t currentTimeUs)
         disarmAt = currentTimeUs + autoDisarmDelayUs;  // extend auto-disarm timer
     }
 
-    if (!(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED))) {
-        processRcStickPositions();
-    }
+    processRcStickPositions();
 
     updateActivatedModes();
 
@@ -733,9 +726,7 @@ void processRxModes(timeUs_t currentTimeUs)
     }
 #endif // USE_SERVOS
 
-    if (!cliMode &&
-        !(IS_RC_MODE_ACTIVE(BOXPARALYZE) && !ARMING_FLAG(ARMED)))
-    {
+    if (!cliMode) {
         processRcAdjustments();
     }
 

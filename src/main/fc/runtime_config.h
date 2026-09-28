@@ -57,7 +57,7 @@ typedef enum {
     ARMING_DISABLED_CMS_MENU        = (1 << 14), // reserved (CMS removed) -- never set
     ARMING_DISABLED_BST             = (1 << 15),
     ARMING_DISABLED_MSP             = (1 << 16),
-    ARMING_DISABLED_PARALYZE        = (1 << 17),
+    ARMING_DISABLED_PARALYZE        = (1 << 17), // reserved (PARALYZE removed) -- never set
     ARMING_DISABLED_GPS             = (1 << 18),
     ARMING_DISABLED_RESC            = (1 << 19),
     ARMING_DISABLED_RPMFILTER       = (1 << 20),
@@ -84,7 +84,7 @@ typedef enum {
     ANGLE_MODE_BIT       = 1,
     // bit 2 reserved (was HORIZON_MODE, removed) -- do not reuse, telemetry and logs still carry it
     TRAINER_MODE_BIT     = 3,
-    ALTHOLD_MODE_BIT     = 4,
+    // bit 4 reserved (was ALTHOLD_MODE, never implemented) -- do not reuse, telemetry and logs still carry it
     ATTHOLD_MODE_BIT     = 5,
     GPS_RESCUE_MODE_BIT  = 6,
     PASSTHROUGH_MODE_BIT = 7,
@@ -101,7 +101,6 @@ typedef enum {
     FAILSAFE_MODE        = BIT(FAILSAFE_MODE_BIT),
     ANGLE_MODE           = BIT(ANGLE_MODE_BIT),
     TRAINER_MODE         = BIT(TRAINER_MODE_BIT),
-    ALTHOLD_MODE         = BIT(ALTHOLD_MODE_BIT),
     // ATT HOLD: quaternion-based hold of whatever attitude the aircraft was in when every stick
     // last returned to center -- any orientation, not just level or vertical. See flight/atthold.c;
     // quaternions because this must survive inverted/knife-edge attitudes, where Euler angles
@@ -148,12 +147,12 @@ extern uint16_t flightModeFlags;
 #define FLIGHT_MODE(mask) (flightModeFlags & (mask))
 
 // macro to initialize map from boxId_e flightModeBits. Keep it in sync with flightModeFlags_e enum.
-// [BOXARM], [BOXHORIZON] (HORIZON removed) and [BOXRESCUE] (heli rescue removed) are left unpopulated
+// [BOXARM], [BOXHORIZON] (HORIZON removed), [BOXALTHOLD] (never implemented) and [BOXRESCUE]
+// (heli rescue removed) are left unpopulated
 #define BOXID_TO_FLIGHT_MODE_MAP_INITIALIZER {           \
    [BOXANGLE]       = ANGLE_MODE_BIT,                    \
    [BOXTRAINER]     = TRAINER_MODE_BIT,                  \
    [BOXATTHOLD]     = ATTHOLD_MODE_BIT,                  \
-   [BOXALTHOLD]     = ALTHOLD_MODE_BIT,                  \
    [BOXLOITER]      = LOITER_MODE_BIT,                   \
    [BOXRTH]         = RTH_MODE_BIT,                      \
    [BOXFAILSAFE]    = FAILSAFE_MODE_BIT,                 \

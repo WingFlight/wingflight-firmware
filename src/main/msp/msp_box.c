@@ -52,7 +52,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     BOXITEM(BOXARM, "ARM", 0),
     BOXITEM(BOXANGLE, "ANGLE", 1),
 //    BOXITEM(BOXHORIZON, "HORIZON", 2), // reserved (HORIZON removed)
-    BOXITEM(BOXALTHOLD, "ALTHOLD", 3),
+//    BOXITEM(BOXALTHOLD, "ALTHOLD", 3), // reserved (never implemented)
     BOXITEM(BOXATTHOLD, "ATT HOLD", 6),
 //    BOXITEM(BOXANTIGRAVITY, "ANTI GRAVITY", 4),
 //    BOXITEM(BOXMAG, "MAG", 5),
@@ -65,7 +65,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
 //    BOXITEM(BOXLEDMAX, "LEDMAX", 14),
     BOXITEM(BOXLEDLOW, "LEDLOW", 15),
 //    BOXITEM(BOXLLIGHTS, "LLIGHTS", 16),
-    BOXITEM(BOXCALIB, "CALIB", 17),
+//    BOXITEM(BOXCALIB, "CALIB", 17), // reserved (never implemented)
 //    BOXITEM(BOXGOV, "GOVERNOR", 18),
 //    BOXITEM(BOXOSD, "OSD DISABLE", 19), // OSD removed
     BOXITEM(BOXPASSTHROUGH, "PASSTHROUGH", 12),
@@ -94,7 +94,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
     BOXITEM(BOXUSER3, "USER3", 42),
     BOXITEM(BOXUSER4, "USER4", 43),
 //    BOXITEM(BOXPIDAUDIO, "PID AUDIO", 44),
-    BOXITEM(BOXPARALYZE, "PARALYZE", 45),
+//    BOXITEM(BOXPARALYZE, "PARALYZE", 45), // reserved (PARALYZE removed)
 //    BOXITEM(BOXGPSRESCUE, "GPS RESCUE", 46), // reserved (redundant alias for BOXRTH removed)
     // permanentId 61/62 also reserved below, near BOXTHRUSTVECTOR -- kept out of numeric order here
     // since these predate the MANUAL/AUTOTRIM/THRUSTVECTOR cluster; see the matching note there
@@ -104,7 +104,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
 //    BOXITEM(BOXVTXCONTROLDISABLE, "VTX CONTROL DISABLE", 48),   // reserved (VTX removed)
 //    BOXITEM(BOXLAUNCHCONTROL, "LAUNCH CONTROL", 49),
 //    BOXITEM(BOXMSPOVERRIDE, "MSP OVERRIDE", 50),
-    BOXITEM(BOXSTICKCOMMANDDISABLE, "STICK COMMANDS DISABLE", 51),
+//    BOXITEM(BOXSTICKCOMMANDDISABLE, "STICK COMMANDS DISABLE", 51), // reserved (STICK COMMANDS DISABLE removed)
     BOXITEM(BOXBEEPERMUTE, "BEEPER MUTE", 52),
 //    BOXITEM(BOXRESCUE, "RESCUE", 53), // heli rescue removed
 //    BOXITEM(BOXAUTOROTATION, "AUTOROTATION", 54),
@@ -206,7 +206,6 @@ void initActiveBoxIds(void)
 #define BME(boxId) do { bitArraySet(&ena, boxId); } while (0)
     BME(BOXARM);
     BME(BOXPREARM);
-    BME(BOXPARALYZE);
     BME(BOXFAILSAFE);
 
     if (sensors(SENSOR_ACC)) {
@@ -288,8 +287,6 @@ void initActiveBoxIds(void)
         }
     }
 #endif
-
-    BME(BOXSTICKCOMMANDDISABLE);
 
 #undef BME
     // check that all enabled IDs are in boxes array (check may be skipped when using findBoxById() functions)

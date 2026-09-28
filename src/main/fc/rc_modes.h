@@ -38,7 +38,7 @@ typedef enum {
     BOXHORIZON,         // reserved (HORIZON removed) -- kept to avoid renumbering later ids
     BOXTRAINER,
     BOXATTHOLD,         // ATT HOLD: quaternion-based hold of whatever attitude the stick was released at
-    BOXALTHOLD,
+    BOXALTHOLD,         // reserved (never implemented, removed) -- kept to avoid renumbering later ids
     BOXRESCUE,          // reserved (heli rescue removed) -- kept to avoid renumbering later ids
     BOXGPSRESCUE,       // reserved (redundant alias for BOXRTH removed) -- kept to avoid renumbering later ids
     BOXLOITER,          // GPS LOITER: hold position (and altitude) around the point engaged at
@@ -50,11 +50,11 @@ typedef enum {
 
     // RC modes
     BOXPREARM,
-    BOXPARALYZE,
+    BOXPARALYZE,        // reserved (PARALYZE removed) -- kept to avoid renumbering later ids
     BOXBEEPERON,
     BOXBEEPERMUTE,
     BOXLEDLOW,
-    BOXCALIB,
+    BOXCALIB,           // reserved (never implemented, removed) -- kept to avoid renumbering later ids
     BOXOSD,             // reserved (OSD removed) -- kept to avoid renumbering later ids
     BOXTELEMETRY,
     BOXBEEPGPSCOUNT,
@@ -65,7 +65,7 @@ typedef enum {
     BOXCAMERA3,
     BOXVTXPITMODE,      // reserved (VTX removed) -- kept to avoid renumbering later ids
     BOXVTXCONTROLDISABLE, // reserved (VTX removed) -- kept to avoid renumbering later ids
-    BOXSTICKCOMMANDDISABLE,
+    BOXSTICKCOMMANDDISABLE, // reserved (STICK COMMANDS DISABLE removed) -- kept to avoid renumbering later ids
     BOXGOVERNOR,        // governor engage switch (repurposed from removed heli governor fallback box)
     BOXGOVSUSPEND,      // reserved (heli governor removed) -- kept to avoid renumbering later ids
     BOXGOVBYPASS,       // reserved (heli governor removed) -- kept to avoid renumbering later ids

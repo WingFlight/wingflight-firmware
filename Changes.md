@@ -3,6 +3,25 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## PARALYZE, STICK COMMANDS DISABLE, ALTHOLD and CALIB Removed
+
+Four modes the Configurator already hid, or that never did anything, are
+removed. No MSP payload or setting changes, so the API version is unchanged;
+clients build their mode list from what the FC reports.
+
+- PARALYZE (box permanent ID 45): gone, along with the sticky-mode logic in
+  `fc/rc_modes.c` it was the only user of. `ARMING_DISABLED_PARALYZE` (bit
+  17) is reserved and never set.
+- STICK COMMANDS DISABLE (ID 51): gone. Stick arming and stick commands are
+  always available when enabled in the usual way.
+- ALTHOLD (ID 3): the box was defined but never offered and nothing acted on
+  it. Flight mode bit 4 is reserved; CRSF no longer reports `ALTHOLD`.
+- CALIB (ID 17): never offered; it only fed the accelerometer calibration
+  check.
+
+The box IDs stay in `boxId_e` as placeholders, so nothing renumbers. A saved
+mode range on any of them is inert.
+
 ## HORIZON Removed (MSP API 22.12)
 
 The HORIZON flight mode (`horizonModeApply` in `flight/leveling.c`) is
