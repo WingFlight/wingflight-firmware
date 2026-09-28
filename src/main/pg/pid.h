@@ -56,12 +56,11 @@ typedef struct {
     uint8_t level_limit;           // Max angle in degrees in level mode
 } pidAngleMode_t;
 
+// Reserved: the removed HORIZON settings occupied 4 bytes here. Kept at the same size so saved
+// profiles still load under the same PG version. Never read.
 typedef struct {
-    uint8_t level_strength;
-    uint8_t transition;
-    uint8_t tilt_effect;           // inclination factor for Horizon mode
-    uint8_t tilt_expert_mode;      // OFF or ON
-} pidHorizonMode_t;
+    uint8_t reserved[4];
+} pidHorizonReserved_t;
 
 typedef struct {
     uint8_t gain;                  // The strength of the limiting. Raising may reduce overshoot but also lead to oscillation around the angle limit
@@ -139,7 +138,7 @@ typedef struct pidProfile_s {
     uint8_t             gyro_cutoff[PID_AXIS_COUNT];
 
     pidAngleMode_t      angle;
-    pidHorizonMode_t    horizon;
+    pidHorizonReserved_t horizon_reserved;
     pidTrainerMode_t    trainer;
     pidAutoHoverReserved_t autohover_reserved;
     pidAttHoldMode_t    atthold;

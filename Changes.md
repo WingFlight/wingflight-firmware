@@ -3,6 +3,33 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## HORIZON Removed, ANGLE Hidden (MSP API 22.12)
+
+HORIZON is removed. ANGLE is no longer a pilot mode: it is not offered in
+the mode list, and a saved ANGLE switch range is ignored, so it can't engage
+unseen. The ANGLE leveling code (`angleModeApply()` in `flight/leveling.c`)
+stays, because failsafe, GPS rescue, RTH and Loiter fly through it, and so
+do its settings.
+
+- `angle_level_strength` and `angle_level_limit` (and the per-axis
+  angle limits) now only set how firmly failsafe/GPS modes level the
+  aircraft and how far GPS nav may bank. Adjustment function 45 still
+  tunes the strength.
+- Box permanent IDs 1 (ANGLE) and 2 (HORIZON) are no longer offered.
+  `BOXANGLE` and `BOXHORIZON` stay in `boxId_e`. Flight mode bit 2
+  (HORIZON) is reserved; `ANGLE_MODE` (bit 1) is kept but never set.
+- Adjustment function 46 (Horizon level gain) has no entry.
+- CLI: `horizon_level_strength`, `horizon_transition`,
+  `horizon_tilt_effect` and `horizon_tilt_expert_mode` are removed.
+- MSP_PID_PROFILE keeps the Horizon level strength byte: sent as zero,
+  ignored on write. `pidProfile_t` keeps its 4 bytes as
+  `horizon_reserved`, so `PG_PID_PROFILE` stays at v15 and saved profiles
+  are kept.
+- Blackbox header `levelPID` keeps 4 values; the two Horizon values are 0.
+- Stick-command accelerometer trim (throttle high, yaw centre) only worked
+  in ANGLE or HORIZON, so it is no longer reachable.
+- CRSF, iBus, LTM and MAVLink no longer report HORIZON.
+
 ## AUTO HOVER Removed (MSP API 22.11)
 
 The AUTO HOVER flight mode (`flight/autohover.c`) is removed, along with its

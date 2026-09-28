@@ -34,8 +34,8 @@ typedef enum {
     BOXARM = 0,
 
     // Flight modes
-    BOXANGLE,
-    BOXHORIZON,
+    BOXANGLE,           // hidden: not offered and ignored if saved (leveling is failsafe/GPS only)
+    BOXHORIZON,         // reserved (HORIZON removed) -- kept to avoid renumbering later ids
     BOXTRAINER,
     BOXATTHOLD,         // ATT HOLD: quaternion-based hold of whatever attitude the stick was released at
     BOXALTHOLD,

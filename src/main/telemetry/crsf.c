@@ -489,8 +489,6 @@ static void crsfFlightModeInfo(char *buf)
         flightMode = "ATT HOLD";
     } else if (FLIGHT_MODE(AUTOTRIM_MODE)) {
         flightMode = "AUTOTRIM";
-    } else if (FLIGHT_MODE(HORIZON_MODE)) {
-        flightMode = "HORIZON";
     } else if (FLIGHT_MODE(ANGLE_MODE)) {
         flightMode = "ANGLE";
     } else if (FLIGHT_MODE(TRAINER_MODE)) {

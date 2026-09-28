@@ -246,9 +246,7 @@ static bool accNeedsCalibration(void)
         // ACC that would be affected by the lack of calibration.
 
         // Check for any configured modes that use the ACC
-        if (isModeActivationConditionPresent(BOXANGLE) ||
-            isModeActivationConditionPresent(BOXHORIZON) ||
-            isModeActivationConditionPresent(BOXTRAINER) ||
+        if (isModeActivationConditionPresent(BOXTRAINER) ||
             isModeActivationConditionPresent(BOXGPSRESCUE) ||
             isModeActivationConditionPresent(BOXCALIB)) {
             return true;
@@ -803,35 +801,20 @@ void processRxModes(timeUs_t currentTimeUs)
         }
 #endif
 
+        // ANGLE is not a pilot-selectable mode: BOXANGLE is not offered and a saved ANGLE switch
+        // range is ignored, so ANGLE_MODE is never set here. The angleModeApply() leveling it named
+        // still runs for failsafe, GPS rescue, RTH and Loiter (see pidApplySetpoint()).
         if (IS_RC_MODE_ACTIVE(BOXATTHOLD)) {
-            DISABLE_FLIGHT_MODE(ANGLE_MODE);
-            DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
             ENABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
-        else if (IS_RC_MODE_ACTIVE(BOXANGLE)) {
-            ENABLE_FLIGHT_MODE(ANGLE_MODE);
-            DISABLE_FLIGHT_MODE(HORIZON_MODE);
-            DISABLE_FLIGHT_MODE(TRAINER_MODE);
-            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
-        }
-        else if (IS_RC_MODE_ACTIVE(BOXHORIZON)) {
-            DISABLE_FLIGHT_MODE(ANGLE_MODE);
-            ENABLE_FLIGHT_MODE(HORIZON_MODE);
-            DISABLE_FLIGHT_MODE(TRAINER_MODE);
-            DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
-        }
 #ifdef USE_ACRO_TRAINER
         else if (IS_RC_MODE_ACTIVE(BOXTRAINER)) {
-            DISABLE_FLIGHT_MODE(ANGLE_MODE);
-            DISABLE_FLIGHT_MODE(HORIZON_MODE);
             ENABLE_FLIGHT_MODE(TRAINER_MODE);
             DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }
 #endif
         else {
-            DISABLE_FLIGHT_MODE(ANGLE_MODE);
-            DISABLE_FLIGHT_MODE(HORIZON_MODE);
             DISABLE_FLIGHT_MODE(TRAINER_MODE);
             DISABLE_FLIGHT_MODE(ATTHOLD_MODE);
         }

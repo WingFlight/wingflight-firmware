@@ -73,6 +73,7 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // the tail of the autohover sub-struct, widening it again) - old saved
 // profiles reset to defaults, matching the v9->v10 precedent. AUTO HOVER was
 // later removed without a version bump: its bytes stay as autohover_reserved.
+// HORIZON likewise: its 4 bytes stay as horizon_reserved.
 PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 15);
 
 void resetPidProfile(pidProfile_t *pidProfile)
@@ -99,10 +100,6 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .gyro_cutoff = { 50, 50, 100 },
         .angle.level_strength = 40,
         .angle.level_limit = 55,
-        .horizon.level_strength = 40,
-        .horizon.transition = 75,
-        .horizon.tilt_effect = 75,
-        .horizon.tilt_expert_mode = false,
         .trainer.gain = 75,
         .trainer.angle_limit = 20,
         .trainer.lookahead_ms = 50,

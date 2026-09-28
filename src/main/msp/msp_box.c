@@ -50,8 +50,8 @@
 static const box_t boxes[CHECKBOX_ITEM_COUNT] =
 {
     BOXITEM(BOXARM, "ARM", 0),
-    BOXITEM(BOXANGLE, "ANGLE", 1),
-    BOXITEM(BOXHORIZON, "HORIZON", 2),
+//    BOXITEM(BOXANGLE, "ANGLE", 1), // hidden -- leveling is used by failsafe/GPS only
+//    BOXITEM(BOXHORIZON, "HORIZON", 2), // reserved (HORIZON removed)
     BOXITEM(BOXALTHOLD, "ALTHOLD", 3),
     BOXITEM(BOXATTHOLD, "ATT HOLD", 6),
 //    BOXITEM(BOXANTIGRAVITY, "ANTI GRAVITY", 4),
@@ -210,8 +210,6 @@ void initActiveBoxIds(void)
     BME(BOXFAILSAFE);
 
     if (sensors(SENSOR_ACC)) {
-        BME(BOXANGLE);
-        BME(BOXHORIZON);
         BME(BOXATTHOLD);
 #ifdef USE_ACRO_TRAINER
         BME(BOXTRAINER);

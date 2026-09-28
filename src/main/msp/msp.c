@@ -2157,11 +2157,11 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, currentPidProfile->iterm_relax[0]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax[1]);
         sbufWriteU8(dst, currentPidProfile->iterm_relax[2]);
-        /* Angle mode */
+        /* Self-leveling (failsafe/GPS) */
         sbufWriteU8(dst, currentPidProfile->angle.level_strength);
         sbufWriteU8(dst, currentPidProfile->angle.level_limit);
-        /* Horizon mode */
-        sbufWriteU8(dst, currentPidProfile->horizon.level_strength);
+        /* Reserved (was Horizon level strength) */
+        sbufWriteU8(dst, 0);
         /* Acro trainer */
         sbufWriteU8(dst, currentPidProfile->trainer.gain);
         sbufWriteU8(dst, currentPidProfile->trainer.angle_limit);
@@ -3275,11 +3275,11 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         currentPidProfile->iterm_relax[0] = sbufReadU8(src);
         currentPidProfile->iterm_relax[1] = sbufReadU8(src);
         currentPidProfile->iterm_relax[2] = sbufReadU8(src);
-        /* Angle mode */
+        /* Self-leveling (failsafe/GPS) */
         currentPidProfile->angle.level_strength = sbufReadU8(src);
         currentPidProfile->angle.level_limit = sbufReadU8(src);
-        /* Horizon mode */
-        currentPidProfile->horizon.level_strength = sbufReadU8(src);
+        /* Reserved (was Horizon level strength) */
+        sbufReadU8(src);
         /* Acro trainer */
         currentPidProfile->trainer.gain = sbufReadU8(src);
         currentPidProfile->trainer.angle_limit = sbufReadU8(src);
