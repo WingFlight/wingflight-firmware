@@ -3,6 +3,41 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Tune Advisor Statistics
+
+The FC measures, during plain rate flight, how the airframe answers the rate
+loop, so the radio or Configurator can suggest tuning changes per axis
+(`flight/tune_advisor.c`). It only measures; the advice rules live in the
+clients. Flight behaviour is unchanged.
+
+- Samples count only when armed, airborne, the body has rotated in the last
+  2 s, and no ANGLE, ATT HOLD, TRAINER, GPS, failsafe, MANUAL or PASSTHROUGH
+  layer is active. The PID loop is averaged into 100 Hz samples.
+- Feed-forward match: gyro / setpoint for 40-200 deg/s requests with no
+  surface saturated, at the delay (0-250 ms) with the best correlation.
+  1.0 means F matches the airframe. Also split by request size and throttle.
+- Full stick: saturation share and the rate reached against the rate asked.
+- Stick releases: rebound as a fraction of the peak rate, the controller's
+  counter-surface and the I-term at release.
+- Statistics accumulate across flights and clear when the PID gains, master
+  gains, I-term relax, PID mode, rates or active profiles change (checked on
+  arming).
+- `MSP2_WING_TUNE_ADVISOR` (0x5F18) reads one axis per request, so the reply
+  (65 bytes) fits MSP over telemetry. Request: `U8 axis` (0 roll, 1 pitch,
+  2 yaw). Reply, payload v1: `U8 version, U8 collecting, U16 seconds,
+  U8 axis`, then `U16 P, U16 F, U16 B, U8 iterm_relax, U8 rc_rate`,
+  `U16 ffCount, S16 ffGain, S16 ffCorr, U16 ffLagMs`,
+  3 x `S16 gain, U16 count` by request (40-100, 100-200, 200+ deg/s),
+  3 x `S16 gain, U16 count` by throttle (<30%, 30-60%, 60%+),
+  `U16 fullCount, U16 fullSatCount, S16 fullRatio, U16 fullMaxRate`,
+  `U16 releases, U16 bigRebounds, S16 meanRebound, S16 meanOvershoot,
+  S16 meanCounter, S16 meanIterm`. Ratios are x1000, counts saturate at
+  65535.
+- `MSP2_WING_TUNE_ADVISOR_CLEAR` (0x5F19) clears them.
+- New messages only, so the API version is unchanged. Firmware without the
+  feature answers 0x5F18 with an error.
+- Built on targets with more than 128 KB flash (`USE_TUNE_ADVISOR`).
+
 ## PARALYZE, STICK COMMANDS DISABLE, ALTHOLD and CALIB Removed
 
 Four modes the Configurator already hid, or that never did anything, are
