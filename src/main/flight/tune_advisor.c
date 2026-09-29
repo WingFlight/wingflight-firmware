@@ -333,6 +333,8 @@ static void processRelease(taAxis_t *ax, const tuneAdvisorSample_t *s, int axis)
 
 void tuneAdvisorProcessSample(const tuneAdvisorSample_t *s)
 {
+    // Roll and pitch only: counting yaw let taxi turns in, which lowered the roll correlation on
+    // real wing logs. A heli port should use headspeed/governor state instead.
     const float motion = fabsf(s->gyro[FD_ROLL]) + fabsf(s->gyro[FD_PITCH]);
 
     if (motion >= TA_MOTION_RATE)

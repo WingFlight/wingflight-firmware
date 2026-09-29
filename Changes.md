@@ -22,9 +22,10 @@ clients. Flight behaviour is unchanged.
 - Statistics accumulate across flights and clear when the PID gains, master
   gains, I-term relax, PID mode, rates or active profiles change (checked on
   arming).
-- `MSP2_WING_TUNE_ADVISOR` (0x5F18) reads them, payload v1:
-  `U8 version, U8 collecting, U16 seconds`, then per axis (roll, pitch, yaw):
-  `U16 P, U16 F, U16 B, U8 iterm_relax, U8 rc_rate`,
+- `MSP2_WING_TUNE_ADVISOR` (0x5F18) reads one axis per request, so the reply
+  (65 bytes) fits MSP over telemetry. Request: `U8 axis` (0 roll, 1 pitch,
+  2 yaw). Reply, payload v1: `U8 version, U8 collecting, U16 seconds,
+  U8 axis`, then `U16 P, U16 F, U16 B, U8 iterm_relax, U8 rc_rate`,
   `U16 ffCount, S16 ffGain, S16 ffCorr, U16 ffLagMs`,
   3 x `S16 gain, U16 count` by request (40-100, 100-200, 200+ deg/s),
   3 x `S16 gain, U16 count` by throttle (<30%, 30-60%, 60%+),
