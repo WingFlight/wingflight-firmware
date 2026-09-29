@@ -3,6 +3,31 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## TPA and GPS Speed Attenuation Also Scale F and B
+
+Throttle attenuation (`fw_tpa_gain`, `fw_tpa_curve`) and GPS speed
+attenuation (`fw_spa_*`) now scale F and B as well as P and D
+(`pidApplyMode1` in `flight/pid.c`). F sets most of the surface deflection
+for a commanded rate, so when prop wash or airspeed makes the surfaces more
+effective, attenuating only P and D could not bring the achieved rate back
+to the setpoint. I is still not scaled. ANGLE damping goes out through F, so
+it follows the attenuation too.
+
+The combined TPA x SPA factor is now floored at 25 % (`PID_ATTENUATION_MIN`),
+so a curve point near zero, or both baselines at their minimum, can no longer
+leave the surfaces without throw. The floor applies to P and D as well.
+
+MANUAL (`pidGetFeedforward`) is deliberately not attenuated: it is the
+bail-out mode, and `PID_F_GAIN_MIN` keeps it at least half travel at full
+stick whatever the tune.
+
+The MSP effective-gains reply now reports attenuated F and B.
+
+No setting or MSP layout changes. With `fw_tpa_gain` and `fw_spa_gain` at
+100 and no curve assigned (the defaults) nothing changes. Profiles with a TPA
+or SPA curve, or a baseline other than 100, get lower roll and pitch rates
+wherever the attenuation is below 100 %.
+
 ## ANGLE Engagement, Rate Cap and Damping (MSP API 22.13)
 
 ANGLE mode (and the GPS and failsafe modes that share `angleModeApply` in

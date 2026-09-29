@@ -39,6 +39,10 @@
 // half surface travel at full stick (with 400 deg/s rates) whatever the tune.
 #define PID_F_GAIN_MIN              50
 
+// Floor on the combined throttle x GPS speed attenuation of P, D, F and B, so no TPA/SPA
+// curve can take the surfaces' stick authority away.
+#define PID_ATTENUATION_MIN         0.25f
+
 #define ROLL_P_TERM_SCALE           0.00000666666f
 #define ROLL_I_TERM_SCALE           0.0002f
 #define ROLL_D_TERM_SCALE           0.1e-6f

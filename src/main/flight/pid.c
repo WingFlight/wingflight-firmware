@@ -92,6 +92,8 @@ float pidGetOutput(int axis)
 // otherwise file-static) -- lets a caller ask "what would stabilized flight command for this
 // axis at this rate, with no gyro correction at all" without duplicating Kf's derivation or
 // scale. See setpoint.c's getManualDeflection(), which uses this as MANUAL mode's whole output.
+// Deliberately NOT attenuated by throttle/GPS speed: MANUAL is the bail-out mode, and
+// PID_F_GAIN_MIN's travel guarantee must hold whatever the TPA/SPA curves do.
 float pidGetFeedforward(int axis, float rate)
 {
     return pid.coef[axis].Kf * rate;
@@ -863,12 +865,22 @@ static float pidThrottleAttenuation(void)
     // airspeed, so gain is attenuated as throttle rises, not as it falls.
     // Mirrors masterGain + gain_curve: fwTpaGain is the baseline scale, an
     // optional curve from the same shared pool further shapes it by
-    // throttle (0..1) instead of |stick deflection|.
+    // throttle (0..1) instead of |stick deflection|. Applied (with GPS speed) to P, D,
+    // F and B through pidSurfaceAttenuation(); not to I or MANUAL.
     const float curveMult = pid.fwTpaCurveIndex > 0
         ? pidEvaluateGainCurve(gainCurves(pid.fwTpaCurveIndex - 1), getThrottle())
         : 1.0f;
 
     return pid.fwTpaGain * curveMult;
+}
+
+// Throttle and GPS speed attenuation together, as applied to the surface terms.
+// Floored so a curve point near zero, or both baselines at their minimum, can
+// never leave the surfaces without throw: F carries most of the stick authority,
+// so a zero here would leave the sticks almost nothing to move.
+static float pidSurfaceAttenuation(void)
+{
+    return fmaxf(pidThrottleAttenuation() * speedAttenGetScale(), PID_ATTENUATION_MIN);
 }
 
 static uint32_t pidScaleToCentiPercent(float scale)
@@ -887,7 +899,7 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
 
     const float fwTpa = pidThrottleAttenuation();
     const float fwSpa = speedAttenGetScale();
-    const float atten = fwTpa * fwSpa;
+    const float atten = pidSurfaceAttenuation();
     runtimeGains->fwTpa = pidScaleToCentiPercent(fwTpa);
     runtimeGains->fwSpa = pidScaleToCentiPercent(fwSpa);
     runtimeGains->fwSpaSpeed = lrintf(speedAttenGetSpeed() * 10.0f);
@@ -906,8 +918,8 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
         runtimeGains->effective[axis].P = pidGainToCenti(raw->P * masterGain * atten);
         runtimeGains->effective[axis].I = pidGainToCenti(raw->I * masterGain);
         runtimeGains->effective[axis].D = pidGainToCenti(raw->D * masterGain * atten);
-        runtimeGains->effective[axis].F = pidGainToCenti(raw->F);
-        runtimeGains->effective[axis].B = pidGainToCenti(raw->B);
+        runtimeGains->effective[axis].F = pidGainToCenti(raw->F * atten);
+        runtimeGains->effective[axis].B = pidGainToCenti(raw->B * atten);
     }
 }
 
@@ -923,7 +935,7 @@ static void pidApplyMode1(uint8_t axis)
     const float errorRate = setpoint - gyroRate;
 
     // Throttle- and GPS speed-based gain attenuation
-    const float atten = pidThrottleAttenuation() * speedAttenGetScale();
+    const float atten = pidSurfaceAttenuation();
 
     // Cross-axis relax
     const float crossAxisRelax = getCrossAxisRelaxFactor(axis);
@@ -1022,8 +1034,10 @@ static void pidApplyMode1(uint8_t axis)
 
   //// Feedforward
 
-    // Calculate F component
-    pid.data[axis].F = pid.coef[axis].Kf * setpoint;
+    // Calculate F component. Attenuated like P and D: a surface made more effective by
+    // prop wash or airspeed needs less deflection for the same rate, and F sets that
+    // deflection far more than the small P-term does.
+    pid.data[axis].F = pid.coef[axis].Kf * atten * setpoint;
 
 
   //// Feedforward Boost (FF Derivative)
@@ -1032,7 +1046,7 @@ static void pidApplyMode1(uint8_t axis)
     const float bTerm = difFilterApply(&pid.btermFilter[axis], setpoint);
 
     // Calculate B-component
-    pid.data[axis].B = pid.coef[axis].Kb * bTerm;
+    pid.data[axis].B = pid.coef[axis].Kb * atten * bTerm;
 
 
   //// PID Sum

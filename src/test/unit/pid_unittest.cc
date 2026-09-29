@@ -16,6 +16,7 @@
  */
 
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -27,6 +28,7 @@ float throttle;
 // Dummies
 extern "C" {
 #include "pg/pid.h"
+#include "flight/pid.h"
 #include "sensors/gyro.h"
 #include "io/gps.h"
 
@@ -47,6 +49,12 @@ void angleModeReset(void) {}
 float getSpoolUpRatio(void) { return 1.0f; }
 float mixerGetInput(uint8_t) { return 0.0; }
 bool mixerSaturated(uint8_t) { return false; }
+void attHoldInit(const pidProfile_t *) {}
+float attHoldApply(int, float pidSetpoint) { return pidSetpoint; }
+float attHoldIDecayScale(int) { return 1.0f; }
+float getRcDeflection(int) { return 0; }
+uint8_t getCurrentPidProfileIndex(void) { return 0; }
+void changePidProfile(uint8_t) {}
 } // extern "C"
 
 // Mocks
@@ -59,6 +67,7 @@ extern "C" {
 // Fixed 1000Hz
 gyro_t gyro = {.targetLooptime = 1000000 / 1000};
 pidProfile_t *mockPidProfile = pidProfilesMutable(0);
+pidProfile_t *currentPidProfile = mockPidProfile;
 
 float getSetpoint(int axis) { return g_mock->getDeflection(axis) * 360; }
 float getDeflection(int axis) { return g_mock->getDeflection(axis); }
@@ -106,7 +115,7 @@ TEST_F(PIDTestBase, Mode0)
 {
     mockPidProfile->pid_mode = 0;
     mockPidProfile->pid[0].F = 1;
-    pidInitProfile(mockPidProfile);
+    pidLoadProfile(mockPidProfile);
 
     PIDIO input;
     for (int i = 0; i < 100; i++) {
@@ -145,7 +154,7 @@ TEST_F(PIDFBTest, B)
     mockPidProfile->pid[0].F = 0;
     mockPidProfile->pid[0].B = 100;
     mockPidProfile->bterm_cutoff[0] = 30;
-    pidInitProfile(mockPidProfile);
+    pidLoadProfile(mockPidProfile);
 
     PIDIO input;
     for (int i = 0; i < 500; i++) {
@@ -163,4 +172,81 @@ TEST_F(PIDFBTest, B)
 
     PIDIO output = getResponse(input);
     // This test is a NOP so far.
+}
+
+class PIDAttenuationTest : public PIDTestBase {
+  public:
+    // Steady roll output with only one term active, after a small stick step
+    float rollOutputAt(uint8_t tpaGain, int sample)
+    {
+        mockPidProfile->fw_tpa_gain = tpaGain;
+        pidInit(mockPidProfile);
+
+        PIDIO input;
+        for (int i = 0; i < 50; i++) {
+            for (int axis = 0; axis < 4; axis++) {
+                input[axis].push_back(0);
+            }
+        }
+        for (int i = 0; i < 200; i++) {
+            for (int axis = 0; axis < 4; axis++) {
+                input[axis].push_back(0.01f);
+            }
+        }
+        return getResponse(input)[0][sample];
+    }
+
+    void onlyRoll(uint16_t F, uint16_t B)
+    {
+        mockPidProfile->pid_mode = 1;
+        for (int axis = 0; axis < 3; axis++) {
+            mockPidProfile->pid[axis].P = 0;
+            mockPidProfile->pid[axis].I = 0;
+            mockPidProfile->pid[axis].D = 0;
+            mockPidProfile->pid[axis].F = 0;
+            mockPidProfile->pid[axis].B = 0;
+        }
+        mockPidProfile->pid[0].F = F;
+        mockPidProfile->pid[0].B = B;
+    }
+};
+
+TEST_F(PIDAttenuationTest, ThrottleAttenuationScalesF)
+{
+    onlyRoll(100, 0);
+    const float full = rollOutputAt(100, 240);
+    const float half = rollOutputAt(50, 240);
+    EXPECT_GT(full, 0);
+    EXPECT_NEAR(half, full * 0.5f, fabsf(full) * 1e-4f);
+}
+
+TEST_F(PIDAttenuationTest, ThrottleAttenuationScalesB)
+{
+    onlyRoll(0, 100);
+    const float full = rollOutputAt(100, 52);
+    const float half = rollOutputAt(50, 52);
+    EXPECT_GT(full, 0);
+    EXPECT_NEAR(half, full * 0.5f, fabsf(full) * 1e-4f);
+}
+
+TEST_F(PIDAttenuationTest, AttenuationNeverDropsBelowFloor)
+{
+    // 10 % is below anything the CLI allows, standing in for a curve point near zero
+    onlyRoll(100, 0);
+    const float full = rollOutputAt(100, 240);
+    const float floored = rollOutputAt(10, 240);
+    EXPECT_GT(full, 0);
+    EXPECT_NEAR(floored, full * PID_ATTENUATION_MIN, fabsf(full) * 1e-4f);
+}
+
+TEST_F(PIDAttenuationTest, ManualFeedforwardIgnoresAttenuation)
+{
+    onlyRoll(100, 0);
+    mockPidProfile->fw_tpa_gain = 100;
+    pidLoadProfile(mockPidProfile);
+    const float full = pidGetFeedforward(0, 100);
+    mockPidProfile->fw_tpa_gain = 25;
+    pidLoadProfile(mockPidProfile);
+    EXPECT_GT(full, 0);
+    EXPECT_FLOAT_EQ(pidGetFeedforward(0, 100), full);
 }
