@@ -425,6 +425,12 @@ speed_atten_unittest_SRC := \
         $(USER_DIR)/common/maths.c \
         $(USER_DIR)/flight/speed_atten.c
 
+tune_advisor_unittest_SRC := \
+        $(USER_DIR)/flight/tune_advisor.c
+
+tune_advisor_unittest_DEFINES := \
+        USE_TUNE_ADVISOR=
+
 trainer_unittest_SRC := \
 		$(USER_DIR)/common/filter.c \
 		$(USER_DIR)/common/maths.c \

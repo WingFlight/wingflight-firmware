@@ -80,6 +80,7 @@
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
+#include "flight/tune_advisor.h"
 
 #include "io/beeper.h"
 #include "io/gps.h"
@@ -987,6 +988,10 @@ static void subTaskPidController(timeUs_t currentTimeUs)
             tvPidReset();
         }
     }
+
+#ifdef USE_TUNE_ADVISOR
+    tuneAdvisorUpdate(pidGetDT());
+#endif
 }
 
 static void subTaskMixerUpdate(timeUs_t currentTimeUs)

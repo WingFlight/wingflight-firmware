@@ -94,6 +94,7 @@
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
+#include "flight/tune_advisor.h"
 
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/beeper.h"
@@ -923,6 +924,19 @@ static bool mspCommonProcessOutCommand(int16_t cmdMSP, sbuf_t *dst, mspPostProce
     return true;
 }
 
+#ifdef USE_TUNE_ADVISOR
+static uint16_t mspSatU16(uint32_t value)
+{
+    return MIN(value, (uint32_t)UINT16_MAX);
+}
+
+// Ratio x1000 as a signed 16-bit value on the wire
+static uint16_t mspRatio(float value)
+{
+    return (uint16_t)(int16_t)constrain(lrintf(value * 1000), INT16_MIN, INT16_MAX);
+}
+#endif
+
 static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 {
     bool unsupportedCommand = false;
@@ -1321,6 +1335,53 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, runtimeGains.fwSpaEnabled);
         break;
     }
+
+#ifdef USE_TUNE_ADVISOR
+    case MSP2_WING_TUNE_ADVISOR: {
+        // Ratios are x1000 (signed), counts saturate at 65535 (about 11 min of 100 Hz samples).
+        sbufWriteU8(dst, 1); // payload version
+        sbufWriteU8(dst, tuneAdvisorIsCollecting() ? 1 : 0);
+        sbufWriteU16(dst, mspSatU16(tuneAdvisorGetValidSamples() / TA_SAMPLE_HZ));
+
+        for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
+            tuneAdvisorAxis_t ta;
+            tuneAdvisorGetAxis(axis, &ta);
+
+            // The tune these numbers belong to, so a client can suggest new values
+            sbufWriteU16(dst, currentPidProfile->pid[axis].P);
+            sbufWriteU16(dst, currentPidProfile->pid[axis].F);
+            sbufWriteU16(dst, currentPidProfile->pid[axis].B);
+            sbufWriteU8(dst, currentPidProfile->iterm_relax[axis]);
+            sbufWriteU8(dst, currentControlRateProfile->rcRates[axis]);
+
+            sbufWriteU16(dst, mspSatU16(ta.ffCount));
+            sbufWriteU16(dst, mspRatio(ta.ffGain));
+            sbufWriteU16(dst, mspRatio(ta.ffCorr));
+            sbufWriteU16(dst, ta.ffLagMs);
+            for (int i = 0; i < TA_SP_BAND_COUNT; i++) {
+                sbufWriteU16(dst, mspRatio(ta.spBand[i].gain));
+                sbufWriteU16(dst, mspSatU16(ta.spBand[i].count));
+            }
+            for (int i = 0; i < TA_THR_BAND_COUNT; i++) {
+                sbufWriteU16(dst, mspRatio(ta.thrBand[i].gain));
+                sbufWriteU16(dst, mspSatU16(ta.thrBand[i].count));
+            }
+
+            sbufWriteU16(dst, mspSatU16(ta.fullCount));
+            sbufWriteU16(dst, mspSatU16(ta.fullSatCount));
+            sbufWriteU16(dst, mspRatio(ta.fullRatio));
+            sbufWriteU16(dst, mspSatU16(lrintf(ta.fullMaxRate)));
+
+            sbufWriteU16(dst, ta.releases);
+            sbufWriteU16(dst, ta.bigRebounds);
+            sbufWriteU16(dst, mspRatio(ta.meanRebound));
+            sbufWriteU16(dst, mspRatio(ta.meanOvershoot));
+            sbufWriteU16(dst, mspRatio(ta.meanCounter));
+            sbufWriteU16(dst, mspRatio(ta.meanIterm));
+        }
+        break;
+    }
+#endif
 
 #if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
     case MSP2_WING_FBUS_SENSORS: {
@@ -4225,6 +4286,12 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         governorConfigMutable()->governor_rpm_min = sbufReadU16(src);
         governorConfigMutable()->governor_rpm_max = sbufReadU16(src);
         break;
+
+#ifdef USE_TUNE_ADVISOR
+    case MSP2_WING_TUNE_ADVISOR_CLEAR:
+        tuneAdvisorReset();
+        break;
+#endif
 
 #if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
     case MSP2_WING_CLEAR_FBUS_SENSORS:
