@@ -20,7 +20,7 @@ ANGLE mode (and the GPS and failsafe modes that share `angleModeApply` in
   with each airframe's tune. It also lowers the steady-state tracking rate by
   `1 / (1 + damping)`.
 
-MSP: `MSP_PID_ADVANCED` / `MSP_SET_PID_ADVANCED` append one byte (damping,
+MSP: `MSP_PID_PROFILE` / `MSP_SET_PID_PROFILE` append one byte (damping,
 percent). Older clients omit it and the stored value is left untouched. The
 setting has its own parameter group (`PG_LEVEL_CONFIG`), so existing PID
 profiles are not reset. The blackbox header gains `level_damping`.
