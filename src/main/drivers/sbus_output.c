@@ -187,7 +187,7 @@ float sbusOutGetValueMixer(uint8_t channel, float *lastPos, float dt)
     float scale = (pos > 0) ? servo->rpos : servo->rneg;
 
     // Apply travel limits with saturation
-    pos = sbusLimitTravel(channel, scale * pos, servo->min, servo->max);
+    pos = sbusLimitTravel(channel, scale * pos, servoTravelMin(servoIndex), servoTravelMax(servoIndex));
     
     // Add midpoint to get final microsecond value
     pos = servo->mid + pos;

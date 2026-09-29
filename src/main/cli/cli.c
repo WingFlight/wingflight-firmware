@@ -2384,16 +2384,15 @@ static void cliServo(const char *cmdName, char *cmdline)
         servo->speed = vals[SPEED];
         servo->flags = vals[FLAGS];
 
-        // Apply the same fix as on save now, so the echo below shows what is
-        // actually kept, and say so if center + travel didn't fit.
-        validateAndFixServoConfig();
-        if (servo->max != vals[MAX]) {
-            cliPrintLinef("###WARNING: servo %d max %d limited to %d (center %u, output max %d us)###",
-                index + 1, vals[MAX], servo->max, servo->mid, servo->mid + servo->max);
+        // min/max are kept as given, but at this center the output can't
+        // use all of them: say how much it can.
+        if (servoTravelMax(index) < servo->max) {
+            cliPrintLinef("###WARNING: servo %d max %d limited to %d by center %d (output max %d us)###",
+                index + 1, servo->max, servoTravelMax(index), servo->mid, servo->mid + servoTravelMax(index));
         }
-        if (servo->min != vals[MIN]) {
-            cliPrintLinef("###WARNING: servo %d min %d limited to %d (center %u, output min %d us)###",
-                index + 1, vals[MIN], servo->min, servo->mid, servo->mid + servo->min);
+        if (servoTravelMin(index) > servo->min) {
+            cliPrintLinef("###WARNING: servo %d min %d limited to %d by center %d (output min %d us)###",
+                index + 1, servo->min, servoTravelMin(index), servo->mid, servo->mid + servoTravelMin(index));
         }
 
         cliPrintLinef(format,
