@@ -139,6 +139,22 @@ void pgResetFn_fwSpaConfigs(fwSpaConfig_t *configs)
     }
 }
 
+PG_REGISTER_ARRAY_WITH_RESET_FN(levelConfig_t, PID_PROFILE_COUNT, levelConfigs, PG_LEVEL_CONFIG, 0);
+
+void resetLevelConfig(levelConfig_t *config)
+{
+    RESET_CONFIG(levelConfig_t, config,
+        .damping = 25,
+    );
+}
+
+void pgResetFn_levelConfigs(levelConfig_t *configs)
+{
+    for (int i = 0; i < PID_PROFILE_COUNT; i++) {
+        resetLevelConfig(&configs[i]);
+    }
+}
+
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis)
 {
     if (!override) {

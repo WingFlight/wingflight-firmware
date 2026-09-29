@@ -1091,6 +1091,7 @@ const clivalue_t valueTable[] = {
 
     { "angle_level_strength",       VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, angle.level_strength) },
     { "angle_level_limit",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 90 }, PG_PID_PROFILE, offsetof(pidProfile_t, angle.level_limit) },
+    { "angle_level_damping",        VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, LEVEL_DAMPING_MAX }, PG_LEVEL_CONFIG, offsetof(levelConfig_t, damping) },
 
 #ifdef USE_ACRO_TRAINER
     // Zero axis overrides inherit angle_level_limit / acro_trainer_angle_limit.

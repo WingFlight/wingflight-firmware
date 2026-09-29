@@ -43,6 +43,7 @@ bool isAirborne(void) { return true; }
 float getMotor1Speedf(void) { return 0; }
 float rescueApply(uint8_t, float setpoint) { return setpoint; }
 float angleModeApply(int, float pidSetpoint) { return pidSetpoint; }
+void angleModeReset(void) {}
 float getSpoolUpRatio(void) { return 1.0f; }
 float mixerGetInput(uint8_t) { return 0.0; }
 bool mixerSaturated(uint8_t) { return false; }

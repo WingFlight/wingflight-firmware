@@ -30,5 +30,6 @@
 void levelingInit(const pidProfile_t *pidProfile);
 
 float angleModeApply(int axis, float pidSetpoint);
+void angleModeReset(void);
 
 ADJFUN_DECLARE(ANGLE_LEVEL_GAIN)

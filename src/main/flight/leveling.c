@@ -45,6 +45,7 @@
 #include "flight/imu.h"
 #include "flight/gps_rescue.h"
 #include "flight/gps_nav.h"
+#include "flight/pid.h"
 
 #include "sensors/acceleration.h"
 #include "sensors/gyro.h"
@@ -53,7 +54,10 @@
 
 typedef struct {
     float Gain;
+    float Damping;
     float AngleLimit[2];
+    float Target[2];
+    bool Engaged[2];
 } level_t;
 
 static FAST_DATA_ZERO_INIT level_t level;
@@ -62,6 +66,7 @@ static FAST_DATA_ZERO_INIT level_t level;
 INIT_CODE void levelingInit(const pidProfile_t *pidProfile)
 {
     level.Gain = pidProfile->angle.level_strength / 10.0f;
+    level.Damping = levelConfigs(getCurrentPidProfileIndex())->damping / 100.0f;
     const attitudeLimits_t *limits = attitudeLimits(getCurrentPidProfileIndex());
     level.AngleLimit[FD_ROLL] = attitudeLimitDegrees(limits->angle_roll, pidProfile->angle.level_limit, FD_ROLL);
     level.AngleLimit[FD_PITCH] = attitudeLimitDegrees(limits->angle_pitch, pidProfile->angle.level_limit, FD_PITCH);
@@ -91,9 +96,8 @@ static inline float getLevelModeDeflection(uint8_t axis)
     return deflection;
 }
 
-static float calcLevelErrorAngle(int axis)
+static float calcLevelTargetAngle(int axis)
 {
-    const rollAndPitchTrims_t *angleTrim = &accelerometerConfig()->accelerometerTrims;
     const float angleLimit = level.AngleLimit[axis];
     float angle = angleLimit * getLevelModeDeflection(axis);
 
@@ -103,25 +107,45 @@ static float calcLevelErrorAngle(int axis)
 #ifdef USE_GPS_NAV
     angle += navAngle[axis] / 100.0f; // ANGLE IS IN CENTIDEGREES
 #endif
-    angle = constrainf(angle, -angleLimit, angleLimit);
 
-    float currentAngle = ((attitude.raw[axis] - angleTrim->raw[axis]) / 10.0f);
+    return constrainf(angle, -angleLimit, angleLimit);
+}
 
-    float error = angle - currentAngle;
-
-    return error;
+void angleModeReset(void)
+{
+    level.Engaged[FD_ROLL] = false;
+    level.Engaged[FD_PITCH] = false;
 }
 
 float angleModeApply(int axis, float pidSetpoint)
 {
     if (axis == FD_ROLL || axis == FD_PITCH)
     {
-        float errorAngle = calcLevelErrorAngle(axis);
+        const rollAndPitchTrims_t *angleTrim = &accelerometerConfig()->accelerometerTrims;
+        const float currentAngle = (attitude.raw[axis] - angleTrim->raw[axis]) / 10.0f;
+
+        // The rate profile's full-stick rate caps both how fast the target moves and the rate
+        // command, so ANGLE never asks for more than the pilot's acro rates.
+        const float maxRate = fabsf(applyRatesCurve(axis, 1.0f));
+
+        // Start from the current attitude and slew toward the stick target, so engaging
+        // far from level ramps the command in over about 1/Gain seconds instead of
+        // stepping it.
+        if (!level.Engaged[axis]) {
+            level.Target[axis] = currentAngle;
+            level.Engaged[axis] = true;
+        }
+        const float step = maxRate * pidGetDT();
+        level.Target[axis] += constrainf(calcLevelTargetAngle(axis) - level.Target[axis], -step, step);
+
+        float errorAngle = level.Target[axis] - currentAngle;
 
         if (!isAirborne())
             errorAngle *= 0.25f;
 
-        pidSetpoint = errorAngle * level.Gain;
+        // Rate damping goes through the rate PID's F term, so it scales with the airframe's tune.
+        pidSetpoint = errorAngle * level.Gain - gyro.gyroADCf[axis] * level.Damping;
+        pidSetpoint = constrainf(pidSetpoint, -maxRate, maxRate);
     }
 #ifdef USE_GPS_NAV
     else if (axis == FD_YAW && FLIGHT_MODE(LOITER_MODE | RTH_MODE)) {

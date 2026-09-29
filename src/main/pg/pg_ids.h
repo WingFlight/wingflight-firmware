@@ -178,6 +178,7 @@
 #define PG_DRIVER_CRSF_SENSORS_CONFIG 1018
 #define PG_ATTITUDE_LIMITS           1019
 #define PG_FW_SPA_CONFIG             1020
+#define PG_LEVEL_CONFIG              1021
 
 // OSD configuration -- removed (OSD)
 //#define PG_OSD_FONT_CONFIG 2047

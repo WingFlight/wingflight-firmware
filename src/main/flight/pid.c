@@ -626,6 +626,7 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
         memcpy(pidProfilesMutable(dstPidProfileIndex), pidProfilesMutable(srcPidProfileIndex), sizeof(pidProfile_t));
         memcpy(attitudeLimitsMutable(dstPidProfileIndex), attitudeLimits(srcPidProfileIndex), sizeof(attitudeLimits_t));
         memcpy(fwSpaConfigsMutable(dstPidProfileIndex), fwSpaConfigs(srcPidProfileIndex), sizeof(fwSpaConfig_t));
+        memcpy(levelConfigsMutable(dstPidProfileIndex), levelConfigs(srcPidProfileIndex), sizeof(levelConfig_t));
     }
 }
 
@@ -726,14 +727,19 @@ static float pidApplySetpoint(uint8_t axis)
         // even while holding an off-level attitude -- a deliberate safety choice.
         setpoint = angleModeApply(axis, setpoint);
     }
-    else if (FLIGHT_MODE(ATTHOLD_MODE)) {
-        setpoint = attHoldApply(axis, setpoint);
-    }
+    else {
+        // Next engagement starts the level target from the attitude at that moment
+        angleModeReset();
+
+        if (FLIGHT_MODE(ATTHOLD_MODE)) {
+            setpoint = attHoldApply(axis, setpoint);
+        }
 #ifdef USE_ACRO_TRAINER
-    else if (FLIGHT_MODE(TRAINER_MODE)) {
-        setpoint = acroTrainerApply(axis, setpoint);
-    }
+        else if (FLIGHT_MODE(TRAINER_MODE)) {
+            setpoint = acroTrainerApply(axis, setpoint);
+        }
 #endif
+    }
 #endif
 
     // Save setpoint

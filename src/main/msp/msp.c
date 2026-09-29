@@ -2208,6 +2208,8 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, fwSpaConfigs(getCurrentPidProfileIndex())->gain);
         sbufWriteU8(dst, fwSpaConfigs(getCurrentPidProfileIndex())->curve);
         sbufWriteU16(dst, fwSpaConfigs(getCurrentPidProfileIndex())->speed_max);
+        /* API 22.13: ANGLE mode rate damping (separate per-profile storage) */
+        sbufWriteU8(dst, levelConfigs(getCurrentPidProfileIndex())->damping);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -3174,6 +3176,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         resetPidProfile(currentPidProfile);
         memset(attitudeLimitsMutable(getCurrentPidProfileIndex()), 0, sizeof(attitudeLimits_t));
         resetFwSpaConfig(fwSpaConfigsMutable(getCurrentPidProfileIndex()));
+        resetLevelConfig(levelConfigsMutable(getCurrentPidProfileIndex()));
         break;
 
     case MSP_SET_SENSOR_ALIGNMENT:
@@ -3350,6 +3353,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             spa->gain = constrain(sbufReadU8(src), 25, 200);
             spa->curve = MIN(sbufReadU8(src), GAIN_CURVE_COUNT);
             spa->speed_max = constrain(sbufReadU16(src), FW_SPA_SPEED_MAX_MIN, FW_SPA_SPEED_MAX_MAX);
+        }
+        /* API 22.13 extension; older clients omit it and leave the level damping untouched. */
+        if (sbufBytesRemaining(src) >= 1) {
+            levelConfigsMutable(getCurrentPidProfileIndex())->damping = MIN(sbufReadU8(src), LEVEL_DAMPING_MAX);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

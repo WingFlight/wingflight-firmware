@@ -178,5 +178,18 @@ PG_DECLARE_ARRAY(fwSpaConfig_t, PID_PROFILE_COUNT, fwSpaConfigs);
 
 void resetFwSpaConfig(fwSpaConfig_t *config);
 
+// ANGLE mode settings added after the pidProfile_t layout was fixed, one per PID
+// profile. Separate storage, like fwSpaConfig_t, so adding it did not reset
+// existing PID profiles.
+#define LEVEL_DAMPING_MAX         100
+
+typedef struct {
+    uint8_t damping;     // Percent of measured roll/pitch rate subtracted from the level rate command
+} levelConfig_t;
+
+PG_DECLARE_ARRAY(levelConfig_t, PID_PROFILE_COUNT, levelConfigs);
+
+void resetLevelConfig(levelConfig_t *config);
+
 // Positive axis overrides use the SAFE-style range; zero preserves the legacy shared value.
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis);

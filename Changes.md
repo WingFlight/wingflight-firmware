@@ -3,6 +3,28 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## ANGLE Engagement, Rate Cap and Damping (MSP API 22.13)
+
+ANGLE mode (and the GPS and failsafe modes that share `angleModeApply` in
+`flight/leveling.c`) no longer steps the rate command on engagement:
+
+- The level target starts at the current attitude and moves toward the stick
+  target no faster than the rate profile's full-stick rate. Engaging 49° off
+  level used to ask for 196 °/s at once; the command now ramps in over about
+  `1 / (angle_level_strength / 10)` seconds.
+- The rate command is capped at the rate profile's full-stick rate for that
+  axis (known issue L-6).
+- New per-profile setting `angle_level_damping` (0-100 %, default 25)
+  subtracts that fraction of the measured roll/pitch rate from the command.
+  The damping reaches the surfaces through the rate PID's F term, so it scales
+  with each airframe's tune. It also lowers the steady-state tracking rate by
+  `1 / (1 + damping)`.
+
+MSP: `MSP_PID_ADVANCED` / `MSP_SET_PID_ADVANCED` append one byte (damping,
+percent). Older clients omit it and the stored value is left untouched. The
+setting has its own parameter group (`PG_LEVEL_CONFIG`), so existing PID
+profiles are not reset. The blackbox header gains `level_damping`.
+
 ## PARALYZE, STICK COMMANDS DISABLE, ALTHOLD and CALIB Removed
 
 Four modes the Configurator already hid, or that never did anything, are
