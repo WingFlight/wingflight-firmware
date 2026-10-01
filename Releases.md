@@ -1,3 +1,16 @@
+# 0.0.30
+
+Change the MSP API to 22.13. Updating resets every PID profile and thrust-vector profile to defaults (the default F and B changed), so note your tune before flashing and re-enter it afterwards. Use the 0.0.30 Configurator and Lua suites with this firmware.
+Add Snap Relax: when roll, pitch and yaw are slammed in together (a pop top, pinwheel or snap), roll and pitch feedback stops fighting the rotation, then fades back in as the sticks come out. Set per profile with snap_relax_strength (default 100, 0 = off), snap_relax_threshold, snap_relax_window and snap_relax_hold. Blackbox logs a snap_relax header and a SNAP_RELAX debug mode.
+Change the default F to 75 and B to 35 on every axis, in the PID and thrust-vector profiles, to cut bounce-back at the end of rolls and loops.
+Rename MANUAL to GYRO OFF and PASSTHROUGH to SETUP. Set surface throws in SETUP, where full stick gives full configured travel. Mode IDs and switch assignments are unchanged.
+Give GYRO OFF at least 30% surface travel at full stick whatever the rates, and stop the I-term building up while GYRO OFF or SETUP drives the surfaces, which bumped the aircraft on switching back.
+Ramp ANGLE in from the current attitude instead of stepping the rate command when it engages far from level, and cap its rate at the rate profile's full-stick rate. Add angle_level_damping (default 25%) so leveling settles with less overshoot.
+Scale F and B with throttle (TPA) and GPS speed (SPA) attenuation as well as P and D, and floor the combined attenuation at 25%. GYRO OFF is not attenuated.
+Remove the AUTO HOVER, HORIZON, PARALYZE, STICK COMMANDS DISABLE, ALTHOLD and CALIB modes and their settings. Their IDs stay reserved, so no other mode moves.
+Keep servo min/max as set and limit the travel against the center only at the output, so moving the center back gives the travel back. The CLI servo command warns when the center limits it.
+Fix MSP over telemetry losing every reply after a request arrived while a long reply was still being sent.
+
 # 0.0.29
 
 Change the MSP API to 22.10. Updating resets every PID profile and thrust-vector profile to defaults (the stored I-term decay and relax values changed meaning), so note your tune before flashing and re-enter it afterwards. Use the 0.0.29 Configurator and Lua suites with this firmware.
