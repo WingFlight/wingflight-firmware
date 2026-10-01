@@ -3,21 +3,26 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
-## MANUAL Renamed to GYRO OFF, PASSTHROUGH to SETUP
+## MANUAL Full-Stick Throw Floor and I-Term Hold
 
-Two modes have new names, in the mode box name (`MSP_BOXNAMES`,
-`msp/msp_box.c`) and in the CRSF flight-mode text (`telemetry/crsf.c`):
+MANUAL's throw is `Kf · rate`, so its authority at full stick is F times the
+maximum rate. The F-gain floor (`PID_F_GAIN_MIN`) only covered half of that:
+a low rate profile, or an in-flight `rc_rate` adjustment down to 1 (5 °/s),
+still left MANUAL with almost no travel. `getManualDeflection()` in
+`flight/setpoint.c` now takes the stick shape from the rates/expo curve,
+normalised to full stick, and floors the full-stick throw at 30 %
+(`MANUAL_MIN_THROW`). Above the floor the output is `Kf · rate`, unchanged.
+With the default rates and F the floor is not reached (47 % roll and pitch,
+66 % yaw).
 
-- MANUAL is now GYRO OFF. It flies the pilot's rates and expo with
-  stabilisation off, so its full-stick throw depends on F and the rates.
-- PASSTHROUGH is now SETUP. Full stick is full configured travel, the same
-  limit every mode is clamped to, so it is the mode to use when setting
-  surface throws on the bench. It still works as the raw bail-out in flight.
+While MANUAL or PASSTHROUGH drives the surfaces, the PID loop no longer
+integrates I (`mixerStabilizationBypassed()` in `flight/mixer.c`, used by
+`pidApplyMode1` in `flight/pid.c`). The gyro is not tracking the setpoint in
+those modes, so I wound up and was released as a bump on switching back.
+With a leveling mode also on, I decay is suspended and nothing bled it off.
+I decay still applies while bypassed.
 
-"MANUAL" suggested radio straight to the servos, so pilots measured throws
-in the wrong mode. The permanent box IDs (12 and 59) and the internal names
-(`BOXPASSTHROUGH`, `PASSTHROUGH_MODE`, `BOXMANUAL`, `MANUAL_MODE`) are
-unchanged, so saved mode ranges keep working.
+No setting or MSP changes.
 
 ## Default F 75 and B 35
 

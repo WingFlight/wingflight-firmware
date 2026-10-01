@@ -49,6 +49,8 @@ void angleModeReset(void) {}
 float getSpoolUpRatio(void) { return 1.0f; }
 float mixerGetInput(uint8_t) { return 0.0; }
 bool mixerSaturated(uint8_t) { return false; }
+bool stabilizationBypassed = false;
+bool mixerStabilizationBypassed(void) { return stabilizationBypassed; }
 void attHoldInit(const pidProfile_t *) {}
 float attHoldApply(int, float pidSetpoint) { return pidSetpoint; }
 float attHoldIDecayScale(int) { return 1.0f; }
@@ -172,6 +174,49 @@ TEST_F(PIDFBTest, B)
 
     PIDIO output = getResponse(input);
     // This test is a NOP so far.
+}
+
+class PIDBypassTest : public PIDTestBase {
+  public:
+    void TearDown() override
+    {
+        stabilizationBypassed = false;
+        PIDTestBase::TearDown();
+    }
+    // Roll I-term accumulator after holding a stick step with only I active
+    float rollAxisErrorAfterStep(bool bypassed)
+    {
+        stabilizationBypassed = bypassed;
+        mockPidProfile->pid_mode = 1;
+        for (int axis = 0; axis < 3; axis++) {
+            mockPidProfile->pid[axis].P = 0;
+            mockPidProfile->pid[axis].I = 0;
+            mockPidProfile->pid[axis].D = 0;
+            mockPidProfile->pid[axis].F = 0;
+            mockPidProfile->pid[axis].B = 0;
+        }
+        mockPidProfile->pid[0].I = 100;
+        pidInit(mockPidProfile);
+
+        PIDIO input;
+        for (int i = 0; i < 200; i++) {
+            for (int axis = 0; axis < 4; axis++) {
+                input[axis].push_back(0.1f);
+            }
+        }
+        getResponse(input);
+        return pidGetAxisData()[0].axisError;
+    }
+};
+
+TEST_F(PIDBypassTest, ItermWindsUpInStabilizedFlight)
+{
+    EXPECT_GT(rollAxisErrorAfterStep(false), 0);
+}
+
+TEST_F(PIDBypassTest, ItermHeldWhileManualOrPassthrough)
+{
+    EXPECT_FLOAT_EQ(rollAxisErrorAfterStep(true), 0);
 }
 
 class PIDAttenuationTest : public PIDTestBase {

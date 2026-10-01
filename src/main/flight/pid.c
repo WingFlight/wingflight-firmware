@@ -92,8 +92,8 @@ float pidGetOutput(int axis)
 // otherwise file-static) -- lets a caller ask "what would stabilized flight command for this
 // axis at this rate, with no gyro correction at all" without duplicating Kf's derivation or
 // scale. See setpoint.c's getManualDeflection(), which uses this as MANUAL mode's whole output.
-// Deliberately NOT attenuated by throttle/GPS speed: MANUAL is the bail-out mode, and
-// PID_F_GAIN_MIN's travel guarantee must hold whatever the TPA/SPA curves do.
+// Deliberately NOT attenuated by throttle/GPS speed: MANUAL is the bail-out mode, and its
+// travel guarantees (PID_F_GAIN_MIN, MANUAL_MIN_THROW) must hold whatever the TPA/SPA curves do.
 float pidGetFeedforward(int axis, float rate)
 {
     return pid.coef[axis].Kf * rate;
@@ -970,8 +970,14 @@ static void pidApplyMode1(uint8_t axis)
     // Saturation
     const bool saturation = (pidAxisSaturated(axis) && pid.data[axis].axisError * itermErrorRate > 0);
 
+    // While PASSTHROUGH or MANUAL drives the surfaces the gyro is not tracking this setpoint, so
+    // integrating the error only winds I up, and it was released as a bump on switching back
+    // (with a leveling mode also on, decay is suspended and nothing bled it off). Hold the
+    // accumulation; decay below still applies as normal.
+    const bool bypassed = mixerStabilizationBypassed();
+
     // I-term change
-    const float itermDelta = saturation ? 0 : itermErrorRate * pid.dT;
+    const float itermDelta = (saturation || bypassed) ? 0 : itermErrorRate * pid.dT;
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
