@@ -179,6 +179,7 @@
 #define PG_ATTITUDE_LIMITS           1019
 #define PG_FW_SPA_CONFIG             1020
 #define PG_LEVEL_CONFIG              1021
+#define PG_SNAP_RELAX_CONFIG         1022
 
 // OSD configuration -- removed (OSD)
 //#define PG_OSD_FONT_CONFIG 2047

@@ -159,6 +159,25 @@ void pgResetFn_levelConfigs(levelConfig_t *configs)
     }
 }
 
+PG_REGISTER_ARRAY_WITH_RESET_FN(snapRelaxConfig_t, PID_PROFILE_COUNT, snapRelaxConfigs, PG_SNAP_RELAX_CONFIG, 0);
+
+void resetSnapRelaxConfig(snapRelaxConfig_t *config)
+{
+    RESET_CONFIG(snapRelaxConfig_t, config,
+        .strength = 100,
+        .threshold = 60,
+        .window = 400,
+        .hold = 150,
+    );
+}
+
+void pgResetFn_snapRelaxConfigs(snapRelaxConfig_t *configs)
+{
+    for (int i = 0; i < PID_PROFILE_COUNT; i++) {
+        resetSnapRelaxConfig(&configs[i]);
+    }
+}
+
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis)
 {
     if (!override) {

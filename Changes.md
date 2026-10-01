@@ -3,6 +3,43 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Snap Relax for Pop Tops, Pinwheels and Snaps
+
+Pop tops, pinwheels and snaps start with roll, pitch and yaw slammed in
+together. The airframe stalls and autorotates past the commanded rate (2 to
+2.5 times the roll setpoint in the logs), and the rate loop fought it: up to
+35 % opposite aileron with the stick held full over, then the I-term it wound
+up came back as a bump on the exit. Rotating the roll/pitch I-term with yaw
+rate also carried roll I into pitch, because the aircraft yaws 100-200° on
+the way through.
+
+`updateSnapRelax()` in `flight/pid.c` detects a snap when the roll, pitch and
+yaw sticks all pass `snap_relax_threshold` within `snap_relax_window` of each
+other, so a slow build-up of the same inputs does not count. While all three
+stay past the threshold, and fading out over `snap_relax_hold` after, roll and
+pitch P and D are scaled down by `snap_relax_strength` only where they push
+against the direction the stick was snapped in. I stops building up against
+that direction, and the I-term rotation is paused. Feedback that helps the
+rotation, F, B and yaw are unchanged. If the stick is reversed during the
+fade, full feedback comes back.
+
+New per-profile settings, in their own parameter group
+(`PG_SNAP_RELAX_CONFIG`) so existing PID profiles are not reset:
+
+| Setting | Range | Default |
+| --- | --- | --- |
+| `snap_relax_strength` | 0-100 % (0 = off) | 100 |
+| `snap_relax_threshold` | 20-100 % stick | 60 |
+| `snap_relax_window` | 0-1000 ms | 400 |
+| `snap_relax_hold` | 0-1000 ms | 150 |
+
+`MSP_PID_PROFILE` / `MSP_SET_PID_PROFILE` append the four values after the
+level damping byte (u8 strength, u8 threshold, u16 window, u16 hold), taking
+the reply from 65 to 71 bytes. Older clients omit them on set and leave the
+settings untouched. New debug mode `SNAP_RELAX`: relax ×1000, active flag,
+stick-crossing spread (ms), and roll, pitch, yaw deflection ×1000. New
+blackbox header line `snap_relax`.
+
 ## MANUAL Full-Stick Throw Floor and I-Term Hold
 
 MANUAL's throw is `Kf · rate`, so its authority at full stick is F times the

@@ -1700,6 +1700,10 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE("levelPID", "%d,%d",                    currentPidProfile->angle.level_strength,
                                                                             currentPidProfile->angle.level_limit);
         BLACKBOX_PRINT_HEADER_LINE("level_damping", "%d",                  levelConfigs(getCurrentPidProfileIndex())->damping);
+        BLACKBOX_PRINT_HEADER_LINE("snap_relax", "%d,%d,%d,%d",            snapRelaxConfigs(getCurrentPidProfileIndex())->strength,
+                                                                            snapRelaxConfigs(getCurrentPidProfileIndex())->threshold,
+                                                                            snapRelaxConfigs(getCurrentPidProfileIndex())->window,
+                                                                            snapRelaxConfigs(getCurrentPidProfileIndex())->hold);
         BLACKBOX_PRINT_HEADER_LINE("rollBW", "%d,%d,%d",                    currentPidProfile->gyro_cutoff[PID_ROLL],
                                                                             currentPidProfile->dterm_cutoff[PID_ROLL],
                                                                             currentPidProfile->bterm_cutoff[PID_ROLL]);

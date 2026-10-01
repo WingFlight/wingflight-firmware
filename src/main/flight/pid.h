@@ -122,6 +122,16 @@ typedef struct pid_s {
     uint8_t crossAxisRelaxLevel;
     float crossAxisRelaxYawActivity;
 
+    float snapRelaxStrength;                    // 0..1, see snapRelaxConfig_t
+    float snapRelaxThreshold;                   // 0..1 stick deflection
+    float snapRelaxWindow;                      // s
+    float snapRelaxHold;                        // s
+    float snapAboveTime[XYZ_AXIS_COUNT];        // s since each stick crossed the threshold, 0 while below
+    float snapDirection[XYZ_AXIS_COUNT];        // Stick sign when the snap was detected
+    float snapHoldTimer;                        // s of fade-out left after the snap ended
+    bool snapActive;
+    float snapRelax;                            // Current relax amount, 0..snapRelaxStrength
+
     float itermDecayRate[PID_AXIS_COUNT];
     float itermDecayLimit;
 

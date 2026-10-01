@@ -191,5 +191,21 @@ PG_DECLARE_ARRAY(levelConfig_t, PID_PROFILE_COUNT, levelConfigs);
 
 void resetLevelConfig(levelConfig_t *config);
 
+// Snap relax (pop tops, pinwheels, snaps), one per PID profile. Separate storage, like
+// levelConfig_t, so adding it did not reset existing PID profiles.
+#define SNAP_RELAX_THRESHOLD_MIN  20
+#define SNAP_RELAX_TIME_MAX       1000
+
+typedef struct {
+    uint8_t  strength;   // Percent of opposing roll/pitch feedback removed while a snap is on. 0 = off
+    uint8_t  threshold;  // Stick deflection, percent, that roll, pitch and yaw must all reach
+    uint16_t window;     // ms: all three sticks must cross the threshold within this time of each other
+    uint16_t hold;       // ms: relax fades out over this time after any stick drops below the threshold
+} snapRelaxConfig_t;
+
+PG_DECLARE_ARRAY(snapRelaxConfig_t, PID_PROFILE_COUNT, snapRelaxConfigs);
+
+void resetSnapRelaxConfig(snapRelaxConfig_t *config);
+
 // Positive axis overrides use the SAFE-style range; zero preserves the legacy shared value.
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis);
