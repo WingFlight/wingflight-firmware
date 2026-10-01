@@ -33,7 +33,8 @@
 // switchable profiles (see currentTvPidProfile/changeTvProfile() in
 // config/config.c) -- old single-profile saves reset to defaults rather than
 // reinterpreting their stored bytes as profile 0 of the new array.
-PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 5);
+// v5->v6: default F 100->75 and B 0->35, matching the main loop.
+PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 6);
 
 // Nominal starting gains, mirroring the main loop's defaults
 // (resetPidProfile() in pg/pid.c) -- a reasonable bench-tuning starting point
@@ -43,9 +44,9 @@ void resetTvPidProfile(tvPidProfile_t *tvPidProfile)
 {
     RESET_CONFIG(tvPidProfile_t, tvPidProfile,
         .pid = {
-            [PID_ROLL]  = { .P = 50, .I = 16, .D = 0, .F = 100, .B = 0, },
-            [PID_PITCH] = { .P = 50, .I = 16, .D = 0, .F = 100, .B = 0, },
-            [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 100, .B = 0, },
+            [PID_ROLL]  = { .P = 50, .I = 16, .D = 0, .F = 75, .B = 35, },
+            [PID_PITCH] = { .P = 50, .I = 16, .D = 0, .F = 75, .B = 35, },
+            [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 75, .B = 35, },
         },
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
         .gain_curve = { [PID_ROLL] = 0, [PID_PITCH] = 0, [PID_YAW] = 0 },

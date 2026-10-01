@@ -73,16 +73,20 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // the tail of the autohover sub-struct, widening it again) - old saved
 // profiles reset to defaults, matching the v9->v10 precedent. AUTO HOVER was
 // later removed without a version bump: its bytes stay as autohover_reserved.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 15);
+// v15->v0: default F lowered from 100 to 75 and B raised from 0 to 35 to cut
+// bounce back. The version field is 4 bits, so it wraps to 0; equality is
+// what pgLoad() checks, and no v0 save survives the EEPROM_CONF_VERSION bumps
+// since (174 -> 177), so a stale v0 record cannot be misread.
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 0);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
     RESET_CONFIG(pidProfile_t, pidProfile,
         .profileName = "",
         .pid = {
-            [PID_ROLL]  = { .P = 50, .I = 16, .D = 0, .F = 100, .B = 0, },
-            [PID_PITCH] = { .P = 50, .I = 16, .D = 0, .F = 100, .B = 0, },
-            [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 100, .B = 0, },
+            [PID_ROLL]  = { .P = 50, .I = 16, .D = 0, .F = 75, .B = 35, },
+            [PID_PITCH] = { .P = 50, .I = 16, .D = 0, .F = 75, .B = 35, },
+            [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 75, .B = 35, },
         },
         .pid_mode = 1,
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },

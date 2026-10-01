@@ -3,6 +3,25 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Default F 75 and B 35
+
+The default F gain drops from 100 to 75 and the default B gain rises from 0
+to 35 on every axis, in both the main PID profile (`pg/pid.c`) and the
+thrust-vector profile (`pg/tv_pid.c`). The split cuts bounce-back at the end
+of a roll or loop: B kicks the surface while the stick moves, including a
+stopping kick as it returns to centre, so less steady F throw has to unwind.
+
+Both parameter groups are version-bumped, so saved PID and thrust-vector
+profiles reset to the new defaults on flashing. The PID profile version was
+already 15, the 4-bit maximum, so it wraps to 0 (see the comment in
+`pg/pid.c`).
+
+MANUAL mode's throw is `Kf · rate`, so it drops by a quarter with F. With
+the default rates (250 °/s roll and pitch, 350 °/s yaw), full stick now gives
+about 47 % travel on roll and pitch (was 63 %) and 66 % on yaw (was 88 %).
+
+No setting or MSP layout changes.
+
 ## TPA and GPS Speed Attenuation Also Scale F and B
 
 Throttle attenuation (`fw_tpa_gain`, `fw_tpa_curve`) and GPS speed
