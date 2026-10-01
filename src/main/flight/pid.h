@@ -35,8 +35,11 @@
 
 #define PID_GAIN_MAX                1000
 
-// Floor on roll/pitch/yaw F gain. MANUAL mode flies on the F-term alone, so this keeps at least
-// half surface travel at full stick (with 400 deg/s rates) whatever the tune.
+// Floor on roll/pitch/yaw F gain. F sets most of the surface deflection for a commanded rate; P
+// and I are small corrections on top (I is capped by error_limit). With the default P and I, F = 0
+// lets full stick reach only about 100 of a commanded 250 deg/s on roll and pitch, late, once I
+// has wound up. At 50, I can still make up the rest of the deflection. GYRO OFF (MANUAL_MODE) has
+// its own full-stick floor in setpoint.c and does not rely on this.
 #define PID_F_GAIN_MIN              50
 
 // Floor on the combined throttle x GPS speed attenuation of P, D, F and B, so no TPA/SPA

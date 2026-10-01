@@ -205,9 +205,8 @@ static void validateAndFixRatesSettings(void)
     }
 }
 
-// MANUAL mode's surface deflection is the F-term alone (see setpoint.c's getManualDeflection()),
-// so an F gain at or near 0 left MANUAL with no control authority at all. Lift any profile saved
-// below the floor before it's loaded.
+// Below PID_F_GAIN_MIN, stabilized flight can no longer reach the commanded rate at full stick
+// (see pid.h). Lift any profile saved below the floor before it's loaded.
 static void validateAndFixPidSettings(void)
 {
     for (unsigned profileIndex = 0; profileIndex < PID_PROFILE_COUNT; profileIndex++) {

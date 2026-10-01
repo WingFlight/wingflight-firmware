@@ -92,8 +92,8 @@ float pidGetOutput(int axis)
 // otherwise file-static) -- lets a caller ask "what would stabilized flight command for this
 // axis at this rate, with no gyro correction at all" without duplicating Kf's derivation or
 // scale. See setpoint.c's getManualDeflection(), which uses this as MANUAL mode's whole output.
-// Deliberately NOT attenuated by throttle/GPS speed: MANUAL is the bail-out mode, and its
-// travel guarantees (PID_F_GAIN_MIN, MANUAL_MIN_THROW) must hold whatever the TPA/SPA curves do.
+// Deliberately NOT attenuated by throttle/GPS speed: GYRO OFF is a bail-out mode, and its
+// full-stick floor (MANUAL_MIN_THROW) must hold whatever the TPA/SPA curves do.
 float pidGetFeedforward(int axis, float rate)
 {
     return pid.coef[axis].Kf * rate;
