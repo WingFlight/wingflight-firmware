@@ -127,6 +127,7 @@ typedef enum {
     DEBUG_ATTHOLD,
     DEBUG_TVHOLD,
     DEBUG_GAIN_ATTEN,
+    DEBUG_SNAP_RELAX,
     DEBUG_COUNT
 } debugType_e;
 

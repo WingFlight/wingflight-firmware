@@ -107,6 +107,11 @@ const pidAxisData_t * pidGetAxisData(void)
 void INIT_CODE pidReset(void)
 {
     memset(pid.data, 0, sizeof(pid.data));
+
+    memset(pid.snapAboveTime, 0, sizeof(pid.snapAboveTime));
+    pid.snapActive = false;
+    pid.snapHoldTimer = 0;
+    pid.snapRelax = 0;
 }
 
 void INIT_CODE pidResetAxisError(int axis)
@@ -595,6 +600,13 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     const uint8_t crossAxisRelaxCutoff = constrain(pidProfile->cross_axis_relax_cutoff, 1, 100);
     pt1FilterUpdate(&pid.crossAxisRelaxFilter, crossAxisRelaxCutoff, pid.freq);
 
+    // Snap relax (separate per-profile storage, see snapRelaxConfig_t)
+    const snapRelaxConfig_t *snapRelaxConfig = snapRelaxConfigs(getCurrentPidProfileIndex());
+    pid.snapRelaxStrength = MIN(snapRelaxConfig->strength, 100) * 0.01f;
+    pid.snapRelaxThreshold = constrain(snapRelaxConfig->threshold, SNAP_RELAX_THRESHOLD_MIN, 100) * 0.01f;
+    pid.snapRelaxWindow = MIN(snapRelaxConfig->window, SNAP_RELAX_TIME_MAX) * 0.001f;
+    pid.snapRelaxHold = MIN(snapRelaxConfig->hold, SNAP_RELAX_TIME_MAX) * 0.001f;
+
 
     // Initialise sub-profiles
 #ifdef USE_ACC
@@ -629,6 +641,7 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
         memcpy(attitudeLimitsMutable(dstPidProfileIndex), attitudeLimits(srcPidProfileIndex), sizeof(attitudeLimits_t));
         memcpy(fwSpaConfigsMutable(dstPidProfileIndex), fwSpaConfigs(srcPidProfileIndex), sizeof(fwSpaConfig_t));
         memcpy(levelConfigsMutable(dstPidProfileIndex), levelConfigs(srcPidProfileIndex), sizeof(levelConfig_t));
+        memcpy(snapRelaxConfigsMutable(dstPidProfileIndex), snapRelaxConfigs(srcPidProfileIndex), sizeof(snapRelaxConfig_t));
     }
 }
 
@@ -659,7 +672,9 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
 
 static inline void rotateAxisError(void)
 {
-      const float r = gyro.gyroADCf[Z] * RAD * pid.dT;
+      // Not while a snap is relaxed: the airframe yaws 100-200 deg through a pop top, which
+      // would carry roll I into pitch and back for no aerodynamic reason.
+      const float r = gyro.gyroADCf[Z] * RAD * pid.dT * (1.0f - pid.snapRelax);
 
       const float t = r * r / 2;
       const float C = t * (1 - t / 6);
@@ -714,6 +729,98 @@ static float getCrossAxisRelaxFactor(int axis)
     const float relaxAmount = MIN(1.0f, pid.crossAxisRelaxYawActivity / pid.crossAxisRelaxLevel) * strength;
 
     return 1.0f - relaxAmount;
+}
+
+/*
+ * Snap relax
+ *
+ * Pop tops, pinwheels and snaps are entered with roll, pitch and yaw slammed in
+ * together. The airframe then stalls and autorotates well past the commanded rate
+ * (logs show roll at 2-2.5x setpoint), and rate feedback reverses the surfaces
+ * against a full stick: up to ~35 % opposite aileron, and the I-term it winds up
+ * is left behind as a bump on the exit.
+ *
+ * A snap is detected when all three sticks pass the threshold within the window of
+ * each other, so a slow rolling-harrier style build-up of the same inputs does not
+ * count. While the sticks stay past the threshold, and fading out over the hold
+ * time after, feedback is relaxed on roll and pitch only where it opposes the
+ * direction the stick was snapped in: P/D pushing back and I winding against it.
+ * Feedback that helps the rotation, F and yaw are untouched. A heli port would need
+ * its own gesture; this one is fixed-wing specific.
+ */
+static void updateSnapRelax(void)
+{
+    if (pid.snapRelaxStrength <= 0) {
+        pid.snapActive = false;
+        pid.snapHoldTimer = 0;
+        pid.snapRelax = 0;
+        return;
+    }
+
+    // Cap on the time-above counters, s. Any value well past the window will do.
+    const float timeCap = 10.0f;
+
+    bool allAbove = true;
+    float first = 0, last = timeCap;
+
+    for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
+        if (fabsf(getRcDeflection(axis)) >= pid.snapRelaxThreshold) {
+            pid.snapAboveTime[axis] = MIN(pid.snapAboveTime[axis] + pid.dT, timeCap);
+            first = MAX(first, pid.snapAboveTime[axis]);
+            last = MIN(last, pid.snapAboveTime[axis]);
+        }
+        else {
+            pid.snapAboveTime[axis] = 0;
+            allAbove = false;
+        }
+    }
+
+    if (!allAbove) {
+        pid.snapActive = false;
+    }
+    else if (!pid.snapActive && first - last <= pid.snapRelaxWindow) {
+        pid.snapActive = true;
+        for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
+            pid.snapDirection[axis] = (getRcDeflection(axis) > 0) ? 1.0f : -1.0f;
+        }
+    }
+
+    if (pid.snapActive) {
+        pid.snapHoldTimer = pid.snapRelaxHold;
+        pid.snapRelax = pid.snapRelaxStrength;
+    }
+    else if (pid.snapHoldTimer > 0) {
+        pid.snapHoldTimer = MAX(pid.snapHoldTimer - pid.dT, 0);
+        pid.snapRelax = pid.snapRelaxStrength * pid.snapHoldTimer / pid.snapRelaxHold;
+    }
+    else {
+        pid.snapRelax = 0;
+    }
+
+    DEBUG(SNAP_RELAX, 0, lrintf(pid.snapRelax * 1000));
+    DEBUG(SNAP_RELAX, 1, pid.snapActive);
+    DEBUG(SNAP_RELAX, 2, lrintf((first - last) * 1000));
+    DEBUG(SNAP_RELAX, 3, lrintf(getRcDeflection(FD_ROLL) * 1000));
+    DEBUG(SNAP_RELAX, 4, lrintf(getRcDeflection(FD_PITCH) * 1000));
+    DEBUG(SNAP_RELAX, 5, lrintf(getRcDeflection(FD_YAW) * 1000));
+}
+
+// Scale for a roll/pitch error term: below 1 only while a snap is relaxed and the
+// error pushes against the snap direction. During the fade-out, a stick reversed
+// against the snap gets full feedback back, so the pilot can stop the rotation.
+static float getSnapRelaxFactor(int axis, float error, float setpoint)
+{
+    if (pid.snapRelax <= 0 || axis == PID_YAW) {
+        return 1.0f;
+    }
+
+    const float direction = pid.snapDirection[axis];
+
+    if (error * direction >= 0 || setpoint * direction < 0) {
+        return 1.0f;
+    }
+
+    return 1.0f - pid.snapRelax;
 }
 
 
@@ -940,6 +1047,9 @@ static void pidApplyMode1(uint8_t axis)
     // Cross-axis relax
     const float crossAxisRelax = getCrossAxisRelaxFactor(axis);
 
+    // Snap relax: feedback pushing against a snapped stick
+    const float snapRelax = getSnapRelaxFactor(axis, errorRate, setpoint);
+
     // Optional per-axis curve scaling master gain by |stick deflection|
     const float curveMult = pidAxisGainCurve(axis);
     const float masterGain = pid.masterGain[axis] * curveMult;
@@ -948,7 +1058,7 @@ static void pidApplyMode1(uint8_t axis)
   //// P-term
 
     // Calculate P-component
-    pid.data[axis].P = pid.coef[axis].Kp * masterGain * atten * crossAxisRelax * errorRate;
+    pid.data[axis].P = pid.coef[axis].Kp * masterGain * atten * crossAxisRelax * snapRelax * errorRate;
 
 
   //// D-term (gyro only)
@@ -956,8 +1066,9 @@ static void pidApplyMode1(uint8_t axis)
     // Calculate D-term with bandwidth limit
     const float dTerm = difFilterApply(&pid.dtermFilter[axis], -gyroRate);
 
-    // Calculate D-component
-    pid.data[axis].D = pid.coef[axis].Kd * masterGain * atten * crossAxisRelax * dTerm;
+    // Calculate D-component. Relaxed only while it pushes against the snap too.
+    const float snapRelaxD = getSnapRelaxFactor(axis, dTerm, setpoint);
+    pid.data[axis].D = pid.coef[axis].Kd * masterGain * atten * crossAxisRelax * snapRelaxD * dTerm;
 
 
   //// I-term
@@ -965,7 +1076,7 @@ static void pidApplyMode1(uint8_t axis)
     // Apply error relax. Cross-axis relax slows the accumulation here and is NOT
     // applied again to the I output below: scaling the output as well made I drop
     // immediately when rudder was applied and jump back on release (#112).
-    const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax;
+    const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax * snapRelax;
 
     // Saturation
     const bool saturation = (pidAxisSaturated(axis) && pid.data[axis].axisError * itermErrorRate > 0);
@@ -1072,6 +1183,8 @@ void pidController(const pidProfile_t *pidProfile, timeUs_t currentTimeUs)
     rotateAxisError();
 
     updateCrossAxisRelax();
+
+    updateSnapRelax();
 
     speedAttenUpdate(pid.dT);
 

@@ -54,7 +54,6 @@ bool mixerStabilizationBypassed(void) { return stabilizationBypassed; }
 void attHoldInit(const pidProfile_t *) {}
 float attHoldApply(int, float pidSetpoint) { return pidSetpoint; }
 float attHoldIDecayScale(int) { return 1.0f; }
-float getRcDeflection(int) { return 0; }
 uint8_t getCurrentPidProfileIndex(void) { return 0; }
 void changePidProfile(uint8_t) {}
 } // extern "C"
@@ -73,6 +72,7 @@ pidProfile_t *currentPidProfile = mockPidProfile;
 
 float getSetpoint(int axis) { return g_mock->getDeflection(axis) * 360; }
 float getDeflection(int axis) { return g_mock->getDeflection(axis); }
+float getRcDeflection(int axis) { return g_mock ? g_mock->getDeflection(axis) : 0; }
 }
 
 TEST(Empty, BuildTest) {}
@@ -294,4 +294,86 @@ TEST_F(PIDAttenuationTest, ManualFeedforwardIgnoresAttenuation)
     pidLoadProfile(mockPidProfile);
     EXPECT_GT(full, 0);
     EXPECT_FLOAT_EQ(pidGetFeedforward(0, 100), full);
+}
+
+class PIDSnapRelaxTest : public PIDTestBase {
+  public:
+    void TearDown() override
+    {
+        for (int axis = 0; axis < 3; axis++) {
+            gyro.gyroADCf[axis] = 0;
+        }
+        PIDTestBase::TearDown();
+    }
+    // Roll P and axis error with the roll stick at 0.8 throughout, pitch and yaw following
+    // lagMs later, and the roll gyro steady at gyroScale x the roll setpoint
+    pidAxisData_t rollAfterSnap(uint8_t strength, int lagMs, float gyroScale)
+    {
+        mockPidProfile->pid_mode = 1;
+        for (int axis = 0; axis < 3; axis++) {
+            mockPidProfile->pid[axis].P = 50;
+            mockPidProfile->pid[axis].I = 50;
+            mockPidProfile->pid[axis].D = 0;
+            mockPidProfile->pid[axis].F = 0;
+            mockPidProfile->pid[axis].B = 0;
+        }
+        snapRelaxConfigsMutable(0)->strength = strength;
+        pidInit(mockPidProfile);
+
+        gyro.gyroADCf[0] = 0.8f * 360 * gyroScale;
+
+        PIDIO input;
+        for (int i = 0; i < lagMs + 200; i++) {
+            input[0].push_back(0.8f);
+            input[1].push_back(i >= lagMs ? 0.8f : 0);
+            input[2].push_back(i >= lagMs ? 0.8f : 0);
+            input[3].push_back(0);
+        }
+        getResponse(input);
+        return pidGetAxisData()[0];
+    }
+};
+
+TEST_F(PIDSnapRelaxTest, OverspeedNotFoughtAfterSnap)
+{
+    // Airframe rolling at twice the commanded rate: P and I push back unless relaxed
+    const pidAxisData_t off = rollAfterSnap(0, 0, 2.0f);
+    EXPECT_LT(off.P, 0);
+    EXPECT_LT(off.axisError, 0);
+
+    const pidAxisData_t on = rollAfterSnap(100, 0, 2.0f);
+    EXPECT_FLOAT_EQ(on.P, 0);
+    EXPECT_FLOAT_EQ(on.axisError, 0);
+}
+
+TEST_F(PIDSnapRelaxTest, HelpingFeedbackKept)
+{
+    // Airframe slower than commanded: feedback adds to the stick, so it is left alone
+    const pidAxisData_t off = rollAfterSnap(0, 0, 0.5f);
+    const pidAxisData_t on = rollAfterSnap(100, 0, 0.5f);
+    EXPECT_GT(off.P, 0);
+    EXPECT_FLOAT_EQ(on.P, off.P);
+    EXPECT_FLOAT_EQ(on.axisError, off.axisError);
+}
+
+TEST_F(PIDSnapRelaxTest, PartialStrength)
+{
+    const pidAxisData_t off = rollAfterSnap(0, 0, 2.0f);
+    const pidAxisData_t half = rollAfterSnap(50, 0, 2.0f);
+    EXPECT_NEAR(half.P, off.P * 0.5f, fabsf(off.P) * 1e-3f);
+}
+
+TEST_F(PIDSnapRelaxTest, SlowBuildUpIsNotASnap)
+{
+    // Pitch and yaw arriving 600 ms after roll is outside the default 400 ms window
+    const pidAxisData_t off = rollAfterSnap(0, 600, 2.0f);
+    const pidAxisData_t on = rollAfterSnap(100, 600, 2.0f);
+    EXPECT_LT(on.P, 0);
+    EXPECT_FLOAT_EQ(on.P, off.P);
+}
+
+TEST_F(PIDSnapRelaxTest, StaggeredInputInsideWindowIsASnap)
+{
+    const pidAxisData_t on = rollAfterSnap(100, 250, 2.0f);
+    EXPECT_FLOAT_EQ(on.P, 0);
 }
