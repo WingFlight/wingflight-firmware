@@ -3,6 +3,27 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## MANUAL Full-Stick Throw Floor and I-Term Hold
+
+MANUAL's throw is `Kf · rate`, so its authority at full stick is F times the
+maximum rate. The F-gain floor (`PID_F_GAIN_MIN`) only covered half of that:
+a low rate profile, or an in-flight `rc_rate` adjustment down to 1 (5 °/s),
+still left MANUAL with almost no travel. `getManualDeflection()` in
+`flight/setpoint.c` now takes the stick shape from the rates/expo curve,
+normalised to full stick, and floors the full-stick throw at 30 %
+(`MANUAL_MIN_THROW`). Above the floor the output is `Kf · rate`, unchanged.
+With the default rates and F the floor is not reached (47 % roll and pitch,
+66 % yaw).
+
+While MANUAL or PASSTHROUGH drives the surfaces, the PID loop no longer
+integrates I (`mixerStabilizationBypassed()` in `flight/mixer.c`, used by
+`pidApplyMode1` in `flight/pid.c`). The gyro is not tracking the setpoint in
+those modes, so I wound up and was released as a bump on switching back.
+With a leveling mode also on, I decay is suspended and nothing bled it off.
+I decay still applies while bypassed.
+
+No setting or MSP changes.
+
 ## Default F 75 and B 35
 
 The default F gain drops from 100 to 75 and the default B gain rises from 0

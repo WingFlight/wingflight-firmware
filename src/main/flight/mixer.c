@@ -104,6 +104,13 @@ bool mixerSaturated(uint8_t index)
     return (mixer.saturation[index] > 0);
 }
 
+// True while PASSTHROUGH or MANUAL replaces the PID output on the stabilized roll/pitch/yaw
+// inputs. Failsafe overrides both (see mixerUpdateInputs()).
+bool mixerStabilizationBypassed(void)
+{
+    return !failsafeIsActive() && (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH) || IS_RC_MODE_ACTIVE(BOXMANUAL));
+}
+
 void mixerSaturateInput(uint8_t index)
 {
     mixer.saturation[index] = MIXER_SATURATION_TIME;
@@ -332,8 +339,8 @@ static void mixerUpdateInputs(void)
     // self-leveling failsafe.c's FAILSAFE_MODE is specifically meant to provide (see
     // leveling.c's angleModeApply(), which FAILSAFE_MODE/RTH_MODE/GPS_RESCUE_MODE already
     // trigger). Once failsafe is genuinely active, it takes priority over both regardless of
-    // switch state.
-    if (!failsafeIsActive()) {
+    // switch state. The PID loop stops integrating I under the same condition (pid.c).
+    if (mixerStabilizationBypassed()) {
         // BOXPASSTHROUGH mode: replace stabilized inputs with raw RC channels, bypassing the
         // rates/expo curve as well as PID - direct radio to surfaces. Takes priority over MANUAL
         // if both happen to be active at once.
@@ -354,7 +361,7 @@ static void mixerUpdateInputs(void)
         // PID rate loop targets, but skip the gyro-corrected PID output itself - same stick feel as
         // stabilized flight, no stabilization. getManualDeflection() already matches the stabilized
         // sign convention (yaw included), so no extra reversal is needed here.
-        else if (IS_RC_MODE_ACTIVE(BOXMANUAL)) {
+        else {
             mixer.input[MIXER_IN_STABILIZED_ROLL]  = getManualDeflection(FD_ROLL);
             mixer.input[MIXER_IN_STABILIZED_PITCH] = getManualDeflection(FD_PITCH);
             mixer.input[MIXER_IN_STABILIZED_YAW]   = getManualDeflection(FD_YAW);
