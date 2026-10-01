@@ -119,7 +119,7 @@ typedef enum {
     // switch was used this flight and gets switched off with throttle back at idle (read as
     // "landed", since some pilots delay disarming while taxiing back).
     INFLIGHT_MODE        = BIT(INFLIGHT_MODE_BIT),
-    // MANUAL: pilot flies the same rate/expo curve as stabilised (rate) flight, but the mixer
+    // GYRO OFF (shown as MANUAL before): pilot flies the same rate/expo curve as stabilised (rate) flight, but the mixer
     // takes that shaped setpoint directly instead of the gyro-corrected PID output -- no
     // stabilisation at all, unlike PASSTHROUGH_MODE which also strips the rates/expo curve itself
     // and feeds raw radio deflection straight through.

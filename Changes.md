@@ -3,6 +3,22 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## MANUAL Renamed to GYRO OFF, PASSTHROUGH to SETUP
+
+Two modes have new names, in the mode box name (`MSP_BOXNAMES`,
+`msp/msp_box.c`) and in the CRSF flight-mode text (`telemetry/crsf.c`):
+
+- MANUAL is now GYRO OFF. It flies the pilot's rates and expo with
+  stabilisation off, so its full-stick throw depends on F and the rates.
+- PASSTHROUGH is now SETUP. Full stick is full configured travel, the same
+  limit every mode is clamped to, so it is the mode to use when setting
+  surface throws on the bench. It still works as the raw bail-out in flight.
+
+"MANUAL" suggested radio straight to the servos, so pilots measured throws
+in the wrong mode. The permanent box IDs (12 and 59) and the internal names
+(`BOXPASSTHROUGH`, `PASSTHROUGH_MODE`, `BOXMANUAL`, `MANUAL_MODE`) are
+unchanged, so saved mode ranges keep working.
+
 ## Default F 75 and B 35
 
 The default F gain drops from 100 to 75 and the default B gain rises from 0
