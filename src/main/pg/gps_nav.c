@@ -36,6 +36,6 @@ PG_RESET_TEMPLATE(gpsNavConfig_t, gpsNavConfig,
     .bearingKp = 120,   // 1.2 deg bank per deg bearing error
     .altitudeKp = 100,  // 1.0 deg pitch per meter altitude error
     .altitudeKd = 200,  // 2.0 deg pitch per m/s climb rate
-    .throttle = 60,
+    .throttle = 65,
     .turnCoordination = 100,
 );

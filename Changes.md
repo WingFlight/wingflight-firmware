@@ -7,7 +7,7 @@ the APIs or flight performance.
 
 `nav_bearing_kp` now defaults to 120 (1.2° of bank per degree of bearing
 error) instead of 200, so LOITER, RTH and GPS rescue turn onto track more
-gently. `PG_GPS_NAV` is bumped to version 1, so all `nav_*` settings reset
+gently. `nav_throttle` now defaults to 65 % instead of 60 %. `PG_GPS_NAV` is bumped to version 1, so all `nav_*` settings reset
 to their defaults on upgrade.
 
 ## Snap Relax for Pop Tops, Pinwheels and Snaps
