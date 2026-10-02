@@ -24,7 +24,7 @@
 #include "flight/gps_nav.h"
 
 
-PG_REGISTER_WITH_RESET_TEMPLATE(gpsNavConfig_t, gpsNavConfig, PG_GPS_NAV, 0);
+PG_REGISTER_WITH_RESET_TEMPLATE(gpsNavConfig_t, gpsNavConfig, PG_GPS_NAV, 1);
 
 PG_RESET_TEMPLATE(gpsNavConfig_t, gpsNavConfig,
     .loiterRadiusM = 100, // a 25 deg bank at 20 m/s turns on about an 85 m radius
@@ -33,7 +33,7 @@ PG_RESET_TEMPLATE(gpsNavConfig_t, gpsNavConfig,
     .minSats = 6,
     .maxBankAngleDeg = 25,
     .maxPitchAngleDeg = 15,
-    .bearingKp = 200,   // 2.0 deg bank per deg bearing error
+    .bearingKp = 120,   // 1.2 deg bank per deg bearing error
     .altitudeKp = 100,  // 1.0 deg pitch per meter altitude error
     .altitudeKd = 200,  // 2.0 deg pitch per m/s climb rate
     .throttle = 60,

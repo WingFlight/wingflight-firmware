@@ -3,6 +3,13 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Gentler GPS Nav Bearing Gain
+
+`nav_bearing_kp` now defaults to 120 (1.2° of bank per degree of bearing
+error) instead of 200, so LOITER, RTH and GPS rescue turn onto track more
+gently. `PG_GPS_NAV` is bumped to version 1, so all `nav_*` settings reset
+to their defaults on upgrade.
+
 ## Snap Relax for Pop Tops, Pinwheels and Snaps
 
 Pop tops, pinwheels and snaps start with roll, pitch and yaw slammed in
