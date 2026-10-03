@@ -76,8 +76,12 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // v15->v0: default F lowered from 100 to 75 and B raised from 0 to 35 to cut
 // bounce back. The version field is 4 bits, so it wraps to 0; equality is
 // what pgLoad() checks, and no v0 save survives the EEPROM_CONF_VERSION bumps
-// since (174 -> 177), so a stale v0 record cannot be misread.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 0);
+// since (174 -> 177), so a stale v0 record cannot be misread. v0->v1: default
+// yaw P lowered from 80 to 10 and I from 20 to 8. The yaw term scales are the
+// Rotorflight tail-rotor ones (P 10x, I 2.5x roll), so 80/20 gave a rudder 16x
+// the roll P and ran it to full travel on a small stick input. A stale v1 save
+// cannot survive the same EEPROM_CONF_VERSION bumps.
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 1);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
@@ -86,7 +90,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .pid = {
             [PID_ROLL]  = { .P = 50, .I = 16, .D = 0, .F = 75, .B = 35, },
             [PID_PITCH] = { .P = 50, .I = 16, .D = 0, .F = 75, .B = 35, },
-            [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 75, .B = 35, },
+            [PID_YAW]   = { .P = 10, .I = 8,  .D = 0, .F = 75, .B = 35, },
         },
         .pid_mode = 1,
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
