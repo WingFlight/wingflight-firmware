@@ -389,7 +389,7 @@ void tvPidLoadProfile(const tvPidProfile_t *profile)
     // regardless of which gain adjustment (including this one) last touched
     // the coefficients.
     for (int i = 0; i < PID_AXIS_COUNT; i++)
-        tvPid.masterGain[i] = profile->master_gain[i] * 0.01f;
+        tvPid.masterGain[i] = constrain(profile->master_gain[i], MASTER_GAIN_MIN, MASTER_GAIN_MAX) * 0.01f;
 
     // Optional per-axis curve that further scales master gain by |stick deflection|,
     // from the same gain-curve pool as the main loop (pidGetGainCurveScale)

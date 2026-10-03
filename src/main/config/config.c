@@ -206,12 +206,16 @@ static void validateAndFixRatesSettings(void)
 }
 
 // Below PID_F_GAIN_MIN, stabilized flight can no longer reach the commanded rate at full stick
-// (see pid.h). Lift any profile saved below the floor before it's loaded.
+// (see pid.h). Lift any profile saved below the floor before it's loaded. Master gain saved
+// under the old 25-1000 limit is pulled into 25-200 the same way, rather than resetting every
+// profile with a PG version bump.
 static void validateAndFixPidSettings(void)
 {
     for (unsigned profileIndex = 0; profileIndex < PID_PROFILE_COUNT; profileIndex++) {
         for (unsigned axis = PID_ROLL; axis <= PID_YAW; axis++) {
             pidProfilesMutable(profileIndex)->pid[axis].F = constrain(pidProfilesMutable(profileIndex)->pid[axis].F, PID_F_GAIN_MIN, PID_GAIN_MAX);
+            pidProfilesMutable(profileIndex)->master_gain[axis] = constrain(pidProfilesMutable(profileIndex)->master_gain[axis], MASTER_GAIN_MIN, MASTER_GAIN_MAX);
+            tvPidProfilesMutable(profileIndex)->master_gain[axis] = constrain(tvPidProfilesMutable(profileIndex)->master_gain[axis], MASTER_GAIN_MIN, MASTER_GAIN_MAX);
         }
     }
 }
