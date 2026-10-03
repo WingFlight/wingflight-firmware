@@ -70,7 +70,8 @@ gyro_t gyro = {.targetLooptime = 1000000 / 1000};
 pidProfile_t *mockPidProfile = pidProfilesMutable(0);
 pidProfile_t *currentPidProfile = mockPidProfile;
 
-float getSetpoint(int axis) { return g_mock->getDeflection(axis) * 360; }
+// Yaw setpoint has the opposite sign to the stick, as in setpointUpdate()
+float getSetpoint(int axis) { return g_mock->getDeflection(axis) * 360 * (axis == 2 ? -1 : 1); }
 float getDeflection(int axis) { return g_mock->getDeflection(axis); }
 float getRcDeflection(int axis) { return g_mock ? g_mock->getDeflection(axis) : 0; }
 }
@@ -309,6 +310,12 @@ class PIDSnapRelaxTest : public PIDTestBase {
     // lagMs later, and the roll gyro steady at gyroScale x the roll setpoint
     pidAxisData_t rollAfterSnap(uint8_t strength, int lagMs, float gyroScale)
     {
+        return axisAfterSnap(0, strength, lagMs, gyroScale);
+    }
+    // The same for any axis: all sticks at 0.8 once the lag has passed (roll from the
+    // start), and this axis's gyro steady at gyroScale x its setpoint
+    pidAxisData_t axisAfterSnap(int gyroAxis, uint8_t strength, int lagMs, float gyroScale)
+    {
         mockPidProfile->pid_mode = 1;
         for (int axis = 0; axis < 3; axis++) {
             mockPidProfile->pid[axis].P = 50;
@@ -320,7 +327,7 @@ class PIDSnapRelaxTest : public PIDTestBase {
         snapRelaxConfigsMutable(0)->strength = strength;
         pidInit(mockPidProfile);
 
-        gyro.gyroADCf[0] = 0.8f * 360 * gyroScale;
+        gyro.gyroADCf[gyroAxis] = 0.8f * 360 * (gyroAxis == 2 ? -1 : 1) * gyroScale;
 
         PIDIO input;
         for (int i = 0; i < lagMs + 200; i++) {
@@ -330,7 +337,7 @@ class PIDSnapRelaxTest : public PIDTestBase {
             input[3].push_back(0);
         }
         getResponse(input);
-        return pidGetAxisData()[0];
+        return pidGetAxisData()[gyroAxis];
     }
 };
 
@@ -352,6 +359,28 @@ TEST_F(PIDSnapRelaxTest, HelpingFeedbackKept)
     const pidAxisData_t off = rollAfterSnap(0, 0, 0.5f);
     const pidAxisData_t on = rollAfterSnap(100, 0, 0.5f);
     EXPECT_GT(off.P, 0);
+    EXPECT_FLOAT_EQ(on.P, off.P);
+    EXPECT_FLOAT_EQ(on.axisError, off.axisError);
+}
+
+TEST_F(PIDSnapRelaxTest, YawOverspeedNotFought)
+{
+    // Airframe out-yawing the rudder stick: yaw feedback pushes back unless relaxed. The yaw
+    // setpoint has the opposite sign to the stick, so this also checks the snap direction.
+    const pidAxisData_t off = axisAfterSnap(2, 0, 0, 2.0f);
+    EXPECT_GT(off.P, 0);
+
+    const pidAxisData_t on = axisAfterSnap(2, 100, 0, 2.0f);
+    EXPECT_FLOAT_EQ(on.P, 0);
+    EXPECT_FLOAT_EQ(on.axisError, 0);
+}
+
+TEST_F(PIDSnapRelaxTest, YawHelpingFeedbackKept)
+{
+    // Yaw lagging the stick, as in most logged snaps: feedback adds rudder and is left alone
+    const pidAxisData_t off = axisAfterSnap(2, 0, 0, 0.5f);
+    const pidAxisData_t on = axisAfterSnap(2, 100, 0, 0.5f);
+    EXPECT_LT(off.P, 0);
     EXPECT_FLOAT_EQ(on.P, off.P);
     EXPECT_FLOAT_EQ(on.axisError, off.axisError);
 }

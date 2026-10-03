@@ -1090,7 +1090,7 @@ const clivalue_t valueTable[] = {
     { "cross_axis_relax_pitch_strength", VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, cross_axis_relax_pitch_strength) },
 
     // Snap relax: a fast roll + pitch + yaw stick input (pop top, pinwheel, snap) stops
-    // roll/pitch feedback from fighting the rotation. snap_relax_strength = 0 turns it off.
+    // roll/pitch/yaw feedback from fighting the rotation. snap_relax_strength = 0 turns it off.
     { "snap_relax_strength",        VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_SNAP_RELAX_CONFIG, offsetof(snapRelaxConfig_t, strength) },
     { "snap_relax_threshold",       VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { SNAP_RELAX_THRESHOLD_MIN, 100 }, PG_SNAP_RELAX_CONFIG, offsetof(snapRelaxConfig_t, threshold) },
     { "snap_relax_window",          VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, SNAP_RELAX_TIME_MAX }, PG_SNAP_RELAX_CONFIG, offsetof(snapRelaxConfig_t, window) },

@@ -743,9 +743,11 @@ static float getCrossAxisRelaxFactor(int axis)
  * A snap is detected when all three sticks pass the threshold within the window of
  * each other, so a slow rolling-harrier style build-up of the same inputs does not
  * count. While the sticks stay past the threshold, and fading out over the hold
- * time after, feedback is relaxed on roll and pitch only where it opposes the
+ * time after, feedback is relaxed on all three axes only where it opposes the
  * direction the stick was snapped in: P/D pushing back and I winding against it.
- * Feedback that helps the rotation, F and yaw are untouched. A heli port would need
+ * Feedback that helps the rotation and F are untouched. Yaw mostly lags the stick
+ * (logs show ~15 % of the commanded rate), so its feedback helps and is left alone;
+ * it is relaxed only when the airframe out-yaws the stick. A heli port would need
  * its own gesture; this one is fixed-wing specific.
  */
 static void updateSnapRelax(void)
@@ -781,7 +783,9 @@ static void updateSnapRelax(void)
     else if (!pid.snapActive && first - last <= pid.snapRelaxWindow) {
         pid.snapActive = true;
         for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
-            pid.snapDirection[axis] = (getRcDeflection(axis) > 0) ? 1.0f : -1.0f;
+            // In setpoint sign: setpointUpdate() negates yaw, so yaw's stick sign is flipped.
+            const float deflection = (axis == FD_YAW) ? -getRcDeflection(axis) : getRcDeflection(axis);
+            pid.snapDirection[axis] = (deflection > 0) ? 1.0f : -1.0f;
         }
     }
 
@@ -805,12 +809,12 @@ static void updateSnapRelax(void)
     DEBUG(SNAP_RELAX, 5, lrintf(getRcDeflection(FD_YAW) * 1000));
 }
 
-// Scale for a roll/pitch error term: below 1 only while a snap is relaxed and the
+// Scale for an error term: below 1 only while a snap is relaxed and the
 // error pushes against the snap direction. During the fade-out, a stick reversed
 // against the snap gets full feedback back, so the pilot can stop the rotation.
 static float getSnapRelaxFactor(int axis, float error, float setpoint)
 {
-    if (pid.snapRelax <= 0 || axis == PID_YAW) {
+    if (pid.snapRelax <= 0) {
         return 1.0f;
     }
 
