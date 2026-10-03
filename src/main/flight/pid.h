@@ -35,6 +35,12 @@
 
 #define PID_GAIN_MAX                1000
 
+// Master gain limits, percent (100 = unscaled), for the main and thrust-vector loops. Back to
+// the original 25-200: the 1000 ceiling (v8->v9) only made up for a control-link setup that
+// was wrong, and a pot mapped across 25-1000 sat at 512% when centred.
+#define MASTER_GAIN_MIN             25
+#define MASTER_GAIN_MAX             200
+
 // Floor on roll/pitch/yaw F gain. F sets most of the surface deflection for a commanded rate; P
 // and I are small corrections on top (I is capped by error_limit). With the default P and I, F = 0
 // lets full stick reach only about 100 of a commanded 250 deg/s on roll and pitch, late, once I

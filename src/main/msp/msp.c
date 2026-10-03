@@ -3311,9 +3311,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         }
         /* Master gain (per axis) */
         if (sbufBytesRemaining(src) >= 6) {
-            currentPidProfile->master_gain[PID_ROLL] = sbufReadU16(src);
-            currentPidProfile->master_gain[PID_PITCH] = sbufReadU16(src);
-            currentPidProfile->master_gain[PID_YAW] = sbufReadU16(src);
+            currentPidProfile->master_gain[PID_ROLL] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
+            currentPidProfile->master_gain[PID_PITCH] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
+            currentPidProfile->master_gain[PID_YAW] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
         }
         /* Reserved (was Auto Hover gain, max angle, max rate) */
         if (sbufBytesRemaining(src) >= 4) {
@@ -3611,9 +3611,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentTvPidProfile->pid[i].F = sbufReadU16(src);
             currentTvPidProfile->pid[i].B = sbufReadU16(src);
         }
-        currentTvPidProfile->master_gain[PID_ROLL] = sbufReadU16(src);
-        currentTvPidProfile->master_gain[PID_PITCH] = sbufReadU16(src);
-        currentTvPidProfile->master_gain[PID_YAW] = sbufReadU16(src);
+        currentTvPidProfile->master_gain[PID_ROLL] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
+        currentTvPidProfile->master_gain[PID_PITCH] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
+        currentTvPidProfile->master_gain[PID_YAW] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
             currentTvPidProfile->iterm_decay_time[i] = sbufReadU8(src);
         }
