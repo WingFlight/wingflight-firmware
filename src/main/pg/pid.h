@@ -197,7 +197,7 @@ void resetLevelConfig(levelConfig_t *config);
 #define SNAP_RELAX_TIME_MAX       1000
 
 typedef struct {
-    uint8_t  strength;   // Percent of opposing roll/pitch feedback removed while a snap is on. 0 = off
+    uint8_t  strength;   // Percent of opposing roll/pitch/yaw feedback removed while a snap is on. 0 = off
     uint8_t  threshold;  // Stick deflection, percent, that roll, pitch and yaw must all reach
     uint16_t window;     // ms: all three sticks must cross the threshold within this time of each other
     uint16_t hold;       // ms: relax fades out over this time after any stick drops below the threshold
