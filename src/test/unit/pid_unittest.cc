@@ -31,8 +31,16 @@ extern "C" {
 #include "flight/pid.h"
 #include "sensors/gyro.h"
 #include "io/gps.h"
+#include "fc/runtime_config.h"
 
 gpsSolutionData_t gpsSol;
+
+// IMU and altitude estimate, for prop-hang detection. rMat[2][0] is the nose-up component.
+float rMat[3][3];
+float mockVario = 0;
+bool mockHasAltitude = true;
+float getVario(void) { return mockVario; }
+bool hasEstimatedAltitude(void) { return mockHasAltitude; }
 bool gyroOverflowDetected(void) { return false; }
 void beeperConfirmationBeeps(uint8_t) {}
 float getThrottle(void) { return throttle; }
@@ -405,4 +413,102 @@ TEST_F(PIDSnapRelaxTest, StaggeredInputInsideWindowIsASnap)
 {
     const pidAxisData_t on = rollAfterSnap(100, 250, 2.0f);
     EXPECT_FLOAT_EQ(on.P, 0);
+}
+
+class PIDPropHangTest : public PIDTestBase {
+  public:
+    void TearDown() override
+    {
+        for (int axis = 0; axis < 3; axis++) {
+            gyro.gyroADCf[axis] = 0;
+        }
+        rMat[2][0] = 0;
+        mockVario = 0;
+        mockHasAltitude = true;
+        DISABLE_FLIGHT_MODE(ANGLE_MODE);
+        PIDTestBase::TearDown();
+    }
+    // Sticks centred for 2 s with the airframe torque-rolling at 100 deg/s (and pitching at
+    // 50 deg/s), nose-up component noseUp and vertical speed vario. Returns the roll and pitch
+    // axis data at the end.
+    std::array<pidAxisData_t, 2> afterHang(uint8_t strength, float noseUp, float vario)
+    {
+        mockPidProfile->pid_mode = 1;
+        for (int axis = 0; axis < 3; axis++) {
+            mockPidProfile->pid[axis].P = 50;
+            mockPidProfile->pid[axis].I = 50;
+            mockPidProfile->pid[axis].D = 0;
+            mockPidProfile->pid[axis].F = 0;
+            mockPidProfile->pid[axis].B = 0;
+        }
+        propHangConfigsMutable(0)->strength = strength;
+        pidInit(mockPidProfile);
+
+        rMat[2][0] = noseUp;
+        mockVario = vario;
+        gyro.gyroADCf[0] = -100;
+        gyro.gyroADCf[1] = -50;
+
+        PIDIO input;
+        for (int i = 0; i < 2000; i++) {
+            for (int axis = 0; axis < 4; axis++) {
+                input[axis].push_back(0);
+            }
+        }
+        getResponse(input);
+        return { pidGetAxisData()[0], pidGetAxisData()[1] };
+    }
+};
+
+TEST_F(PIDPropHangTest, HangReleasesRollI)
+{
+    // Off, roll I builds to hold the airframe against the torque
+    const float off = afterHang(0, 1.0f, 0)[0].axisError;
+    EXPECT_GT(off, 10);
+
+    // On, roll I is held back and bled off once the hang is detected
+    const float on = afterHang(100, 1.0f, 0)[0].axisError;
+    EXPECT_LT(fabsf(on), off * 0.1f);
+}
+
+TEST_F(PIDPropHangTest, UpLineIsNotAHang)
+{
+    // Nose just as vertical but climbing at 10 m/s
+    const float off = afterHang(0, 1.0f, 10.0f)[0].axisError;
+    const float on = afterHang(100, 1.0f, 10.0f)[0].axisError;
+    EXPECT_FLOAT_EQ(on, off);
+}
+
+TEST_F(PIDPropHangTest, NoseOutsideAngleIsNotAHang)
+{
+    // 45 deg from vertical, beyond the default 20 deg
+    const float off = afterHang(0, 0.707f, 0)[0].axisError;
+    const float on = afterHang(100, 0.707f, 0)[0].axisError;
+    EXPECT_FLOAT_EQ(on, off);
+}
+
+TEST_F(PIDPropHangTest, NeedsAltitudeEstimate)
+{
+    // Without one an up-line can't be told from a hang
+    mockHasAltitude = false;
+    const float off = afterHang(0, 1.0f, 0)[0].axisError;
+    const float on = afterHang(100, 1.0f, 0)[0].axisError;
+    EXPECT_FLOAT_EQ(on, off);
+}
+
+TEST_F(PIDPropHangTest, NotInAngleMode)
+{
+    ENABLE_FLIGHT_MODE(ANGLE_MODE);
+    const float off = afterHang(0, 1.0f, 0)[0].axisError;
+    const float on = afterHang(100, 1.0f, 0)[0].axisError;
+    EXPECT_FLOAT_EQ(on, off);
+}
+
+TEST_F(PIDPropHangTest, RollOnly)
+{
+    // Pitch I is untouched while hanging
+    const float off = afterHang(0, 1.0f, 0)[1].axisError;
+    const float on = afterHang(100, 1.0f, 0)[1].axisError;
+    EXPECT_GT(off, 10);
+    EXPECT_FLOAT_EQ(on, off);
 }

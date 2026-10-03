@@ -56,6 +56,7 @@
 #include "flight/leveling.h"
 #include "flight/atthold.h"
 #include "flight/hold_engine.h"
+#include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/speed_atten.h"
 
@@ -607,6 +608,12 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     pid.snapRelaxWindow = MIN(snapRelaxConfig->window, SNAP_RELAX_TIME_MAX) * 0.001f;
     pid.snapRelaxHold = MIN(snapRelaxConfig->hold, SNAP_RELAX_TIME_MAX) * 0.001f;
 
+    // Prop-hang relax (separate per-profile storage, see propHangConfig_t)
+    const propHangConfig_t *propHangConfig = propHangConfigs(getCurrentPidProfileIndex());
+    pid.propHangStrength = MIN(propHangConfig->strength, 100) * 0.01f;
+    pid.propHangCosAngle = cos_approx(DEGREES_TO_RADIANS(constrain(propHangConfig->angle, PROP_HANG_ANGLE_MIN, PROP_HANG_ANGLE_MAX)));
+    pid.propHangFade = MIN(propHangConfig->fade, PROP_HANG_FADE_MAX) * 0.001f;
+
 
     // Initialise sub-profiles
 #ifdef USE_ACC
@@ -642,6 +649,7 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
         memcpy(fwSpaConfigsMutable(dstPidProfileIndex), fwSpaConfigs(srcPidProfileIndex), sizeof(fwSpaConfig_t));
         memcpy(levelConfigsMutable(dstPidProfileIndex), levelConfigs(srcPidProfileIndex), sizeof(levelConfig_t));
         memcpy(snapRelaxConfigsMutable(dstPidProfileIndex), snapRelaxConfigs(srcPidProfileIndex), sizeof(snapRelaxConfig_t));
+        memcpy(propHangConfigsMutable(dstPidProfileIndex), propHangConfigs(srcPidProfileIndex), sizeof(propHangConfig_t));
     }
 }
 
@@ -827,6 +835,75 @@ static float getSnapRelaxFactor(int axis, float error, float setpoint)
     return 1.0f - pid.snapRelax;
 }
 
+
+/*
+ * Prop-hang relax
+ *
+ * In a prop hang the prop torque rolls the airframe, and on a 3D model that torque roll is
+ * part of the flying. A rate gyro holding zero roll rate builds roll I until the ailerons
+ * cancel the torque (logs show the roll rate held at ~0 deg/s with the gyro on, against a
+ * natural 30-135 deg/s torque roll with it off).
+ *
+ * A hang is the nose within the configured angle of vertical, the vertical speed within
+ * PROP_HANG_VARIO_MAX (an up-line has the nose just as vertical but climbs at 3-30 m/s), for
+ * PROP_HANG_ENTRY_TIME, in plain rate flight. It needs an altitude estimate: without one an
+ * up-line cannot be told from a hang, so nothing is relaxed. While hanging, roll I stops
+ * building and what it holds bleeds off, so the prop is free to roll the airframe; P, D and F
+ * are untouched, so the stick still rolls it and P still damps a gust. Roll only: in a hang
+ * the rudder and elevator steer the nose. Once the hang ends, the relax fades out over the
+ * fade time.
+ */
+#define PROP_HANG_VARIO_MAX     2.0f    // m/s
+#define PROP_HANG_ENTRY_TIME    0.5f    // s
+#define PROP_HANG_BLEED_TIME    0.5f    // s, time constant of the roll I bleed while hanging
+
+static void resetPropHangRelax(void)
+{
+    pid.propHangTime = 0;
+    pid.propHangFadeTimer = 0;
+    pid.propHangRelax = 0;
+}
+
+static void updatePropHangRelax(void)
+{
+    if (pid.propHangStrength <= 0) {
+        resetPropHangRelax();
+        return;
+    }
+
+    // Leveling and hold layers need roll I to hold their target, so only in plain rate flight
+    const bool rateFlight = !FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE |
+                                         LOITER_MODE | RTH_MODE | ATTHOLD_MODE | TRAINER_MODE);
+
+    // rMat[2][0] is the nose-up component of the body X axis: 1 pointing straight up
+    const float noseUp = rMat[2][0];
+    const float vario = hasEstimatedAltitude() ? getVario() : 0;
+
+    const bool hanging = rateFlight && hasEstimatedAltitude() &&
+                         noseUp >= pid.propHangCosAngle &&
+                         fabsf(vario) <= PROP_HANG_VARIO_MAX;
+
+    pid.propHangTime = hanging ? MIN(pid.propHangTime + pid.dT, PROP_HANG_ENTRY_TIME) : 0;
+
+    if (pid.propHangTime >= PROP_HANG_ENTRY_TIME) {
+        pid.propHangFadeTimer = pid.propHangFade;
+        pid.propHangRelax = pid.propHangStrength;
+    }
+    else if (pid.propHangFadeTimer > 0) {
+        pid.propHangFadeTimer = MAX(pid.propHangFadeTimer - pid.dT, 0);
+        pid.propHangRelax = pid.propHangStrength * pid.propHangFadeTimer / pid.propHangFade;
+    }
+    else {
+        pid.propHangRelax = 0;
+    }
+
+    DEBUG(PROP_HANG, 0, lrintf(pid.propHangRelax * 1000));
+    DEBUG(PROP_HANG, 1, lrintf(noseUp * 1000));
+    DEBUG(PROP_HANG, 2, lrintf(vario * 100));
+    DEBUG(PROP_HANG, 3, lrintf(pid.propHangTime * 1000));
+    DEBUG(PROP_HANG, 4, hasEstimatedAltitude());
+    DEBUG(PROP_HANG, 5, rateFlight);
+}
 
 static float pidApplySetpoint(uint8_t axis)
 {
@@ -1080,7 +1157,10 @@ static void pidApplyMode1(uint8_t axis)
     // Apply error relax. Cross-axis relax slows the accumulation here and is NOT
     // applied again to the I output below: scaling the output as well made I drop
     // immediately when rudder was applied and jump back on release (#112).
-    const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax * snapRelax;
+    // Prop-hang relax holds roll I back so the prop torque can roll the airframe
+    const float propHangRelax = (axis == PID_ROLL) ? pid.propHangRelax : 0;
+
+    const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax * snapRelax * (1.0f - propHangRelax);
 
     // Saturation
     const bool saturation = (pidAxisSaturated(axis) && pid.data[axis].axisError * itermErrorRate > 0);
@@ -1096,6 +1176,11 @@ static void pidApplyMode1(uint8_t axis)
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
+
+    // Bleed off the roll I that was holding the airframe against the torque before the hang
+    if (propHangRelax > 0) {
+        pid.data[axis].axisError -= pid.data[axis].axisError * MIN(propHangRelax * pid.dT / PROP_HANG_BLEED_TIME, 1.0f);
+    }
     // TRADITIONAL_MODE forces I output to zero without touching axisError's own bookkeeping, so
     // relax/decay keep behaving as configured and I resumes smoothly if the mode is switched off.
     pid.data[axis].I = FLIGHT_MODE(TRADITIONAL_MODE) ? 0.0f
@@ -1189,6 +1274,8 @@ void pidController(const pidProfile_t *pidProfile, timeUs_t currentTimeUs)
     updateCrossAxisRelax();
 
     updateSnapRelax();
+
+    updatePropHangRelax();
 
     speedAttenUpdate(pid.dT);
 

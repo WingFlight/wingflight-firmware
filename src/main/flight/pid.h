@@ -138,6 +138,13 @@ typedef struct pid_s {
     bool snapActive;
     float snapRelax;                            // Current relax amount, 0..snapRelaxStrength
 
+    float propHangStrength;                     // 0..1, see propHangConfig_t
+    float propHangCosAngle;                     // Nose-up component of the body X axis that counts as vertical
+    float propHangFade;                         // s
+    float propHangTime;                         // s the hang conditions have held, 0 while not hanging
+    float propHangFadeTimer;                    // s of fade-out left after the hang ended
+    float propHangRelax;                        // Current roll I relax, 0..propHangStrength
+
     float itermDecayRate[PID_AXIS_COUNT];
     float itermDecayLimit;
 
