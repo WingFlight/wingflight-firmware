@@ -159,7 +159,10 @@ void pgResetFn_levelConfigs(levelConfig_t *configs)
     }
 }
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(snapRelaxConfig_t, PID_PROFILE_COUNT, snapRelaxConfigs, PG_SNAP_RELAX_CONFIG, 0);
+// v0->v1: default hold raised from 150 to 350 ms. Pilots flying pop tops and pinwheels found
+// stability came back too abruptly at the end of the snap. This group is separate from
+// pidProfile_t, so the bump resets only the snap relax settings.
+PG_REGISTER_ARRAY_WITH_RESET_FN(snapRelaxConfig_t, PID_PROFILE_COUNT, snapRelaxConfigs, PG_SNAP_RELAX_CONFIG, 1);
 
 void resetSnapRelaxConfig(snapRelaxConfig_t *config)
 {
@@ -167,7 +170,7 @@ void resetSnapRelaxConfig(snapRelaxConfig_t *config)
         .strength = 100,
         .threshold = 60,
         .window = 400,
-        .hold = 150,
+        .hold = 350,
     );
 }
 
