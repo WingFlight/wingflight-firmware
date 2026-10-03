@@ -117,4 +117,5 @@ const char * const debugModeNames[DEBUG_COUNT] = {
     DEBUG_NAME(TVHOLD),
     DEBUG_NAME(GAIN_ATTEN),
     DEBUG_NAME(SNAP_RELAX),
+    DEBUG_NAME(PROP_HANG),
 };

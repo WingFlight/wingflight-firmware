@@ -1704,6 +1704,9 @@ static bool blackboxWriteSysinfo(void)
                                                                             snapRelaxConfigs(getCurrentPidProfileIndex())->threshold,
                                                                             snapRelaxConfigs(getCurrentPidProfileIndex())->window,
                                                                             snapRelaxConfigs(getCurrentPidProfileIndex())->hold);
+        BLACKBOX_PRINT_HEADER_LINE("prop_hang", "%d,%d,%d",                propHangConfigs(getCurrentPidProfileIndex())->strength,
+                                                                            propHangConfigs(getCurrentPidProfileIndex())->angle,
+                                                                            propHangConfigs(getCurrentPidProfileIndex())->fade);
         BLACKBOX_PRINT_HEADER_LINE("rollBW", "%d,%d,%d",                    currentPidProfile->gyro_cutoff[PID_ROLL],
                                                                             currentPidProfile->dterm_cutoff[PID_ROLL],
                                                                             currentPidProfile->bterm_cutoff[PID_ROLL]);

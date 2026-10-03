@@ -2215,6 +2215,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, snapRelaxConfigs(getCurrentPidProfileIndex())->threshold);
         sbufWriteU16(dst, snapRelaxConfigs(getCurrentPidProfileIndex())->window);
         sbufWriteU16(dst, snapRelaxConfigs(getCurrentPidProfileIndex())->hold);
+        /* Prop-hang relax (separate per-profile storage) */
+        sbufWriteU8(dst, propHangConfigs(getCurrentPidProfileIndex())->strength);
+        sbufWriteU8(dst, propHangConfigs(getCurrentPidProfileIndex())->angle);
+        sbufWriteU16(dst, propHangConfigs(getCurrentPidProfileIndex())->fade);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -3184,6 +3188,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         resetFwSpaConfig(fwSpaConfigsMutable(getCurrentPidProfileIndex()));
         resetLevelConfig(levelConfigsMutable(getCurrentPidProfileIndex()));
         resetSnapRelaxConfig(snapRelaxConfigsMutable(getCurrentPidProfileIndex()));
+        resetPropHangConfig(propHangConfigsMutable(getCurrentPidProfileIndex()));
         break;
 
     case MSP_SET_SENSOR_ALIGNMENT:
@@ -3372,6 +3377,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             snap->threshold = constrain(sbufReadU8(src), SNAP_RELAX_THRESHOLD_MIN, 100);
             snap->window = MIN(sbufReadU16(src), SNAP_RELAX_TIME_MAX);
             snap->hold = MIN(sbufReadU16(src), SNAP_RELAX_TIME_MAX);
+        }
+        /* Prop-hang relax extension; older clients omit it and leave prop-hang relax untouched. */
+        if (sbufBytesRemaining(src) >= 4) {
+            propHangConfig_t *hang = propHangConfigsMutable(getCurrentPidProfileIndex());
+            hang->strength = MIN(sbufReadU8(src), 100);
+            hang->angle = constrain(sbufReadU8(src), PROP_HANG_ANGLE_MIN, PROP_HANG_ANGLE_MAX);
+            hang->fade = MIN(sbufReadU16(src), PROP_HANG_FADE_MAX);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

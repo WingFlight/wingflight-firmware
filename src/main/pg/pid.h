@@ -207,5 +207,20 @@ PG_DECLARE_ARRAY(snapRelaxConfig_t, PID_PROFILE_COUNT, snapRelaxConfigs);
 
 void resetSnapRelaxConfig(snapRelaxConfig_t *config);
 
+// Prop-hang relax, one per PID profile. Separate storage, like snapRelaxConfig_t.
+#define PROP_HANG_ANGLE_MIN       5
+#define PROP_HANG_ANGLE_MAX       45
+#define PROP_HANG_FADE_MAX        2000
+
+typedef struct {
+    uint8_t  strength;   // Percent of roll I held back and bled off while hanging. 0 = off
+    uint8_t  angle;      // deg from vertical nose-up that still counts as a hang
+    uint16_t fade;       // ms: relax fades out over this time after the hang ends
+} propHangConfig_t;
+
+PG_DECLARE_ARRAY(propHangConfig_t, PID_PROFILE_COUNT, propHangConfigs);
+
+void resetPropHangConfig(propHangConfig_t *config);
+
 // Positive axis overrides use the SAFE-style range; zero preserves the legacy shared value.
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis);
