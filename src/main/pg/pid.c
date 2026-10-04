@@ -78,21 +78,23 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // what pgLoad() checks, and no v0 save survives the EEPROM_CONF_VERSION bumps
 // since (174 -> 177), so a stale v0 record cannot be misread. v0->v1:
 // default P and I raised (roll and pitch P 120, I 60; yaw P 250, I 60), so
-// profiles reset to the new defaults.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 1);
+// profiles reset to the new defaults. v1->v2: P and I raised by a further
+// 25% (roll and pitch P 150, I 75; yaw P 310, I 75), so the bottom of a 0-200%
+// master gain pot reaches a noticeable gain sooner.
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 2);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
     RESET_CONFIG(pidProfile_t, pidProfile,
         .profileName = "",
         .pid = {
-            // Set from flown logs. At 100% master gain, P 120 gives 0.08% of
-            // full surface travel per deg/s of rate error, and I 60 builds
-            // about 1% of full travel per second per deg/s. P 50 / I 16
+            // Set from flown logs. At 100% master gain, P 150 gives 0.1% of
+            // full surface travel per deg/s of rate error, and I 75 builds
+            // about 1.3% of full travel per second per deg/s. P 50 / I 16
             // barely moved the surfaces. Yaw runs hotter, as in the logs.
-            [PID_ROLL]  = { .P = 120, .I = 60, .D = 0, .F = 75, .B = 35, },
-            [PID_PITCH] = { .P = 120, .I = 60, .D = 0, .F = 75, .B = 35, },
-            [PID_YAW]   = { .P = 250, .I = 60, .D = 0, .F = 75, .B = 35, },
+            [PID_ROLL]  = { .P = 150, .I = 75, .D = 0, .F = 75, .B = 35, },
+            [PID_PITCH] = { .P = 150, .I = 75, .D = 0, .F = 75, .B = 35, },
+            [PID_YAW]   = { .P = 310, .I = 75, .D = 0, .F = 75, .B = 35, },
         },
         .pid_mode = 1,
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
