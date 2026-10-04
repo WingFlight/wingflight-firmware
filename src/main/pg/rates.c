@@ -25,7 +25,10 @@
 #include "config/config_reset.h"
 
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(controlRateConfig_t, CONTROL_RATE_PROFILE_COUNT, controlRateProfiles, PG_CONTROL_RATE_PROFILES, 7);
+// v7->v8: default pitch rate 250 -> 200 deg/s and yaw 350 -> 150 deg/s. Logs of
+// a 3D airframe asked for 500 deg/s on every axis reached about 400 on pitch
+// and 115-230 on yaw with the surface pinned, so yaw at 350 was unreachable.
+PG_REGISTER_ARRAY_WITH_RESET_FN(controlRateConfig_t, CONTROL_RATE_PROFILE_COUNT, controlRateProfiles, PG_CONTROL_RATE_PROFILES, 8);
 
 void pgResetFn_controlRateProfiles(controlRateConfig_t *controlRateConfig)
 {
@@ -33,8 +36,8 @@ void pgResetFn_controlRateProfiles(controlRateConfig_t *controlRateConfig)
         RESET_CONFIG(controlRateConfig_t, &controlRateConfig[i],
             .profileName = INIT_ZERO,
             .rcRates[FD_ROLL] = 50,
-            .rcRates[FD_PITCH] = 50,
-            .rcRates[FD_YAW] = 70,
+            .rcRates[FD_PITCH] = 40,
+            .rcRates[FD_YAW] = 30,
             .rcExpo[FD_ROLL] = 30,
             .rcExpo[FD_PITCH] = 30,
             .rcExpo[FD_YAW] = 30,

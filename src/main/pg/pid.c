@@ -81,9 +81,9 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // profiles reset to the new defaults. v1->v2: P and I raised by a further
 // 25% (roll and pitch P 150, I 75; yaw P 310, I 75), so the bottom of a 0-200%
 // master gain pot reaches a noticeable gain sooner. v2->v3: P and I lowered
-// (roll and pitch P 105, I 45; yaw P 190, I 45) and error_limit cut from
-// 45/45/60 to 20/20/30: pilots ran the v2 gains at about 80% master gain, and
-// above that I wound up on held sticks until the surfaces hit their ends.
+// (roll and pitch P 105, I 45; yaw P 190, I 45) and F lowered from 75 to 65:
+// a 3D pilot settled at about P 80 / I 38 effective, and with F 75 the
+// aircraft outran the stick (gyro/setpoint 1.19 on roll, so F 63 for 1.0).
 PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 3);
 
 void resetPidProfile(pidProfile_t *pidProfile)
@@ -95,10 +95,12 @@ void resetPidProfile(pidProfile_t *pidProfile)
             // full surface travel per deg/s of rate error, and I 45 builds
             // about 0.9% of full travel per second per deg/s. P 50 / I 16
             // barely moved the surfaces; P 150 / I 75 was flown at about 80%
-            // master gain and went wrong above it. Yaw runs hotter.
-            [PID_ROLL]  = { .P = 105, .I = 45, .D = 0, .F = 75, .B = 35, },
-            [PID_PITCH] = { .P = 105, .I = 45, .D = 0, .F = 75, .B = 35, },
-            [PID_YAW]   = { .P = 190, .I = 45, .D = 0, .F = 75, .B = 35, },
+            // master gain and went wrong above it. Yaw runs hotter. F sets the
+            // surface for a held stick: at F 75 the aircraft outran the stick,
+            // and P on top of it ran the surfaces to their ends before full stick.
+            [PID_ROLL]  = { .P = 105, .I = 45, .D = 0, .F = 65, .B = 35, },
+            [PID_PITCH] = { .P = 105, .I = 45, .D = 0, .F = 65, .B = 35, },
+            [PID_YAW]   = { .P = 190, .I = 45, .D = 0, .F = 65, .B = 35, },
         },
         .pid_mode = 1,
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
@@ -109,11 +111,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .iterm_decay_limit = 35,
         .iterm_relax_level = { 22, 22, 22 },
         .iterm_relax = { ITERM_RELAX_DEFAULT, ITERM_RELAX_DEFAULT, ITERM_RELAX_DEFAULT },
-        // Caps I at about 18% of travel on roll and pitch (27% on yaw) at
-        // 100% master gain. I-term relax only acts while the stick moves, so
-        // on a held stick the airframe cannot follow, I fills to this limit;
-        // at 45 it could drive a surface to its end on top of F.
-        .error_limit = { 20, 20, 30 },
+        .error_limit = { 45, 45, 60 },
         .dterm_cutoff = { 15, 15, 20 },
         .bterm_cutoff = { 15, 15, 20 },
         .gyro_cutoff = { 50, 50, 100 },
