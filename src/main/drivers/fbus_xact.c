@@ -120,6 +120,35 @@ static uint8_t xactReadFieldIdAt(uint8_t index)
     return xactReadFieldIdsExtended[index - XACT_READ_PARAM_COUNT_BASE];
 }
 
+// Start a full parameter read of one discovered servo
+static void xactStartRead(uint8_t servoIndex)
+{
+    xactServos[servoIndex].paramsReady = false;
+    xactServos[servoIndex].paramsReadFailed = false;
+    xactServos[servoIndex].answeredFields = 0;
+    xactReadServoIndex = servoIndex;
+    xactReadParamIndex = 0;
+    xactReadState = XACT_READ_STATE_READING;
+}
+
+// A read is only complete when every field it covered answered. A field that timed out keeps
+// its old cached value (0 after discovery), which must not be shown or compared against as if it
+// were the servo's setting. Firmware Version is the exception: older servos don't answer it, and
+// then the extended fields are simply not read.
+static void xactFinishRead(uint8_t servoIndex)
+{
+    uint16_t required = 0;
+    for (uint8_t i = 0; i < xactReadTotalParamCount(servoIndex); i++) {
+        if (xactReadFieldIdAt(i) != XACT_FIELD_FIRMWARE_VERSION) {
+            required |= (1U << i);
+        }
+    }
+
+    const bool complete = (xactServos[servoIndex].answeredFields & required) == required;
+    xactServos[servoIndex].paramsReady = complete;
+    xactServos[servoIndex].paramsReadFailed = !complete;
+}
+
 // Move past the current field (whether it was actually answered or timed out) and either start
 // reading the next one, jump to another discovered servo that hasn't been read yet, or mark
 // idle. Shared by the success path (fbusXactNotifyResponse) and the per-field timeout path in
@@ -133,16 +162,15 @@ static void xactAdvanceReadField(void)
         return;
     }
 
-    xactServos[xactReadServoIndex].paramsReady = true;
+    xactFinishRead(xactReadServoIndex);
 
     // Keep going: read any other discovered servo that hasn't been read yet, so the servo
     // list can show identifying details (e.g. Channel) for every servo found, not just
-    // whichever one happens to be selected.
+    // whichever one happens to be selected. A servo whose read failed is left for an explicit
+    // retry, so an unresponsive servo can't hold the downlink slot from telemetry polling.
     for (uint8_t i = 0; i < xactServoCount; i++) {
-        if (!xactServos[i].paramsReady) {
-            xactReadServoIndex = i;
-            xactReadParamIndex = 0;
-            xactReadState = XACT_READ_STATE_READING;
+        if (!xactServos[i].paramsReady && !xactServos[i].paramsReadFailed) {
+            xactStartRead(i);
             return;
         }
     }
@@ -176,6 +204,7 @@ void fbusXactInit(void)
 void fbusXactClearDiscoveredServos(void)
 {
     memset(xactServos, 0, sizeof(xactServos));
+    memset(xactServoParams, 0, sizeof(xactServoParams));
     xactServoCount = 0;
     xactReadState = XACT_READ_STATE_IDLE;
 
@@ -201,13 +230,25 @@ void fbusXactTrackServo(uint8_t phyID, uint16_t appId, timeUs_t currentTimeUs)
         }
     }
 
+    // The master keeps polling a renamed servo's old Physical ID until the next scan, and the
+    // servo answers there until the rename reaches it. Those frames must not add a second entry
+    // with the same App ID, which would block every later save as a duplicate.
+    for (uint8_t i = 0; i < xactServoCount; i++) {
+        if (xactServos[i].renamed && xactServos[i].previousPhyID == phyID) {
+            return;
+        }
+    }
+
     // Add new servo if space available
     if (xactServoCount < XACT_MAX_SERVOS) {
         xactServos[xactServoCount].phyID = phyID;
         xactServos[xactServoCount].appId = appId;
         xactServos[xactServoCount].lastSeenUs = currentTimeUs;
         xactServos[xactServoCount].paramsReady = false;
+        xactServos[xactServoCount].paramsReadFailed = false;
+        xactServos[xactServoCount].answeredFields = 0;
         xactServos[xactServoCount].appIdConflict = false;
+        xactServos[xactServoCount].renamed = false;
         const uint8_t newServoIndex = xactServoCount;
         xactServoCount++;
 
@@ -217,9 +258,7 @@ void fbusXactTrackServo(uint8_t phyID, uint16_t appId, timeUs_t currentTimeUs)
         // is free -- if it's already busy reading a different servo, xactAdvanceReadField()
         // picks this one up as soon as that one finishes.
         if (xactReadState == XACT_READ_STATE_IDLE || xactReadState == XACT_READ_STATE_COMPLETE) {
-            xactReadState = XACT_READ_STATE_READING;
-            xactReadServoIndex = newServoIndex;
-            xactReadParamIndex = 0;
+            xactStartRead(newServoIndex);
         }
     }
 }
@@ -300,7 +339,8 @@ bool fbusXactProcessQueue(fbusMasterDownlink_t *downlink)
     // Priority 1: Check if we need to send 0x10 poll frame after 0x30 read
     if (xactReadState == XACT_READ_STATE_WAIT_POLL && servo != NULL) {
         // This field hasn't answered in time -- skip it (leaving its cached value at whatever
-        // it already was, typically 0) and move on rather than blocking every later field.
+        // it already was, typically 0) and move on rather than blocking every later field. The
+        // servo is then not marked ready at the end of the read, see xactFinishRead().
         if (cmpTimeUs(micros(), xactFieldReadStartUs) > XACT_FIELD_READ_TIMEOUT_US) {
             xactAdvanceReadField();
             return false;
@@ -481,10 +521,7 @@ bool fbusXactRequestParamsRead(uint8_t phyID)
                 (xactReadState == XACT_READ_STATE_READING || xactReadState == XACT_READ_STATE_WAIT_POLL);
 
             if (!alreadyReadingThisServo) {
-                xactReadServoIndex = i;
-                xactReadParamIndex = 0;
-                xactServos[i].paramsReady = false;
-                xactReadState = XACT_READ_STATE_READING;
+                xactStartRead(i);
             }
 
             return true;
@@ -571,9 +608,17 @@ bool fbusXactSetServoParam(uint8_t phyID, uint8_t fieldId, uint16_t appId, uint1
 }
 
 // Compare and write all parameters if different from cache
-bool fbusXactCompareAndWriteParams(uint8_t phyID, uint16_t appId, const xactServoParams_t *newParams)
+bool fbusXactCompareAndWriteParams(uint8_t phyID, const xactServoParams_t *newParams)
 {
     if (!xactInitialized || newParams == NULL) {
+        return false;
+    }
+
+    // Refuse values outside the ranges the servo accepts. A Physical ID above 31 would overlap
+    // the check bits of the address byte, and an App ID offset above 15 moves the servo out of
+    // the XACT App ID range.
+    if (newParams->physicalId > XACT_PHYSICAL_ID_MAX ||
+        newParams->appIdOffset > FBUS_SERVO_DATA_END - FBUS_SERVO_DATA_BASE) {
         return false;
     }
 
@@ -586,7 +631,9 @@ bool fbusXactCompareAndWriteParams(uint8_t phyID, uint16_t appId, const xactServ
         }
     }
 
-    if (servoIndex < 0) {
+    // The cache is only compared against once a full read has completed. Before that it holds
+    // zeros, so every field would count as changed.
+    if (servoIndex < 0 || !xactServos[servoIndex].paramsReady) {
         return false;
     }
 
@@ -620,9 +667,11 @@ bool fbusXactCompareAndWriteParams(uint8_t phyID, uint16_t appId, const xactServ
 
     bool hasChanges = false;
 
-    // Track current phyID and appId - these may be updated if PHYSICAL_ID or APP_ID_BASE change
+    // Track current phyID and appId - these may be updated if PHYSICAL_ID or APP_ID_BASE change.
+    // Address the writes to the App ID the servo reports in telemetry, the same one the
+    // duplicate check above tested.
     uint8_t currentPhyID = phyID;
-    uint16_t currentAppId = appId;
+    uint16_t currentAppId = xactServos[servoIndex].appId;
 
     // Compare each parameter and queue writes for differences
     if (cachedParams->physicalId != newParams->physicalId) {
@@ -648,6 +697,10 @@ bool fbusXactCompareAndWriteParams(uint8_t phyID, uint16_t appId, const xactServ
             // under its old Physical ID until the next full rescan, and further reads/writes
             // addressed to the new one won't find it.
             currentPhyID = newParams->physicalId;
+            if (!xactServos[servoIndex].renamed) {
+                xactServos[servoIndex].renamed = true;
+                xactServos[servoIndex].previousPhyID = phyID;
+            }
             xactServos[servoIndex].phyID = newParams->physicalId;
             hasChanges = true;
         }
@@ -786,5 +839,6 @@ void fbusXactNotifyResponse(uint8_t phyID, uint8_t fieldId)
         return;
     }
 
+    xactServos[xactReadServoIndex].answeredFields |= (1U << xactReadParamIndex);
     xactAdvanceReadField();
 }

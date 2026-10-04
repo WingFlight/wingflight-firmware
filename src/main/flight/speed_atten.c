@@ -15,7 +15,7 @@
  * along with this software. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// GPS speed attenuation (SPA): scales P and D by GPS speed, alongside the
+// GPS speed attenuation (SPA): scales P, D, F and B by GPS speed, alongside the
 // throttle-based TPA. Dynamic pressure over the surfaces grows with the square
 // of airspeed, so a tune that is right at cruise can oscillate in a fast dive.
 // TPA cannot see that (the throttle is often closed in a dive); GPS speed can.
@@ -59,7 +59,7 @@ typedef struct {
 
     pt1Filter_t speedFilter;
     float speed;          // Filtered speed, km/h
-    float scale;          // Output scale applied to P and D
+    float scale;          // Output scale applied to P, D, F and B
     float lostTime;       // Seconds since the fix was lost
     bool haveSpeed;       // speedFilter holds a real speed
     bool tracking;        // scale follows the curve directly (not easing onto it)

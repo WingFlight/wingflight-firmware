@@ -55,6 +55,9 @@
 #define XACT_FIELD_MAX_ANGLE      0x41  // Max angle, degrees (0-359, series 65+ only)
 #define XACT_FIELD_WRITE_FLASH    0x30  // Save changes to flash (commit step; see SAVE_PRIME above)
 
+// Highest value the servo accepts for XACT_FIELD_PHYSICAL_ID
+#define XACT_PHYSICAL_ID_MAX      26
+
 // XACT servo data ID range (from fbus_sensor.h)
 #define FBUS_SERVO_DATA_BASE 0x6800
 #define FBUS_SERVO_DATA_END  0x680F
@@ -76,10 +79,17 @@ typedef struct {
     uint8_t phyID;
     uint16_t appId;
     timeUs_t lastSeenUs;
-    bool paramsReady;      // true once a full parameter read has completed for this servo
+    bool paramsReady;      // true once a parameter read has completed with every required
+                            // field answered (see xactFinishRead() in fbus_xact.c)
+    bool paramsReadFailed; // true if the last read ended with a required field unanswered. Not
+                            // retried in the background, only by fbusXactRequestParamsRead()
+    uint16_t answeredFields; // bit per read position, set when that field answered this read
     bool appIdConflict;    // true if frames for this Physical ID have reported more than one
                             // App ID -- almost certainly two servos sharing the same Physical
                             // ID and colliding on the bus, not one servo
+    bool renamed;          // true once a Physical ID rename was queued for this servo
+    uint8_t previousPhyID; // Physical ID before that rename. Telemetry from it still belongs to
+                            // this servo until the next scan
 } xactServo_t;
 
 // XACT servo parameter storage. Field set/names/ranges mirror FrSky's own "XAct" ETHOS Device
@@ -130,10 +140,10 @@ uint8_t fbusXactGetDiscoveredServoPhyID(uint8_t index);
 // Get servo parameters for a specific physical ID
 bool fbusXactGetServoParams(uint8_t phyID, xactServoParams_t *params);
 
-// Check whether a full parameter read has completed for a discovered servo. When multiple
-// servos are discovered, only the first one is read automatically -- callers that want to
-// look at (or write to) any other discovered servo should call fbusXactRequestParamsRead()
-// for it first, then poll this until it returns true.
+// Check whether a parameter read has completed for a discovered servo, with every field
+// answered except Firmware Version (older servos don't answer it). Servos are read in the
+// background after discovery; a read with an unanswered field leaves the servo not ready until
+// fbusXactRequestParamsRead() retries it. Callers should call that, then poll this.
 bool fbusXactIsServoParamsReady(uint8_t phyID);
 
 // (Re)start a full parameter read for an already-discovered servo. Safe to call repeatedly;
@@ -157,10 +167,11 @@ bool fbusXactHasDuplicateAppId(uint8_t phyID);
 bool fbusXactSetServoParam(uint8_t phyID, uint8_t fieldId, uint16_t appId, uint16_t data);
 
 // Compare and write all parameters if different from cache. Returns false (no writes sent)
-// without changing anything if the servo is unknown, fbusXactHasDuplicateAppId(phyID) is true,
-// or the write queue has no room for a whole save. Returns true otherwise, also when no
-// parameter differs and nothing is written.
-bool fbusXactCompareAndWriteParams(uint8_t phyID, uint16_t appId, const xactServoParams_t *newParams);
+// without changing anything if the servo is unknown, its parameter read has not completed
+// (fbusXactIsServoParamsReady), fbusXactHasDuplicateAppId(phyID) is true, or the write queue has
+// no room for a whole save. Returns true otherwise, also when no parameter differs and nothing
+// is written. Writes are addressed to the App ID the servo reports in telemetry.
+bool fbusXactCompareAndWriteParams(uint8_t phyID, const xactServoParams_t *newParams);
 
 // Check if XACT module is initialized
 bool fbusXactIsInitialized(void);

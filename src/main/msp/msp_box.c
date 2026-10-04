@@ -68,7 +68,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
 //    BOXITEM(BOXCALIB, "CALIB", 17), // reserved (never implemented)
 //    BOXITEM(BOXGOV, "GOVERNOR", 18),
 //    BOXITEM(BOXOSD, "OSD DISABLE", 19), // OSD removed
-    BOXITEM(BOXPASSTHROUGH, "PASSTHROUGH", 12),
+    BOXITEM(BOXPASSTHROUGH, "SETUP", 12),
     BOXITEM(BOXTELEMETRY, "TELEMETRY", 20),
 //    BOXITEM(BOXGTUNE, "GTUNE", 21),
 //    BOXITEM(BOXRANGEFINDER, "RANGEFINDER", 22),
@@ -112,7 +112,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
 //    BOXITEM(BOXGOVSUSPEND, "GOVERNOR SUSPEND", 56), // heli governor removed
 //    BOXITEM(BOXGOVBYPASS, "GOVERNOR BYPASS", 57), // heli governor removed
 //    BOXITEM(BOXAUTOHOVER, "AUTO HOVER", 58), // reserved (AUTO HOVER removed)
-    BOXITEM(BOXMANUAL, "MANUAL", 59),
+    BOXITEM(BOXMANUAL, "GYRO OFF", 59),
     BOXITEM(BOXAUTOTRIM, "AUTO TRIM", 60),
     // permanentId 46 is BOXGPSRESCUE "GPS RESCUE" (see above) -- reserved, do not reuse
     // permanentId 61 is BOXLOITER "GPS LOITER" (see above, near BOXGPSRESCUE) -- do not reuse

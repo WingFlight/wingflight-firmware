@@ -121,7 +121,7 @@ typedef struct pidProfile_s {
     uint16_t            master_gain[PID_AXIS_COUNT]; // Live per-axis P/I/D scale, percent (100 = unscaled) - in-flight tuning aid, doesn't alter the underlying gains
     uint8_t             gain_curve[PID_AXIS_COUNT];   // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1), scales master_gain by |stick deflection|
 
-    uint8_t             fw_tpa_gain;                  // Baseline throttle attenuation scale, percent (100 = unscaled) - mirrors master_gain
+    uint8_t             fw_tpa_gain;                  // Baseline throttle attenuation of P, D, F and B, percent (100 = unscaled) - mirrors master_gain
     uint8_t             fw_tpa_curve;                 // 0=none, 1..GAIN_CURVE_COUNT = gainCurves(idx-1), further scales fw_tpa_gain by throttle - mirrors gain_curve
 
     uint8_t             iterm_decay_time[PID_AXIS_COUNT]; // Per-axis I-term decay time constant, 0.01 s (ITERM_DECAY_TIME_MIN..MAX)
@@ -177,6 +177,50 @@ typedef struct {
 PG_DECLARE_ARRAY(fwSpaConfig_t, PID_PROFILE_COUNT, fwSpaConfigs);
 
 void resetFwSpaConfig(fwSpaConfig_t *config);
+
+// ANGLE mode settings added after the pidProfile_t layout was fixed, one per PID
+// profile. Separate storage, like fwSpaConfig_t, so adding it did not reset
+// existing PID profiles.
+#define LEVEL_DAMPING_MAX         100
+
+typedef struct {
+    uint8_t damping;     // Percent of measured roll/pitch rate subtracted from the level rate command
+} levelConfig_t;
+
+PG_DECLARE_ARRAY(levelConfig_t, PID_PROFILE_COUNT, levelConfigs);
+
+void resetLevelConfig(levelConfig_t *config);
+
+// Snap relax (pop tops, pinwheels, snaps), one per PID profile. Separate storage, like
+// levelConfig_t, so adding it did not reset existing PID profiles.
+#define SNAP_RELAX_THRESHOLD_MIN  20
+#define SNAP_RELAX_TIME_MAX       1000
+
+typedef struct {
+    uint8_t  strength;   // Percent of opposing roll/pitch/yaw feedback removed while a snap is on. 0 = off
+    uint8_t  threshold;  // Stick deflection, percent, that roll, pitch and yaw must all reach
+    uint16_t window;     // ms: all three sticks must cross the threshold within this time of each other
+    uint16_t hold;       // ms: relax fades out over this time after any stick drops below the threshold
+} snapRelaxConfig_t;
+
+PG_DECLARE_ARRAY(snapRelaxConfig_t, PID_PROFILE_COUNT, snapRelaxConfigs);
+
+void resetSnapRelaxConfig(snapRelaxConfig_t *config);
+
+// Prop-hang relax, one per PID profile. Separate storage, like snapRelaxConfig_t.
+#define PROP_HANG_ANGLE_MIN       5
+#define PROP_HANG_ANGLE_MAX       45
+#define PROP_HANG_FADE_MAX        2000
+
+typedef struct {
+    uint8_t  strength;   // Percent of roll I held back and bled off while hanging. 0 = off
+    uint8_t  angle;      // deg from vertical nose-up that still counts as a hang
+    uint16_t fade;       // ms: relax fades out over this time after the hang ends
+} propHangConfig_t;
+
+PG_DECLARE_ARRAY(propHangConfig_t, PID_PROFILE_COUNT, propHangConfigs);
+
+void resetPropHangConfig(propHangConfig_t *config);
 
 // Positive axis overrides use the SAFE-style range; zero preserves the legacy shared value.
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis);

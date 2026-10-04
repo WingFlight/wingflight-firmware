@@ -897,6 +897,12 @@ static uint16_t getValueOffset(const clivalue_t *value)
             return value->offset + sizeof(attitudeLimits_t) * getPidProfileIndexToUse();
         case PG_FW_SPA_CONFIG:
             return value->offset + sizeof(fwSpaConfig_t) * getPidProfileIndexToUse();
+        case PG_LEVEL_CONFIG:
+            return value->offset + sizeof(levelConfig_t) * getPidProfileIndexToUse();
+        case PG_SNAP_RELAX_CONFIG:
+            return value->offset + sizeof(snapRelaxConfig_t) * getPidProfileIndexToUse();
+        case PG_PROP_HANG_CONFIG:
+            return value->offset + sizeof(propHangConfig_t) * getPidProfileIndexToUse();
         default:
             return value->offset + sizeof(pidProfile_t) * getPidProfileIndexToUse();
         }

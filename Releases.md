@@ -1,3 +1,29 @@
+# 0.0.31
+
+The MSP API stays at 22.13. Updating resets every PID profile and thrust-vector profile, the snap relax settings and the GPS nav settings to defaults (their defaults changed), so note your tune before flashing and re-enter it afterwards. Use the 0.0.31 Configurator and Lua suites with this firmware.
+Raise the default P and I gains on every axis, in the PID and thrust-vector profiles: roll and pitch P 150, I 75; yaw P 310, I 75. Blackbox logs showed the old defaults (P 50, I 16) barely moved the surfaces.
+Scale yaw P and I the same as roll and pitch. Per unit they were 10x (P) and 2.5x (I) stronger before.
+Limit master gain to 0-200% (was 25-1000%), in the profiles and the adjustment functions. At 0% the stabilizer stops correcting on that axis but the sticks still move the surfaces, so a gain pot can turn it off. Saved values above 200% are pulled to 200%.
+Let a gain or trim pot reach the ends of its adjustment range: a continuous adjustment now follows the channel up to 25 us past its range, so a radio's full travel (about 988-2012 us) reaches both ends instead of stopping short.
+Add Prop-Hang Relax: in a prop hang (nose near vertical with little vertical speed, for 0.5 s) roll I is held back so the prop torque can roll the airframe. On by default; set per profile with prop_hang_strength (0 = off), prop_hang_angle and prop_hang_fade. MSP_PID_PROFILE carries the settings at its end; blackbox logs a prop_hang header and a PROP_HANG debug mode.
+Relax opposing yaw feedback in a snap too, not only roll and pitch.
+Raise the default snap relax hold from 150 to 350 ms, so stability comes back more gently at the end of a pop top or pinwheel.
+Soften GPS nav turns onto track: default nav_bearing_kp 120 (was 200), and nav_throttle 65% (was 60%).
+Fix XACT servo writes using a stale or incomplete parameter cache after a rescan.
+
+# 0.0.30
+
+Change the MSP API to 22.13. Updating resets every PID profile and thrust-vector profile to defaults (the default F and B changed), so note your tune before flashing and re-enter it afterwards. Use the 0.0.30 Configurator and Lua suites with this firmware.
+Add Snap Relax: when roll, pitch and yaw are slammed in together (a pop top, pinwheel or snap), roll and pitch feedback stops fighting the rotation, then fades back in as the sticks come out. Set per profile with snap_relax_strength (default 100, 0 = off), snap_relax_threshold, snap_relax_window and snap_relax_hold. Blackbox logs a snap_relax header and a SNAP_RELAX debug mode.
+Change the default F to 75 and B to 35 on every axis, in the PID and thrust-vector profiles, to cut bounce-back at the end of rolls and loops.
+Rename MANUAL to GYRO OFF and PASSTHROUGH to SETUP. Set surface throws in SETUP, where full stick gives full configured travel. Mode IDs and switch assignments are unchanged.
+Give GYRO OFF at least 30% surface travel at full stick whatever the rates, and stop the I-term building up while GYRO OFF or SETUP drives the surfaces, which bumped the aircraft on switching back.
+Ramp ANGLE in from the current attitude instead of stepping the rate command when it engages far from level, and cap its rate at the rate profile's full-stick rate. Add angle_level_damping (default 25%) so leveling settles with less overshoot.
+Scale F and B with throttle (TPA) and GPS speed (SPA) attenuation as well as P and D, and floor the combined attenuation at 25%. GYRO OFF is not attenuated.
+Remove the AUTO HOVER, HORIZON, PARALYZE, STICK COMMANDS DISABLE, ALTHOLD and CALIB modes and their settings. Their IDs stay reserved, so no other mode moves.
+Keep servo min/max as set and limit the travel against the center only at the output, so moving the center back gives the travel back. The CLI servo command warns when the center limits it.
+Fix MSP over telemetry losing every reply after a request arrived while a long reply was still being sent.
+
 # 0.0.29
 
 Change the MSP API to 22.10. Updating resets every PID profile and thrust-vector profile to defaults (the stored I-term decay and relax values changed meaning), so note your tune before flashing and re-enter it afterwards. Use the 0.0.29 Configurator and Lua suites with this firmware.

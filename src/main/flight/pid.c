@@ -56,6 +56,7 @@
 #include "flight/leveling.h"
 #include "flight/atthold.h"
 #include "flight/hold_engine.h"
+#include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/speed_atten.h"
 
@@ -92,6 +93,8 @@ float pidGetOutput(int axis)
 // otherwise file-static) -- lets a caller ask "what would stabilized flight command for this
 // axis at this rate, with no gyro correction at all" without duplicating Kf's derivation or
 // scale. See setpoint.c's getManualDeflection(), which uses this as MANUAL mode's whole output.
+// Deliberately NOT attenuated by throttle/GPS speed: GYRO OFF is a bail-out mode, and its
+// full-stick floor (MANUAL_MIN_THROW) must hold whatever the TPA/SPA curves do.
 float pidGetFeedforward(int axis, float rate)
 {
     return pid.coef[axis].Kf * rate;
@@ -105,6 +108,11 @@ const pidAxisData_t * pidGetAxisData(void)
 void INIT_CODE pidReset(void)
 {
     memset(pid.data, 0, sizeof(pid.data));
+
+    memset(pid.snapAboveTime, 0, sizeof(pid.snapAboveTime));
+    pid.snapActive = false;
+    pid.snapHoldTimer = 0;
+    pid.snapRelax = 0;
 }
 
 void INIT_CODE pidResetAxisError(int axis)
@@ -525,7 +533,7 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     // regardless of which gain adjustment (including this one) last touched
     // the coefficients.
     for (int i = 0; i < PID_AXIS_COUNT; i++)
-        pid.masterGain[i] = pidProfile->master_gain[i] * 0.01f;
+        pid.masterGain[i] = constrain(pidProfile->master_gain[i], MASTER_GAIN_MIN, MASTER_GAIN_MAX) * 0.01f;
 
     // Optional per-axis curve that further scales master gain by |stick deflection|
     for (int i = 0; i < PID_AXIS_COUNT; i++)
@@ -593,6 +601,19 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     const uint8_t crossAxisRelaxCutoff = constrain(pidProfile->cross_axis_relax_cutoff, 1, 100);
     pt1FilterUpdate(&pid.crossAxisRelaxFilter, crossAxisRelaxCutoff, pid.freq);
 
+    // Snap relax (separate per-profile storage, see snapRelaxConfig_t)
+    const snapRelaxConfig_t *snapRelaxConfig = snapRelaxConfigs(getCurrentPidProfileIndex());
+    pid.snapRelaxStrength = MIN(snapRelaxConfig->strength, 100) * 0.01f;
+    pid.snapRelaxThreshold = constrain(snapRelaxConfig->threshold, SNAP_RELAX_THRESHOLD_MIN, 100) * 0.01f;
+    pid.snapRelaxWindow = MIN(snapRelaxConfig->window, SNAP_RELAX_TIME_MAX) * 0.001f;
+    pid.snapRelaxHold = MIN(snapRelaxConfig->hold, SNAP_RELAX_TIME_MAX) * 0.001f;
+
+    // Prop-hang relax (separate per-profile storage, see propHangConfig_t)
+    const propHangConfig_t *propHangConfig = propHangConfigs(getCurrentPidProfileIndex());
+    pid.propHangStrength = MIN(propHangConfig->strength, 100) * 0.01f;
+    pid.propHangCosAngle = cos_approx(DEGREES_TO_RADIANS(constrain(propHangConfig->angle, PROP_HANG_ANGLE_MIN, PROP_HANG_ANGLE_MAX)));
+    pid.propHangFade = MIN(propHangConfig->fade, PROP_HANG_FADE_MAX) * 0.001f;
+
 
     // Initialise sub-profiles
 #ifdef USE_ACC
@@ -626,6 +647,9 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
         memcpy(pidProfilesMutable(dstPidProfileIndex), pidProfilesMutable(srcPidProfileIndex), sizeof(pidProfile_t));
         memcpy(attitudeLimitsMutable(dstPidProfileIndex), attitudeLimits(srcPidProfileIndex), sizeof(attitudeLimits_t));
         memcpy(fwSpaConfigsMutable(dstPidProfileIndex), fwSpaConfigs(srcPidProfileIndex), sizeof(fwSpaConfig_t));
+        memcpy(levelConfigsMutable(dstPidProfileIndex), levelConfigs(srcPidProfileIndex), sizeof(levelConfig_t));
+        memcpy(snapRelaxConfigsMutable(dstPidProfileIndex), snapRelaxConfigs(srcPidProfileIndex), sizeof(snapRelaxConfig_t));
+        memcpy(propHangConfigsMutable(dstPidProfileIndex), propHangConfigs(srcPidProfileIndex), sizeof(propHangConfig_t));
     }
 }
 
@@ -656,7 +680,9 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
 
 static inline void rotateAxisError(void)
 {
-      const float r = gyro.gyroADCf[Z] * RAD * pid.dT;
+      // Not while a snap is relaxed: the airframe yaws 100-200 deg through a pop top, which
+      // would carry roll I into pitch and back for no aerodynamic reason.
+      const float r = gyro.gyroADCf[Z] * RAD * pid.dT * (1.0f - pid.snapRelax);
 
       const float t = r * r / 2;
       const float C = t * (1 - t / 6);
@@ -713,6 +739,171 @@ static float getCrossAxisRelaxFactor(int axis)
     return 1.0f - relaxAmount;
 }
 
+/*
+ * Snap relax
+ *
+ * Pop tops, pinwheels and snaps are entered with roll, pitch and yaw slammed in
+ * together. The airframe then stalls and autorotates well past the commanded rate
+ * (logs show roll at 2-2.5x setpoint), and rate feedback reverses the surfaces
+ * against a full stick: up to ~35 % opposite aileron, and the I-term it winds up
+ * is left behind as a bump on the exit.
+ *
+ * A snap is detected when all three sticks pass the threshold within the window of
+ * each other, so a slow rolling-harrier style build-up of the same inputs does not
+ * count. While the sticks stay past the threshold, and fading out over the hold
+ * time after, feedback is relaxed on all three axes only where it opposes the
+ * direction the stick was snapped in: P/D pushing back and I winding against it.
+ * Feedback that helps the rotation and F are untouched. Yaw mostly lags the stick
+ * (logs show ~15 % of the commanded rate), so its feedback helps and is left alone;
+ * it is relaxed only when the airframe out-yaws the stick. A heli port would need
+ * its own gesture; this one is fixed-wing specific.
+ */
+static void updateSnapRelax(void)
+{
+    if (pid.snapRelaxStrength <= 0) {
+        pid.snapActive = false;
+        pid.snapHoldTimer = 0;
+        pid.snapRelax = 0;
+        return;
+    }
+
+    // Cap on the time-above counters, s. Any value well past the window will do.
+    const float timeCap = 10.0f;
+
+    bool allAbove = true;
+    float first = 0, last = timeCap;
+
+    for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
+        if (fabsf(getRcDeflection(axis)) >= pid.snapRelaxThreshold) {
+            pid.snapAboveTime[axis] = MIN(pid.snapAboveTime[axis] + pid.dT, timeCap);
+            first = MAX(first, pid.snapAboveTime[axis]);
+            last = MIN(last, pid.snapAboveTime[axis]);
+        }
+        else {
+            pid.snapAboveTime[axis] = 0;
+            allAbove = false;
+        }
+    }
+
+    if (!allAbove) {
+        pid.snapActive = false;
+    }
+    else if (!pid.snapActive && first - last <= pid.snapRelaxWindow) {
+        pid.snapActive = true;
+        for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
+            // In setpoint sign: setpointUpdate() negates yaw, so yaw's stick sign is flipped.
+            const float deflection = (axis == FD_YAW) ? -getRcDeflection(axis) : getRcDeflection(axis);
+            pid.snapDirection[axis] = (deflection > 0) ? 1.0f : -1.0f;
+        }
+    }
+
+    if (pid.snapActive) {
+        pid.snapHoldTimer = pid.snapRelaxHold;
+        pid.snapRelax = pid.snapRelaxStrength;
+    }
+    else if (pid.snapHoldTimer > 0) {
+        pid.snapHoldTimer = MAX(pid.snapHoldTimer - pid.dT, 0);
+        pid.snapRelax = pid.snapRelaxStrength * pid.snapHoldTimer / pid.snapRelaxHold;
+    }
+    else {
+        pid.snapRelax = 0;
+    }
+
+    DEBUG(SNAP_RELAX, 0, lrintf(pid.snapRelax * 1000));
+    DEBUG(SNAP_RELAX, 1, pid.snapActive);
+    DEBUG(SNAP_RELAX, 2, lrintf((first - last) * 1000));
+    DEBUG(SNAP_RELAX, 3, lrintf(getRcDeflection(FD_ROLL) * 1000));
+    DEBUG(SNAP_RELAX, 4, lrintf(getRcDeflection(FD_PITCH) * 1000));
+    DEBUG(SNAP_RELAX, 5, lrintf(getRcDeflection(FD_YAW) * 1000));
+}
+
+// Scale for an error term: below 1 only while a snap is relaxed and the
+// error pushes against the snap direction. During the fade-out, a stick reversed
+// against the snap gets full feedback back, so the pilot can stop the rotation.
+static float getSnapRelaxFactor(int axis, float error, float setpoint)
+{
+    if (pid.snapRelax <= 0) {
+        return 1.0f;
+    }
+
+    const float direction = pid.snapDirection[axis];
+
+    if (error * direction >= 0 || setpoint * direction < 0) {
+        return 1.0f;
+    }
+
+    return 1.0f - pid.snapRelax;
+}
+
+
+/*
+ * Prop-hang relax
+ *
+ * In a prop hang the prop torque rolls the airframe, and on a 3D model that torque roll is
+ * part of the flying. A rate gyro holding zero roll rate builds roll I until the ailerons
+ * cancel the torque (logs show the roll rate held at ~0 deg/s with the gyro on, against a
+ * natural 30-135 deg/s torque roll with it off).
+ *
+ * A hang is the nose within the configured angle of vertical, the vertical speed within
+ * PROP_HANG_VARIO_MAX (an up-line has the nose just as vertical but climbs at 3-30 m/s), for
+ * PROP_HANG_ENTRY_TIME, in plain rate flight. It needs an altitude estimate: without one an
+ * up-line cannot be told from a hang, so nothing is relaxed. While hanging, roll I stops
+ * building and what it holds bleeds off, so the prop is free to roll the airframe; P, D and F
+ * are untouched, so the stick still rolls it and P still damps a gust. Roll only: in a hang
+ * the rudder and elevator steer the nose. Once the hang ends, the relax fades out over the
+ * fade time.
+ */
+#define PROP_HANG_VARIO_MAX     2.0f    // m/s
+#define PROP_HANG_ENTRY_TIME    0.5f    // s
+#define PROP_HANG_BLEED_TIME    0.5f    // s, time constant of the roll I bleed while hanging
+
+static void resetPropHangRelax(void)
+{
+    pid.propHangTime = 0;
+    pid.propHangFadeTimer = 0;
+    pid.propHangRelax = 0;
+}
+
+static void updatePropHangRelax(void)
+{
+    if (pid.propHangStrength <= 0) {
+        resetPropHangRelax();
+        return;
+    }
+
+    // Leveling and hold layers need roll I to hold their target, so only in plain rate flight
+    const bool rateFlight = !FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE |
+                                         LOITER_MODE | RTH_MODE | ATTHOLD_MODE | TRAINER_MODE);
+
+    // rMat[2][0] is the nose-up component of the body X axis: 1 pointing straight up
+    const float noseUp = rMat[2][0];
+    const float vario = hasEstimatedAltitude() ? getVario() : 0;
+
+    const bool hanging = rateFlight && hasEstimatedAltitude() &&
+                         noseUp >= pid.propHangCosAngle &&
+                         fabsf(vario) <= PROP_HANG_VARIO_MAX;
+
+    pid.propHangTime = hanging ? MIN(pid.propHangTime + pid.dT, PROP_HANG_ENTRY_TIME) : 0;
+
+    if (pid.propHangTime >= PROP_HANG_ENTRY_TIME) {
+        pid.propHangFadeTimer = pid.propHangFade;
+        pid.propHangRelax = pid.propHangStrength;
+    }
+    else if (pid.propHangFadeTimer > 0) {
+        pid.propHangFadeTimer = MAX(pid.propHangFadeTimer - pid.dT, 0);
+        pid.propHangRelax = pid.propHangStrength * pid.propHangFadeTimer / pid.propHangFade;
+    }
+    else {
+        pid.propHangRelax = 0;
+    }
+
+    DEBUG(PROP_HANG, 0, lrintf(pid.propHangRelax * 1000));
+    DEBUG(PROP_HANG, 1, lrintf(noseUp * 1000));
+    DEBUG(PROP_HANG, 2, lrintf(vario * 100));
+    DEBUG(PROP_HANG, 3, lrintf(pid.propHangTime * 1000));
+    DEBUG(PROP_HANG, 4, hasEstimatedAltitude());
+    DEBUG(PROP_HANG, 5, rateFlight);
+}
 
 static float pidApplySetpoint(uint8_t axis)
 {
@@ -726,14 +917,19 @@ static float pidApplySetpoint(uint8_t axis)
         // even while holding an off-level attitude -- a deliberate safety choice.
         setpoint = angleModeApply(axis, setpoint);
     }
-    else if (FLIGHT_MODE(ATTHOLD_MODE)) {
-        setpoint = attHoldApply(axis, setpoint);
-    }
+    else {
+        // Next engagement starts the level target from the attitude at that moment
+        angleModeReset();
+
+        if (FLIGHT_MODE(ATTHOLD_MODE)) {
+            setpoint = attHoldApply(axis, setpoint);
+        }
 #ifdef USE_ACRO_TRAINER
-    else if (FLIGHT_MODE(TRAINER_MODE)) {
-        setpoint = acroTrainerApply(axis, setpoint);
-    }
+        else if (FLIGHT_MODE(TRAINER_MODE)) {
+            setpoint = acroTrainerApply(axis, setpoint);
+        }
 #endif
+    }
 #endif
 
     // Save setpoint
@@ -857,12 +1053,22 @@ static float pidThrottleAttenuation(void)
     // airspeed, so gain is attenuated as throttle rises, not as it falls.
     // Mirrors masterGain + gain_curve: fwTpaGain is the baseline scale, an
     // optional curve from the same shared pool further shapes it by
-    // throttle (0..1) instead of |stick deflection|.
+    // throttle (0..1) instead of |stick deflection|. Applied (with GPS speed) to P, D,
+    // F and B through pidSurfaceAttenuation(); not to I or MANUAL.
     const float curveMult = pid.fwTpaCurveIndex > 0
         ? pidEvaluateGainCurve(gainCurves(pid.fwTpaCurveIndex - 1), getThrottle())
         : 1.0f;
 
     return pid.fwTpaGain * curveMult;
+}
+
+// Throttle and GPS speed attenuation together, as applied to the surface terms.
+// Floored so a curve point near zero, or both baselines at their minimum, can
+// never leave the surfaces without throw: F carries most of the stick authority,
+// so a zero here would leave the sticks almost nothing to move.
+static float pidSurfaceAttenuation(void)
+{
+    return fmaxf(pidThrottleAttenuation() * speedAttenGetScale(), PID_ATTENUATION_MIN);
 }
 
 static uint32_t pidScaleToCentiPercent(float scale)
@@ -881,7 +1087,7 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
 
     const float fwTpa = pidThrottleAttenuation();
     const float fwSpa = speedAttenGetScale();
-    const float atten = fwTpa * fwSpa;
+    const float atten = pidSurfaceAttenuation();
     runtimeGains->fwTpa = pidScaleToCentiPercent(fwTpa);
     runtimeGains->fwSpa = pidScaleToCentiPercent(fwSpa);
     runtimeGains->fwSpaSpeed = lrintf(speedAttenGetSpeed() * 10.0f);
@@ -900,8 +1106,8 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
         runtimeGains->effective[axis].P = pidGainToCenti(raw->P * masterGain * atten);
         runtimeGains->effective[axis].I = pidGainToCenti(raw->I * masterGain);
         runtimeGains->effective[axis].D = pidGainToCenti(raw->D * masterGain * atten);
-        runtimeGains->effective[axis].F = pidGainToCenti(raw->F);
-        runtimeGains->effective[axis].B = pidGainToCenti(raw->B);
+        runtimeGains->effective[axis].F = pidGainToCenti(raw->F * atten);
+        runtimeGains->effective[axis].B = pidGainToCenti(raw->B * atten);
     }
 }
 
@@ -917,10 +1123,13 @@ static void pidApplyMode1(uint8_t axis)
     const float errorRate = setpoint - gyroRate;
 
     // Throttle- and GPS speed-based gain attenuation
-    const float atten = pidThrottleAttenuation() * speedAttenGetScale();
+    const float atten = pidSurfaceAttenuation();
 
     // Cross-axis relax
     const float crossAxisRelax = getCrossAxisRelaxFactor(axis);
+
+    // Snap relax: feedback pushing against a snapped stick
+    const float snapRelax = getSnapRelaxFactor(axis, errorRate, setpoint);
 
     // Optional per-axis curve scaling master gain by |stick deflection|
     const float curveMult = pidAxisGainCurve(axis);
@@ -930,7 +1139,7 @@ static void pidApplyMode1(uint8_t axis)
   //// P-term
 
     // Calculate P-component
-    pid.data[axis].P = pid.coef[axis].Kp * masterGain * atten * crossAxisRelax * errorRate;
+    pid.data[axis].P = pid.coef[axis].Kp * masterGain * atten * crossAxisRelax * snapRelax * errorRate;
 
 
   //// D-term (gyro only)
@@ -938,8 +1147,9 @@ static void pidApplyMode1(uint8_t axis)
     // Calculate D-term with bandwidth limit
     const float dTerm = difFilterApply(&pid.dtermFilter[axis], -gyroRate);
 
-    // Calculate D-component
-    pid.data[axis].D = pid.coef[axis].Kd * masterGain * atten * crossAxisRelax * dTerm;
+    // Calculate D-component. Relaxed only while it pushes against the snap too.
+    const float snapRelaxD = getSnapRelaxFactor(axis, dTerm, setpoint);
+    pid.data[axis].D = pid.coef[axis].Kd * masterGain * atten * crossAxisRelax * snapRelaxD * dTerm;
 
 
   //// I-term
@@ -947,16 +1157,30 @@ static void pidApplyMode1(uint8_t axis)
     // Apply error relax. Cross-axis relax slows the accumulation here and is NOT
     // applied again to the I output below: scaling the output as well made I drop
     // immediately when rudder was applied and jump back on release (#112).
-    const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax;
+    // Prop-hang relax holds roll I back so the prop torque can roll the airframe
+    const float propHangRelax = (axis == PID_ROLL) ? pid.propHangRelax : 0;
+
+    const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax * snapRelax * (1.0f - propHangRelax);
 
     // Saturation
     const bool saturation = (pidAxisSaturated(axis) && pid.data[axis].axisError * itermErrorRate > 0);
 
+    // While PASSTHROUGH or MANUAL drives the surfaces the gyro is not tracking this setpoint, so
+    // integrating the error only winds I up, and it was released as a bump on switching back
+    // (with a leveling mode also on, decay is suspended and nothing bled it off). Hold the
+    // accumulation; decay below still applies as normal.
+    const bool bypassed = mixerStabilizationBypassed();
+
     // I-term change
-    const float itermDelta = saturation ? 0 : itermErrorRate * pid.dT;
+    const float itermDelta = (saturation || bypassed) ? 0 : itermErrorRate * pid.dT;
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
+
+    // Bleed off the roll I that was holding the airframe against the torque before the hang
+    if (propHangRelax > 0) {
+        pid.data[axis].axisError -= pid.data[axis].axisError * MIN(propHangRelax * pid.dT / PROP_HANG_BLEED_TIME, 1.0f);
+    }
     // TRADITIONAL_MODE forces I output to zero without touching axisError's own bookkeeping, so
     // relax/decay keep behaving as configured and I resumes smoothly if the mode is switched off.
     pid.data[axis].I = FLIGHT_MODE(TRADITIONAL_MODE) ? 0.0f
@@ -1016,8 +1240,10 @@ static void pidApplyMode1(uint8_t axis)
 
   //// Feedforward
 
-    // Calculate F component
-    pid.data[axis].F = pid.coef[axis].Kf * setpoint;
+    // Calculate F component. Attenuated like P and D: a surface made more effective by
+    // prop wash or airspeed needs less deflection for the same rate, and F sets that
+    // deflection far more than the small P-term does.
+    pid.data[axis].F = pid.coef[axis].Kf * atten * setpoint;
 
 
   //// Feedforward Boost (FF Derivative)
@@ -1026,7 +1252,7 @@ static void pidApplyMode1(uint8_t axis)
     const float bTerm = difFilterApply(&pid.btermFilter[axis], setpoint);
 
     // Calculate B-component
-    pid.data[axis].B = pid.coef[axis].Kb * bTerm;
+    pid.data[axis].B = pid.coef[axis].Kb * atten * bTerm;
 
 
   //// PID Sum
@@ -1046,6 +1272,10 @@ void pidController(const pidProfile_t *pidProfile, timeUs_t currentTimeUs)
     rotateAxisError();
 
     updateCrossAxisRelax();
+
+    updateSnapRelax();
+
+    updatePropHangRelax();
 
     speedAttenUpdate(pid.dT);
 

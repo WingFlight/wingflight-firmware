@@ -35,27 +35,47 @@
 
 #define PID_GAIN_MAX                1000
 
-// Floor on roll/pitch/yaw F gain. MANUAL mode flies on the F-term alone, so this keeps at least
-// half surface travel at full stick (with 400 deg/s rates) whatever the tune.
+// Master gain limits, percent (100 = unscaled), for the main and thrust-vector loops. The
+// ceiling is back to the original 200: the 1000 ceiling (v8->v9) only made up for a
+// control-link setup that was wrong, and a pot mapped across 25-1000 sat at 512% when centred.
+// The floor is 0, so a gain pot can take the stabilizer to nothing. Master gain scales P, I
+// and D only, so the sticks still move the surfaces through F at 0%.
+#define MASTER_GAIN_MIN             0
+#define MASTER_GAIN_MAX             200
+
+// Floor on roll/pitch/yaw F gain. F sets most of the surface deflection for a commanded rate; P
+// and I are small corrections on top (I is capped by error_limit). With the default P and I, F = 0
+// lets full stick reach only about 100 of a commanded 250 deg/s on roll and pitch, late, once I
+// has wound up. At 50, I can still make up the rest of the deflection. GYRO OFF (MANUAL_MODE) has
+// its own full-stick floor in setpoint.c and does not rely on this.
 #define PID_F_GAIN_MIN              50
 
-#define ROLL_P_TERM_SCALE           0.00000666666f
-#define ROLL_I_TERM_SCALE           0.0002f
+// Floor on the combined throttle x GPS speed attenuation of P, D, F and B, so no TPA/SPA
+// curve can take the surfaces' stick authority away.
+#define PID_ATTENUATION_MIN         0.25f
+
+#define FW_P_TERM_SCALE             0.00000666666f
+#define FW_I_TERM_SCALE             0.0002f
+#define FW_F_TERM_SCALE             0.000025f
+#define FW_B_TERM_SCALE             0.1e-6f
+
+#define ROLL_P_TERM_SCALE           FW_P_TERM_SCALE
+#define ROLL_I_TERM_SCALE           FW_I_TERM_SCALE
 #define ROLL_D_TERM_SCALE           0.1e-6f
-#define ROLL_F_TERM_SCALE           0.000025f
-#define ROLL_B_TERM_SCALE           0.1e-6f
+#define ROLL_F_TERM_SCALE           FW_F_TERM_SCALE
+#define ROLL_B_TERM_SCALE           FW_B_TERM_SCALE
 
-#define PITCH_P_TERM_SCALE          0.00000666666f
-#define PITCH_I_TERM_SCALE          0.0002f
+#define PITCH_P_TERM_SCALE          FW_P_TERM_SCALE
+#define PITCH_I_TERM_SCALE          FW_I_TERM_SCALE
 #define PITCH_D_TERM_SCALE          1.0e-6f
-#define PITCH_F_TERM_SCALE          0.000025f
-#define PITCH_B_TERM_SCALE          0.1e-6f
+#define PITCH_F_TERM_SCALE          FW_F_TERM_SCALE
+#define PITCH_B_TERM_SCALE          FW_B_TERM_SCALE
 
-#define YAW_P_TERM_SCALE            0.00006666666f
-#define YAW_I_TERM_SCALE            0.0005f
-#define YAW_D_TERM_SCALE            1.0e-6f
-#define YAW_F_TERM_SCALE            0.000025f
-#define YAW_B_TERM_SCALE            1.0e-6f
+#define YAW_P_TERM_SCALE            FW_P_TERM_SCALE
+#define YAW_I_TERM_SCALE            FW_I_TERM_SCALE
+#define YAW_D_TERM_SCALE            PITCH_D_TERM_SCALE
+#define YAW_F_TERM_SCALE            FW_F_TERM_SCALE
+#define YAW_B_TERM_SCALE            FW_B_TERM_SCALE
 
 typedef struct {
     float P;
@@ -114,6 +134,23 @@ typedef struct pid_s {
     float crossAxisRelaxPitchStrength;
     uint8_t crossAxisRelaxLevel;
     float crossAxisRelaxYawActivity;
+
+    float snapRelaxStrength;                    // 0..1, see snapRelaxConfig_t
+    float snapRelaxThreshold;                   // 0..1 stick deflection
+    float snapRelaxWindow;                      // s
+    float snapRelaxHold;                        // s
+    float snapAboveTime[XYZ_AXIS_COUNT];        // s since each stick crossed the threshold, 0 while below
+    float snapDirection[XYZ_AXIS_COUNT];        // Stick sign when the snap was detected
+    float snapHoldTimer;                        // s of fade-out left after the snap ended
+    bool snapActive;
+    float snapRelax;                            // Current relax amount, 0..snapRelaxStrength
+
+    float propHangStrength;                     // 0..1, see propHangConfig_t
+    float propHangCosAngle;                     // Nose-up component of the body X axis that counts as vertical
+    float propHangFade;                         // s
+    float propHangTime;                         // s the hang conditions have held, 0 while not hanging
+    float propHangFadeTimer;                    // s of fade-out left after the hang ended
+    float propHangRelax;                        // Current roll I relax, 0..propHangStrength
 
     float itermDecayRate[PID_AXIS_COUNT];
     float itermDecayLimit;

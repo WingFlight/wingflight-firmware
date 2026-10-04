@@ -12,6 +12,30 @@ Practical positioning for contributors and agents:
 
 Reference: [README.md](README.md)
 
+## Project Components
+
+Wingflight is split across several repositories under <https://github.com/WingFlight>:
+
+| Repository | Purpose |
+| --- | --- |
+| [wingflight-firmware](https://github.com/WingFlight/wingflight-firmware) | Flight controller firmware (this repository) |
+| [wingflight-targets](https://github.com/WingFlight/wingflight-targets) | Board configurations (custom defaults) applied on top of the unified targets |
+| [wingflight-configurator](https://github.com/WingFlight/wingflight-configurator) | Desktop/web app for flashing and configuring the FC over MSP |
+| [wingflight-blackbox](https://github.com/WingFlight/wingflight-blackbox) | Blackbox Explorer for analysing flight logs |
+| [wingflight-lua-edgetx](https://github.com/WingFlight/wingflight-lua-edgetx) | Transmitter Lua scripts for EdgeTX |
+| [wingflight-lua-edgetx-updater](https://github.com/WingFlight/wingflight-lua-edgetx-updater) | Updater for the EdgeTX Lua scripts |
+| [wingflight-lua-ethos-suite](https://github.com/WingFlight/wingflight-lua-ethos-suite) | Lua suite for FrSky Ethos |
+| [wingflight-lua-ethos-suite-updater](https://github.com/WingFlight/wingflight-lua-ethos-suite-updater) | Updater for the Ethos Lua suite |
+| [wingflight-msp-ble-bridge](https://github.com/WingFlight/wingflight-msp-ble-bridge) | ESP32-C3 Bluetooth LE bridge for configuring the FC over MSP |
+| [wingflight-artifacts](https://github.com/WingFlight/wingflight-artifacts) | Firmware builds mirrored for browser downloads by the web configurator |
+| [wingflight-docs](https://github.com/WingFlight/wingflight-docs) | Documentation website (<https://doc.wingflight.org>) |
+| [wingflight-driver-fixer](https://github.com/WingFlight/wingflight-driver-fixer) | Windows tool that installs the USB bootloader/DFU driver for WebUSB flashing |
+| [rotorflight-to-wingflight](https://github.com/WingFlight/rotorflight-to-wingflight) | Windows app that converts a Rotorflight flight controller to Wingflight |
+| [wingflight-landing-page](https://github.com/WingFlight/wingflight-landing-page) | Project landing page |
+
+The Configurator, the Lua scripts and the BLE bridge talk to the firmware over MSP, so MSP changes here affect all
+of them.
+
 ## What Changed vs Rotorflight (Code-Backed)
 
 This section captures behavior already present in this repository, not roadmap items.
@@ -100,6 +124,17 @@ When implementing features or reviewing PRs, assume fixed-wing-first behavior un
 - Do not renumber BOX permanent IDs unless an explicit migration plan exists.
 - Preserve MSP and CLI backward compatibility where possible.
 
+### Never Bump the MSP API or Firmware Version
+
+Agents must not change these. The maintainers bump them manually when a new version is released, which keeps version changes to a minimum:
+
+- MSP API version: `API_VERSION_MAJOR` / `API_VERSION_MINOR` in [src/main/msp/msp_protocol.h](src/main/msp/msp_protocol.h).
+- Firmware version: `FC_VERSION_MAJOR` / `FC_VERSION_MINOR` / `FC_VERSION_PATCH_LEVEL` in [src/main/build/version.h](src/main/build/version.h).
+
+MSP changes made between releases belong to the upcoming API version. List them in the PR under **Compatibility** so they are covered by the release bump and the Configurator can pick them up.
+
+Parameter groups are the exception: bump the PG version (last argument of `PG_REGISTER*`, e.g. `PG_REGISTER_WITH_RESET_TEMPLATE(pidConfig_t, pidConfig, PG_PID_CONFIG, 3)`) in the same change whenever the parameter group changes: fields added, removed, reordered or resized, array lengths, default values or value ranges changed. This makes stored settings from older builds reset to the current defaults instead of being misread or keeping stale defaults. The version is 4 bits (0–15).
+
 ### Mixer and Mode Work Is Safety-Critical
 
 - Treat changes in [src/main/flight/mixer.c](src/main/flight/mixer.c), [src/main/pg/mixer.c](src/main/pg/mixer.c), and [src/main/flight/pid.c](src/main/flight/pid.c) as high risk.
@@ -125,9 +160,20 @@ When implementing features or reviewing PRs, assume fixed-wing-first behavior un
 
 ## Build and Test
 
+The ARM toolchain does not need to be installed by hand: `make arm_sdk_install` downloads the version the
+Makefile expects into `tools/`.
+
+Wingflight builds **unified targets**, one firmware per MCU family: `STM32F405`, `STM32F411`, `STM32F7X2`,
+`STM32F745`, `STM32G47X`, `STM32H743` (see [make/targets_list.mk](make/targets_list.mk)). Board-specific pin
+mappings and defaults are not in this repository; they live in
+[wingflight-targets](https://github.com/WingFlight/wingflight-targets) and are applied as a config on top of
+the unified firmware.
+
+Prefer `STM32F7X2` for test builds.
+
 ```
 make arm_sdk_install          # once: installs the ARM toolchain under tools/
-make TARGET=STM32F405         # one unified target, or `make unified` for all
+make TARGET=STM32F7X2         # preferred test target; `make unified` builds all
 make test                     # unit tests in src/test/unit
 make TARGET=SITL              # native simulator build, see src/main/target/SITL/README.md
 ```

@@ -40,6 +40,12 @@ float getDeflection(int axis) { return stick[axis]; }
 bool isUpsidedown(void) { return false; }
 bool isAirborne(void) { return true; }
 
+// Rate profile full-stick rate and PID loop period that leveling.c reads
+static float fullStickRate;
+static float loopDT;
+float applyRatesCurve(const int, const float rcCommandf) { return rcCommandf * fullStickRate; }
+float pidGetDT(void) { return loopDT; }
+
 // Globals that trainer.c reads
 attitudeEulerAngles_t attitude = EULER_INITIALIZE;
 gyro_t gyro = {};
@@ -60,6 +66,9 @@ class AcroTrainerTest : public ::testing::Test {
         profileIndex = 0;
         memset(stick, 0, sizeof(stick));
         currentPidProfile = pidProfilesMutable(0);
+        fullStickRate = 2000;
+        loopDT = 0.001f;
+        angleModeReset();
 
         // Configure trainer: gain=75 (7.5x), angle_limit=20, lookahead=50ms
         pidProfile_t *profile = pidProfilesMutable(0);
@@ -76,6 +85,15 @@ class AcroTrainerTest : public ::testing::Test {
 
     void setAngle(int axis, float degrees) {
         attitude.raw[axis] = (int16_t)(degrees * 10);
+    }
+
+    // Run the level loop long enough for the slewed target to reach the stick target
+    float settleAngleMode(int axis) {
+        float setpoint = 0;
+        for (int i = 0; i < 2000; i++) {
+            setpoint = angleModeApply(axis, 0);
+        }
+        return setpoint;
     }
 };
 
@@ -275,16 +293,67 @@ TEST_F(AcroTrainerTest, AngleDemandUsesIndependentAxisLimits)
     profile->angle.level_strength = 10;
     attitudeLimitsMutable(0)->angle_roll = 60;
     attitudeLimitsMutable(0)->angle_pitch = 25;
+    levelConfigsMutable(0)->damping = 0;
     levelingInit(profile);
     stick[FD_ROLL] = 1;
     stick[FD_PITCH] = 1;
-    EXPECT_FLOAT_EQ(angleModeApply(FD_ROLL, 0), 60);
-    EXPECT_FLOAT_EQ(angleModeApply(FD_PITCH, 0), 25);
+    EXPECT_FLOAT_EQ(settleAngleMode(FD_ROLL), 60);
+    EXPECT_FLOAT_EQ(settleAngleMode(FD_PITCH), 25);
     stick[FD_PITCH] = -1;
-    EXPECT_FLOAT_EQ(angleModeApply(FD_PITCH, 0), -25);
+    EXPECT_FLOAT_EQ(settleAngleMode(FD_PITCH), -25);
     stick[FD_ROLL] = 0;
     setAngle(FD_ROLL, 30);
-    EXPECT_FLOAT_EQ(angleModeApply(FD_ROLL, 0), -30);
+    EXPECT_FLOAT_EQ(settleAngleMode(FD_ROLL), -30);
+}
+
+TEST_F(AcroTrainerTest, AngleEngagementRampsFromCurrentAttitude)
+{
+    pidProfile_t *profile = pidProfilesMutable(0);
+    profile->angle.level_strength = 40;
+    levelConfigsMutable(0)->damping = 0;
+    levelingInit(profile);
+    fullStickRate = 500;
+
+    // 49 degrees off level used to ask for 4 x 49 = 196 deg/s on the first loop
+    setAngle(FD_ROLL, 49);
+    const float first = angleModeApply(FD_ROLL, 0);
+    EXPECT_LT(first, 0);
+    EXPECT_NEAR(first, -4.0f * fullStickRate * loopDT, 1e-3f);
+    EXPECT_FLOAT_EQ(settleAngleMode(FD_ROLL), -196);
+
+    // Leaving the mode re-captures the attitude on the next engagement
+    angleModeReset();
+    setAngle(FD_ROLL, -20);
+    EXPECT_NEAR(angleModeApply(FD_ROLL, 0), 4.0f * fullStickRate * loopDT, 1e-3f);
+}
+
+TEST_F(AcroTrainerTest, AngleRateCommandCappedAtRateProfileMax)
+{
+    pidProfile_t *profile = pidProfilesMutable(0);
+    profile->angle.level_strength = 40;
+    levelConfigsMutable(0)->damping = 0;
+    levelingInit(profile);
+    fullStickRate = 150;
+
+    setAngle(FD_PITCH, 49);
+    EXPECT_FLOAT_EQ(settleAngleMode(FD_PITCH), -150);
+    setAngle(FD_PITCH, -49);
+    EXPECT_FLOAT_EQ(settleAngleMode(FD_PITCH), 150);
+}
+
+TEST_F(AcroTrainerTest, AngleDampingSubtractsMeasuredRate)
+{
+    pidProfile_t *profile = pidProfilesMutable(0);
+    profile->angle.level_strength = 40;
+    EXPECT_EQ(levelConfigs(0)->damping, 25);
+    levelConfigsMutable(0)->damping = 50;
+    levelingInit(profile);
+
+    // On target, so only the damping term remains
+    gyro.gyroADCf[FD_ROLL] = 100;
+    EXPECT_FLOAT_EQ(angleModeApply(FD_ROLL, 0), -50);
+    gyro.gyroADCf[FD_PITCH] = -60;
+    EXPECT_FLOAT_EQ(angleModeApply(FD_PITCH, 0), 30);
 }
 
 TEST_F(AcroTrainerTest, AxisLimitsFollowSelectedProfileAndKeepLegacyDefaults)

@@ -44,7 +44,7 @@ typedef enum {
     BOXLOITER,          // GPS LOITER: hold position (and altitude) around the point engaged at
     BOXRTH,             // GPS RTH: fly to and loiter above the home position. See flight/gps_nav.c
     BOXFAILSAFE,
-    BOXPASSTHROUGH,
+    BOXPASSTHROUGH,     // SETUP (was PASSTHROUGH): raw stick straight to the surfaces
 
     BOXID_FLIGHTMODE_LAST = BOXPASSTHROUGH,
 
@@ -74,7 +74,7 @@ typedef enum {
     BOXUSER3,
     BOXUSER4,
     BOXAUTOHOVER,       // reserved (AUTO HOVER removed) -- kept to avoid renumbering later ids
-    BOXMANUAL,          // MANUAL: same rates/expo curve as stabilised flight, but no gyro correction
+    BOXMANUAL,          // GYRO OFF (was MANUAL): same rates/expo curve as stabilised flight, but no gyro correction
     BOXAUTOTRIM,        // AUTO TRIM: while armed, captures actual servo output over a fixed window
                          // and writes it as the new center (see flight/autotrim.c)
     BOXTHRUSTVECTOR,    // THRUST VECTOR: live on/off for the independent TV mixer output

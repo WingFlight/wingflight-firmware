@@ -38,6 +38,138 @@ clients. Flight behaviour is unchanged.
   feature answers 0x5F18 with an error.
 - Built on targets with more than 128 KB flash (`USE_TUNE_ADVISOR`).
 
+## Gentler GPS Nav Bearing Gain
+
+`nav_bearing_kp` now defaults to 120 (1.2° of bank per degree of bearing
+error) instead of 200, so LOITER, RTH and GPS rescue turn onto track more
+gently. `nav_throttle` now defaults to 65 % instead of 60 %. `PG_GPS_NAV`
+is bumped to version 1, so all `nav_*` settings reset
+to their defaults on upgrade.
+
+## Snap Relax for Pop Tops, Pinwheels and Snaps
+
+Pop tops, pinwheels and snaps start with roll, pitch and yaw slammed in
+together. The airframe stalls and autorotates past the commanded rate (2 to
+2.5 times the roll setpoint in the logs), and the rate loop fought it: up to
+35 % opposite aileron with the stick held full over, then the I-term it wound
+up came back as a bump on the exit. Rotating the roll/pitch I-term with yaw
+rate also carried roll I into pitch, because the aircraft yaws 100-200° on
+the way through.
+
+`updateSnapRelax()` in `flight/pid.c` detects a snap when the roll, pitch and
+yaw sticks all pass `snap_relax_threshold` within `snap_relax_window` of each
+other, so a slow build-up of the same inputs does not count. While all three
+stay past the threshold, and fading out over `snap_relax_hold` after, roll and
+pitch P and D are scaled down by `snap_relax_strength` only where they push
+against the direction the stick was snapped in. I stops building up against
+that direction, and the I-term rotation is paused. Feedback that helps the
+rotation, F, B and yaw are unchanged. If the stick is reversed during the
+fade, full feedback comes back.
+
+New per-profile settings, in their own parameter group
+(`PG_SNAP_RELAX_CONFIG`) so existing PID profiles are not reset:
+
+| Setting | Range | Default |
+| --- | --- | --- |
+| `snap_relax_strength` | 0-100 % (0 = off) | 100 |
+| `snap_relax_threshold` | 20-100 % stick | 60 |
+| `snap_relax_window` | 0-1000 ms | 400 |
+| `snap_relax_hold` | 0-1000 ms | 150 |
+
+`MSP_PID_PROFILE` / `MSP_SET_PID_PROFILE` append the four values after the
+level damping byte (u8 strength, u8 threshold, u16 window, u16 hold), taking
+the reply from 65 to 71 bytes. Older clients omit them on set and leave the
+settings untouched. New debug mode `SNAP_RELAX`: relax ×1000, active flag,
+stick-crossing spread (ms), and roll, pitch, yaw deflection ×1000. New
+blackbox header line `snap_relax`.
+
+## MANUAL Full-Stick Throw Floor and I-Term Hold
+
+MANUAL's throw is `Kf · rate`, so its authority at full stick is F times the
+maximum rate. The F-gain floor (`PID_F_GAIN_MIN`) only covered half of that:
+a low rate profile, or an in-flight `rc_rate` adjustment down to 1 (5 °/s),
+still left MANUAL with almost no travel. `getManualDeflection()` in
+`flight/setpoint.c` now takes the stick shape from the rates/expo curve,
+normalised to full stick, and floors the full-stick throw at 30 %
+(`MANUAL_MIN_THROW`). Above the floor the output is `Kf · rate`, unchanged.
+With the default rates and F the floor is not reached (47 % roll and pitch,
+66 % yaw).
+
+While MANUAL or PASSTHROUGH drives the surfaces, the PID loop no longer
+integrates I (`mixerStabilizationBypassed()` in `flight/mixer.c`, used by
+`pidApplyMode1` in `flight/pid.c`). The gyro is not tracking the setpoint in
+those modes, so I wound up and was released as a bump on switching back.
+With a leveling mode also on, I decay is suspended and nothing bled it off.
+I decay still applies while bypassed.
+
+No setting or MSP changes.
+
+## Default F 75 and B 35
+
+The default F gain drops from 100 to 75 and the default B gain rises from 0
+to 35 on every axis, in both the main PID profile (`pg/pid.c`) and the
+thrust-vector profile (`pg/tv_pid.c`). The split cuts bounce-back at the end
+of a roll or loop: B kicks the surface while the stick moves, including a
+stopping kick as it returns to centre, so less steady F throw has to unwind.
+
+Both parameter groups are version-bumped, so saved PID and thrust-vector
+profiles reset to the new defaults on flashing. The PID profile version was
+already 15, the 4-bit maximum, so it wraps to 0 (see the comment in
+`pg/pid.c`).
+
+MANUAL mode's throw is `Kf · rate`, so it drops by a quarter with F. With
+the default rates (250 °/s roll and pitch, 350 °/s yaw), full stick now gives
+about 47 % travel on roll and pitch (was 63 %) and 66 % on yaw (was 88 %).
+
+No setting or MSP layout changes.
+
+## TPA and GPS Speed Attenuation Also Scale F and B
+
+Throttle attenuation (`fw_tpa_gain`, `fw_tpa_curve`) and GPS speed
+attenuation (`fw_spa_*`) now scale F and B as well as P and D
+(`pidApplyMode1` in `flight/pid.c`). F sets most of the surface deflection
+for a commanded rate, so when prop wash or airspeed makes the surfaces more
+effective, attenuating only P and D could not bring the achieved rate back
+to the setpoint. I is still not scaled. ANGLE damping goes out through F, so
+it follows the attenuation too.
+
+The combined TPA x SPA factor is now floored at 25 % (`PID_ATTENUATION_MIN`),
+so a curve point near zero, or both baselines at their minimum, can no longer
+leave the surfaces without throw. The floor applies to P and D as well.
+
+MANUAL (`pidGetFeedforward`) is deliberately not attenuated: it is the
+bail-out mode, and `PID_F_GAIN_MIN` keeps it at least half travel at full
+stick whatever the tune.
+
+The MSP effective-gains reply now reports attenuated F and B.
+
+No setting or MSP layout changes. With `fw_tpa_gain` and `fw_spa_gain` at
+100 and no curve assigned (the defaults) nothing changes. Profiles with a TPA
+or SPA curve, or a baseline other than 100, get lower roll and pitch rates
+wherever the attenuation is below 100 %.
+
+## ANGLE Engagement, Rate Cap and Damping (MSP API 22.13)
+
+ANGLE mode (and the GPS and failsafe modes that share `angleModeApply` in
+`flight/leveling.c`) no longer steps the rate command on engagement:
+
+- The level target starts at the current attitude and moves toward the stick
+  target no faster than the rate profile's full-stick rate. Engaging 49° off
+  level used to ask for 196 °/s at once; the command now ramps in over about
+  `1 / (angle_level_strength / 10)` seconds.
+- The rate command is capped at the rate profile's full-stick rate for that
+  axis (known issue L-6).
+- New per-profile setting `angle_level_damping` (0-100 %, default 25)
+  subtracts that fraction of the measured roll/pitch rate from the command.
+  The damping reaches the surfaces through the rate PID's F term, so it scales
+  with each airframe's tune. It also lowers the steady-state tracking rate by
+  `1 / (1 + damping)`.
+
+MSP: `MSP_PID_PROFILE` / `MSP_SET_PID_PROFILE` append one byte (damping,
+percent). Older clients omit it and the stored value is left untouched. The
+setting has its own parameter group (`PG_LEVEL_CONFIG`), so existing PID
+profiles are not reset. The blackbox header gains `level_damping`.
+
 ## PARALYZE, STICK COMMANDS DISABLE, ALTHOLD and CALIB Removed
 
 Four modes the Configurator already hid, or that never did anything, are

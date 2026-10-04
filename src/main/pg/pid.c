@@ -73,16 +73,34 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // the tail of the autohover sub-struct, widening it again) - old saved
 // profiles reset to defaults, matching the v9->v10 precedent. AUTO HOVER was
 // later removed without a version bump: its bytes stay as autohover_reserved.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 15);
+// v15->v0: default F lowered from 100 to 75 and B raised from 0 to 35 to cut
+// bounce back. The version field is 4 bits, so it wraps to 0; equality is
+// what pgLoad() checks, and no v0 save survives the EEPROM_CONF_VERSION bumps
+// since (174 -> 177), so a stale v0 record cannot be misread. v0->v1:
+// default P and I raised (roll and pitch P 120, I 60; yaw P 250, I 60), so
+// profiles reset to the new defaults. v1->v2: P and I raised by a further
+// 25% (roll and pitch P 150, I 75; yaw P 310, I 75), so the bottom of a 0-200%
+// master gain pot reaches a noticeable gain sooner. v2->v3: P and I lowered
+// (roll and pitch P 105, I 45; yaw P 190, I 45) and F lowered from 75 to 65:
+// a 3D pilot settled at about P 80 / I 38 effective, and with F 75 the
+// aircraft outran the stick (gyro/setpoint 1.19 on roll, so F 63 for 1.0).
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 3);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
     RESET_CONFIG(pidProfile_t, pidProfile,
         .profileName = "",
         .pid = {
-            [PID_ROLL]  = { .P = 50, .I = 16, .D = 0, .F = 100, .B = 0, },
-            [PID_PITCH] = { .P = 50, .I = 16, .D = 0, .F = 100, .B = 0, },
-            [PID_YAW]   = { .P = 80, .I = 20, .D = 0, .F = 100, .B = 0, },
+            // Set from flown logs. At 100% master gain, P 105 gives 0.07% of
+            // full surface travel per deg/s of rate error, and I 45 builds
+            // about 0.9% of full travel per second per deg/s. P 50 / I 16
+            // barely moved the surfaces; P 150 / I 75 was flown at about 80%
+            // master gain and went wrong above it. Yaw runs hotter. F sets the
+            // surface for a held stick: at F 75 the aircraft outran the stick,
+            // and P on top of it ran the surfaces to their ends before full stick.
+            [PID_ROLL]  = { .P = 105, .I = 45, .D = 0, .F = 65, .B = 35, },
+            [PID_PITCH] = { .P = 105, .I = 45, .D = 0, .F = 65, .B = 35, },
+            [PID_YAW]   = { .P = 190, .I = 45, .D = 0, .F = 65, .B = 35, },
         },
         .pid_mode = 1,
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
@@ -136,6 +154,62 @@ void pgResetFn_fwSpaConfigs(fwSpaConfig_t *configs)
 {
     for (int i = 0; i < PID_PROFILE_COUNT; i++) {
         resetFwSpaConfig(&configs[i]);
+    }
+}
+
+PG_REGISTER_ARRAY_WITH_RESET_FN(levelConfig_t, PID_PROFILE_COUNT, levelConfigs, PG_LEVEL_CONFIG, 0);
+
+void resetLevelConfig(levelConfig_t *config)
+{
+    RESET_CONFIG(levelConfig_t, config,
+        .damping = 25,
+    );
+}
+
+void pgResetFn_levelConfigs(levelConfig_t *configs)
+{
+    for (int i = 0; i < PID_PROFILE_COUNT; i++) {
+        resetLevelConfig(&configs[i]);
+    }
+}
+
+// v0->v1: default hold raised from 150 to 350 ms. Pilots flying pop tops and pinwheels found
+// stability came back too abruptly at the end of the snap. This group is separate from
+// pidProfile_t, so the bump resets only the snap relax settings.
+PG_REGISTER_ARRAY_WITH_RESET_FN(snapRelaxConfig_t, PID_PROFILE_COUNT, snapRelaxConfigs, PG_SNAP_RELAX_CONFIG, 1);
+
+void resetSnapRelaxConfig(snapRelaxConfig_t *config)
+{
+    RESET_CONFIG(snapRelaxConfig_t, config,
+        .strength = 100,
+        .threshold = 60,
+        .window = 400,
+        .hold = 350,
+    );
+}
+
+void pgResetFn_snapRelaxConfigs(snapRelaxConfig_t *configs)
+{
+    for (int i = 0; i < PID_PROFILE_COUNT; i++) {
+        resetSnapRelaxConfig(&configs[i]);
+    }
+}
+
+PG_REGISTER_ARRAY_WITH_RESET_FN(propHangConfig_t, PID_PROFILE_COUNT, propHangConfigs, PG_PROP_HANG_CONFIG, 0);
+
+void resetPropHangConfig(propHangConfig_t *config)
+{
+    RESET_CONFIG(propHangConfig_t, config,
+        .strength = 100,
+        .angle = 20,
+        .fade = 500,
+    );
+}
+
+void pgResetFn_propHangConfigs(propHangConfig_t *configs)
+{
+    for (int i = 0; i < PID_PROFILE_COUNT; i++) {
+        resetPropHangConfig(&configs[i]);
     }
 }
 

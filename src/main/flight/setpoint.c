@@ -52,6 +52,10 @@
 #define DYNAMIC_DEADBAND_LIMIT             0.40f
 #define DYNAMIC_CEILING_LIMIT              0.40f
 
+// Least surface travel MANUAL gives at full stick, whatever F, rates or in-flight
+// adjustments are set to. Matches the old F-gain floor (50) at the default 250 deg/s.
+#define MANUAL_MIN_THROW                   0.30f
+
 
 typedef struct
 {
@@ -179,9 +183,18 @@ float getDeflection(int axis)
 // to the aircraft's real tuned response. Judged in flight, not on the bench -- a static airframe
 // never rotates far enough for stabilised mode's P-term to relax toward that same settled state,
 // so the two won't visibly match sitting on a bench either way.
+//
+// The authority that matters for a bail-out is the throw at full stick, Kf * maxRate, and a low
+// F or a low rate profile (including an in-flight rc_rate adjustment) shrinks it towards nothing.
+// So the stick shape comes from the rates/expo curve normalised to full stick, and the full-stick
+// throw is floored at MANUAL_MIN_THROW. Above the floor this is exactly Kf * rate, as before.
 float getManualDeflection(int axis)
 {
-    return constrainf(pidGetFeedforward(axis, applyRatesCurve(axis, sp.deflection[axis])), -1.0f, 1.0f);
+    const float maxRate = applyRatesCurve(axis, 1.0f);
+    const float shape = (maxRate > 0) ? applyRatesCurve(axis, sp.deflection[axis]) / maxRate : sp.deflection[axis];
+    const float fullThrow = fmaxf(pidGetFeedforward(axis, maxRate), MANUAL_MIN_THROW);
+
+    return constrainf(shape * fullThrow, -1.0f, 1.0f);
 }
 
 static float setpointResponseAccel(int axis, float value)

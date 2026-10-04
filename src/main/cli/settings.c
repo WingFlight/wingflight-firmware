@@ -1089,8 +1089,22 @@ const clivalue_t valueTable[] = {
     { "cross_axis_relax_cutoff",    VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 1, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, cross_axis_relax_cutoff) },
     { "cross_axis_relax_pitch_strength", VAR_UINT8 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, cross_axis_relax_pitch_strength) },
 
+    // Snap relax: a fast roll + pitch + yaw stick input (pop top, pinwheel, snap) stops
+    // roll/pitch/yaw feedback from fighting the rotation. snap_relax_strength = 0 turns it off.
+    { "snap_relax_strength",        VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_SNAP_RELAX_CONFIG, offsetof(snapRelaxConfig_t, strength) },
+    { "snap_relax_threshold",       VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { SNAP_RELAX_THRESHOLD_MIN, 100 }, PG_SNAP_RELAX_CONFIG, offsetof(snapRelaxConfig_t, threshold) },
+    { "snap_relax_window",          VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, SNAP_RELAX_TIME_MAX }, PG_SNAP_RELAX_CONFIG, offsetof(snapRelaxConfig_t, window) },
+    { "snap_relax_hold",            VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, SNAP_RELAX_TIME_MAX }, PG_SNAP_RELAX_CONFIG, offsetof(snapRelaxConfig_t, hold) },
+
+    // Prop-hang relax: nose up and not climbing or sinking, roll I is held back and bled off so
+    // the prop torque can roll the airframe. prop_hang_strength = 0 turns it off.
+    { "prop_hang_strength",         VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_PROP_HANG_CONFIG, offsetof(propHangConfig_t, strength) },
+    { "prop_hang_angle",            VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { PROP_HANG_ANGLE_MIN, PROP_HANG_ANGLE_MAX }, PG_PROP_HANG_CONFIG, offsetof(propHangConfig_t, angle) },
+    { "prop_hang_fade",             VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PROP_HANG_FADE_MAX }, PG_PROP_HANG_CONFIG, offsetof(propHangConfig_t, fade) },
+
     { "angle_level_strength",       VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, angle.level_strength) },
     { "angle_level_limit",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 90 }, PG_PID_PROFILE, offsetof(pidProfile_t, angle.level_limit) },
+    { "angle_level_damping",        VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, LEVEL_DAMPING_MAX }, PG_LEVEL_CONFIG, offsetof(levelConfig_t, damping) },
 
 #ifdef USE_ACRO_TRAINER
     // Zero axis overrides inherit angle_level_limit / acro_trainer_angle_limit.

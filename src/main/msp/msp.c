@@ -2222,6 +2222,17 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, fwSpaConfigs(getCurrentPidProfileIndex())->gain);
         sbufWriteU8(dst, fwSpaConfigs(getCurrentPidProfileIndex())->curve);
         sbufWriteU16(dst, fwSpaConfigs(getCurrentPidProfileIndex())->speed_max);
+        /* API 22.13: ANGLE mode rate damping (separate per-profile storage) */
+        sbufWriteU8(dst, levelConfigs(getCurrentPidProfileIndex())->damping);
+        /* Snap relax (separate per-profile storage) */
+        sbufWriteU8(dst, snapRelaxConfigs(getCurrentPidProfileIndex())->strength);
+        sbufWriteU8(dst, snapRelaxConfigs(getCurrentPidProfileIndex())->threshold);
+        sbufWriteU16(dst, snapRelaxConfigs(getCurrentPidProfileIndex())->window);
+        sbufWriteU16(dst, snapRelaxConfigs(getCurrentPidProfileIndex())->hold);
+        /* Prop-hang relax (separate per-profile storage) */
+        sbufWriteU8(dst, propHangConfigs(getCurrentPidProfileIndex())->strength);
+        sbufWriteU8(dst, propHangConfigs(getCurrentPidProfileIndex())->angle);
+        sbufWriteU16(dst, propHangConfigs(getCurrentPidProfileIndex())->fade);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -2570,6 +2581,7 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         // GET all parameters of one discovered XACT servo, selected by physical ID -- pick
         // one from MSP_XACT_SERVO_LIST first. Kicks off a fresh read for it if none has
         // completed yet, so the caller should keep polling this until "ready" comes back 1.
+        // A read with an unanswered field stays not ready and is retried by the next request.
         // Field set mirrors FrSky's own "XAct" ETHOS Device Config Lua script.
         // Request format: phyID
         // Response format: ready, conflict, duplicateAppId, phyID, appIdOffset, firmwareVersion,
@@ -3244,6 +3256,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         resetPidProfile(currentPidProfile);
         memset(attitudeLimitsMutable(getCurrentPidProfileIndex()), 0, sizeof(attitudeLimits_t));
         resetFwSpaConfig(fwSpaConfigsMutable(getCurrentPidProfileIndex()));
+        resetLevelConfig(levelConfigsMutable(getCurrentPidProfileIndex()));
+        resetSnapRelaxConfig(snapRelaxConfigsMutable(getCurrentPidProfileIndex()));
+        resetPropHangConfig(propHangConfigsMutable(getCurrentPidProfileIndex()));
         break;
 
     case MSP_SET_SENSOR_ALIGNMENT:
@@ -3371,9 +3386,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         }
         /* Master gain (per axis) */
         if (sbufBytesRemaining(src) >= 6) {
-            currentPidProfile->master_gain[PID_ROLL] = sbufReadU16(src);
-            currentPidProfile->master_gain[PID_PITCH] = sbufReadU16(src);
-            currentPidProfile->master_gain[PID_YAW] = sbufReadU16(src);
+            currentPidProfile->master_gain[PID_ROLL] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
+            currentPidProfile->master_gain[PID_PITCH] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
+            currentPidProfile->master_gain[PID_YAW] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
         }
         /* Reserved (was Auto Hover gain, max angle, max rate) */
         if (sbufBytesRemaining(src) >= 4) {
@@ -3420,6 +3435,25 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             spa->gain = constrain(sbufReadU8(src), 25, 200);
             spa->curve = MIN(sbufReadU8(src), GAIN_CURVE_COUNT);
             spa->speed_max = constrain(sbufReadU16(src), FW_SPA_SPEED_MAX_MIN, FW_SPA_SPEED_MAX_MAX);
+        }
+        /* API 22.13 extension; older clients omit it and leave the level damping untouched. */
+        if (sbufBytesRemaining(src) >= 1) {
+            levelConfigsMutable(getCurrentPidProfileIndex())->damping = MIN(sbufReadU8(src), LEVEL_DAMPING_MAX);
+        }
+        /* Snap relax extension; older clients omit it and leave snap relax untouched. */
+        if (sbufBytesRemaining(src) >= 6) {
+            snapRelaxConfig_t *snap = snapRelaxConfigsMutable(getCurrentPidProfileIndex());
+            snap->strength = MIN(sbufReadU8(src), 100);
+            snap->threshold = constrain(sbufReadU8(src), SNAP_RELAX_THRESHOLD_MIN, 100);
+            snap->window = MIN(sbufReadU16(src), SNAP_RELAX_TIME_MAX);
+            snap->hold = MIN(sbufReadU16(src), SNAP_RELAX_TIME_MAX);
+        }
+        /* Prop-hang relax extension; older clients omit it and leave prop-hang relax untouched. */
+        if (sbufBytesRemaining(src) >= 4) {
+            propHangConfig_t *hang = propHangConfigsMutable(getCurrentPidProfileIndex());
+            hang->strength = MIN(sbufReadU8(src), 100);
+            hang->angle = constrain(sbufReadU8(src), PROP_HANG_ANGLE_MIN, PROP_HANG_ANGLE_MAX);
+            hang->fade = MIN(sbufReadU16(src), PROP_HANG_FADE_MAX);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);
@@ -3659,9 +3693,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentTvPidProfile->pid[i].F = sbufReadU16(src);
             currentTvPidProfile->pid[i].B = sbufReadU16(src);
         }
-        currentTvPidProfile->master_gain[PID_ROLL] = sbufReadU16(src);
-        currentTvPidProfile->master_gain[PID_PITCH] = sbufReadU16(src);
-        currentTvPidProfile->master_gain[PID_YAW] = sbufReadU16(src);
+        currentTvPidProfile->master_gain[PID_ROLL] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
+        currentTvPidProfile->master_gain[PID_PITCH] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
+        currentTvPidProfile->master_gain[PID_YAW] = constrain(sbufReadU16(src), MASTER_GAIN_MIN, MASTER_GAIN_MAX);
         for (int i = 0; i < PID_AXIS_COUNT; i++) {
             currentTvPidProfile->iterm_decay_time[i] = sbufReadU8(src);
         }
@@ -4118,7 +4152,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
                 newParams.maxAngle = sbufReadU16(src);
 
                 // Compare with cache and write only differences
-                if (!fbusXactCompareAndWriteParams(phyID, FBUS_SERVO_DATA_BASE + params.appIdOffset, &newParams)) {
+                if (!fbusXactCompareAndWriteParams(phyID, &newParams)) {
                     return MSP_RESULT_ERROR;
                 }
             } else {
