@@ -101,6 +101,12 @@
 // range (e.g. 975 values over 1250us) this costs about two counts of resolution.
 #define CONTINUOUS_CHANNEL_DEADBAND 3
 
+// How far (us) outside its range a continuous adjustment still follows the
+// channel, clamped to the range's end. Radios send about 988-2012 us at full
+// travel, so a range drawn at 1000-2000 would otherwise ignore the last few
+// microseconds of a pot and leave the value wherever it was last in range.
+#define CONTINUOUS_RANGE_MARGIN     25
+
 // Servo trims move physical control surfaces, so their adjustment channels are
 // treated as untrustworthy until the RX link has been continuously valid for this
 // long. This rides out the garbage/failsafe-hold frames some receivers emit for a
@@ -512,7 +518,7 @@ void processRcAdjustments(void)
                     const int heldValue = adjState->chValue;
 
                     if (rangeWidth > 0 && valueWidth > 0) {
-                        const int rangeMargin = MAX(5, rangeWidth / (valueWidth * 2));
+                        const int rangeMargin = MAX(CONTINUOUS_RANGE_MARGIN, rangeWidth / (valueWidth * 2));
                         if (heldValue > rangeLower - rangeMargin && heldValue < rangeUpper + rangeMargin) {
                             const int offset = rangeWidth / 2;
                             adjval = adjRange->adjMin + ((heldValue - rangeLower) * valueWidth + offset) / rangeWidth;
