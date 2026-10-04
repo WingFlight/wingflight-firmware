@@ -35,10 +35,12 @@
 
 #define PID_GAIN_MAX                1000
 
-// Master gain limits, percent (100 = unscaled), for the main and thrust-vector loops. Back to
-// the original 25-200: the 1000 ceiling (v8->v9) only made up for a control-link setup that
-// was wrong, and a pot mapped across 25-1000 sat at 512% when centred.
-#define MASTER_GAIN_MIN             25
+// Master gain limits, percent (100 = unscaled), for the main and thrust-vector loops. The
+// ceiling is back to the original 200: the 1000 ceiling (v8->v9) only made up for a
+// control-link setup that was wrong, and a pot mapped across 25-1000 sat at 512% when centred.
+// The floor is 0, so a gain pot can take the stabilizer to nothing. Master gain scales P, I
+// and D only, so the sticks still move the surfaces through F at 0%.
+#define MASTER_GAIN_MIN             0
 #define MASTER_GAIN_MAX             200
 
 // Floor on roll/pitch/yaw F gain. F sets most of the surface deflection for a commanded rate; P
