@@ -336,4 +336,7 @@
 // nav_min_sats, nav_bearing_kp, nav_altitude_kp, nav_loiter_direction).
 #define MSP2_WING_GPS_NAV_CONFIG              0x5F16
 #define MSP2_WING_SET_GPS_NAV_CONFIG          0x5F17
+// In-flight rate-loop statistics (flight/tune_advisor.c) and their reset.
+#define MSP2_WING_TUNE_ADVISOR                0x5F18
+#define MSP2_WING_TUNE_ADVISOR_CLEAR          0x5F19
 #define MSP_V2_FRAME                         255
