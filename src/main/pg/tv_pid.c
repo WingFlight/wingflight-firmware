@@ -37,7 +37,9 @@
 // v6->v7: default P and I raised (roll and pitch P 120, I 60; yaw P 250,
 // I 60), matching the main loop. v7->v8: P and I raised by a further 25%
 // (roll and pitch P 150, I 75; yaw P 310, I 75), matching the main loop.
-PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 8);
+// v8->v9: P and I lowered (roll and pitch P 105, I 45; yaw P 190, I 45) and
+// error_limit 45/45/60 -> 20/20/30, matching the main loop.
+PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 9);
 
 // Nominal starting gains, mirroring the main loop's defaults
 // (resetPidProfile() in pg/pid.c) -- a reasonable bench-tuning starting point
@@ -47,9 +49,9 @@ void resetTvPidProfile(tvPidProfile_t *tvPidProfile)
 {
     RESET_CONFIG(tvPidProfile_t, tvPidProfile,
         .pid = {
-            [PID_ROLL]  = { .P = 150, .I = 75, .D = 0, .F = 75, .B = 35, },
-            [PID_PITCH] = { .P = 150, .I = 75, .D = 0, .F = 75, .B = 35, },
-            [PID_YAW]   = { .P = 310, .I = 75, .D = 0, .F = 75, .B = 35, },
+            [PID_ROLL]  = { .P = 105, .I = 45, .D = 0, .F = 75, .B = 35, },
+            [PID_PITCH] = { .P = 105, .I = 45, .D = 0, .F = 75, .B = 35, },
+            [PID_YAW]   = { .P = 190, .I = 45, .D = 0, .F = 75, .B = 35, },
         },
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
         .gain_curve = { [PID_ROLL] = 0, [PID_PITCH] = 0, [PID_YAW] = 0 },
@@ -57,7 +59,7 @@ void resetTvPidProfile(tvPidProfile_t *tvPidProfile)
         .iterm_decay_limit = 35,
         .iterm_relax_level = { 22, 22, 22 },
         .iterm_relax = { ITERM_RELAX_DEFAULT, ITERM_RELAX_DEFAULT, ITERM_RELAX_DEFAULT },
-        .error_limit = { 45, 45, 60 },
+        .error_limit = { 20, 20, 30 },
         .dterm_cutoff = { 15, 15, 20 },
         .bterm_cutoff = { 15, 15, 20 },
         .gyro_cutoff = { 50, 50, 100 },
