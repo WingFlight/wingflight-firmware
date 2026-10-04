@@ -1,3 +1,10 @@
+# 0.0.32
+
+The MSP API stays at 22.13. Updating resets every PID profile, thrust-vector profile and rate profile to defaults (their defaults changed), so note your tune and rates before flashing and re-enter them afterwards. Use the 0.0.32 Configurator and Lua suites with this firmware.
+Lower the default gains on every axis, in the PID and thrust-vector profiles: roll and pitch P 105, I 45; yaw P 190, I 45; F 65 (was 75). The 0.0.31 defaults were flown at about 80% master gain, and with F 75 the aircraft outran the stick and the surfaces ran to their ends before full stick.
+Lower the default pitch rate from 250 to 200 deg/s and yaw from 350 to 150 deg/s, rates the airframe can actually reach. Roll stays at 250 deg/s.
+Add Tune Advisor statistics: in plain rate flight the FC measures how the model follows the sticks on each axis (feed-forward match, full-stick saturation, bounce-back after a stick release), so the Lua suites' Tune Advisor page can suggest changes. Statistics build up across flights and clear when the tune changes.
+
 # 0.0.31
 
 The MSP API stays at 22.13. Updating resets every PID profile and thrust-vector profile, the snap relax settings and the GPS nav settings to defaults (their defaults changed), so note your tune before flashing and re-enter it afterwards. Use the 0.0.31 Configurator and Lua suites with this firmware.
