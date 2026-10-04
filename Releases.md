@@ -1,3 +1,16 @@
+# 0.0.31
+
+The MSP API stays at 22.13. Updating resets every PID profile and thrust-vector profile, the snap relax settings and the GPS nav settings to defaults (their defaults changed), so note your tune before flashing and re-enter it afterwards. Use the 0.0.31 Configurator and Lua suites with this firmware.
+Raise the default P and I gains on every axis, in the PID and thrust-vector profiles: roll and pitch P 150, I 75; yaw P 310, I 75. Blackbox logs showed the old defaults (P 50, I 16) barely moved the surfaces.
+Scale yaw P and I the same as roll and pitch. Per unit they were 10x (P) and 2.5x (I) stronger before.
+Limit master gain to 0-200% (was 25-1000%), in the profiles and the adjustment functions. At 0% the stabilizer stops correcting on that axis but the sticks still move the surfaces, so a gain pot can turn it off. Saved values above 200% are pulled to 200%.
+Let a gain or trim pot reach the ends of its adjustment range: a continuous adjustment now follows the channel up to 25 us past its range, so a radio's full travel (about 988-2012 us) reaches both ends instead of stopping short.
+Add Prop-Hang Relax: in a prop hang (nose near vertical with little vertical speed, for 0.5 s) roll I is held back so the prop torque can roll the airframe. On by default; set per profile with prop_hang_strength (0 = off), prop_hang_angle and prop_hang_fade. MSP_PID_PROFILE carries the settings at its end; blackbox logs a prop_hang header and a PROP_HANG debug mode.
+Relax opposing yaw feedback in a snap too, not only roll and pitch.
+Raise the default snap relax hold from 150 to 350 ms, so stability comes back more gently at the end of a pop top or pinwheel.
+Soften GPS nav turns onto track: default nav_bearing_kp 120 (was 200), and nav_throttle 65% (was 60%).
+Fix XACT servo writes using a stale or incomplete parameter cache after a rescan.
+
 # 0.0.30
 
 Change the MSP API to 22.13. Updating resets every PID profile and thrust-vector profile to defaults (the default F and B changed), so note your tune before flashing and re-enter it afterwards. Use the 0.0.30 Configurator and Lua suites with this firmware.
