@@ -80,21 +80,27 @@ void pgResetFn_gainCurves(gainCurve_t *curve)
 // default P and I raised (roll and pitch P 120, I 60; yaw P 250, I 60), so
 // profiles reset to the new defaults. v1->v2: P and I raised by a further
 // 25% (roll and pitch P 150, I 75; yaw P 310, I 75), so the bottom of a 0-200%
-// master gain pot reaches a noticeable gain sooner.
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 2);
+// master gain pot reaches a noticeable gain sooner. v2->v3: P and I lowered
+// (roll and pitch P 105, I 45; yaw P 190, I 45) and F lowered from 75 to 65:
+// a 3D pilot settled at about P 80 / I 38 effective, and with F 75 the
+// aircraft outran the stick (gyro/setpoint 1.19 on roll, so F 63 for 1.0).
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, PID_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 3);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
     RESET_CONFIG(pidProfile_t, pidProfile,
         .profileName = "",
         .pid = {
-            // Set from flown logs. At 100% master gain, P 150 gives 0.1% of
-            // full surface travel per deg/s of rate error, and I 75 builds
-            // about 1.3% of full travel per second per deg/s. P 50 / I 16
-            // barely moved the surfaces. Yaw runs hotter, as in the logs.
-            [PID_ROLL]  = { .P = 150, .I = 75, .D = 0, .F = 75, .B = 35, },
-            [PID_PITCH] = { .P = 150, .I = 75, .D = 0, .F = 75, .B = 35, },
-            [PID_YAW]   = { .P = 310, .I = 75, .D = 0, .F = 75, .B = 35, },
+            // Set from flown logs. At 100% master gain, P 105 gives 0.07% of
+            // full surface travel per deg/s of rate error, and I 45 builds
+            // about 0.9% of full travel per second per deg/s. P 50 / I 16
+            // barely moved the surfaces; P 150 / I 75 was flown at about 80%
+            // master gain and went wrong above it. Yaw runs hotter. F sets the
+            // surface for a held stick: at F 75 the aircraft outran the stick,
+            // and P on top of it ran the surfaces to their ends before full stick.
+            [PID_ROLL]  = { .P = 105, .I = 45, .D = 0, .F = 65, .B = 35, },
+            [PID_PITCH] = { .P = 105, .I = 45, .D = 0, .F = 65, .B = 35, },
+            [PID_YAW]   = { .P = 190, .I = 45, .D = 0, .F = 65, .B = 35, },
         },
         .pid_mode = 1,
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
