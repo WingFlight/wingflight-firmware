@@ -44,7 +44,7 @@ typedef enum {
     BOXLOITER,          // GPS LOITER: hold position (and altitude) around the point engaged at
     BOXRTH,             // GPS RTH: fly to and loiter above the home position. See flight/gps_nav.c
     BOXFAILSAFE,
-    BOXPASSTHROUGH,     // SETUP (was PASSTHROUGH): raw stick straight to the surfaces
+    BOXPASSTHROUGH,     // PASSTHROUGH: raw stick straight to the surfaces (was named SETUP)
 
     BOXID_FLIGHTMODE_LAST = BOXPASSTHROUGH,
 

@@ -55,7 +55,8 @@
 #define TELEM_STATUS_CONTROL_SATURATED      (1u << 17)  // stabilized roll/pitch/yaw hit its mixer limit recently
 #define TELEM_STATUS_GYRO_OVERFLOW          (1u << 18)  // gyroOverflowDetected()
 #define TELEM_STATUS_ACC_NOT_CALIBRATED     (1u << 19)  // ACC present but never calibrated
-#define TELEM_STATUS_OVERRIDE_ACTIVE        (1u << 20)  // Configurator servo/motor/mixer test override on
+#define TELEM_STATUS_OVERRIDE_ACTIVE        (1u << 20)  // bench override on: servo/motor/mixer override,
+                                                        // servo probe or forced mode (setup state)
 #define TELEM_STATUS_ASSIST_HOLDING         (1u << 21)  // ATTHOLD/TV hold holding, or acro trainer limiting
 
 #define TELEM_STATUS_AUTOTRIM_SHIFT         22          // autoTrimState_e
@@ -103,5 +104,6 @@ typedef enum {
     TELEM_NAV_BLOCKED_RTH,
 } telemetryNavBlocked_e;
 
+bool telemetryOverrideActive(void);
 uint32_t telemetrySystemStatus(void);
 uint32_t telemetrySystemConfig(void);
