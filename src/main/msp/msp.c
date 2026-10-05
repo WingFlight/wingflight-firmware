@@ -3919,8 +3919,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
     case MSP2_WING_SET_MODE_OVERRIDE: {
         // U16 timeout ms (clamped to 500-30000), U8 count, count x U8 permanent box id.
-        // Replaces the whole override; count 0 clears it. The client re-sends it before the
-        // timeout to keep the modes on. Refused while armed or for a mode that cannot be forced.
+        // Replaces the whole override; timeout 0 clears it. Count 0 holds the setup state with
+        // no mode forced (a setup tool is in charge, arming is blocked). The client re-sends
+        // it before the timeout to keep it. Refused while armed or for a mode that cannot be
+        // forced.
         if (sbufBytesRemaining(src) < 3) {
             return MSP_RESULT_ERROR;
         }
@@ -3929,7 +3931,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (count > MODE_OVERRIDE_MAX_COUNT || sbufBytesRemaining(src) != count) {
             return MSP_RESULT_ERROR;
         }
-        if (count == 0) {
+        if (timeoutMs == 0) {
             clearModeOverride();
             break;
         }

@@ -51,9 +51,10 @@ static uint8_t activeMacArray[MAX_MODE_ACTIVATION_CONDITION_COUNT];
 static int activeLinkedMacCount = 0;
 static uint8_t activeLinkedMacArray[MAX_MODE_ACTIVATION_CONDITION_COUNT];
 
-// Modes forced on over MSP (MSP2_WING_SET_MODE_OVERRIDE) for bench setup, e.g. by the
-// Configurator's setup wizard. RAM only and not part of any parameter group, so an EEPROM
-// write cannot save them. The override always has a timeout (see OVERRIDE_TIMEOUT_MIN_MS
+// Setup state and modes forced on over MSP (MSP2_WING_SET_MODE_OVERRIDE) for bench setup,
+// e.g. by the Configurator's setup wizard for as long as it is open. The override may force
+// no mode at all and only hold the setup state. RAM only and not part of any parameter
+// group, so an EEPROM write cannot save it. The override always has a timeout (see OVERRIDE_TIMEOUT_MIN_MS
 // in fc/runtime_config.h), so a client that disconnects or crashes cannot leave a mode
 // stuck on. While active it blocks arming (ARMING_DISABLED_OVERRIDE, fc/core.c).
 static boxBitmask_t modeOverrideMask;

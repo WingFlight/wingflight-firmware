@@ -339,8 +339,8 @@
 // In-flight rate-loop statistics (flight/tune_advisor.c) and their reset.
 #define MSP2_WING_TUNE_ADVISOR                0x5F18
 #define MSP2_WING_TUNE_ADVISOR_CLEAR          0x5F19
-// Temporary, RAM-only modes forced for bench setup (fc/rc_modes.c). They lapse unless
-// refreshed, block arming and can never be saved to EEPROM.
+// Setup state, optionally with modes forced, held by a setup tool (fc/rc_modes.c). RAM only:
+// it lapses unless refreshed, blocks arming and can never be saved to EEPROM.
 #define MSP2_WING_MODE_OVERRIDE               0x5F1A
 #define MSP2_WING_SET_MODE_OVERRIDE           0x5F1B
 // Holds a PWM servo at mid + offset, ignoring its travel limits, so a setup tool can find
