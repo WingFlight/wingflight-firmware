@@ -72,6 +72,15 @@ typedef enum {
 
 #define ARMING_DISABLE_FLAGS_COUNT (LOG2(ARMING_DISABLED_ARM_SWITCH) + 1)
 
+// Bench overrides set over MSP (forced modes, servo and mixer overrides, servo probes)
+// can carry a timeout: they lapse unless the client re-sends them in time, so a client
+// that disconnects or crashes cannot leave them on. Every one of them blocks arming
+// (ARMING_DISABLED_OVERRIDE) and none is ever part of a parameter group.
+#define OVERRIDE_TIMEOUT_MIN_MS   500
+#define OVERRIDE_TIMEOUT_MAX_MS   30000
+#define OVERRIDE_EXPIRY_MS(now, timeoutMs)     ((now) + constrain((timeoutMs), OVERRIDE_TIMEOUT_MIN_MS, OVERRIDE_TIMEOUT_MAX_MS))
+#define OVERRIDE_EXPIRED(now, expiryMs)   ((int32_t)((now) - (expiryMs)) >= 0)
+
 extern const char *armingDisableFlagNames[ARMING_DISABLE_FLAGS_COUNT];
 
 void setArmingDisabled(armingDisableFlags_e flag);

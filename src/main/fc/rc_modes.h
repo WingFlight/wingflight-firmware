@@ -127,6 +127,15 @@ void removeModeActivationCondition(boxId_e modeId);
 bool isModeActivationConditionConfigured(const modeActivationCondition_t *mac, const modeActivationCondition_t *emptyMac);
 void analyzeModeActivationConditions(void);
 
+// Temporary, RAM-only modes forced over MSP. See rc_modes.c.
+#define MODE_OVERRIDE_MAX_COUNT        4
+
+bool isModeOverrideAllowed(boxId_e boxId);
+bool setModeOverride(const boxBitmask_t *mask, uint16_t timeoutMs);
+void clearModeOverride(void);
+bool isModeOverrideActive(void);
+uint16_t getModeOverride(boxBitmask_t *mask);
+
 
 static inline bool isRangeUsable(const channelRange_t *range)
 {

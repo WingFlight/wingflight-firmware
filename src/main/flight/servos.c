@@ -58,6 +58,19 @@ static FAST_DATA_ZERO_INIT float        servoResolution[MAX_SUPPORTED_SERVOS];
 
 static FAST_DATA_ZERO_INIT int16_t      servoOverride[MAX_SUPPORTED_SERVOS];
 
+// Lapse time of an override set with a timeout (MSP_SET_SERVO_OVERRIDE with the
+// optional timeout field). An override set without one stays until cleared.
+static timeMs_t servoOverrideExpiryMs[MAX_SUPPORTED_SERVOS];
+static bool     servoOverrideTimed[MAX_SUPPORTED_SERVOS];
+
+// Servo probe (MSP2_WING_SET_SERVO_PROBE): holds a PWM servo at mid + offset us,
+// bypassing the mixer, scale, reverse, speed, trim, curves and the min/max travel
+// limits, so a setup tool can find the mechanical end stops without widening the
+// stored limits. Only the signal range applies. Always has a timeout.
+static int16_t  servoProbeOffset[MAX_SUPPORTED_PWM_SERVOS];
+static timeMs_t servoProbeExpiryMs[MAX_SUPPORTED_PWM_SERVOS];
+static bool     servoProbeActive[MAX_SUPPORTED_PWM_SERVOS];
+
 static FAST_DATA_ZERO_INIT float        servoAxisTrim[3];  // last commanded per-axis trim value in µs [ROLL=0, PITCH=1, YAW=2]
 static FAST_DATA_ZERO_INIT float        servoRuntimeAxisTrim[3]; // runtime-only (continuous mode) axis trim in µs, never saved
 static FAST_DATA_ZERO_INIT float        servoRuntimeTrim[MAX_SUPPORTED_SERVOS]; // the above, resolved per servo
@@ -213,7 +226,23 @@ uint16_t getServoOutput(uint8_t servo)
 
 bool hasServoOverride(uint8_t servo)
 {
+    if (servoOverrideTimed[servo] && OVERRIDE_EXPIRED(millis(), servoOverrideExpiryMs[servo])) {
+        servoOverride[servo] = SERVO_OVERRIDE_OFF;
+        servoOverrideTimed[servo] = false;
+    }
     return (servoOverride[servo] >= SERVO_OVERRIDE_MIN && servoOverride[servo] <= SERVO_OVERRIDE_MAX);
+}
+
+static bool hasServoProbe(uint8_t servo)
+{
+    if (servo >= MAX_SUPPORTED_PWM_SERVOS || !servoProbeActive[servo]) {
+        return false;
+    }
+    if (OVERRIDE_EXPIRED(millis(), servoProbeExpiryMs[servo])) {
+        servoProbeActive[servo] = false;
+        return false;
+    }
+    return true;
 }
 
 int16_t getServoOverride(uint8_t servo)
@@ -223,13 +252,41 @@ int16_t getServoOverride(uint8_t servo)
 
 int16_t setServoOverride(uint8_t servo, int16_t val)
 {
+    servoOverrideTimed[servo] = false;
     return servoOverride[servo] = val;
+}
+
+void setServoOverrideTimed(uint8_t servo, int16_t val, uint16_t timeoutMs)
+{
+    servoOverride[servo] = val;
+    servoOverrideExpiryMs[servo] = OVERRIDE_EXPIRY_MS(millis(), timeoutMs);
+    servoOverrideTimed[servo] = true;
+}
+
+// timeoutMs 0 clears the probe. Refused while armed, for a bus servo, or for an
+// offset outside SERVO_LIMIT_MIN..SERVO_LIMIT_MAX.
+bool setServoProbe(uint8_t servo, int16_t offset, uint16_t timeoutMs)
+{
+    if (servo >= MAX_SUPPORTED_PWM_SERVOS) {
+        return false;
+    }
+    if (timeoutMs == 0) {
+        servoProbeActive[servo] = false;
+        return true;
+    }
+    if (ARMING_FLAG(ARMED) || offset < SERVO_LIMIT_MIN || offset > SERVO_LIMIT_MAX) {
+        return false;
+    }
+    servoProbeOffset[servo] = offset;
+    servoProbeExpiryMs[servo] = OVERRIDE_EXPIRY_MS(millis(), timeoutMs);
+    servoProbeActive[servo] = true;
+    return true;
 }
 
 bool isServoOverrideActive(void)
 {
     for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
-        if (hasServoOverride(i))
+        if (hasServoOverride(i) || hasServoProbe(i))
             return true;
     }
     return false;
@@ -491,6 +548,11 @@ void servoUpdate(void)
             pos = limitSpeed(servoInput[i], pos, servo->speed);
 
         servoInput[i] = pos;
+
+        if (!ARMING_FLAG(ARMED) && hasServoProbe(i)) {
+            servoSetOutput(i, constrain(servo->mid + servoProbeOffset[i], PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX));
+            continue;
+        }
 
         if (servo->flags & SERVO_FLAG_REVERSED)
             pos = -pos;

@@ -416,7 +416,7 @@ void updateArmingStatus(void)
             setArmingDisabled(ARMING_DISABLED_MOTOR_PROTOCOL);
         }
 
-        if (isServoOverrideActive() || isMixerOverrideActive()) {
+        if (isServoOverrideActive() || isMixerOverrideActive() || isModeOverrideActive()) {
             setArmingDisabled(ARMING_DISABLED_OVERRIDE);
         } else {
             unsetArmingDisabled(ARMING_DISABLED_OVERRIDE);

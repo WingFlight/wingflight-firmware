@@ -33,6 +33,7 @@
 #include "config/feature.h"
 
 #include "fc/rc_controls.h"
+#include "fc/runtime_config.h"
 
 #include "io/piniobox.h"
 
@@ -49,6 +50,15 @@ static int activeMacCount = 0;
 static uint8_t activeMacArray[MAX_MODE_ACTIVATION_CONDITION_COUNT];
 static int activeLinkedMacCount = 0;
 static uint8_t activeLinkedMacArray[MAX_MODE_ACTIVATION_CONDITION_COUNT];
+
+// Modes forced on over MSP (MSP2_WING_SET_MODE_OVERRIDE) for bench setup, e.g. by the
+// Configurator's setup wizard. RAM only and not part of any parameter group, so an EEPROM
+// write cannot save them. The override always has a timeout (see OVERRIDE_TIMEOUT_MIN_MS
+// in fc/runtime_config.h), so a client that disconnects or crashes cannot leave a mode
+// stuck on. While active it blocks arming (ARMING_DISABLED_OVERRIDE, fc/core.c).
+static boxBitmask_t modeOverrideMask;
+static bool modeOverrideSet;
+static timeMs_t modeOverrideExpiryMs;
 
 bool IS_RC_MODE_ACTIVE(boxId_e boxId)
 {
@@ -116,7 +126,73 @@ void updateActivatedModes(void)
 
     bitArrayXor(&newMask, sizeof(newMask), &newMask, &andMask);
 
+    if (ARMING_FLAG(ARMED)) {
+        clearModeOverride();
+    }
+    else if (isModeOverrideActive()) {
+        for (unsigned i = 0; i < ARRAYLEN(newMask.bits); i++) {
+            newMask.bits[i] |= modeOverrideMask.bits[i];
+        }
+    }
+
     rcModeUpdate(&newMask);
+}
+
+// Only modes that are useful on the bench and harmless to force. ARM, FAILSAFE and the
+// switch actions (blackbox erase, beepers, camera) can never be forced.
+bool isModeOverrideAllowed(boxId_e boxId)
+{
+    switch (boxId) {
+        case BOXANGLE:
+        case BOXATTHOLD:
+        case BOXPASSTHROUGH:
+        case BOXMANUAL:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool setModeOverride(const boxBitmask_t *mask, uint16_t timeoutMs)
+{
+    if (ARMING_FLAG(ARMED)) {
+        return false;
+    }
+    for (int i = 0; i < CHECKBOX_ITEM_COUNT; i++) {
+        if (bitArrayGet(mask, i) && !isModeOverrideAllowed(i)) {
+            return false;
+        }
+    }
+
+    modeOverrideMask = *mask;
+    modeOverrideSet = true;
+    modeOverrideExpiryMs = OVERRIDE_EXPIRY_MS(millis(), timeoutMs);
+    return true;
+}
+
+void clearModeOverride(void)
+{
+    memset(&modeOverrideMask, 0, sizeof(modeOverrideMask));
+    modeOverrideSet = false;
+}
+
+bool isModeOverrideActive(void)
+{
+    if (modeOverrideSet && OVERRIDE_EXPIRED(millis(), modeOverrideExpiryMs)) {
+        clearModeOverride();
+    }
+    return modeOverrideSet;
+}
+
+// Returns the forced modes and the time left before they lapse (0 when none are forced).
+uint16_t getModeOverride(boxBitmask_t *mask)
+{
+    if (!isModeOverrideActive()) {
+        memset(mask, 0, sizeof(*mask));
+        return 0;
+    }
+    *mask = modeOverrideMask;
+    return modeOverrideExpiryMs - millis();
 }
 
 bool isModeActivationConditionPresent(boxId_e modeId)

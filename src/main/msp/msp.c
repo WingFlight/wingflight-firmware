@@ -1886,6 +1886,26 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         }
         break;
 
+    case MSP2_WING_MODE_OVERRIDE: {
+        // U16 ms left before the override lapses, U8 count, count x U8 permanent box id.
+        boxBitmask_t mask;
+        const uint16_t remainingMs = getModeOverride(&mask);
+        uint8_t ids[MODE_OVERRIDE_MAX_COUNT];
+        uint8_t count = 0;
+        for (int i = 0; i < CHECKBOX_ITEM_COUNT && count < MODE_OVERRIDE_MAX_COUNT; i++) {
+            const box_t *box = bitArrayGet(&mask, i) ? findBoxByBoxId(i) : NULL;
+            if (box) {
+                ids[count++] = box->permanentId;
+            }
+        }
+        sbufWriteU16(dst, remainingMs);
+        sbufWriteU8(dst, count);
+        for (int i = 0; i < count; i++) {
+            sbufWriteU8(dst, ids[i]);
+        }
+        break;
+    }
+
     case MSP_RX_CONFIG:
         sbufWriteU8(dst, rxConfig()->serialrx_provider);
         sbufWriteU8(dst, rxConfig()->serialrx_inverted);
@@ -3217,17 +3237,45 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (i >= MAX_SUPPORTED_SERVOS) {
             return MSP_RESULT_ERROR;
         }
-        setServoOverride(i, sbufReadU16(src));
+        {
+            // Optional U16 timeout ms (API 22.14): the override lapses unless re-sent.
+            const int16_t value = sbufReadU16(src);
+            if (sbufBytesRemaining(src) >= 2) {
+                setServoOverrideTimed(i, value, sbufReadU16(src));
+            } else {
+                setServoOverride(i, value);
+            }
+        }
         break;
 
     case MSP_SET_SERVO_OVERRIDE_ALL: {
-        // payload: U16 value (e.g. 0 => enable/center-focus, 2001 => disable)
-        if (dataSize != 2) {
+        // payload: U16 value (e.g. 0 => enable/center-focus, 2001 => disable),
+        // optional U16 timeout ms (API 22.14)
+        if (dataSize != 2 && dataSize != 4) {
             return MSP_RESULT_ERROR;
         }
         const uint16_t v = sbufReadU16(src);
+        const uint16_t timeoutMs = (dataSize == 4) ? sbufReadU16(src) : 0;
         for (int s = 0; s < MAX_SUPPORTED_SERVOS; s++) {
-            setServoOverride(s, v);
+            if (timeoutMs) {
+                setServoOverrideTimed(s, v, timeoutMs);
+            } else {
+                setServoOverride(s, v);
+            }
+        }
+        break;
+    }
+
+    case MSP2_WING_SET_SERVO_PROBE: {
+        // U8 servo, S16 offset us from mid, U16 timeout ms (0 clears; otherwise clamped
+        // to 500-30000). The client re-sends it before the timeout to keep the servo there.
+        if (dataSize != 5) {
+            return MSP_RESULT_ERROR;
+        }
+        const uint8_t servo = sbufReadU8(src);
+        const int16_t offset = sbufReadU16(src);
+        if (!setServoProbe(servo, offset, sbufReadU16(src))) {
+            return MSP_RESULT_ERROR;
         }
         break;
     }
@@ -3858,8 +3906,47 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (i >= MIXER_INPUT_COUNT) {
             return MSP_RESULT_ERROR;
         }
-        mixerSetOverride(i, sbufReadU16(src));
+        {
+            // Optional U16 timeout ms (API 22.14): the override lapses unless re-sent.
+            const int16_t value = sbufReadU16(src);
+            if (sbufBytesRemaining(src) >= 2) {
+                mixerSetOverrideTimed(i, value, sbufReadU16(src));
+            } else {
+                mixerSetOverride(i, value);
+            }
+        }
         break;
+
+    case MSP2_WING_SET_MODE_OVERRIDE: {
+        // U16 timeout ms (clamped to 500-30000), U8 count, count x U8 permanent box id.
+        // Replaces the whole override; count 0 clears it. The client re-sends it before the
+        // timeout to keep the modes on. Refused while armed or for a mode that cannot be forced.
+        if (sbufBytesRemaining(src) < 3) {
+            return MSP_RESULT_ERROR;
+        }
+        const uint16_t timeoutMs = sbufReadU16(src);
+        const uint8_t count = sbufReadU8(src);
+        if (count > MODE_OVERRIDE_MAX_COUNT || sbufBytesRemaining(src) != count) {
+            return MSP_RESULT_ERROR;
+        }
+        if (count == 0) {
+            clearModeOverride();
+            break;
+        }
+        boxBitmask_t mask;
+        memset(&mask, 0, sizeof(mask));
+        for (int n = 0; n < count; n++) {
+            const box_t *box = findBoxByPermanentId(sbufReadU8(src));
+            if (!box) {
+                return MSP_RESULT_ERROR;
+            }
+            bitArraySet(&mask, box->boxId);
+        }
+        if (!setModeOverride(&mask, timeoutMs)) {
+            return MSP_RESULT_ERROR;
+        }
+        break;
+    }
 
     case MSP_SET_RX_CONFIG:
         // Make sure ELRS commands don't confuse us
