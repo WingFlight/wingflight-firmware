@@ -77,6 +77,8 @@ uint16_t getServoOutput(uint8_t servo);
 
 int16_t getServoOverride(uint8_t servo);
 int16_t setServoOverride(uint8_t servo, int16_t val);
+void    setServoOverrideTimed(uint8_t servo, int16_t val, uint16_t timeoutMs);
+bool    setServoProbe(uint8_t servo, int16_t offset, uint16_t timeoutMs);
 bool    hasServoOverride(uint8_t servo);
 bool    isServoOverrideActive(void);
 

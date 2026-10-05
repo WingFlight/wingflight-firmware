@@ -110,9 +110,11 @@ static bool controlSaturated(void)
     return seen;
 }
 
-static bool overrideActive(void)
+// Any bench override on: the model is in a setup state, held by a setup tool rather than
+// flown from the sticks. Radio clients show this instead of the (forced) flight mode.
+bool telemetryOverrideActive(void)
 {
-    if (isServoOverrideActive() || isMixerOverrideActive()) {
+    if (isServoOverrideActive() || isMixerOverrideActive() || isModeOverrideActive()) {
         return true;
     }
 
@@ -184,7 +186,7 @@ uint32_t telemetrySystemStatus(void)
     if (sensors(SENSOR_ACC) && !accHasBeenCalibrated())
         status |= TELEM_STATUS_ACC_NOT_CALIBRATED;
 #endif
-    if (overrideActive())
+    if (telemetryOverrideActive())
         status |= TELEM_STATUS_OVERRIDE_ACTIVE;
     if (assistHolding())
         status |= TELEM_STATUS_ASSIST_HOLDING;

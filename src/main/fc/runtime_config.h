@@ -72,6 +72,15 @@ typedef enum {
 
 #define ARMING_DISABLE_FLAGS_COUNT (LOG2(ARMING_DISABLED_ARM_SWITCH) + 1)
 
+// Bench overrides set over MSP (forced modes, servo and mixer overrides, servo probes)
+// can carry a timeout: they lapse unless the client re-sends them in time, so a client
+// that disconnects or crashes cannot leave them on. Every one of them blocks arming
+// (ARMING_DISABLED_OVERRIDE) and none is ever part of a parameter group.
+#define OVERRIDE_TIMEOUT_MIN_MS   500
+#define OVERRIDE_TIMEOUT_MAX_MS   30000
+#define OVERRIDE_EXPIRY_MS(now, timeoutMs)     ((now) + constrain((timeoutMs), OVERRIDE_TIMEOUT_MIN_MS, OVERRIDE_TIMEOUT_MAX_MS))
+#define OVERRIDE_EXPIRED(now, expiryMs)   ((int32_t)((now) - (expiryMs)) >= 0)
+
 extern const char *armingDisableFlagNames[ARMING_DISABLE_FLAGS_COUNT];
 
 void setArmingDisabled(armingDisableFlags_e flag);
@@ -119,7 +128,7 @@ typedef enum {
     // switch was used this flight and gets switched off with throttle back at idle (read as
     // "landed", since some pilots delay disarming while taxiing back).
     INFLIGHT_MODE        = BIT(INFLIGHT_MODE_BIT),
-    // GYRO OFF (shown as MANUAL before): pilot flies the same rate/expo curve as stabilised (rate) flight, but the mixer
+    // MANUAL (was named GYRO OFF): pilot flies the same rate/expo curve as stabilised (rate) flight, but the mixer
     // takes that shaped setpoint directly instead of the gyro-corrected PID output -- no
     // stabilisation at all, unlike PASSTHROUGH_MODE which also strips the rates/expo curve itself
     // and feeds raw radio deflection straight through.

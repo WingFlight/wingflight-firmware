@@ -55,7 +55,7 @@
 #define MSP_PROTOCOL_VERSION                 0
 
 #define API_VERSION_MAJOR                    22
-#define API_VERSION_MINOR                    13
+#define API_VERSION_MINOR                    14
 #define API_VERSION_LENGTH                   2
 
 #define FLIGHT_CONTROLLER_IDENTIFIER_LENGTH  4
@@ -339,4 +339,11 @@
 // In-flight rate-loop statistics (flight/tune_advisor.c) and their reset.
 #define MSP2_WING_TUNE_ADVISOR                0x5F18
 #define MSP2_WING_TUNE_ADVISOR_CLEAR          0x5F19
+// Setup state, optionally with modes forced, held by a setup tool (fc/rc_modes.c). RAM only:
+// it lapses unless refreshed, blocks arming and can never be saved to EEPROM.
+#define MSP2_WING_MODE_OVERRIDE               0x5F1A
+#define MSP2_WING_SET_MODE_OVERRIDE           0x5F1B
+// Holds a PWM servo at mid + offset, ignoring its travel limits, so a setup tool can find
+// the mechanical end stops without widening the stored limits (flight/servos.c).
+#define MSP2_WING_SET_SERVO_PROBE             0x5F1C
 #define MSP_V2_FRAME                         255

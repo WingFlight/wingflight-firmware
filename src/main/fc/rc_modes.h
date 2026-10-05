@@ -44,7 +44,7 @@ typedef enum {
     BOXLOITER,          // GPS LOITER: hold position (and altitude) around the point engaged at
     BOXRTH,             // GPS RTH: fly to and loiter above the home position. See flight/gps_nav.c
     BOXFAILSAFE,
-    BOXPASSTHROUGH,     // SETUP (was PASSTHROUGH): raw stick straight to the surfaces
+    BOXPASSTHROUGH,     // PASSTHROUGH: raw stick straight to the surfaces (was named SETUP)
 
     BOXID_FLIGHTMODE_LAST = BOXPASSTHROUGH,
 
@@ -74,7 +74,7 @@ typedef enum {
     BOXUSER3,
     BOXUSER4,
     BOXAUTOHOVER,       // reserved (AUTO HOVER removed) -- kept to avoid renumbering later ids
-    BOXMANUAL,          // GYRO OFF (was MANUAL): same rates/expo curve as stabilised flight, but no gyro correction
+    BOXMANUAL,          // MANUAL (was named GYRO OFF): same rates/expo curve as stabilised flight, but no gyro correction
     BOXAUTOTRIM,        // AUTO TRIM: while armed, captures actual servo output over a fixed window
                          // and writes it as the new center (see flight/autotrim.c)
     BOXTHRUSTVECTOR,    // THRUST VECTOR: live on/off for the independent TV mixer output
@@ -126,6 +126,15 @@ bool isModeActivationConditionLinked(boxId_e modeId);
 void removeModeActivationCondition(boxId_e modeId);
 bool isModeActivationConditionConfigured(const modeActivationCondition_t *mac, const modeActivationCondition_t *emptyMac);
 void analyzeModeActivationConditions(void);
+
+// Temporary, RAM-only modes forced over MSP. See rc_modes.c.
+#define MODE_OVERRIDE_MAX_COUNT        4
+
+bool isModeOverrideAllowed(boxId_e boxId);
+bool setModeOverride(const boxBitmask_t *mask, uint16_t timeoutMs);
+void clearModeOverride(void);
+bool isModeOverrideActive(void);
+uint16_t getModeOverride(boxBitmask_t *mask);
 
 
 static inline bool isRangeUsable(const channelRange_t *range)

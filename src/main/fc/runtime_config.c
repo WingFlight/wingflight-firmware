@@ -59,7 +59,7 @@ const char *armingDisableFlagNames[]= {
     "DSHOT_BBANG",
     "NO_ACC_CAL",
     "MOTOR_PROTO",
-    "OVERRIDE",
+    "SETUP",          // ARMING_DISABLED_OVERRIDE: a setup tool is holding the model
     "BACKUPRX",
     "ARMSWITCH",
 };

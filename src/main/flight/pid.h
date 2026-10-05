@@ -46,7 +46,7 @@
 // Floor on roll/pitch/yaw F gain. F sets most of the surface deflection for a commanded rate; P
 // and I are small corrections on top (I is capped by error_limit). With the default P and I, F = 0
 // lets full stick reach only about 100 of a commanded 250 deg/s on roll and pitch, late, once I
-// has wound up. At 50, I can still make up the rest of the deflection. GYRO OFF (MANUAL_MODE) has
+// has wound up. At 50, I can still make up the rest of the deflection. MANUAL (MANUAL_MODE) has
 // its own full-stick floor in setpoint.c and does not rely on this.
 #define PID_F_GAIN_MIN              50
 
