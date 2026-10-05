@@ -489,7 +489,7 @@ static void crsfFlightModeInfo(char *buf)
     } else if (FLIGHT_MODE(PASSTHROUGH_MODE)) {
         flightMode = "PASSTHROUGH";
     } else if (FLIGHT_MODE(MANUAL_MODE)) {
-        flightMode = "GYRO OFF";
+        flightMode = "MANUAL";
     } else if (FLIGHT_MODE(ATTHOLD_MODE)) {
         flightMode = "ATT HOLD";
     } else if (FLIGHT_MODE(AUTOTRIM_MODE)) {

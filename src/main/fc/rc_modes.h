@@ -74,7 +74,7 @@ typedef enum {
     BOXUSER3,
     BOXUSER4,
     BOXAUTOHOVER,       // reserved (AUTO HOVER removed) -- kept to avoid renumbering later ids
-    BOXMANUAL,          // GYRO OFF (was MANUAL): same rates/expo curve as stabilised flight, but no gyro correction
+    BOXMANUAL,          // MANUAL (was named GYRO OFF): same rates/expo curve as stabilised flight, but no gyro correction
     BOXAUTOTRIM,        // AUTO TRIM: while armed, captures actual servo output over a fixed window
                          // and writes it as the new center (see flight/autotrim.c)
     BOXTHRUSTVECTOR,    // THRUST VECTOR: live on/off for the independent TV mixer output

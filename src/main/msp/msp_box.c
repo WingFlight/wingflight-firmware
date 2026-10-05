@@ -112,7 +112,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] =
 //    BOXITEM(BOXGOVSUSPEND, "GOVERNOR SUSPEND", 56), // heli governor removed
 //    BOXITEM(BOXGOVBYPASS, "GOVERNOR BYPASS", 57), // heli governor removed
 //    BOXITEM(BOXAUTOHOVER, "AUTO HOVER", 58), // reserved (AUTO HOVER removed)
-    BOXITEM(BOXMANUAL, "GYRO OFF", 59),
+    BOXITEM(BOXMANUAL, "MANUAL", 59),
     BOXITEM(BOXAUTOTRIM, "AUTO TRIM", 60),
     // permanentId 46 is BOXGPSRESCUE "GPS RESCUE" (see above) -- reserved, do not reuse
     // permanentId 61 is BOXLOITER "GPS LOITER" (see above, near BOXGPSRESCUE) -- do not reuse
