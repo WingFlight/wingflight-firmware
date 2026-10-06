@@ -3,6 +3,7 @@
 Change the MSP API to 22.14. Updating keeps your settings. Use the 0.0.33 Configurator and Lua suites with this firmware.
 Add timed bench overrides for setup tools: forced flight modes, a servo probe for finding end stops without widening the stored limits, and timeouts on servo and mixer overrides. They live in RAM only and lapse when the setup tool stops refreshing them, so a dropped link, a later save or an accelerometer calibration can no longer store temporary setup state. While one is active, arming is blocked and telemetry shows SETUP.
 Name the raw-stick mode PASSTHROUGH again and GYRO OFF MANUAL, in mode names and CRSF flight-mode text. Switch assignments are unchanged. The OVERRIDE arming-disabled reason is now named SETUP.
+Fix PASSTHROUGH and MANUAL overriding the bench mixer overrides: while disarmed, an axis held by a setup tool now keeps its override, so the Configurator wizard's direction check moves the surfaces with either switch on. Armed behaviour is unchanged.
 
 # 0.0.32
 
