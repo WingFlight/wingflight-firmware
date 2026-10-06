@@ -525,3 +525,81 @@ TEST_F(PIDPropHangTest, RollOnly)
     EXPECT_GT(off, 10);
     EXPECT_FLOAT_EQ(on, off);
 }
+
+class PIDRollYawTest : public PIDTestBase {
+  public:
+    void TearDown() override
+    {
+        for (int axis = 0; axis < 3; axis++) {
+            gyro.gyroADCf[axis] = 0;
+        }
+        rollYawConfigsMutable(0)->coupling = 0;
+        PIDTestBase::TearDown();
+    }
+    // Sticks centred for 1 s with the airframe rolling at 200 deg/s and yawing at yawRate.
+    // Returns the roll and yaw axis data at the end.
+    std::array<pidAxisData_t, 2> afterRoll(int8_t coupling, float yawRate)
+    {
+        mockPidProfile->pid_mode = 1;
+        for (int axis = 0; axis < 3; axis++) {
+            mockPidProfile->pid[axis].P = 50;
+            mockPidProfile->pid[axis].I = 50;
+            mockPidProfile->pid[axis].D = 0;
+            mockPidProfile->pid[axis].F = 0;
+            mockPidProfile->pid[axis].B = 0;
+        }
+        rollYawConfigsMutable(0)->coupling = coupling;
+        pidInit(mockPidProfile);
+
+        gyro.gyroADCf[0] = 200;
+        gyro.gyroADCf[2] = yawRate;
+
+        PIDIO input;
+        for (int i = 0; i < 1000; i++) {
+            for (int axis = 0; axis < 4; axis++) {
+                input[axis].push_back(0);
+            }
+        }
+        getResponse(input);
+        return { pidGetAxisData()[0], pidGetAxisData()[2] };
+    }
+};
+
+TEST_F(PIDRollYawTest, OffFightsTheNaturalYaw)
+{
+    // The airframe yaws against the roll at 25 % of the roll rate
+    const pidAxisData_t yaw = afterRoll(0, -50)[1];
+    EXPECT_GT(yaw.P, 0);
+    EXPECT_GT(yaw.axisError, 10);
+}
+
+TEST_F(PIDRollYawTest, MatchingCouplingLeavesTheNaturalYawAlone)
+{
+    // Only a trace of I builds while the roll and yaw gyro filters settle
+    const float off = afterRoll(0, -50)[1].axisError;
+    const pidAxisData_t yaw = afterRoll(25, -50)[1];
+    EXPECT_NEAR(yaw.P, 0, 1e-4f);
+    EXPECT_LT(fabsf(yaw.axisError), off * 0.01f);
+}
+
+TEST_F(PIDRollYawTest, StillHoldsYawBeyondTheCoupling)
+{
+    // A gust adds yaw the roll doesn't explain; the loop still pushes back on that part
+    const pidAxisData_t off = afterRoll(0, -30)[1];
+    const pidAxisData_t on = afterRoll(25, -80)[1];
+    EXPECT_NEAR(on.P, off.P, 1e-4f);
+}
+
+TEST_F(PIDRollYawTest, NegativeCouplingIsYawWithTheRoll)
+{
+    const pidAxisData_t yaw = afterRoll(-25, 50)[1];
+    EXPECT_NEAR(yaw.P, 0, 1e-4f);
+}
+
+TEST_F(PIDRollYawTest, RollUntouched)
+{
+    const pidAxisData_t off = afterRoll(0, -50)[0];
+    const pidAxisData_t on = afterRoll(25, -50)[0];
+    EXPECT_FLOAT_EQ(on.P, off.P);
+    EXPECT_FLOAT_EQ(on.axisError, off.axisError);
+}

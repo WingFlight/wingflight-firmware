@@ -152,6 +152,8 @@ typedef struct pid_s {
     float propHangFadeTimer;                    // s of fade-out left after the hang ended
     float propHangRelax;                        // Current roll I relax, 0..propHangStrength
 
+    float rollYawCoupling;                      // -1..1, see rollYawConfig_t
+
     float itermDecayRate[PID_AXIS_COUNT];
     float itermDecayLimit;
 

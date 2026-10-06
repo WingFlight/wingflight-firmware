@@ -1707,6 +1707,7 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE("prop_hang", "%d,%d,%d",                propHangConfigs(getCurrentPidProfileIndex())->strength,
                                                                             propHangConfigs(getCurrentPidProfileIndex())->angle,
                                                                             propHangConfigs(getCurrentPidProfileIndex())->fade);
+        BLACKBOX_PRINT_HEADER_LINE("roll_yaw_coupling", "%d",               rollYawConfigs(getCurrentPidProfileIndex())->coupling);
         BLACKBOX_PRINT_HEADER_LINE("rollBW", "%d,%d,%d",                    currentPidProfile->gyro_cutoff[PID_ROLL],
                                                                             currentPidProfile->dterm_cutoff[PID_ROLL],
                                                                             currentPidProfile->bterm_cutoff[PID_ROLL]);
