@@ -3,6 +3,14 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Battery Flight Counter
+
+- `bat_flights` counts the flights done with each battery profile (U16 per
+  profile). On disarm the counter of the active profile is incremented, using
+  the same rules as `stats_total_flights` (`stats_min_armed_time_s`).
+- `MSP_BATTERY_CONFIG` appends `U16 batteryFlights[6]` after the per-profile
+  warning cell voltages; optional in `MSP_SET_BATTERY_CONFIG`.
+
 ## Tune Advisor Statistics
 
 The FC measures, during plain rate flight, how the airframe answers the rate
