@@ -213,22 +213,6 @@ void pgResetFn_propHangConfigs(propHangConfig_t *configs)
     }
 }
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(rollYawConfig_t, PID_PROFILE_COUNT, rollYawConfigs, PG_ROLL_YAW_CONFIG, 0);
-
-void resetRollYawConfig(rollYawConfig_t *config)
-{
-    RESET_CONFIG(rollYawConfig_t, config,
-        .coupling = 0,
-    );
-}
-
-void pgResetFn_rollYawConfigs(rollYawConfig_t *configs)
-{
-    for (int i = 0; i < PID_PROFILE_COUNT; i++) {
-        resetRollYawConfig(&configs[i]);
-    }
-}
-
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis)
 {
     if (!override) {

@@ -2253,8 +2253,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, propHangConfigs(getCurrentPidProfileIndex())->strength);
         sbufWriteU8(dst, propHangConfigs(getCurrentPidProfileIndex())->angle);
         sbufWriteU16(dst, propHangConfigs(getCurrentPidProfileIndex())->fade);
-        /* Roll-yaw coupling (separate per-profile storage), signed percent */
-        sbufWriteU8(dst, (uint8_t)rollYawConfigs(getCurrentPidProfileIndex())->coupling);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -3309,7 +3307,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         resetLevelConfig(levelConfigsMutable(getCurrentPidProfileIndex()));
         resetSnapRelaxConfig(snapRelaxConfigsMutable(getCurrentPidProfileIndex()));
         resetPropHangConfig(propHangConfigsMutable(getCurrentPidProfileIndex()));
-        resetRollYawConfig(rollYawConfigsMutable(getCurrentPidProfileIndex()));
         break;
 
     case MSP_SET_SENSOR_ALIGNMENT:
@@ -3505,11 +3502,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             hang->strength = MIN(sbufReadU8(src), 100);
             hang->angle = constrain(sbufReadU8(src), PROP_HANG_ANGLE_MIN, PROP_HANG_ANGLE_MAX);
             hang->fade = MIN(sbufReadU16(src), PROP_HANG_FADE_MAX);
-        }
-        /* Roll-yaw coupling extension; older clients omit it and leave it untouched. */
-        if (sbufBytesRemaining(src) >= 1) {
-            rollYawConfigsMutable(getCurrentPidProfileIndex())->coupling =
-                constrain((int8_t)sbufReadU8(src), -ROLL_YAW_COUPLING_MAX, ROLL_YAW_COUPLING_MAX);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

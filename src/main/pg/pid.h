@@ -222,18 +222,5 @@ PG_DECLARE_ARRAY(propHangConfig_t, PID_PROFILE_COUNT, propHangConfigs);
 
 void resetPropHangConfig(propHangConfig_t *config);
 
-// Roll-yaw coupling, one per PID profile. Separate storage, like propHangConfig_t.
-#define ROLL_YAW_COUPLING_MAX     100
-
-typedef struct {
-    int8_t   coupling;   // Percent of the roll rate the airframe yaws by itself when it rolls,
-                         // positive for yaw against the roll (logged yaw gyro opposite in sign
-                         // to roll). The yaw loop does not fight it. 0 = off
-} rollYawConfig_t;
-
-PG_DECLARE_ARRAY(rollYawConfig_t, PID_PROFILE_COUNT, rollYawConfigs);
-
-void resetRollYawConfig(rollYawConfig_t *config);
-
 // Positive axis overrides use the SAFE-style range; zero preserves the legacy shared value.
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis);

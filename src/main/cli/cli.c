@@ -903,8 +903,6 @@ static uint16_t getValueOffset(const clivalue_t *value)
             return value->offset + sizeof(snapRelaxConfig_t) * getPidProfileIndexToUse();
         case PG_PROP_HANG_CONFIG:
             return value->offset + sizeof(propHangConfig_t) * getPidProfileIndexToUse();
-        case PG_ROLL_YAW_CONFIG:
-            return value->offset + sizeof(rollYawConfig_t) * getPidProfileIndexToUse();
         default:
             return value->offset + sizeof(pidProfile_t) * getPidProfileIndexToUse();
         }
