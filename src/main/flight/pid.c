@@ -614,6 +614,10 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     pid.propHangCosAngle = cos_approx(DEGREES_TO_RADIANS(constrain(propHangConfig->angle, PROP_HANG_ANGLE_MIN, PROP_HANG_ANGLE_MAX)));
     pid.propHangFade = MIN(propHangConfig->fade, PROP_HANG_FADE_MAX) * 0.001f;
 
+    // Roll-yaw coupling (separate per-profile storage, see rollYawConfig_t)
+    pid.rollYawCoupling = constrain(rollYawConfigs(getCurrentPidProfileIndex())->coupling,
+                                    -ROLL_YAW_COUPLING_MAX, ROLL_YAW_COUPLING_MAX) * 0.01f;
+
 
     // Initialise sub-profiles
 #ifdef USE_ACC
@@ -650,6 +654,7 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
         memcpy(levelConfigsMutable(dstPidProfileIndex), levelConfigs(srcPidProfileIndex), sizeof(levelConfig_t));
         memcpy(snapRelaxConfigsMutable(dstPidProfileIndex), snapRelaxConfigs(srcPidProfileIndex), sizeof(snapRelaxConfig_t));
         memcpy(propHangConfigsMutable(dstPidProfileIndex), propHangConfigs(srcPidProfileIndex), sizeof(propHangConfig_t));
+        memcpy(rollYawConfigsMutable(dstPidProfileIndex), rollYawConfigs(srcPidProfileIndex), sizeof(rollYawConfig_t));
     }
 }
 
@@ -905,6 +910,31 @@ static void updatePropHangRelax(void)
     DEBUG(PROP_HANG, 5, rateFlight);
 }
 
+/*
+ * Roll-yaw coupling
+ *
+ * Many airframes yaw by themselves when they roll, from aileron drag and the fin. A rate gyro
+ * holding zero yaw rate fights that with the rudder, so the rudder no longer follows the stick
+ * in a roll and the nose tracks differently than in MANUAL. Logs from one 3D model show yaw at
+ * -23 % of the roll rate in MANUAL, the same with up, neutral or down elevator; in rate mode the
+ * yaw loop cancelled two thirds of it with up to 22 % rudder, mostly I, and only in one roll
+ * direction.
+ *
+ * The configured share of the measured roll rate is taken as yaw the airframe makes by itself
+ * and removed from the yaw error, so P and I do not fight it. F, B and D are untouched: the
+ * stick still commands the same rudder, and gusts are still held. Roll is computed before yaw
+ * in each loop, so this uses the current roll rate.
+ */
+static float getRollYawCouplingRate(int axis)
+{
+    if (axis != PID_YAW || pid.rollYawCoupling == 0) {
+        return 0;
+    }
+
+    // Positive coupling: the airframe yaws against the roll (logged yaw gyro opposite in sign)
+    return -pid.rollYawCoupling * pid.data[PID_ROLL].gyroRate;
+}
+
 static float pidApplySetpoint(uint8_t axis)
 {
     // Rate setpoint
@@ -1119,8 +1149,9 @@ static void pidApplyMode1(uint8_t axis)
     // Get gyro rate
     const float gyroRate = pidApplyGyroRate(axis);
 
-    // Calculate error rate
-    const float errorRate = setpoint - gyroRate;
+    // Calculate error rate. On yaw, roll-yaw coupling discounts the yaw the airframe makes by
+    // itself when it rolls.
+    const float errorRate = setpoint - (gyroRate - getRollYawCouplingRate(axis));
 
     // Throttle- and GPS speed-based gain attenuation
     const float atten = pidSurfaceAttenuation();

@@ -1102,6 +1102,10 @@ const clivalue_t valueTable[] = {
     { "prop_hang_angle",            VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { PROP_HANG_ANGLE_MIN, PROP_HANG_ANGLE_MAX }, PG_PROP_HANG_CONFIG, offsetof(propHangConfig_t, angle) },
     { "prop_hang_fade",             VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, PROP_HANG_FADE_MAX }, PG_PROP_HANG_CONFIG, offsetof(propHangConfig_t, fade) },
 
+    // Roll-yaw coupling: percent of the roll rate the airframe yaws by itself, which the yaw loop
+    // then does not fight. Positive for yaw against the roll. 0 turns it off.
+    { "roll_yaw_coupling",          VAR_INT8   | PROFILE_VALUE, .config.minmax = { -ROLL_YAW_COUPLING_MAX, ROLL_YAW_COUPLING_MAX }, PG_ROLL_YAW_CONFIG, offsetof(rollYawConfig_t, coupling) },
+
     { "angle_level_strength",       VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, angle.level_strength) },
     { "angle_level_limit",          VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 10, 90 }, PG_PID_PROFILE, offsetof(pidProfile_t, angle.level_limit) },
     { "angle_level_damping",        VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, LEVEL_DAMPING_MAX }, PG_LEVEL_CONFIG, offsetof(levelConfig_t, damping) },
