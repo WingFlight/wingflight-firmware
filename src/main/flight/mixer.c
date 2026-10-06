@@ -164,11 +164,16 @@ void mixerSetOverrideTimed(uint8_t index, int16_t value, uint16_t timeoutMs)
     mixerOverrideTimed[index] = true;
 }
 
+static bool mixerOverrideSet(uint8_t index)
+{
+    const int16_t ovr = mixerCurrentOverride(index);
+    return (ovr >= MIXER_OVERRIDE_MIN && ovr <= MIXER_OVERRIDE_MAX) || ovr == MIXER_OVERRIDE_PASSTHROUGH;
+}
+
 bool isMixerOverrideActive(void)
 {
     for (int i = 1; i < MIXER_INPUT_COUNT; i++) {
-        const int16_t ovr = mixerCurrentOverride(i);
-        if ((ovr >= MIXER_OVERRIDE_MIN && ovr <= MIXER_OVERRIDE_MAX) || ovr == MIXER_OVERRIDE_PASSTHROUGH)
+        if (mixerOverrideSet(i))
             return true;
     }
     return false;
@@ -261,6 +266,17 @@ static void mixerSetInput(int index, float value)
     }
 
     mixerApplyInputLimit(index, value);
+}
+
+// Writes a PASSTHROUGH/MANUAL value to a stabilized input, unless a bench override holds it.
+// Overrides only apply while disarmed (see mixerSetInput()), and a setup tool that holds an
+// axis must win over the pilot's mode switch, or the radio keeps moving the surface.
+static void mixerSetBypassInput(int index, float value)
+{
+    if (!ARMING_FLAG(ARMED) && mixerOverrideSet(index)) {
+        return;
+    }
+    mixer.input[index] = value;
 }
 
 // Curves have at most MIXER_CURVE_POINTS (9) points, so a linear scan is
@@ -368,26 +384,26 @@ static void mixerUpdateInputs(void)
         // rates/expo curve as well as PID - direct radio to surfaces. Takes priority over MANUAL
         // if both happen to be active at once.
         if (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH)) {
-            mixer.input[MIXER_IN_STABILIZED_ROLL]  = mixer.input[MIXER_IN_RC_CHANNEL_ROLL];
-            mixer.input[MIXER_IN_STABILIZED_PITCH] = mixer.input[MIXER_IN_RC_CHANNEL_PITCH];
+            mixerSetBypassInput(MIXER_IN_STABILIZED_ROLL, mixer.input[MIXER_IN_RC_CHANNEL_ROLL]);
+            mixerSetBypassInput(MIXER_IN_STABILIZED_PITCH, mixer.input[MIXER_IN_RC_CHANNEL_PITCH]);
             // Yaw command is reversed in setpoint.c relative to raw RC (unlike other axes);
             // keep the same reversal here so passthrough yaw direction matches stabilized.
-            mixer.input[MIXER_IN_STABILIZED_YAW]   = -mixer.input[MIXER_IN_RC_CHANNEL_YAW];
+            mixerSetBypassInput(MIXER_IN_STABILIZED_YAW, -mixer.input[MIXER_IN_RC_CHANNEL_YAW]);
             // No raw RC channel is mapped to the independent TV axes, so the only safe
             // bypass is neutral: zero the TV stabilized inputs rather than leave any
             // TV-driven actuator still under PID stabilization during a passthrough bailout.
-            mixer.input[MIXER_IN_STABILIZED_TV_ROLL]  = 0;
-            mixer.input[MIXER_IN_STABILIZED_TV_PITCH] = 0;
-            mixer.input[MIXER_IN_STABILIZED_TV_YAW]   = 0;
+            mixerSetBypassInput(MIXER_IN_STABILIZED_TV_ROLL, 0);
+            mixerSetBypassInput(MIXER_IN_STABILIZED_TV_PITCH, 0);
+            mixerSetBypassInput(MIXER_IN_STABILIZED_TV_YAW, 0);
         }
         // BOXMANUAL mode: replace stabilized inputs with the same rates/expo-shaped setpoint the
         // PID rate loop targets, but skip the gyro-corrected PID output itself - same stick feel as
         // stabilized flight, no stabilization. getManualDeflection() already matches the stabilized
         // sign convention (yaw included), so no extra reversal is needed here.
         else {
-            mixer.input[MIXER_IN_STABILIZED_ROLL]  = getManualDeflection(FD_ROLL);
-            mixer.input[MIXER_IN_STABILIZED_PITCH] = getManualDeflection(FD_PITCH);
-            mixer.input[MIXER_IN_STABILIZED_YAW]   = getManualDeflection(FD_YAW);
+            mixerSetBypassInput(MIXER_IN_STABILIZED_ROLL, getManualDeflection(FD_ROLL));
+            mixerSetBypassInput(MIXER_IN_STABILIZED_PITCH, getManualDeflection(FD_PITCH));
+            mixerSetBypassInput(MIXER_IN_STABILIZED_YAW, getManualDeflection(FD_YAW));
         }
     }
 
