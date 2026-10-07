@@ -1,3 +1,11 @@
+# 0.0.34
+
+The MSP API stays at 22.14. Updating keeps your settings; the new saved servo trims start at 0. Use the 0.0.34 Configurator and Lua suites with this firmware.
+Keep servo trims apart from the servo center. Stepped Servo Trim adjustments and AUTO TRIM now write a saved per-servo trim, added at the output, instead of rewriting the center, so the center and the min/max end stops set on the bench stay put. Saved and pot trim together are limited to 20% of the servo's scale, and the output stays inside min/max. Trims that older firmware wrote into a center stay there.
+Make a stepped servo trim give exactly one step per press of its switch. Holding the switch repeats after half a second, and only the first step of a press beeps. The stepped value no longer re-baselines on every save.
+Trim bus (SBUS/F.Bus) servos too. A bus channel cloned from its PWM servo carries that servo's trim.
+Add the saved servo trims to MSP and the CLI: MSP_SERVO_TRIM appends them after the live trims, MSP2_WING_SET_SERVO_TRIM sets one, and `servo trim` lists them (`servo trim <servo> <us>` sets one). diff and dump include them.
+
 # 0.0.33
 
 Change the MSP API to 22.14. Updating keeps your settings. Use the 0.0.33 Configurator and Lua suites with this firmware.
