@@ -34,11 +34,13 @@
 
 #include "fc/runtime_config.h"
 #include "fc/rc_modes.h"
+#include "fc/rc_adjustments.h"
 
 #include "flight/mixer.h"
 #include "flight/servos.h"
 
 #include "pg/servos.h"
+#include "pg/servo_trim.h"
 
 #include "autotrim.h"
 
@@ -46,12 +48,13 @@
 // background feature. While the switch is on and armed, every servo whose output is fed by a
 // stabilized axis (roll/pitch/yaw -- i.e. anything the gyro/PID loop can move, regardless of
 // which flight mode is active) has its actual, already-mixed output averaged over a fixed
-// window, and that average becomes the new center point. Unlike transmitter sub-trim, this
-// never touches the RC/gyro "center" reference -- it edits servoParams()->mid, the same
-// downstream-of-everything value CLI's `servo` command edits, so the result is identical
-// regardless of flight mode.
+// window, and the difference between that average and the center becomes the servo's saved
+// trim. Unlike transmitter sub-trim, this never touches the RC/gyro "center" reference, and
+// it never touches servoParams()->mid either: the center and the min/max end stops set on
+// the bench stay put, and the trim is added at the output on top (see getServoTrim()), so
+// the result is identical regardless of flight mode.
 //
-// Turning the switch off before disarming aborts and restores the pre-trim center; only
+// Turning the switch off before disarming aborts and restores the pre-trim trims; only
 // disarming while the capture has completed lets it stick (via the normal isConfigDirty()
 // disarm-triggered EEPROM write, same as every other live-adjusted value).
 
@@ -60,7 +63,7 @@
 typedef struct {
     autoTrimState_e state;
     timeMs_t        startedAt;
-    uint16_t        backup[MAX_SUPPORTED_SERVOS];
+    int16_t         backup[MAX_SUPPORTED_SERVOS];
     uint32_t        accum[MAX_SUPPORTED_SERVOS];
     uint32_t        accumCount[MAX_SUPPORTED_SERVOS];
 } autoTrim_t;
@@ -72,6 +75,10 @@ static FAST_DATA_ZERO_INIT autoTrim_t autoTrim;
 // aren't part of the gyro-corrected control path this feature is trimming out drift for.
 static bool isTrimmableServo(int servo)
 {
+    // A bus channel cloned from a PWM servo sends that servo's output, already trimmed.
+    if (!isServoOutputInUse(servo))
+        return false;
+
     for (int i = 0; i < MIXER_RULE_COUNT; i++) {
         const mixerRule_t *rule = mixerRules(i);
 
@@ -93,14 +100,13 @@ autoTrimState_e autoTrimGetState(void)
 void autoTrimUpdate(void)
 {
     const bool switchOn = IS_RC_MODE_ACTIVE(BOXAUTOTRIM);
-    const uint8_t servoCount = getServoCount();
 
     switch (autoTrim.state) {
         case AUTOTRIM_IDLE:
             if (switchOn && ARMING_FLAG(ARMED)) {
-                for (int s = 0; s < servoCount; s++) {
+                for (int s = 0; s < MAX_SUPPORTED_SERVOS; s++) {
                     if (isTrimmableServo(s)) {
-                        autoTrim.backup[s] = servoParams(s)->mid;
+                        autoTrim.backup[s] = getServoSavedTrim(s);
                         autoTrim.accum[s] = 0;
                         autoTrim.accumCount[s] = 0;
                     }
@@ -117,7 +123,7 @@ void autoTrimUpdate(void)
                 break;
             }
 
-            for (int s = 0; s < servoCount; s++) {
+            for (int s = 0; s < MAX_SUPPORTED_SERVOS; s++) {
                 if (isTrimmableServo(s)) {
                     autoTrim.accum[s] += getServoOutput(s);
                     autoTrim.accumCount[s]++;
@@ -125,13 +131,15 @@ void autoTrimUpdate(void)
             }
 
             if (cmp32(millis(), autoTrim.startedAt) > AUTOTRIM_WINDOW_MS) {
-                for (int s = 0; s < servoCount; s++) {
+                for (int s = 0; s < MAX_SUPPORTED_SERVOS; s++) {
                     if (isTrimmableServo(s) && autoTrim.accumCount[s] > 0) {
-                        // The averaged output already includes any runtime (pot) trim; that part follows the
-                        // pot and is not saved, so leave it out of the new center.
-                        servoParamsMutable(s)->mid = lrintf(autoTrim.accum[s] / (float)autoTrim.accumCount[s] - getServoRuntimeTrim(s));
+                        // The averaged output already includes the current saved and runtime (pot)
+                        // trim. The runtime part follows the pot and is not saved, so leave it out.
+                        const float average = autoTrim.accum[s] / (float)autoTrim.accumCount[s];
+                        setServoSavedTrim(s, lrintf(average - servoParams(s)->mid - getServoRuntimeTrim(s)));
                     }
                 }
+                resyncServoTrimAdjustments();
                 setConfigDirty();
                 autoTrim.state = AUTOTRIM_SAVE_PENDING;
             }
@@ -139,17 +147,18 @@ void autoTrimUpdate(void)
 
         case AUTOTRIM_SAVE_PENDING:
             if (!switchOn) {
-                // Pilot changed their mind before disarming -- revert to the pre-trim center.
-                for (int s = 0; s < servoCount; s++) {
+                // Pilot changed their mind before disarming -- revert to the pre-trim trims.
+                for (int s = 0; s < MAX_SUPPORTED_SERVOS; s++) {
                     if (isTrimmableServo(s)) {
-                        servoParamsMutable(s)->mid = autoTrim.backup[s];
+                        servoTrimsMutable(s)->trim = autoTrim.backup[s];
                     }
                 }
+                resyncServoTrimAdjustments();
                 setConfigDirty();
                 autoTrim.state = AUTOTRIM_IDLE;
             }
             else if (!ARMING_FLAG(ARMED)) {
-                // Landed with the new center committed -- the normal disarm-triggered EEPROM
+                // Landed with the new trims committed -- the normal disarm-triggered EEPROM
                 // write (isConfigDirty()) takes it from here.
                 autoTrim.state = AUTOTRIM_IDLE;
             }

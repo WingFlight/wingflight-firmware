@@ -72,19 +72,31 @@
 // No consegutive changes closer than this milliseconds
 #define REPEAT_DELAY     200
 
-// Servo trims are meant to be nudged continuously in flight via a momentary switch,
-// so they repeat much faster than other stepped adjustments (e.g. PID gains, rates).
-#define TRIM_REPEAT_DELAY 20
+// Stepped servo trims are nudged in flight with a momentary switch. One press gives
+// exactly one step: the step lands once the switch has been in position for
+// TRIM_TRIGGER_DELAY. Holding it starts repeating after TRIM_HOLD_DELAY, then steps
+// every TRIM_REPEAT_DELAY. A new press is seen even while waiting out the hold delay,
+// so quick taps each give their step.
+#define TRIM_TRIGGER_DELAY  40
+#define TRIM_HOLD_DELAY     500
+#define TRIM_REPEAT_DELAY   50
+
+// Switch positions are hundreds of us apart, so a few us of jitter on a stepped servo
+// trim channel is noise, not a new press. (Other stepped adjustments use 2us.)
+#define TRIM_CHANNEL_JITTER 10
+
+// Continuous servo trims follow the pot; this is the fastest they are applied.
+#define TRIM_CONTINUOUS_DELAY 20
 
 // Continuous ("Absolute") SERVO_TRIM_* maps a channel position straight to a servo
-// center with no per-tick increment of its own, unlike stepped mode's adjStep -- so
+// trim with no per-tick increment of its own, unlike stepped mode's adjStep -- so
 // once the link-settle gate below trusts a reading, it would otherwise move the
-// physical servo center by the whole adjustment range in a single tick. Cap how far
+// servo trim by the whole adjustment range in a single tick. Cap how far
 // one applied tick may move it instead -- this is what actually prevents a snap (the
 // settle gate only decides when a reading is trusted, not how fast it may move the
 // output), and it's what lets continuous mode track the channel live on every tick
 // with no hold-still debounce: a bad reading can only nudge the output a little
-// before the next good one corrects it back. TRIM_REPEAT_DELAY (20ms) is the fastest
+// before the next good one corrects it back. TRIM_CONTINUOUS_DELAY (20ms) is the fastest
 // consecutive applies can land (see the deadTime assignment below), so this yields a
 // worst-case rate of ~200us/sec -- the full +-200 range takes ~2s, matching
 // AUTOTRIM_WINDOW_MS's order of magnitude. Any real tick rate slower than that only
@@ -140,6 +152,7 @@ typedef struct {
     timeMs_t trigTime;
     int      adjValue;
     int      chValue;
+    bool     held;      // stepped servo trim: this press has already given its first step
 } adjustmentState_t;
 
 
@@ -341,7 +354,7 @@ static bool isServoTrimAdjustment(int adjFunc)
  * value, so that value must not be saved: after a reboot the pot would apply itself
  * again on top of the saved result. It drives a runtime-only axis trim instead (see
  * setServoAxisRuntimeTrim()), which starts from zero and just follows the pot.
- * Switch-stepped SERVO_TRIM_* is relative, so it edits the servo center as before.
+ * Switch-stepped SERVO_TRIM_* edits the saved trim. Neither changes the servo center.
  */
 static bool isRuntimeServoTrim(const adjustmentRange_t *adjRange)
 {
@@ -370,13 +383,9 @@ static void setAdjustmentValue(const adjustmentRange_t *adjRange, const adjustme
 }
 
 /*
- * The SERVO_TRIM_* adjustments are re-baselined to zero whenever the servo
- * mid points get persisted (see servoTrimCommit()), so that further trim is
- * only ever allowed to move +-200us away from the last saved value. Every
- * adjustment range driving one of those functions must be resynced right
- * after that happens, otherwise adjState->adjValue keeps the stale
- * pre-commit value and the next (possibly tiny) stick movement is compared
- * against it, producing a large, discontinuous jump in cfgSet()'s delta.
+ * Re-read the value of every SERVO_TRIM_* adjustment range after something other
+ * than the range itself has changed the saved trims (AUTO TRIM), so adjState->adjValue
+ * is not left holding a stale value to compare the next step against.
  */
 void resyncServoTrimAdjustments(void)
 {
@@ -456,7 +465,7 @@ void processRcAdjustments(void)
             if (adjConfig->cfgName == NULL)
                 continue;
 
-            // Refuse to touch a servo center on a link that hasn't proven stable yet --
+            // Refuse to touch a servo trim on a link that hasn't proven stable yet --
             // see SERVO_TRIM_LINK_SETTLE_MS.
             if (isServoTrimAdjustment(adjFunc) && !servoTrimLinkSettled)
                 continue;
@@ -468,16 +477,24 @@ void processRcAdjustments(void)
 
                 int adjval = adjState->adjValue;
 
+                const int chValue = rcInput[adjRange->adjChannel + CONTROL_CHANNEL_COUNT];
+
+                const bool steppedTrim = adjRange->adjStep && isServoTrimAdjustment(adjFunc);
+                const int chJitter = steppedTrim ? TRIM_CHANNEL_JITTER : 2;
+
+                // A new press of a stepped trim switch ends the wait for the previous one.
+                if (steppedTrim && abs(chValue - adjState->chValue) > chJitter)
+                    adjState->deadTime = now;
+
                 if (cmp32(now, adjState->deadTime) < 0)
                     continue;
 
-                const int chValue = rcInput[adjRange->adjChannel + CONTROL_CHANNEL_COUNT];
-
                 // Stepped adjustment
                 if (adjRange->adjStep) {
-                    if (abs(chValue - adjState->chValue) > 2) {
-                        adjState->trigTime = now + TRIGGER_DELAY;
+                    if (abs(chValue - adjState->chValue) > chJitter) {
+                        adjState->trigTime = now + (steppedTrim ? TRIM_TRIGGER_DELAY : TRIGGER_DELAY);
                         adjState->chValue = chValue;
+                        adjState->held = false;
                         continue;
                     }
                     if (cmp32(now, adjState->trigTime) < 0) {
@@ -500,7 +517,7 @@ void processRcAdjustments(void)
                     // whole point of this mode is to track a pot/channel live. Snap protection
                     // comes from the settle gate above (don't trust a reading until the link
                     // has proven stable) and the output-side slew limit below (can't move the
-                    // servo center faster than SERVO_TRIM_MAX_STEP_PER_TICK regardless of what
+                    // servo trim faster than SERVO_TRIM_MAX_STEP_PER_TICK regardless of what
                     // the input reports), not from requiring the input to sit still first --
                     // that would defeat live tracking, which is what continuous mode is for.
                     const int rangeLower = STEP_TO_CHANNEL_VALUE(adjRange->adjRange1.startStep);
@@ -527,7 +544,7 @@ void processRcAdjustments(void)
 
                     // See SERVO_TRIM_MAX_STEP_PER_TICK -- slew the applied value toward the
                     // mapped target instead of jumping straight to it, so a single trusted
-                    // frame can no longer snap the servo center outright.
+                    // frame can no longer snap the servo trim outright.
                     if (isServoTrimAdjustment(adjFunc)) {
                         adjval = adjState->adjValue + constrain(adjval - adjState->adjValue,
                             -SERVO_TRIM_MAX_STEP_PER_TICK, SERVO_TRIM_MAX_STEP_PER_TICK);
@@ -546,15 +563,26 @@ void processRcAdjustments(void)
                         blackboxAdjustmentEvent(adjFunc, adjval);
 
                         // PID profile change does it's own confirmation, no of beeps eq profile no,
-                        // a single beep here will kill that.
-                        if (adjFunc != ADJUSTMENT_PID_PROFILE && adjFunc != ADJUSTMENT_TV_PROFILE)
+                        // a single beep here will kill that. A held stepped trim beeps only on
+                        // the first step of the press, not on every repeat.
+                        if (adjFunc != ADJUSTMENT_PID_PROFILE && adjFunc != ADJUSTMENT_TV_PROFILE &&
+                            !(steppedTrim && adjState->held))
                             beeperConfirmationBeeps(1);
 
                         // A runtime-only trim is not part of the saved config.
                         if (!isRuntimeServoTrim(adjRange))
                             setConfigDirty();
 
-                        adjState->deadTime = now + (isServoTrimAdjustment(adjFunc) ? TRIM_REPEAT_DELAY : REPEAT_DELAY);
+                        if (steppedTrim) {
+                            adjState->deadTime = now + (adjState->held ? TRIM_REPEAT_DELAY : TRIM_HOLD_DELAY);
+                            adjState->held = true;
+                        }
+                        else if (isServoTrimAdjustment(adjFunc)) {
+                            adjState->deadTime = now + TRIM_CONTINUOUS_DELAY;
+                        }
+                        else {
+                            adjState->deadTime = now + REPEAT_DELAY;
+                        }
                         adjState->adjValue = adjval;
 
                         changed = true;
@@ -597,6 +625,7 @@ INIT_CODE void adjustmentRangeReset(int index)
     adjustmentState[index].deadTime = 0;
     adjustmentState[index].trigTime = 0;
     adjustmentState[index].chValue  = 0;
+    adjustmentState[index].held     = false;
 
     const uint8_t adjFunc = adjustmentRanges(index)->function;
 
