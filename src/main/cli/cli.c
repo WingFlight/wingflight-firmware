@@ -102,6 +102,7 @@ bool cliMode = false;
 #include "drivers/io_impl.h"
 
 #include "pg/bus_servo.h"
+#include "pg/servo_trim.h"
 #include "pg/logic_condition.h"
 #include "drivers/light_led.h"
 #include "drivers/motor.h"
@@ -2081,6 +2082,34 @@ static bool shouldPrintBusServos(const servoParam_t *servoParams, const servoPar
     return false;
 }
 
+// Saved servo trims (servoTrims PG), as "servo trim <servo> <us>". Printed after the
+// "servo" lines, so a restore sets the scales the trim limit is worked out from first.
+static void printServoTrim(dumpFlags_t dumpMask, const servoTrim_t *servoTrims, const servoTrim_t *defaultServoTrims, const serialConfig_t *serialConfigCurrent, const serialConfig_t *serialConfigDefault, const char *headingStr)
+{
+    const char *format = "servo trim %u %d";
+    const uint8_t pwmServoCount = getServoCount();
+    bool printBusServos = serialConfigHasBusServos(serialConfigCurrent) || serialConfigHasBusServos(serialConfigDefault);
+
+    for (int i = BUS_SERVO_OFFSET; i < MAX_SUPPORTED_SERVOS && !printBusServos; i++) {
+        printBusServos = defaultServoTrims && servoTrims[i].trim != defaultServoTrims[i].trim;
+    }
+
+    headingStr = cliPrintSectionHeading(dumpMask, false, headingStr);
+
+    for (uint32_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
+        if (i < BUS_SERVO_OFFSET ? i >= pwmServoCount : !printBusServos) {
+            continue;
+        }
+        bool equalsDefault = false;
+        if (defaultServoTrims) {
+            equalsDefault = servoTrims[i].trim == defaultServoTrims[i].trim;
+            headingStr = cliPrintSectionHeading(dumpMask, !equalsDefault, headingStr);
+            cliDefaultPrintLinef(dumpMask, equalsDefault, format, i + 1, defaultServoTrims[i].trim);
+        }
+        cliDumpPrintLinef(dumpMask, equalsDefault, format, i + 1, servoTrims[i].trim);
+    }
+}
+
 static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, const servoParam_t *defaultServoParams, const serialConfig_t *serialConfigCurrent, const serialConfig_t *serialConfigDefault, const char *headingStr)
 {
     const char *format = "servo %u %u %d %d %u %u %u %u %u";
@@ -2308,6 +2337,25 @@ static void cliServo(const char *cmdName, char *cmdline)
                 setServoOverride(i, value);
                 printServoOverride(i);
             }
+        }
+        else {
+            cliShowInvalidArgumentCountError(cmdName);
+        }
+    }
+    else if (strcasecmp(args[FUNC], "trim") == 0) {
+        if (count == 1) {
+            printServoTrim(DUMP_MASTER, servoTrims(0), NULL, serialConfig(), NULL, NULL);
+        }
+        else if (count == 3) {
+            enum { FUNC=0, INDEX, VALUE };
+            const int index = atoi(args[INDEX]);
+            if (index < 1 || index > MAX_SUPPORTED_SERVOS) {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+                return;
+            }
+            // Limited to SERVO_TRIM_LIMIT_PERCENT of the servo's scale.
+            setServoSavedTrim(index - 1, atoi(args[VALUE]));
+            cliPrintLinef("servo trim %d %d", index, getServoSavedTrim(index - 1));
         }
         else {
             cliShowInvalidArgumentCountError(cmdName);
@@ -6430,6 +6478,7 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
 
 #ifdef USE_SERVOS
             printServo(dumpMask, servoParams_CopyArray, servoParams(0), &serialConfig_Copy, serialConfig(), "servo");
+            printServoTrim(dumpMask, servoTrims_CopyArray, servoTrims(0), &serialConfig_Copy, serialConfig(), "servo trim");
 #endif
 
             printMixerInputs(dumpMask, mixerInputs_CopyArray, mixerInputs(0), "mixer input");
@@ -6823,6 +6872,8 @@ const clicmd_t cmdTable[] = {
                     "status\r\n\t"
                     "flags\r\n\t"
                     "flags <servo> <[+|-]FLAG> ...\r\n\t"
+                    "trim\r\n\t"
+                    "trim <servo> <us>\r\n\t"
                     "override\r\n\t"
                     "override <value>|off\r\n\t"
                     "override <servo> <value>|off",

@@ -346,4 +346,7 @@
 // Holds a PWM servo at mid + offset, ignoring its travel limits, so a setup tool can find
 // the mechanical end stops without widening the stored limits (flight/servos.c).
 #define MSP2_WING_SET_SERVO_PROBE             0x5F1C
+// Sets one servo's saved trim in us (added at the output on top of the center, never
+// changing it). Read back with MSP_SERVO_TRIM, which appends the saved trims.
+#define MSP2_WING_SET_SERVO_TRIM              0x5F1D
 #define MSP_V2_FRAME                         255

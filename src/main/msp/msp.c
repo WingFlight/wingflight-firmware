@@ -1138,24 +1138,24 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 
     case MSP_SERVO_TRIM:
-        // The live, runtime-only trim in us from continuous SERVO_TRIM_* adjustments
-        // (never saved), one S16 per servo. Same servo indexing/remap shape as
-        // MSP_SERVO_CONFIGURATIONS above.
-        if (hasBusServosConfigured()) {
+        // U8 count, then one S16 per servo of the live, runtime-only trim in us from
+        // continuous SERVO_TRIM_* adjustments (never saved), then one S16 per servo of
+        // the saved trim (servoTrims PG, from stepped SERVO_TRIM_* and AUTO TRIM). Same
+        // servo indexing/remap shape as MSP_SERVO_CONFIGURATIONS above. The saved block
+        // is appended so a client that only reads the runtime block still works.
+        {
             const uint8_t pwmServoCount = getServoCount();
-            sbufWriteU8(dst, pwmServoCount + BUS_SERVO_CHANNELS);
+            const bool busServos = hasBusServosConfigured();
+            const uint8_t count = busServos ? pwmServoCount + BUS_SERVO_CHANNELS : pwmServoCount;
 
-            for (int i = 0; i < pwmServoCount; i++) {
+            sbufWriteU8(dst, count);
+            for (int n = 0; n < count; n++) {
+                const int i = (n < pwmServoCount) ? n : BUS_SERVO_OFFSET + (n - pwmServoCount);
                 sbufWriteU16(dst, (int16_t)lrintf(getServoRuntimeTrim(i)));
             }
-            for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
-                sbufWriteU16(dst, (int16_t)lrintf(getServoRuntimeTrim(i)));
-            }
-        } else {
-            sbufWriteU8(dst, getServoCount());
-
-            for (int i = 0; i < getServoCount(); i++) {
-                sbufWriteU16(dst, (int16_t)lrintf(getServoRuntimeTrim(i)));
+            for (int n = 0; n < count; n++) {
+                const int i = (n < pwmServoCount) ? n : BUS_SERVO_OFFSET + (n - pwmServoCount);
+                sbufWriteU16(dst, (int16_t)getServoSavedTrim(i));
             }
         }
         break;
@@ -3277,6 +3277,30 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (!setServoProbe(servo, offset, sbufReadU16(src))) {
             return MSP_RESULT_ERROR;
         }
+        break;
+    }
+
+    case MSP2_WING_SET_SERVO_TRIM: {
+        // U8 servo (same indexing/remap as MSP_SET_SERVO_CURVE), S16 saved trim in us.
+        // Limited to SERVO_TRIM_LIMIT_PERCENT of the servo's scale, like every other
+        // way of setting it. Never changes the center.
+        if (dataSize != 3) {
+            return MSP_RESULT_ERROR;
+        }
+        uint8_t servo = sbufReadU8(src);
+        const int16_t trim = sbufReadU16(src);
+        const uint8_t pwmServoCount = getServoCount();
+        const uint8_t count = hasBusServosConfigured() ? pwmServoCount + BUS_SERVO_CHANNELS : pwmServoCount;
+        if (servo >= count) {
+            return MSP_RESULT_ERROR;
+        }
+        if (servo >= pwmServoCount) {
+            servo = BUS_SERVO_OFFSET + (servo - pwmServoCount);
+        }
+        if (servo >= MAX_SUPPORTED_SERVOS) {
+            return MSP_RESULT_ERROR;
+        }
+        setServoSavedTrim(servo, trim);
         break;
     }
 

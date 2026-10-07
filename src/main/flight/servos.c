@@ -45,6 +45,7 @@
 
 #include "pg/servos.h"
 #include "pg/servo_curve.h"
+#include "pg/servo_trim.h"
 #include "pg/bus_servo.h"
 
 #include "rx/rx.h"
@@ -71,7 +72,6 @@ static int16_t  servoProbeOffset[MAX_SUPPORTED_PWM_SERVOS];
 static timeMs_t servoProbeExpiryMs[MAX_SUPPORTED_PWM_SERVOS];
 static bool     servoProbeActive[MAX_SUPPORTED_PWM_SERVOS];
 
-static FAST_DATA_ZERO_INIT float        servoAxisTrim[3];  // last commanded per-axis trim value in µs [ROLL=0, PITCH=1, YAW=2]
 static FAST_DATA_ZERO_INIT float        servoRuntimeAxisTrim[3]; // runtime-only (continuous mode) axis trim in µs, never saved
 static FAST_DATA_ZERO_INIT float        servoRuntimeTrim[MAX_SUPPORTED_SERVOS]; // the above, resolved per servo
 
@@ -80,7 +80,7 @@ static FAST_DATA_ZERO_INIT timerChannel_t servoChannel[MAX_SUPPORTED_SERVOS];
 
 /*
  * Which way a stabilized axis's trim moves a servo: 0 if no mixer rule feeds that
- * servo from the axis, otherwise +1 or -1.
+ * servo from the axis (or the servo's output isn't in use), otherwise +1 or -1.
  *
  * mixerUpdateRules() scales the raw stabilized value by the axis input's rate
  * (mixer.input[src] * mixerInputs(src)->rate) before any rule sees it, so a
@@ -94,8 +94,31 @@ static FAST_DATA_ZERO_INIT timerChannel_t servoChannel[MAX_SUPPORTED_SERVOS];
  * coordinated with other servos sharing the same axis, regardless of which
  * mechanism reverses which servo.
  */
+/*
+ * Whether a servo's own output stage is in use: PWM servos up to the servo count,
+ * and bus servos while bus output is on, except a channel cloned from its PWM servo
+ * (sbusOutGetValueMixer() then sends the PWM servo's finished output, trim included,
+ * and ignores the bus servo's own settings).
+ */
+bool isServoOutputInUse(uint8_t servo)
+{
+    const uint8_t pwmServoCount = getServoCount();
+
+    if (servo < BUS_SERVO_OFFSET)
+        return servo < pwmServoCount;
+
+    if (servo >= MAX_SUPPORTED_SERVOS || !hasBusServosConfigured())
+        return false;
+
+    return !(busServoConfig()->cloneFromPwm && servo - BUS_SERVO_OFFSET < pwmServoCount);
+}
+
 static int axisTrimDirection(int axis, int servo)
 {
+    // A servo whose output isn't used would only hold the axis back at its trim limit.
+    if (!isServoOutputInUse(servo))
+        return 0;
+
     static const uint8_t axisInput[3] = {
         MIXER_IN_STABILIZED_ROLL, MIXER_IN_STABILIZED_PITCH, MIXER_IN_STABILIZED_YAW,
     };
@@ -113,38 +136,86 @@ static int axisTrimDirection(int axis, int servo)
     }
     return 0;
 }
+// Largest trim, saved and runtime together, as a share of the servo's scale.
+static int servoTrimLimit(uint8_t servo)
+{
+    const servoParam_t *param = servoParams(servo);
+    return MAX(param->rneg, param->rpos) * SERVO_TRIM_LIMIT_PERCENT / 100;
+}
 
 /*
- * Apply the change (delta) in a stabilized axis's trim directly to servoParams()->mid
- * of every servo whose mixer rule is fed by that axis, so the new center point is
- * immediately visible (e.g. in the configurator's Servos tab) and persists like any
- * other live-adjusted config value. This is the relative path (switch-stepped
- * adjustment); the continuous path below never touches mid.
+ * Saved trim (servoTrims PG), added at the output on top of the center. Trimming
+ * never changes servoParams()->mid, so the center and the min/max end stops set on
+ * the bench stay where they were put, and the trim can be cleared or moved into the
+ * center on purpose from the configurator. Stepped SERVO_TRIM_* adjustments and AUTO
+ * TRIM write it; it is saved like any other live-adjusted value (on disarm).
  */
-static void applyServoAxisTrim(int axis, int newValue)
+int getServoSavedTrim(uint8_t servo)
 {
-    const float delta = (float)newValue - servoAxisTrim[axis];
-    servoAxisTrim[axis] = (float)newValue;
+    return servoTrims(servo)->trim;
+}
+
+void setServoSavedTrim(uint8_t servo, int value)
+{
+    const int limit = servoTrimLimit(servo);
+    servoTrimsMutable(servo)->trim = constrain(value, -limit, limit);
+}
+
+/*
+ * The stepped SERVO_TRIM_* value of an axis: the saved trim of the first servo the
+ * axis moves, in the axis's direction. It is absolute (0 = no trim), so it reads
+ * the same before and after a save or a reboot.
+ */
+static int getServoAxisSavedTrim(int axis)
+{
+    for (int s = 0; s < MAX_SUPPORTED_SERVOS; s++) {
+        const int dir = axisTrimDirection(axis, s);
+        if (dir)
+            return dir * getServoSavedTrim(s);
+    }
+    return 0;
+}
+
+/*
+ * Move the saved trim of every servo fed by the axis by the change in the axis
+ * value, each in its own direction, so servos sharing the axis stay coordinated.
+ * The change is cut to what every one of them can still take, so the axis stops
+ * as a whole when the first servo reaches its trim limit, instead of the others
+ * carrying on and pulling a shared surface (e.g. two ailerons) out of line.
+ */
+static void setServoAxisSavedTrim(int axis, int value)
+{
+    int delta = value - getServoAxisSavedTrim(axis);
+
+    for (int s = 0; s < MAX_SUPPORTED_SERVOS && delta; s++) {
+        const int dir = axisTrimDirection(axis, s);
+        if (dir) {
+            const int limit = servoTrimLimit(s);
+            const int trim = getServoSavedTrim(s);
+            // Room left for this servo's trim to move in its own direction (never
+            // negative, so a trim already past its limit can still come back).
+            const int up = MAX(0, limit - trim);
+            const int down = MAX(0, limit + trim);
+            delta = (dir > 0) ? constrain(delta, -down, up) : constrain(delta, -up, down);
+        }
+    }
 
     if (delta == 0)
         return;
 
-    const uint8_t count = getServoCount();
-    for (int s = 0; s < count; s++) {
+    for (int s = 0; s < MAX_SUPPORTED_SERVOS; s++) {
         const int dir = axisTrimDirection(axis, s);
         if (dir)
-            servoParamsMutable(s)->mid += lrintf(dir * delta);
+            setServoSavedTrim(s, getServoSavedTrim(s) + dir * delta);
     }
-
-    validateAndFixServoConfig();
 }
 
 /*
  * Runtime-only axis trim, for the continuous ("Absolute") adjustment mode where a
  * pot/channel position IS the trim. It is added at the servo output on top of the
- * center and never written to servoParams()->mid, so:
- *  - it can't be saved: if it were, the pot would apply itself again on top of its
- *    own saved result after every reboot (or save), walking the center away;
+ * saved trim and is never saved, so:
+ *  - the pot can't apply itself again on top of its own saved result after every
+ *    reboot (or save), walking the trim away;
  *  - a bad channel reading (e.g. a channel that isn't valid yet at boot) can move a
  *    surface by at most SERVO_TRIM_LIMIT_PERCENT of the servo's scale, and leaves
  *    nothing behind once the reading is fixed.
@@ -169,39 +240,28 @@ void setServoAxisRuntimeTrim(int axis, int value)
     }
 }
 
-// What is actually added to the output, limited to its share of the servo's scale.
+// The runtime trim alone, limited to its share of the servo's scale.
 float getServoRuntimeTrim(uint8_t servo)
 {
-    const servoParam_t *param = servoParams(servo);
-    const float limit = MAX(param->rneg, param->rpos) * SERVO_TRIM_LIMIT_PERCENT / 100;
+    const float limit = servoTrimLimit(servo);
     return constrainf(servoRuntimeTrim[servo], -limit, limit);
 }
 
-int get_ADJUSTMENT_SERVO_TRIM_ROLL(void)    { return lrintf(servoAxisTrim[0]); }
-void set_ADJUSTMENT_SERVO_TRIM_ROLL(int v)  { applyServoAxisTrim(0, v); }
-
-int get_ADJUSTMENT_SERVO_TRIM_PITCH(void)   { return lrintf(servoAxisTrim[1]); }
-void set_ADJUSTMENT_SERVO_TRIM_PITCH(int v) { applyServoAxisTrim(1, v); }
-
-int get_ADJUSTMENT_SERVO_TRIM_YAW(void)     { return lrintf(servoAxisTrim[2]); }
-void set_ADJUSTMENT_SERVO_TRIM_YAW(int v)   { applyServoAxisTrim(2, v); }
-
-/*
- * Re-baseline the runtime trim tracking to zero once the current servo
- * mid points have actually been persisted (written to EEPROM). The
- * adjustment range for SERVO_TRIM_* is clamped to +-200us of whatever
- * servoAxisTrim[] currently reads, so without this call that window would
- * stay relative to the value at boot rather than the last saved value,
- * letting repeated save cycles drift the servo center arbitrarily far.
- * The mid points themselves are already live-updated by applyServoAxisTrim(),
- * so this only resets the tracking, it does not touch servoParams()->mid.
- */
-void servoTrimCommit(void)
+// What is actually added to the output: saved and runtime trim, limited together.
+float getServoTrim(uint8_t servo)
 {
-    servoAxisTrim[0] = 0;
-    servoAxisTrim[1] = 0;
-    servoAxisTrim[2] = 0;
+    const float limit = servoTrimLimit(servo);
+    return constrainf(getServoSavedTrim(servo) + servoRuntimeTrim[servo], -limit, limit);
 }
+
+int get_ADJUSTMENT_SERVO_TRIM_ROLL(void)    { return getServoAxisSavedTrim(0); }
+void set_ADJUSTMENT_SERVO_TRIM_ROLL(int v)  { setServoAxisSavedTrim(0, v); }
+
+int get_ADJUSTMENT_SERVO_TRIM_PITCH(void)   { return getServoAxisSavedTrim(1); }
+void set_ADJUSTMENT_SERVO_TRIM_PITCH(int v) { setServoAxisSavedTrim(1, v); }
+
+int get_ADJUSTMENT_SERVO_TRIM_YAW(void)     { return getServoAxisSavedTrim(2); }
+void set_ADJUSTMENT_SERVO_TRIM_YAW(int v)   { setServoAxisSavedTrim(2, v); }
 
 uint8_t getServoCount(void)
 {
@@ -559,8 +619,8 @@ void servoUpdate(void)
 
         float scale = (pos > 0) ? servo->rpos : servo->rneg;
 
-        // The runtime trim shifts the whole output but stays inside the servo's travel limits.
-        pos = limitTravel(i, scale * pos + getServoRuntimeTrim(i), servoTravelMin(i), servoTravelMax(i));
+        // The trim (saved + runtime) shifts the whole output but stays inside the servo's travel limits.
+        pos = limitTravel(i, scale * pos + getServoTrim(i), servoTravelMin(i), servoTravelMax(i));
         pos = servo->mid + pos;
 
         servoSetOutput(i, pos);

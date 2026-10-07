@@ -3,6 +3,38 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Servo Trims Never Move the Servo Center
+
+Stepped `SERVO_TRIM_*` adjustments and AUTO TRIM used to rewrite the servo
+center (`servo` mid). Min/max are offsets from the center, so every trim also
+moved the end stops. They now write a saved per-servo trim instead
+(`servoTrims` PG), added at the output on top of the center. The center and
+the end stops set on the bench stay put.
+
+- Output: `mid + limitTravel(scale * pos + trim)`, where `trim` is the saved
+  trim plus the runtime trim from continuous (pot) `SERVO_TRIM_*`, limited
+  together to 20% of the larger scale. The output stays inside min/max. Bus
+  (SBUS/F.Bus) servos get the trim too, except a channel cloned from its PWM
+  servo (`bus_servo_clone_pwm`): it sends the PWM servo's output, trim
+  included, and trims skip it.
+- Stepped `SERVO_TRIM_*`: the value is absolute (0 = no trim), read from the
+  first servo the axis moves, and no longer re-baselined on every save. Each
+  press gives exactly one step (40 ms debounce); holding repeats after 500 ms,
+  every 50 ms. Only the first step of a press beeps. The axis stops as a whole
+  when any of its servos reaches its trim limit.
+- AUTO TRIM: the averaged output minus center (minus any pot trim) becomes the
+  saved trim. Switching off before disarming restores the previous trims.
+- `MSP_SERVO_TRIM` (233) appends one `S16` saved trim per servo after the
+  runtime block, same order. Clients that read only the runtime block still
+  work.
+- `MSP2_WING_SET_SERVO_TRIM` (0x5F1D): `U8 servo` (same indexing as
+  `MSP_SET_SERVO_CURVE`), `S16 trim` in us. Limited like every other way of
+  setting it.
+- CLI: `servo trim` lists the saved trims, `servo trim <servo> <us>` sets one.
+  `diff`/`dump` print them after the `servo` lines.
+- Trims already folded into a servo center by older firmware stay there; the
+  saved trims start at 0.
+
 ## Tune Advisor Statistics
 
 The FC measures, during plain rate flight, how the airframe answers the rate

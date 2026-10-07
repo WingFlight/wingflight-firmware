@@ -58,15 +58,19 @@ void validateAndFixServoConfig(void);
 // stays in the servo's signal range at the current center.
 int servoTravelMin(uint8_t index);
 int servoTravelMax(uint8_t index);
-void servoTrimCommit(void);
-
-// Runtime-only trim from continuous SERVO_TRIM_* adjustments (see servos.c).
-// A servo's runtime trim is limited to this share of its scale (rneg/rpos, whichever
-// is larger).
+// Servo trim (see servos.c). Neither kind changes the center (servoParams()->mid):
+//  - saved trim (servoTrims PG): written by stepped SERVO_TRIM_* adjustments and AUTO TRIM;
+//  - runtime trim: from continuous SERVO_TRIM_* adjustments, follows the pot, never saved.
+// Both together are limited to this share of the servo's scale (rneg/rpos, whichever
+// is larger), and the output stays inside the min/max travel limits.
 #define SERVO_TRIM_LIMIT_PERCENT     20
+bool isServoOutputInUse(uint8_t servo);
+int getServoSavedTrim(uint8_t servo);
+void setServoSavedTrim(uint8_t servo, int value);
 int getServoAxisRuntimeTrim(int axis);
 void setServoAxisRuntimeTrim(int axis, int value);
 float getServoRuntimeTrim(uint8_t servo);
+float getServoTrim(uint8_t servo);
 
 ADJFUN_DECLARE(SERVO_TRIM_ROLL)
 ADJFUN_DECLARE(SERVO_TRIM_PITCH)

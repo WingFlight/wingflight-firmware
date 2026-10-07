@@ -181,6 +181,7 @@
 #define PG_LEVEL_CONFIG              1021
 #define PG_SNAP_RELAX_CONFIG         1022
 #define PG_PROP_HANG_CONFIG          1023
+#define PG_SERVO_TRIMS               1024
 
 // OSD configuration -- removed (OSD)
 //#define PG_OSD_FONT_CONFIG 2047
