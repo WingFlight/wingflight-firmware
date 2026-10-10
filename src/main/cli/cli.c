@@ -3608,18 +3608,37 @@ static void cliFpga(const char *cmdName, char *cmdline)
         return;
     }
 
-    if (strncasecmp(cmdline, "reload", 6) == 0) {
+    char *saveptr;
+    const char *sub = strtok_r(cmdline, " ", &saveptr);
+    const char *arg = sub ? strtok_r(NULL, " ", &saveptr) : NULL;
+    const bool extraArgs = arg && strtok_r(NULL, " ", &saveptr);
+
+    if (!sub) {
+        cliPrintLinef("FPGA: %s, word: 0x%08x (%s)", fbusMuxFpgaGetStatusName(), fbusMuxFpgaGetModeWord(), fbusMuxFpgaBitstreamInfo);
+        cliFpgaPrintEcho();
+    } else if (strcasecmp(sub, "reload") == 0 && !arg) {
         const bool ok = fbusMuxFpgaReload();
         cliPrintLinef("reload: %s", ok ? "OK" : fbusMuxFpgaGetStatusName());
         cliFpgaPrintEcho();
-    } else if (strncasecmp(cmdline, "word", 4) == 0) {
-        const uint32_t word = strtoul(cmdline + 4, NULL, 16);
+    } else if (strcasecmp(sub, "word") == 0 && arg && !extraArgs) {
+        // A raw word changes the live channel modes: accept 1..8 hex digits
+        // (optional 0x) only, so a typo cannot send 0 (= all channels FBUS)
+        const char *digits = (strncasecmp(arg, "0x", 2) == 0) ? arg + 2 : arg;
+        const size_t len = strlen(digits);
+        bool valid = len > 0 && len <= 8;
+        for (size_t i = 0; valid && i < len; i++) {
+            valid = isxdigit((unsigned char)digits[i]);
+        }
+        if (!valid) {
+            cliShowParseError(cmdName);
+            return;
+        }
+        const uint32_t word = strtoul(digits, NULL, 16);
         const bool ok = fbusMuxFpgaSendRawWord(word);
         cliPrintLinef("word 0x%08x: %s", word, ok ? "echo OK" : "no valid echo");
         cliFpgaPrintEcho();
     } else {
-        cliPrintLinef("FPGA: %s, word: 0x%08x (%s)", fbusMuxFpgaGetStatusName(), fbusMuxFpgaGetModeWord(), fbusMuxFpgaBitstreamInfo);
-        cliFpgaPrintEcho();
+        cliShowParseError(cmdName);
     }
 }
 #endif
