@@ -77,6 +77,9 @@
 static fbusMuxFpgaStatus_e status = FBUS_MUX_FPGA_DISABLED;
 static uint32_t modeWord;
 static fbusMuxMode_e channelMode[FBUS_MUX_FPGA_CHANNELS];
+// A channel set to FBUS fell back to PWM because the send pin is assigned but
+// the FBUS master could not claim it (resource conflict)
+static bool fbusSendPinFailed;
 
 static extDevice_t fpgaSpi;
 static IO_t csPin = IO_NONE;
@@ -160,9 +163,13 @@ static uint32_t buildModeWord(void)
     const motorDevConfig_t *motor = &motorConfig()->dev;
     const bool dshotBidir = motor->useDshotTelemetry &&
         (motor->motorPwmProtocol == PWM_TYPE_DSHOT300 || motor->motorPwmProtocol == PWM_TYPE_DSHOT600);
-    const bool fbusAvailable = findSerialPortConfig(FUNCTION_FBUS_MASTER) && fbusMasterConfig()->sendPin;
+    const ioTag_t sendPinTag = fbusMasterConfig()->sendPin;
+    const bool sendPinClaimed = sendPinTag && IOGetOwner(IOGetByTag(sendPinTag)) == OWNER_FBUS_MASTER_SEND;
+    const bool fbusAvailable = findSerialPortConfig(FUNCTION_FBUS_MASTER) && sendPinClaimed;
 
     uint32_t word = 0;
+
+    fbusSendPinFailed = false;
 
     for (int ch = 0; ch < FBUS_MUX_FPGA_CHANNELS; ch++) {
         fbusMuxMode_e mode = fbusMuxFpgaConfig()->mode[ch];
@@ -171,6 +178,9 @@ static uint32_t buildModeWord(void)
         // master port and its send pin, the DShot bridge needs bidirectional
         // DShot300/600 and a bridge in the bitstream.
         if (mode == FBUS_MUX_MODE_FBUS && !fbusAvailable) {
+            if (sendPinTag && !sendPinClaimed) {
+                fbusSendPinFailed = true;
+            }
             mode = FBUS_MUX_MODE_PWM;
         }
         if (mode == FBUS_MUX_MODE_DSHOT && !(dshotBidir && (fbusMuxFpgaDshotChannelMask & (1 << ch)))) {
@@ -320,7 +330,7 @@ void fbusMuxFpgaInit(void)
 
     modeWord = buildModeWord();
     if (sendModeWord(modeWord)) {
-        status = FBUS_MUX_FPGA_READY;
+        status = fbusSendPinFailed ? FBUS_MUX_FPGA_ERROR_RESOURCE : FBUS_MUX_FPGA_READY;
     } else {
         // The FPGA keeps its reset configuration (all PWM)
         resetChannelModes();
@@ -341,8 +351,8 @@ bool fbusMuxFpgaReload(void)
 
     modeWord = buildModeWord();
     if (sendModeWord(modeWord)) {
-        status = FBUS_MUX_FPGA_READY;
-        return true;
+        status = fbusSendPinFailed ? FBUS_MUX_FPGA_ERROR_RESOURCE : FBUS_MUX_FPGA_READY;
+        return !fbusSendPinFailed;
     }
 
     status = FBUS_MUX_FPGA_ERROR_ECHO;
