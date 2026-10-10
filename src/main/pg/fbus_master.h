@@ -21,6 +21,8 @@
 #include "pg/pg.h"
 #include "pg/bus_servo.h"
 
+#include "drivers/io_types.h"
+
 #define FBUS_MIN 192
 #define FBUS_MAX 1792
 
@@ -48,6 +50,9 @@ typedef struct fbusMasterConfig_s {
     // Channel count, busOutChannels_e (pg/bus_servo.h): 8 uses the 8-channel
     // frame, 12 and 16 the 16-channel frame, 24 the 24-channel frame.
     uint8_t channels;
+    // Optional GPIO, high while the master transmits (direction control for
+    // an external FBUS mux / FPGA). Only supported by the HAL UART driver.
+    ioTag_t sendPin;
 
 } fbusMasterConfig_t;
 

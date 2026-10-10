@@ -98,6 +98,7 @@
 #include "pg/sbus_output.h"
 #include "pg/fbus_master.h"
 #include "pg/rx_input_backup.h"
+#include "pg/fbus_mux_fpga.h"
 #include "pg/sport_master.h"
 #include "pg/crsf_sensors.h"
 #include "pg/bus_servo.h"
@@ -478,6 +479,12 @@ static const char * const lookupTableGovernorMode[] = {
     "OFF", "RPM", "THROTTLE", "RPM_RANGE",
 };
 
+#ifdef USE_FBUS_MUX_FPGA
+static const char * const lookupTableFbusMuxMode[] = {
+    "PWM", "FBUS", "DSHOT",
+};
+#endif
+
 #define LOOKUP_TABLE_ENTRY(name) { name, ARRAYLEN(name) }
 
 const lookupTableEntry_t lookupTables[] = {
@@ -580,6 +587,9 @@ const lookupTableEntry_t lookupTables[] = {
     LOOKUP_TABLE_ENTRY(lookupTableSmartFuelMode),
 #endif
     LOOKUP_TABLE_ENTRY(lookupTableGovernorMode),
+#ifdef USE_FBUS_MUX_FPGA
+    LOOKUP_TABLE_ENTRY(lookupTableFbusMuxMode),
+#endif
 };
 
 #undef LOOKUP_TABLE_ENTRY
@@ -1450,6 +1460,16 @@ const clivalue_t valueTable[] = {
 
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER) || defined(USE_BUS_SERVO)
     { "bus_servo_clone_pwm",           VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_BUS_SERVO_CONFIG, offsetof(busServoConfig_t, cloneFromPwm) },
+#endif
+
+#ifdef USE_FBUS_MUX_FPGA
+    { "fpga_spi_bus",                  VAR_UINT8 | HARDWARE_VALUE, .config.minmaxUnsigned = { 0, SPIDEV_COUNT }, PG_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, spiDevice) },
+    { "fpga_serial",                   VAR_UINT8 | HARDWARE_VALUE, .config.minmaxUnsigned = { 0, SERIAL_PORT_USART10 + 1 }, PG_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, serialPort) },
+    { "fbus_mux_ch1_mode",             VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_FBUS_MUX_MODE }, PG_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, mode[0]) },
+    { "fbus_mux_ch2_mode",             VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_FBUS_MUX_MODE }, PG_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, mode[1]) },
+    { "fbus_mux_ch3_mode",             VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_FBUS_MUX_MODE }, PG_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, mode[2]) },
+    { "fbus_mux_ch4_mode",             VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_FBUS_MUX_MODE }, PG_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, mode[3]) },
+    { "fbus_mux_ch5_mode",             VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_FBUS_MUX_MODE }, PG_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, mode[4]) },
 #endif
 
 #ifdef USE_SPORT_MASTER

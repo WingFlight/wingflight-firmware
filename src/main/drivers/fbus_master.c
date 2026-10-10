@@ -31,6 +31,7 @@
 #include "common/maths.h"
 #include "common/time.h"
 
+#include "drivers/io.h"
 #include "drivers/time.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
@@ -45,6 +46,10 @@
 #include "rx/frsky_crc.h"
 #include "rx/fbus.h"
 #include "io/serial.h"
+
+#if defined(USE_HAL_DRIVER)
+#include "drivers/serial_uart.h"
+#endif
 #define FBUS_MASTER_BUFFER_SIZE 64
 
 enum {
@@ -480,6 +485,35 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
     readBytes = 0;
 }
 
+// The send pin is high while the UART transmits. An FBUS mux (e.g. the RF007-V3
+// FPGA) uses it to switch the servo lines between downlink and telemetry.
+static void fbusMasterInitSendPin(void)
+{
+    const ioTag_t sendPinTag = fbusMasterConfig()->sendPin;
+
+    if (!fbusMasterPort || !sendPinTag) {
+        return;
+    }
+
+#if defined(USE_HAL_DRIVER)
+    // Hardware UARTs only (the identifier of a hardware UART is 0..SERIAL_PORT_USART10)
+    if (fbusMasterPort->identifier > SERIAL_PORT_USART10) {
+        return;
+    }
+
+    IO_t io = IOGetByTag(sendPinTag);
+    if (!io || !IOIsFreeOrPreinit(io)) {
+        return;
+    }
+
+    IOInit(io, OWNER_FBUS_MASTER_SEND, 0);
+    IOConfigGPIO(io, IOCFG_OUT_PP);
+    IOLo(io);
+
+    ((uartPort_t *)fbusMasterPort)->txControlPin = io;
+#endif
+}
+
 bool fbusMasterIsEnabled(void)
 {
     return fbusMasterPort != NULL;
@@ -508,4 +542,6 @@ void fbusMasterInit(void)
             (fbusMasterConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED) |
             SERIAL_BIDIR |
             (fbusMasterConfig()->pinSwap ? SERIAL_PINSWAP : SERIAL_NOSWAP));
+
+    fbusMasterInitSendPin();
 }
