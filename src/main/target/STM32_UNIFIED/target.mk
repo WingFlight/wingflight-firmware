@@ -34,6 +34,7 @@ ifneq ($(findstring STM32H730,$(TARGET)),)
 H730xB_TARGETS  += $(TARGET)
 FEATURES        += VCP SDCARD_SPI ONBOARDFLASH
 XIP             = yes
+HSE_VALUE       = 32000000
 endif
 
 TARGET_SRC = \

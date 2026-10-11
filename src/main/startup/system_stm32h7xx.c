@@ -661,14 +661,14 @@ void OverclockRebootIfNecessary(uint32_t clockLevel) { UNUSED(clockLevel); }
 
 pllConfig_t pll1Config73x = {
     .clockMhz = 520,
-    .m = 2,
+    .m = HSE_VALUE / 4000000, // 4MHz PLL input
     .n = 130,
     .p = 1,
     .q = 4,
     .r = 2,
     .vco = RCC_PLL1VCOWIDE,
     .vos = PWR_REGULATOR_VOLTAGE_SCALE0,
-    .rge = RCC_PLL1VCIRANGE_1,
+    .rge = RCC_PLL1VCIRANGE_2,
 };
 
 #ifdef USE_OVERCLOCK
@@ -883,13 +883,55 @@ static void SystemClockPLL_Config(void)
     SystemClockHSE_Config();
 }
 
+#if defined(USE_XIP)
+// The boot loader may run PLL1 from HSI, which is only accurate to about 1%.
+// Move PLL1 over to the HSE crystal, if one is fitted and starts.
+static void SystemClockSwitchToHSE(void)
+{
+    if (__HAL_RCC_GET_PLL_OSCSOURCE() == RCC_PLLSOURCE_HSE) {
+        return;
+    }
+
+    __HAL_RCC_HSE_CONFIG(RCC_HSE_ON);
+
+    const uint32_t start = HAL_GetTick();
+    while (!__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY)) {
+        if (HAL_GetTick() - start > HSE_STARTUP_TIMEOUT) {
+            __HAL_RCC_HSE_CONFIG(RCC_HSE_OFF);
+            return;
+        }
+    }
+
+    // PLL1 can only be changed while it is not in use, and its source only while all PLLs are off.
+    // Run from HSI meanwhile. HCLK, and with it the OCTOSPI flash we execute from, keeps running, only slower.
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {
+        .ClockType = RCC_CLOCKTYPE_SYSCLK,
+        .SYSCLKSource = RCC_SYSCLKSOURCE_HSI,
+    };
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, MCU_FLASH_LATENCY) != HAL_OK) {
+        return;
+    }
+
+    __HAL_RCC_PLL2_DISABLE();
+    __HAL_RCC_PLL3_DISABLE();
+    while (__HAL_RCC_GET_FLAG(RCC_FLAG_PLL2RDY) || __HAL_RCC_GET_FLAG(RCC_FLAG_PLL3RDY)) {
+        // Empty
+    }
+
+    // Back to PLL1 at the same frequency and bus clocks, now from HSE
+    SystemClockHSE_Config();
+}
+#endif
+
 void SystemClock_Config(void)
 {
 #if defined(USE_XIP)
     if (__HAL_RCC_GET_SYSCLK_SOURCE() == RCC_SYSCLKSOURCE_STATUS_PLLCLK) {
         // The boot loader already runs the system from PLL1 and clocks the OCTOSPI flash we execute from.
-        // Keep its power supply, PLL1 and bus clock configuration, and turn on the oscillators used below,
+        // Keep its power supply and bus clock configuration, and turn on the oscillators used below,
         // which SystemInit() would otherwise have enabled.
+        SystemClockSwitchToHSE();
+
         __HAL_RCC_HSI48_ENABLE();
         while (!__HAL_RCC_GET_FLAG(RCC_FLAG_HSI48RDY)) {
             // Empty
