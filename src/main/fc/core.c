@@ -109,6 +109,7 @@
 #include "sensors/gyro.h"
 
 #include "telemetry/telemetry.h"
+#include "drivers/fbus_ota.h"
 #ifdef USE_SPORT_MASTER
 #include "drivers/fbus_sensor.h"
 #include "telemetry/sport_master.h"
@@ -416,7 +417,10 @@ void updateArmingStatus(void)
             setArmingDisabled(ARMING_DISABLED_MOTOR_PROTOCOL);
         }
 
-        if (isServoOverrideActive() || isMixerOverrideActive() || isModeOverrideActive()) {
+        // A running FBUS device update also holds the outputs: it replaces the
+        // channel frames to the bus servos (drivers/fbus_ota.h)
+        if (isServoOverrideActive() || isMixerOverrideActive() || isModeOverrideActive() ||
+            fbusOtaIsActive()) {
             setArmingDisabled(ARMING_DISABLED_OVERRIDE);
         } else {
             unsetArmingDisabled(ARMING_DISABLED_OVERRIDE);

@@ -34,6 +34,7 @@
 #include "drivers/time.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fbus_ota.h"
 #include "drivers/fbus_sensor.h"
 #include "drivers/fbus_xact.h"
 
@@ -318,6 +319,12 @@ static void fbusMasterPrepareDownlink(fbusMasterDownlink_t *downlink, timeUs_t c
 
 static void processDownlinkFrame(uint8_t *data)
 {
+    // During a device update the only expected frames are its echoes
+    if (fbusOtaIsActive()) {
+        fbusOtaProcessReply(data);
+        return;
+    }
+
     fbusMasterDownlink_t downlink;
     memcpy(&downlink, data, sizeof(downlink));
     uint8_t chkSum = frskyCheckSum((uint8_t *)&downlink.phyID, FBUS_DOWNLINK_PAYLOAD_SIZE);
@@ -414,6 +421,30 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
 
     // Keep derived FBUS sensor states (timeouts/GPS mirrors) updated.
     fbusSensorUpdate(currentTimeUs);
+
+    // A device update replaces channel and telemetry frames: the FBUS spec has
+    // the device abort its update when it sees a channel frame.
+    static bool otaWasActive = false;
+    if (fbusOtaIsActive()) {
+        otaWasActive = true;
+        if (serialTxBytesFree(fbusMasterPort) <= FBUS_OTA_MAX_FRAME_SIZE) {
+            return;
+        }
+        uint8_t otaFrame[FBUS_OTA_MAX_FRAME_SIZE];
+        const size_t otaFrameSize = fbusOtaPrepareFrame(otaFrame, currentTimeUs);
+        if (otaFrameSize) {
+            readBytes = 0;
+            readIngoreBytes = otaFrameSize;
+            serialWriteBuf(fbusMasterPort, otaFrame, otaFrameSize);
+        }
+        return;
+    }
+    if (otaWasActive) {
+        // The device has probably restarted: look for the bus devices again
+        otaWasActive = false;
+        fbusMasterLastFrameUs = 0;
+        fbusMasterStartDiscovery();
+    }
 
     // fbus_master_channels: 8 -> 8-channel frame, 12/16 -> 16-channel frame
     // (at 12, CH13-16 are sent at center), 24 -> 24-channel frame. The

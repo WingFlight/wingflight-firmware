@@ -133,6 +133,14 @@ encoding_unittest_SRC := \
 		$(USER_DIR)/common/encoding.c
 
 
+fbus_ota_unittest_SRC := \
+		$(USER_DIR)/drivers/fbus_ota.c \
+		$(USER_DIR)/rx/frsky_crc.c
+
+fbus_ota_unittest_DEFINES := \
+		USE_FBUS_MASTER=
+
+
 # This test is disabled due to build errors.
 #flight_failsafe_unittest_SRC := \
 #		$(USER_DIR)/common/bitarray.c \

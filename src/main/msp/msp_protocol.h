@@ -349,4 +349,12 @@
 // Sets one servo's saved trim in us (added at the output on top of the center, never
 // changing it). Read back with MSP_SERVO_TRIM, which appends the saved trims.
 #define MSP2_WING_SET_SERVO_TRIM              0x5F1D
+// Firmware update of an FBUS device through the FBUS master (drivers/fbus_ota.c).
+// START: U8 physical ID, U32 image size. DATA: U32 offset, then up to 128 image bytes.
+// STATUS: U8 state, U8 error, U8 physical ID, U32 size, U32 acknowledged bytes,
+// U32 received bytes (next offset to send), U16 buffer free, U16 retries. ABORT: no payload.
+#define MSP2_WING_FBUS_OTA_START              0x5F1E
+#define MSP2_WING_FBUS_OTA_DATA               0x5F1F
+#define MSP2_WING_FBUS_OTA_STATUS             0x5F20
+#define MSP2_WING_FBUS_OTA_ABORT              0x5F21
 #define MSP_V2_FRAME                         255
