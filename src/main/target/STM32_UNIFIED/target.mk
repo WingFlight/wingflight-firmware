@@ -30,6 +30,12 @@ FEATURES        += VCP SDCARD_SPI SDCARD_SDIO ONBOARDFLASH
 CUSTOM_DEFAULTS_EXTENDED = yes
 endif
 
+ifneq ($(findstring STM32H730,$(TARGET)),)
+H730xB_TARGETS  += $(TARGET)
+FEATURES        += VCP SDCARD_SPI ONBOARDFLASH
+XIP             = yes
+endif
+
 TARGET_SRC = \
     $(addprefix drivers/accgyro/,$(notdir $(wildcard $(SRC_DIR)/drivers/accgyro/*.c))) \
     $(ROOT)/lib/main/BoschSensortec/BMI270-Sensor-API/bmi270_maximum_fifo.c \

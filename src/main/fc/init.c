@@ -265,6 +265,10 @@ void init(void)
     // initialize IO (needed for all IO operations)
     IOInitGlobal();
 
+#if defined(USE_XIP)
+    IOReserveBootLoaderPins();
+#endif
+
 #ifdef USE_HARDWARE_REVISION_DETECTION
     detectHardwareRevision();
 #endif
@@ -575,6 +579,12 @@ void init(void)
         configureSPIAndQuadSPI();
         initFlags |= SPI_AND_QSPI_INIT_ATTEMPTED;
     }
+#if defined(CONFIG_IN_EXTERNAL_FLASH) && defined(USE_SPI)
+    else {
+        // Only the buses with default pins could be set up before the config was loaded, set up the others now
+        spiInitPendingDevices(spiPinConfig(0));
+    }
+#endif
 
 #if defined(USE_SDCARD_SDIO) && !defined(CONFIG_IN_SDCARD) && defined(STM32H7)
     sdioPinConfigure();

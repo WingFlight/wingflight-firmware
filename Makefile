@@ -27,6 +27,9 @@ EXST      ?= no
 # compile for target loaded into RAM
 RAM_BASED ?= no
 
+# compile for target executing in place from external flash set up by a boot loader
+XIP       ?= no
+
 # reserve space for custom defaults
 CUSTOM_DEFAULTS_EXTENDED ?= no
 

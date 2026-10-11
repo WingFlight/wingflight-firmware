@@ -461,6 +461,71 @@
 
 
 /*
+ * STM32H730
+ */
+
+#elif defined(STM32H730)
+
+#define TARGET_BOARD_IDENTIFIER "SH73"
+
+#define USBD_PRODUCT_STRING     "Wingflight STM32H730"
+
+// The internal flash only holds the boot loader, the config is kept on the SPI flash.
+// It has to be accessible before the config is loaded, so its bus and pins are defaults of this target.
+// These are the ones of the FrSky Aegis Lite.
+#define CONFIG_IN_EXTERNAL_FLASH
+#define EEPROM_SIZE             16384
+
+#define FLASH_SPI_INSTANCE      SPI6
+#define FLASH_CS_PIN            PA4
+#define SPI6_SCK_PIN            PC12
+#define SPI6_MISO_PIN           PB4
+#define SPI6_MOSI_PIN           PA7
+
+#define USE_I2C_DEVICE_1
+#define USE_I2C_DEVICE_2
+#define USE_I2C_DEVICE_3
+#define USE_I2C_DEVICE_4
+
+#define USE_UART1
+#define USE_UART2
+#define USE_UART3
+#define USE_UART4
+#define USE_UART5
+#define USE_UART6
+#define USE_UART7
+#define USE_UART8
+#define USE_UART9
+#define USE_UART10
+#define USE_LPUART1
+
+#define SERIAL_PORT_COUNT       (UNIFIED_SERIAL_PORT_COUNT + 11)
+
+#define USE_SPI_DEVICE_1
+#define USE_SPI_DEVICE_2
+#define USE_SPI_DEVICE_3
+#define USE_SPI_DEVICE_4
+#define USE_SPI_DEVICE_5
+#define USE_SPI_DEVICE_6
+
+#define TARGET_IO_PORTA 0xffff
+#define TARGET_IO_PORTB 0xffff
+#define TARGET_IO_PORTC 0xffff
+#define TARGET_IO_PORTD 0xffff
+#define TARGET_IO_PORTE 0xffff
+#define TARGET_IO_PORTF 0xffff
+#define TARGET_IO_PORTG 0xffff
+
+#define VOLTAGE_TASK_FREQ_HZ     250
+#define CURRENT_TASK_FREQ_HZ     250
+#define ESC_SENSOR_TASK_FREQ_HZ  250
+
+#define USE_LEDSTRIP_CACHE_MGMT
+
+#define DEFAULT_FEATURES         (FEATURE_DYN_NOTCH)
+
+
+/*
  * UNKNOWN target
  */
 

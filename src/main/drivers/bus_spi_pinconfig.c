@@ -274,6 +274,9 @@ const spiHardware_t spiHardware[] = {
         .sckPins = {
             { DEFIO_TAG_E(PA5), GPIO_AF8_SPI6 },
             { DEFIO_TAG_E(PB3), GPIO_AF8_SPI6 },
+#if defined(STM32H723xx) || defined(STM32H725xx) || defined(STM32H730xx)
+            { DEFIO_TAG_E(PC12), GPIO_AF5_SPI6 },
+#endif
         },
         .misoPins = {
             { DEFIO_TAG_E(PA6), GPIO_AF8_SPI6 },
@@ -387,6 +390,24 @@ void spiPinConfigure(const spiPinConfig_t *pConfig)
 #if defined(USE_DMA) && defined(USE_HAL_DRIVER)
             pDev->dmaIrqHandler = hw->dmaIrqHandler;
 #endif
+        }
+    }
+}
+
+// Set up the buses that are not set up yet, e.g. because their pins only became known when the config was loaded
+void spiInitPendingDevices(const spiPinConfig_t *pConfig)
+{
+    bool pending[SPIDEV_COUNT];
+
+    for (int device = 0; device < SPIDEV_COUNT; device++) {
+        pending[device] = !spiDevice[device].dev;
+    }
+
+    spiPinConfigure(pConfig);
+
+    for (int device = 0; device < SPIDEV_COUNT; device++) {
+        if (pending[device] && spiDevice[device].dev) {
+            spiInit(device);
         }
     }
 }

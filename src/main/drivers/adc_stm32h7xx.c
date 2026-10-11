@@ -218,11 +218,10 @@ void adcInitDevice(adcDevice_t *adcdev, int channelCount)
     if (adcdev->ADCx == ADC3) {
         hadc->Init.DMAContinuousRequests = ENABLE;
     } else
-#else
+#endif
     {
         hadc->Init.ConversionDataManagement = ADC_CONVERSIONDATA_DMA_CIRCULAR;
     }
-#endif
 
     hadc->Init.Overrun                  = ADC_OVR_DATA_OVERWRITTEN;
     hadc->Init.OversamplingMode         = DISABLE;

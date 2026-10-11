@@ -238,6 +238,14 @@ DEFAULT_LD_SCRIPT   = $(LINKER_DIR)/stm32_ram_h730_exst.ld
 LD_SCRIPTS          = $(LINKER_DIR)/stm32_h730_common.ld $(LINKER_DIR)/stm32_h730_common_post.ld
 endif
 
+ifeq ($(XIP),yes)
+# The firmware executes in place from the 2MB OCTOSPI1 flash, after 64K for the vector table and custom defaults.
+# TARGET_FLASH now becomes the space available for code in the external flash.
+MCU_FLASH_SIZE     := 1984
+DEFAULT_LD_SCRIPT   = $(LINKER_DIR)/stm32_flash_h730_xip.ld
+LD_SCRIPTS          = $(LINKER_DIR)/stm32_h730_common.ld $(LINKER_DIR)/stm32_h730_common_post.ld
+endif
+
 
 else ifeq ($(TARGET),$(filter $(TARGET),$(H750xB_TARGETS)))
 DEVICE_FLAGS       += -DSTM32H750xx

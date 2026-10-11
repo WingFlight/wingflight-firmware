@@ -69,6 +69,7 @@
 
 #include "build/debug.h"
 
+#include "drivers/io.h"
 #include "drivers/memprot.h"
 #include "drivers/system.h"
 #include "drivers/persistent.h"
@@ -843,7 +844,7 @@ static void SystemClockHSE_Config(void)
     }
 }
 
-void SystemClock_Config(void)
+static void SystemClockPLL_Config(void)
 {
     // Configure power supply
 
@@ -880,6 +881,24 @@ void SystemClock_Config(void)
     }
 
     SystemClockHSE_Config();
+}
+
+void SystemClock_Config(void)
+{
+#if defined(USE_XIP)
+    if (__HAL_RCC_GET_SYSCLK_SOURCE() == RCC_SYSCLKSOURCE_STATUS_PLLCLK) {
+        // The boot loader already runs the system from PLL1 and clocks the OCTOSPI flash we execute from.
+        // Keep its power supply, PLL1 and bus clock configuration, and turn on the oscillators used below,
+        // which SystemInit() would otherwise have enabled.
+        __HAL_RCC_HSI48_ENABLE();
+        while (!__HAL_RCC_GET_FLAG(RCC_FLAG_HSI48RDY)) {
+            // Empty
+        }
+    } else
+#endif
+    {
+        SystemClockPLL_Config();
+    }
 
     /*activate CSI clock mondatory for I/O Compensation Cell*/
 
@@ -1102,8 +1121,46 @@ void CRS_IRQHandler(void)
 }
 #endif
 
+#if defined(USE_XIP)
+// The boot loader hands over with interrupts masked, its interrupts still enabled in the NVIC,
+// its peripherals (timers, USB OTG core) configured and the caches off.
+// Bring this back to the reset state the code below expects.
+static void xipBootLoaderHandover(void)
+{
+    __disable_irq();
+
+    SysTick->CTRL = 0;
+
+    for (unsigned i = 0; i < ARRAYLEN(NVIC->ICER); i++) {
+        NVIC->ICER[i] = 0xFFFFFFFF;
+        NVIC->ICPR[i] = 0xFFFFFFFF;
+    }
+
+    // Reset the peripherals on AHB1 (DMA, ADC, USB), APB1 and APB2 (timers, UARTs, SPI, I2C).
+    // AHB3 (OCTOSPI, MDMA) and AHB4 (GPIO) carry the flash we execute from and are left alone.
+    RCC->AHB1RSTR = 0xFFFFFFFF;
+    RCC->AHB1RSTR = 0;
+    RCC->APB1LRSTR = 0xFFFFFFFF;
+    RCC->APB1LRSTR = 0;
+    RCC->APB1HRSTR = 0xFFFFFFFF;
+    RCC->APB1HRSTR = 0;
+    RCC->APB2RSTR = 0xFFFFFFFF;
+    RCC->APB2RSTR = 0;
+
+    // Remember the pins the boot loader uses for the external flash, before any are reconfigured
+    IOSaveBootLoaderPins();
+
+    __set_BASEPRI(0);
+    __enable_irq();
+}
+#endif
+
 void SystemInit (void)
 {
+#if defined(USE_XIP)
+    xipBootLoaderHandover();
+#endif
+
     memProtReset();
 
     initialiseMemorySections();
@@ -1118,6 +1175,11 @@ void SystemInit (void)
 #if (__FPU_PRESENT == 1) && (__FPU_USED == 1)
     SCB->CPACR |= ((3UL << 10*2)|(3UL << 11*2));  // Set CP10 and CP11 Full Access
 #endif
+
+#if !defined(USE_XIP)
+    // When executing in place from the OCTOSPI flash, the boot loader has set up the clocks feeding it.
+    // Resetting the clock tree here would stop the code we are running from, so SystemClock_Config()
+    // keeps the boot loader's configuration instead.
 
     // Reset the RCC clock configuration to the default reset state
     // Set HSION bit
@@ -1184,6 +1246,7 @@ void SystemInit (void)
 
     /* Disable all interrupts */
     RCC->CIER = 0x00000000;
+#endif // !USE_XIP
 
     /* Change  the switch matrix read issuing capability to 1 for the AXI SRAM target (Target 7) */
   *((__IO uint32_t*)0x51008108) = 0x00000001;
@@ -1201,7 +1264,7 @@ void SystemInit (void)
   #else
   #error Unknown MCU type
   #endif
-#elif defined(USE_EXST)
+#elif defined(USE_EXST) || defined(USE_XIP)
     extern uint8_t isr_vector_table_base;
 
     SCB->VTOR = (uint32_t)&isr_vector_table_base;

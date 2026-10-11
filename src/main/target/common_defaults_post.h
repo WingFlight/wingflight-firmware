@@ -156,37 +156,39 @@
 
 #ifdef SPI_FULL_RECONFIGURABILITY
 
-#ifdef USE_SPI_DEVICE_1
+// Pins are configured at runtime, unless the target needs a bus before the config is loaded
+
+#if defined(USE_SPI_DEVICE_1) && !defined(SPI1_SCK_PIN)
 #define SPI1_SCK_PIN    NONE
 #define SPI1_MISO_PIN   NONE
 #define SPI1_MOSI_PIN   NONE
 #endif
 
-#ifdef USE_SPI_DEVICE_2
+#if defined(USE_SPI_DEVICE_2) && !defined(SPI2_SCK_PIN)
 #define SPI2_SCK_PIN    NONE
 #define SPI2_MISO_PIN   NONE
 #define SPI2_MOSI_PIN   NONE
 #endif
 
-#ifdef USE_SPI_DEVICE_3
+#if defined(USE_SPI_DEVICE_3) && !defined(SPI3_SCK_PIN)
 #define SPI3_SCK_PIN    NONE
 #define SPI3_MISO_PIN   NONE
 #define SPI3_MOSI_PIN   NONE
 #endif
 
-#ifdef USE_SPI_DEVICE_4
+#if defined(USE_SPI_DEVICE_4) && !defined(SPI4_SCK_PIN)
 #define SPI4_SCK_PIN    NONE
 #define SPI4_MISO_PIN   NONE
 #define SPI4_MOSI_PIN   NONE
 #endif
 
-#ifdef USE_SPI_DEVICE_5
+#if defined(USE_SPI_DEVICE_5) && !defined(SPI5_SCK_PIN)
 #define SPI5_SCK_PIN    NONE
 #define SPI5_MISO_PIN   NONE
 #define SPI5_MOSI_PIN   NONE
 #endif
 
-#ifdef USE_SPI_DEVICE_6
+#if defined(USE_SPI_DEVICE_6) && !defined(SPI6_SCK_PIN)
 #define SPI6_SCK_PIN    NONE
 #define SPI6_MISO_PIN   NONE
 #define SPI6_MOSI_PIN   NONE
