@@ -58,6 +58,7 @@
 #include "drivers/dshot.h"
 #include "drivers/dshot_command.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fbus_ota.h"
 #include "drivers/rx_input_backup.h"
 #include "drivers/fbus_sensor.h"
 #include "drivers/fbus_xact.h"
@@ -1438,6 +1439,22 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, rxInputBackupConfig()->inverted);
         sbufWriteU8(dst, rxInputBackupConfig()->halfDuplex);
         sbufWriteU8(dst, rxInputBackupConfig()->pinSwap);
+        break;
+    }
+#endif
+
+#ifdef USE_FBUS_MASTER
+    case MSP2_WING_FBUS_OTA_STATUS: {
+        fbusOtaStatus_t status;
+        fbusOtaGetStatus(&status);
+        sbufWriteU8(dst, status.state);
+        sbufWriteU8(dst, status.error);
+        sbufWriteU8(dst, status.phyId);
+        sbufWriteU32(dst, status.size);
+        sbufWriteU32(dst, status.acked);
+        sbufWriteU32(dst, status.received);
+        sbufWriteU16(dst, status.bufferFree);
+        sbufWriteU16(dst, status.retries);
         break;
     }
 #endif
@@ -3265,6 +3282,36 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         }
         break;
     }
+
+#ifdef USE_FBUS_MASTER
+    case MSP2_WING_FBUS_OTA_START: {
+        // Only with the FBUS master running and disarmed: the update stops the
+        // channel frames to the bus servos (see drivers/fbus_ota.h).
+        if (dataSize != 5 || !fbusMasterIsEnabled() || ARMING_FLAG(ARMED)) {
+            return MSP_RESULT_ERROR;
+        }
+        const uint8_t phyId = sbufReadU8(src);
+        if (!fbusOtaStart(phyId, sbufReadU32(src))) {
+            return MSP_RESULT_ERROR;
+        }
+        break;
+    }
+
+    case MSP2_WING_FBUS_OTA_DATA: {
+        if (dataSize < 5 || dataSize > 4 + FBUS_OTA_MAX_WRITE) {
+            return MSP_RESULT_ERROR;
+        }
+        const uint32_t offset = sbufReadU32(src);
+        if (!fbusOtaWrite(offset, sbufPtr(src), dataSize - 4)) {
+            return MSP_RESULT_ERROR;
+        }
+        break;
+    }
+
+    case MSP2_WING_FBUS_OTA_ABORT:
+        fbusOtaAbort();
+        break;
+#endif
 
     case MSP2_WING_SET_SERVO_PROBE: {
         // U8 servo, S16 offset us from mid, U16 timeout ms (0 clears; otherwise clamped
