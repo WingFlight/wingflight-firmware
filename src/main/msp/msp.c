@@ -58,6 +58,7 @@
 #include "drivers/dshot.h"
 #include "drivers/dshot_command.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fbus_mux_fpga.h"
 #include "drivers/rx_input_backup.h"
 #include "drivers/fbus_sensor.h"
 #include "drivers/fbus_xact.h"
@@ -1377,6 +1378,31 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
             sbufWriteU8(dst, fbusMasterConfig()->forwardedSensors[i]);
         }
+        break;
+    }
+#endif
+
+#ifdef USE_FBUS_MUX_FPGA
+    case MSP2_WING_FBUS_MUX_CONFIG: {
+        // U8 version, U8 channel count, U8 DShot channel mask (bit 0 = channel 1),
+        // U8 configuration UART (fpga_serial, 1-based, 0 = none), U8 status
+        // (fbusMuxFpgaStatus_e), U32 mode word sent to the FPGA, then per channel
+        // U8 configured mode and U8 mode in use (fbusMuxMode_e), then U8 override held
+        // (MSP2_WING_SET_FBUS_MUX_OVERRIDE). The mode in use is the override's while one
+        // is held, and PWM where the requested mode cannot work, see buildModeWord().
+        // Polled first: ending a lapsed override changes the status, word and modes.
+        const bool overrideActive = fbusMuxFpgaIsOverrideActive();
+        sbufWriteU8(dst, 1);
+        sbufWriteU8(dst, FBUS_MUX_FPGA_CHANNELS);
+        sbufWriteU8(dst, fbusMuxFpgaDshotChannelMask);
+        sbufWriteU8(dst, fbusMuxFpgaConfig()->serialPort);
+        sbufWriteU8(dst, fbusMuxFpgaGetStatus());
+        sbufWriteU32(dst, fbusMuxFpgaGetModeWord());
+        for (int ch = 0; ch < FBUS_MUX_FPGA_CHANNELS; ch++) {
+            sbufWriteU8(dst, fbusMuxFpgaConfig()->mode[ch]);
+            sbufWriteU8(dst, fbusMuxFpgaGetChannelMode(ch));
+        }
+        sbufWriteU8(dst, overrideActive ? 1 : 0);
         break;
     }
 #endif
@@ -4345,6 +4371,30 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
     return MSP_RESULT_ACK;
 }
 
+#ifdef USE_FBUS_MUX_FPGA
+// Reads U8 channel count, then count x U8 mode (fbusMuxMode_e), as the rest of the
+// payload. The count must match the build's, and DShot is refused on channels
+// without a DShot bridge.
+static bool mspReadFbusMuxModes(sbuf_t *src, uint8_t *modes)
+{
+    if (sbufBytesRemaining(src) < 1) {
+        return false;
+    }
+    const uint8_t count = sbufReadU8(src);
+    if (count != FBUS_MUX_FPGA_CHANNELS || sbufBytesRemaining(src) != count) {
+        return false;
+    }
+    for (int ch = 0; ch < FBUS_MUX_FPGA_CHANNELS; ch++) {
+        modes[ch] = sbufReadU8(src);
+        if (modes[ch] >= FBUS_MUX_MODE_COUNT ||
+            (modes[ch] == FBUS_MUX_MODE_DSHOT && !(fbusMuxFpgaDshotChannelMask & (1 << ch)))) {
+            return false;
+        }
+    }
+    return true;
+}
+#endif
+
 static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, sbuf_t *src, mspPostProcessFnPtr *mspPostProcessFn)
 {
     UNUSED(mspPostProcessFn);
@@ -4462,6 +4512,47 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         // them now so the change is live immediately, without a reboot.
         fbusSensorInitForwarding();
         break;
+#endif
+
+#ifdef USE_FBUS_MUX_FPGA
+    case MSP2_WING_SET_FBUS_MUX_CONFIG: {
+        // U8 version, U8 channel count, then count x U8 mode (fbusMuxMode_e). The FPGA
+        // is configured at boot, so the modes apply after save and reboot.
+        if (sbufBytesRemaining(src) < 1) {
+            return MSP_RESULT_ERROR;
+        }
+        sbufReadU8(src); // payload version, unused for now
+        uint8_t modes[FBUS_MUX_FPGA_CHANNELS];
+        if (!mspReadFbusMuxModes(src, modes)) {
+            return MSP_RESULT_ERROR;
+        }
+        memcpy(fbusMuxFpgaConfigMutable()->mode, modes, sizeof(modes));
+        break;
+    }
+
+    case MSP2_WING_SET_FBUS_MUX_OVERRIDE: {
+        // U16 timeout ms, U8 channel count, then count x U8 mode. Applies the modes at
+        // once without saving them, e.g. FBUS on one output at a time to give XACT servos
+        // their Physical IDs. The client re-sends it before the timeout (clamped to
+        // 500-30000 ms) to keep it; timeout 0 ends it, with or without modes. Blocks
+        // arming while held. Refused while armed, without a configured FPGA or if the
+        // FPGA does not confirm the modes (also the saved ones when ending it).
+        if (sbufBytesRemaining(src) < 2) {
+            return MSP_RESULT_ERROR;
+        }
+        const uint16_t timeoutMs = sbufReadU16(src);
+        if (timeoutMs == 0) {
+            if (!fbusMuxFpgaClearOverride()) {
+                return MSP_RESULT_ERROR;
+            }
+            break;
+        }
+        uint8_t modes[FBUS_MUX_FPGA_CHANNELS];
+        if (!mspReadFbusMuxModes(src, modes) || !fbusMuxFpgaSetOverride(modes, timeoutMs)) {
+            return MSP_RESULT_ERROR;
+        }
+        break;
+    }
 #endif
 
 #ifdef USE_RX_INPUT_BACKUP

@@ -418,13 +418,20 @@ void updateArmingStatus(void)
         }
 
 #ifdef USE_FBUS_MUX_FPGA
+        // Polled first: ending a lapsed override sends the saved modes, which the
+        // readiness check below must see
+        const bool muxOverrideActive = fbusMuxFpgaIsOverrideActive();
         // Outputs behind the FPGA are unusable or not in the configured mode
         if (fbusMuxFpgaIsEnabled() && !fbusMuxFpgaIsReady()) {
             setArmingDisabled(ARMING_DISABLED_MOTOR_PROTOCOL);
         }
 #endif
 
-        if (isServoOverrideActive() || isMixerOverrideActive() || isModeOverrideActive()) {
+        bool overrideActive = isServoOverrideActive() || isMixerOverrideActive() || isModeOverrideActive();
+#ifdef USE_FBUS_MUX_FPGA
+        overrideActive |= muxOverrideActive;
+#endif
+        if (overrideActive) {
             setArmingDisabled(ARMING_DISABLED_OVERRIDE);
         } else {
             unsetArmingDisabled(ARMING_DISABLED_OVERRIDE);

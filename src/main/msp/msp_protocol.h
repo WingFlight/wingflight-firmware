@@ -349,4 +349,11 @@
 // Sets one servo's saved trim in us (added at the output on top of the center, never
 // changing it). Read back with MSP_SERVO_TRIM, which appends the saved trims.
 #define MSP2_WING_SET_SERVO_TRIM              0x5F1D
+// FBUS mux FPGA (STM32F7X2M builds only): channel modes, the FPGA's state and which UART
+// it uses. 0x5F1E-0x5F21 are taken by the FBUS OTA commands on a sibling branch.
+#define MSP2_WING_FBUS_MUX_CONFIG             0x5F22
+#define MSP2_WING_SET_FBUS_MUX_CONFIG         0x5F23
+// Applies FBUS mux channel modes at once without saving them (RAM only, lapses unless
+// refreshed, blocks arming), e.g. FBUS on one output at a time to program XACT servos.
+#define MSP2_WING_SET_FBUS_MUX_OVERRIDE       0x5F24
 #define MSP_V2_FRAME                         255

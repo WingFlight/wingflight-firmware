@@ -21,6 +21,16 @@ bitstream; `STM32F7X2` is unchanged. The board identifier is `S7XM`.
   bridges).
 - CLI: `fpga` shows the state, mode word and bitstream; `fpga reload` and
   `fpga word <hex>` are diagnostics. `status` prints the mux state.
+- MSP: `MSP2_WING_FBUS_MUX_CONFIG` (0x5F22) reads the channel count, the DShot
+  channel mask, `fpga_serial`, the mux state, the mode word and, per channel,
+  the configured mode and the mode in use. `MSP2_WING_SET_FBUS_MUX_CONFIG`
+  (0x5F23) sets the channel modes, which apply after save and reboot.
+  `MSP2_WING_SET_FBUS_MUX_OVERRIDE` (0x5F24) applies channel modes at once
+  without saving them, e.g. FBUS on one output at a time to give XACT servos
+  their Physical IDs. Like `MSP2_WING_SET_MODE_OVERRIDE` it is refused while
+  armed, blocks arming while held (`OVERRIDE`), and lapses back to the saved
+  modes unless refreshed (500-30000 ms). All three exist on `STM32F7X2M`
+  only; other builds report them as unsupported.
 - The bitstream leaves an FBUS output whose line is stuck (e.g. floating with
   nothing connected) out of the combined servo response, so it can no longer
   corrupt every device's answer, and takes it back once the line is idle.
