@@ -38,6 +38,7 @@
 
 #include "drivers/dma.h"
 #include "drivers/dma_reqmap.h"
+#include "drivers/io.h"
 #include "drivers/rcc.h"
 #include "drivers/serial.h"
 #include "drivers/serial_uart.h"
@@ -275,6 +276,11 @@ static void uartWrite(serialPort_t *instance, uint8_t ch)
         uartPort->port.txBufferHead = 0;
     } else {
         uartPort->port.txBufferHead++;
+    }
+
+    // Raised before the transmitter is started, released by the TC interrupt
+    if (uartPort->txControlPin) {
+        IOHi(uartPort->txControlPin);
     }
 
 #ifdef USE_DMA

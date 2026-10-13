@@ -105,4 +105,8 @@ const char * const ownerNames[OWNER_TOTAL_COUNT] = {
     "FREQ",
     "ACC_CS",
     "GYRO_CLK",
+    "FBUS_MASTER_SEND",
+    "FPGA_CS",
+    "FPGA_CRESET",
+    "FPGA_CDONE",
 };

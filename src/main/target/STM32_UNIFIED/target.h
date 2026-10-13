@@ -261,11 +261,20 @@
  * STM32F7x2
  */
 
-#elif defined(STM32F7X2)
+#elif defined(STM32F7X2) || defined(STM32F7X2M)
 
+#if defined(STM32F7X2M)
+// F7x2 with the iCE40 FBUS/PWM output mux (board designs ending in M, e.g. F7B5M)
+#define TARGET_BOARD_IDENTIFIER "S7XM"
+
+#define USBD_PRODUCT_STRING     "Wingflight STM32F7x2 Mux"
+
+#define USE_FBUS_MUX_FPGA
+#else
 #define TARGET_BOARD_IDENTIFIER "S7X2"
 
 #define USBD_PRODUCT_STRING     "Wingflight STM32F7x2"
+#endif
 
 #define USE_I2C_DEVICE_1
 #define USE_I2C_DEVICE_2

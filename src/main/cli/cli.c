@@ -120,6 +120,7 @@ bool cliMode = false;
 #include "drivers/freq.h"
 #include "drivers/fbus_sensor.h"
 #include "drivers/srxl2_esc.h"
+#include "drivers/fbus_mux_fpga.h"
 
 #include "fc/board_info.h"
 #include "fc/rc_rates.h"
@@ -174,6 +175,8 @@ bool cliMode = false;
 #include "pg/timerup.h"
 #include "pg/usb.h"
 #include "pg/freq.h"
+#include "pg/fbus_master.h"
+#include "pg/fbus_mux_fpga.h"
 
 #include "rx/rx_bind.h"
 #include "rx/rx_spi.h"
@@ -3585,6 +3588,61 @@ static void printFeature(dumpFlags_t dumpMask, const uint32_t mask, const uint32
     }
 }
 
+#ifdef USE_FBUS_MUX_FPGA
+static void cliFpgaPrintEcho(void)
+{
+    uint8_t echo[8];
+    const uint8_t count = fbusMuxFpgaGetLastEcho(echo, sizeof(echo));
+
+    cliPrintf("echo: %d byte(s)", count);
+    for (unsigned i = 0; i < MIN(count, sizeof(echo)); i++) {
+        cliPrintf(" %02x", echo[i]);
+    }
+    cliPrintLinefeed();
+}
+
+static void cliFpga(const char *cmdName, char *cmdline)
+{
+    if (!fbusMuxFpgaIsEnabled()) {
+        cliPrintErrorLinef(cmdName, "FPGA not configured");
+        return;
+    }
+
+    char *saveptr;
+    const char *sub = strtok_r(cmdline, " ", &saveptr);
+    const char *arg = sub ? strtok_r(NULL, " ", &saveptr) : NULL;
+    const bool extraArgs = arg && strtok_r(NULL, " ", &saveptr);
+
+    if (!sub) {
+        cliPrintLinef("FPGA: %s, word: 0x%08x (%s)", fbusMuxFpgaGetStatusName(), fbusMuxFpgaGetModeWord(), fbusMuxFpgaBitstreamInfo);
+        cliFpgaPrintEcho();
+    } else if (strcasecmp(sub, "reload") == 0 && !arg) {
+        const bool ok = fbusMuxFpgaReload();
+        cliPrintLinef("reload: %s", ok ? "OK" : fbusMuxFpgaGetStatusName());
+        cliFpgaPrintEcho();
+    } else if (strcasecmp(sub, "word") == 0 && arg && !extraArgs) {
+        // A raw word changes the live channel modes: accept 1..8 hex digits
+        // (optional 0x) only, so a typo cannot send 0 (= all channels FBUS)
+        const char *digits = (strncasecmp(arg, "0x", 2) == 0) ? arg + 2 : arg;
+        const size_t len = strlen(digits);
+        bool valid = len > 0 && len <= 8;
+        for (size_t i = 0; valid && i < len; i++) {
+            valid = isxdigit((unsigned char)digits[i]);
+        }
+        if (!valid) {
+            cliShowParseError(cmdName);
+            return;
+        }
+        const uint32_t word = strtoul(digits, NULL, 16);
+        const bool ok = fbusMuxFpgaSendRawWord(word);
+        cliPrintLinef("word 0x%08x: %s", word, ok ? "echo OK" : "no valid echo");
+        cliFpgaPrintEcho();
+    } else {
+        cliShowParseError(cmdName);
+    }
+}
+#endif
+
 static void cliFeature(const char *cmdName, char *cmdline)
 {
     uint32_t len = strlen(cmdline);
@@ -5009,6 +5067,17 @@ static void cliStatus(const char *cmdName, char *cmdline)
 
     cliPrintLinef("Voltage: %d * 0.01V (%dS battery - %s)", getBatteryVoltage(), getBatteryCellCount(), getBatteryStateString());
 
+#ifdef USE_FBUS_MUX_FPGA
+    if (fbusMuxFpgaIsEnabled()) {
+        static const char * const muxModeNames[FBUS_MUX_MODE_COUNT] = { "PWM", "FBUS", "DSHOT" };
+        cliPrintf("FBUS mux FPGA: %s, word: 0x%08x, modes:", fbusMuxFpgaGetStatusName(), fbusMuxFpgaGetModeWord());
+        for (int ch = 0; ch < FBUS_MUX_FPGA_CHANNELS; ch++) {
+            cliPrintf(" %s", muxModeNames[fbusMuxFpgaGetChannelMode(ch)]);
+        }
+        cliPrintLinef(" (%s)", fbusMuxFpgaBitstreamInfo);
+    }
+#endif
+
     // Other devices and status
 
 #ifdef USE_I2C
@@ -5396,6 +5465,14 @@ const cliResourceValue_t resourceTable[] = {
 #endif
 #ifdef USE_FREQ_SENSOR
     DEFA( OWNER_FREQ,          PG_FREQ_SENSOR_CONFIG, freqConfig_t, ioTag, FREQ_SENSOR_PORT_COUNT ),
+#endif
+#ifdef USE_FBUS_MASTER
+    DEFS( OWNER_FBUS_MASTER_SEND, PG_DRIVER_FBUS_MASTER_CONFIG, fbusMasterConfig_t, sendPin ),
+#endif
+#ifdef USE_FBUS_MUX_FPGA
+    DEFS( OWNER_FPGA_CS,       PG_FBUS_MUX_FPGA_CONFIG, fbusMuxFpgaConfig_t, csTag ),
+    DEFS( OWNER_FPGA_CRESET,   PG_FBUS_MUX_FPGA_CONFIG, fbusMuxFpgaConfig_t, cresetTag ),
+    DEFS( OWNER_FPGA_CDONE,    PG_FBUS_MUX_FPGA_CONFIG, fbusMuxFpgaConfig_t, cdoneTag ),
 #endif
 };
 
@@ -6767,6 +6844,9 @@ const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("exit", NULL, NULL, cliExit),
 #if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
     CLI_COMMAND_DEF("fbus_sensors", "show observed FBUS sensors", "[clear]", cliFbusSensors),
+#endif
+#ifdef USE_FBUS_MUX_FPGA
+    CLI_COMMAND_DEF("fpga", "FBUS mux FPGA diagnostics", "[reload | word <hex>]", cliFpga),
 #endif
     CLI_COMMAND_DEF("feature", "configure features",
         "list\r\n"

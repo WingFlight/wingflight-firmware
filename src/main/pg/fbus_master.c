@@ -27,7 +27,7 @@
 #ifdef USE_FBUS_MASTER
 
 PG_REGISTER_WITH_RESET_FN(fbusMasterConfig_t, fbusMasterConfig,
-                          PG_DRIVER_FBUS_MASTER_CONFIG, 5);
+                          PG_DRIVER_FBUS_MASTER_CONFIG, 6);
 
 void pgResetFn_fbusMasterConfig(fbusMasterConfig_t *config) {
     config->frameRate = 500;
@@ -39,6 +39,7 @@ void pgResetFn_fbusMasterConfig(fbusMasterConfig_t *config) {
     config->sensorDiscoveryTimeMs = 5000;
     memset(config->forwardedSensors, FBUS_INVALID_PHYSICAL_ID, sizeof(config->forwardedSensors));
     config->channels = BUS_OUT_CHANNELS_24;
+    config->sendPin = IO_TAG_NONE;
 }
 
 #endif

@@ -51,6 +51,7 @@
 #include "drivers/rx_input_backup.h"
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fbus_mux_fpga.h"
 
 #include "fc/rc_rates.h"
 #include "fc/rc.h"
@@ -415,6 +416,13 @@ void updateArmingStatus(void)
         if (!isMotorProtocolEnabled()) {
             setArmingDisabled(ARMING_DISABLED_MOTOR_PROTOCOL);
         }
+
+#ifdef USE_FBUS_MUX_FPGA
+        // Outputs behind the FPGA are unusable or not in the configured mode
+        if (fbusMuxFpgaIsEnabled() && !fbusMuxFpgaIsReady()) {
+            setArmingDisabled(ARMING_DISABLED_MOTOR_PROTOCOL);
+        }
+#endif
 
         if (isServoOverrideActive() || isMixerOverrideActive() || isModeOverrideActive()) {
             setArmingDisabled(ARMING_DISABLED_OVERRIDE);

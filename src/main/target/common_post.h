@@ -149,6 +149,11 @@
 #define USE_SBUS_CHANNELS
 #endif
 
+// The FPGA mux carries the FBUS master line and needs the HAL UART send pin
+#if defined(USE_FBUS_MUX_FPGA) && (!defined(USE_FBUS_MASTER) || !defined(USE_HAL_DRIVER))
+#error "USE_FBUS_MUX_FPGA requires USE_FBUS_MASTER and the HAL UART driver"
+#endif
+
 #if !defined(USE_TELEMETRY_SMARTPORT) && !defined(USE_TELEMETRY_CRSF)
 #undef USE_MSP_OVER_TELEMETRY
 #endif

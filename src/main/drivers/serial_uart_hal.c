@@ -337,6 +337,10 @@ void uartTryStartTxDMA(uartPort_t *s)
         }
         s->txDMAEmpty = false;
 
+        if (s->txControlPin) {
+            IOHi(s->txControlPin);
+        }
+
         HAL_UART_Transmit_DMA(&s->Handle, (uint8_t *)&s->port.txBuffer[fromwhere], size);
     }
 }
@@ -429,6 +433,11 @@ FAST_IRQ_HANDLER void uartIrqHandler(uartPort_t *s)
         if (huart->gState != HAL_UART_STATE_BUSY_TX) {
             if (s->port.txBufferTail == s->port.txBufferHead) {
                 huart->TxXferCount = 0;
+                /* Wait for the last stop bit before releasing the TX control pin.
+                   TXE is also set while idle, so only when a transmission was running. */
+                if (s->txControlPin && READ_BIT(huart->Instance->CR1, USART_CR1_TXEIE)) {
+                    SET_BIT(huart->Instance->CR1, USART_CR1_TCIE);
+                }
                 /* Disable the UART Transmit Data Register Empty Interrupt */
                 CLEAR_BIT(huart->Instance->CR1, USART_CR1_TXEIE);
             } else {
@@ -445,6 +454,18 @@ FAST_IRQ_HANDLER void uartIrqHandler(uartPort_t *s)
     // UART transmitter in DMA mode, transmission completed
 
     if ((cr1 & USART_CR1_TCIE) && (__HAL_UART_GET_IT(huart, UART_IT_TC) != RESET)) {
+        // TC stays set while the transmitter is idle, so only a requested TC (TCIE,
+        // checked above) with nothing left to send ends the transmission. The TC
+        // flag must stay set for HAL_UART_IRQHandler(), which completes a DMA
+        // transfer on it.
+        if (s->txControlPin &&
+#ifdef USE_DMA
+            !(s->txDMAResource && IS_DMA_ENABLED(s->txDMAResource)) &&
+#endif
+            (s->port.txBufferTail == s->port.txBufferHead)) {
+            IOLo(s->txControlPin);
+        }
+
         HAL_UART_IRQHandler(huart);
 #ifdef USE_DMA
         if (s->txDMAResource) {

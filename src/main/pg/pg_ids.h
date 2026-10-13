@@ -182,6 +182,7 @@
 #define PG_SNAP_RELAX_CONFIG         1022
 #define PG_PROP_HANG_CONFIG          1023
 #define PG_SERVO_TRIMS               1024
+#define PG_FBUS_MUX_FPGA_CONFIG      1025
 
 // OSD configuration -- removed (OSD)
 //#define PG_OSD_FONT_CONFIG 2047

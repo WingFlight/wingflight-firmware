@@ -87,6 +87,8 @@ COMMON_SRC = \
             drivers/rx_input_backup_fport.c \
             drivers/rx_input_backup_exbus.c \
             drivers/rx_input_backup_crsf.c \
+            drivers/fbus_mux_fpga.c \
+            drivers/fbus_mux_fpga_bitstream.c \
             drivers/rx/rx_spi.c \
             drivers/rx/rx_xn297.c \
             drivers/rx/rx_pwm.c \

@@ -3,6 +3,27 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## FBUS Mux FPGA (STM32F7X2M)
+
+Boards with an iCE40 FPGA between the MCU and the servo/ESC outputs (FrSky
+Vantac RF007 V3) get their own unified target, `STM32F7X2M`, for board designs
+ending in `M` (e.g. `F7B5M`). Only this build carries the mux driver and its
+bitstream; `STM32F7X2` is unchanged. The board identifier is `S7XM`.
+
+- At boot the FC loads the bitstream over SPI, then sends the channel modes
+  over a UART and checks the FPGA's echo. Arming is blocked
+  (`MOTOR_PROTOCOL`) while the mux is configured but not ready.
+- Resources: `FPGA_CS`, `FPGA_CRESET`, `FPGA_CDONE`, and `FBUS_MASTER_SEND`
+  (GPIO high while the FBUS master transmits; available on every HAL build).
+- Settings: `fpga_spi_bus`, `fpga_serial` (hardware), and
+  `fbus_mux_ch1_mode` .. `fbus_mux_ch5_mode` = `PWM` / `FBUS` / `DSHOT`
+  (`DSHOT` = bidirectional DShot passthrough, only on channels the bitstream
+  bridges).
+- CLI: `fpga` shows the state, mode word and bitstream; `fpga reload` and
+  `fpga word <hex>` are diagnostics. `status` prints the mux state.
+- New PG `fbusMuxFpgaConfig` (1025). `fbusMasterConfig` version bumped for
+  the send pin, so FBUS master settings reset to defaults on update.
+
 ## Servo Trims Never Move the Servo Center
 
 Stepped `SERVO_TRIM_*` adjustments and AUTO TRIM used to rewrite the servo

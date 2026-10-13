@@ -83,6 +83,7 @@
 #ifdef USE_USB_MSC
 #include "drivers/usb_msc.h"
 #endif
+#include "drivers/fbus_mux_fpga.h"
 #include "fc/board_info.h"
 #include "fc/dispatch.h"
 #include "fc/init.h"
@@ -714,6 +715,13 @@ void init(void)
 
 #ifdef USE_RX_INPUT_BACKUP
     rxInputBackupInit();
+#endif
+
+#ifdef USE_FBUS_MUX_FPGA
+    // Outputs routed through the FPGA are dead until it is loaded. Loaded after
+    // the servo timers and the FBUS master (send pin) so the outputs start with
+    // valid signals.
+    fbusMuxFpgaInit();
 #endif
 
 #ifdef USE_PINIO

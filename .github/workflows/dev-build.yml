@@ -57,7 +57,12 @@ jobs:
         # unguarded forEach over every release, so one invalid version
         # throws and silently breaks board discovery for every release, on
         # every branch -- not just this one.
-        VER_SLUG="$(echo "$RAW_SLUG" | sed -E 's/[^A-Za-z0-9]+//g')"
+        #
+        # The firmware's version string must stay under 30 bytes
+        # (STATIC_ASSERT in src/main/build/version.h): "4.6.0-" + "dev" + slug
+        # + 7-char SHA leaves room for about 12 slug characters, so longer
+        # branch names are cut to 10. The SHA keeps the filename unique.
+        VER_SLUG="$(echo "$RAW_SLUG" | sed -E 's/[^A-Za-z0-9]+//g' | cut -c1-10)"
         SHORT_SHA="${GITHUB_SHA:0:7}"
 
         echo "BRANCH=${BRANCH}" >> "${GITHUB_ENV}"
