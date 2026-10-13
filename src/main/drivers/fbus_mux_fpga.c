@@ -313,7 +313,8 @@ static bool initResources(const fbusMuxFpgaConfig_t *config)
 
 // Sends the mode word for the current modes to a configured FPGA. If the FPGA
 // does not confirm it, it is left in an unknown state and the mux is not ready
-// (arming blocked) until a later word gets through or the next boot.
+// until a later word gets through. Arming stays blocked until the next boot once
+// fc/core.c has seen the mux not ready (ARMING_DISABLED_MOTOR_PROTOCOL is sticky).
 static bool applyModeWord(void)
 {
     modeWord = buildModeWord();
