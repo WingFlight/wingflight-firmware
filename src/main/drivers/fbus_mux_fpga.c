@@ -381,22 +381,34 @@ bool fbusMuxFpgaSetOverride(const uint8_t *modes, uint16_t timeoutMs)
         return false;
     }
 
-    const bool changed = !overrideSet || memcmp(overrideMode, modes, sizeof(overrideMode)) != 0;
+    // Refreshing the same modes only extends the timeout, unless the FPGA has not
+    // confirmed them yet
+    const bool resend = !overrideSet || memcmp(overrideMode, modes, sizeof(overrideMode)) != 0 ||
+        !fbusMuxFpgaIsReady();
 
     memcpy(overrideMode, modes, sizeof(overrideMode));
     overrideSet = true;
     overrideExpiryMs = OVERRIDE_EXPIRY_MS(millis(), timeoutMs);
 
-    // Refreshing the same modes only extends the timeout
-    return changed ? applyModeWord() : fbusMuxFpgaIsReady();
-}
-
-void fbusMuxFpgaClearOverride(void)
-{
-    if (overrideSet) {
+    if (resend && !applyModeWord()) {
+        // Not held: back to the saved modes
         overrideSet = false;
         applyModeWord();
+        return false;
     }
+
+    return true;
+}
+
+bool fbusMuxFpgaClearOverride(void)
+{
+    // Also retries the saved modes after an earlier word was not confirmed
+    if (overrideSet || status == FBUS_MUX_FPGA_ERROR_ECHO) {
+        overrideSet = false;
+        return applyModeWord();
+    }
+
+    return true;
 }
 
 bool fbusMuxFpgaIsOverrideActive(void)

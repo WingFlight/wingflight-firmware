@@ -4536,13 +4536,15 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         // their Physical IDs. The client re-sends it before the timeout (clamped to
         // 500-30000 ms) to keep it; timeout 0 ends it, with or without modes. Blocks
         // arming while held. Refused while armed, without a configured FPGA or if the
-        // FPGA does not confirm the modes.
+        // FPGA does not confirm the modes (also the saved ones when ending it).
         if (sbufBytesRemaining(src) < 2) {
             return MSP_RESULT_ERROR;
         }
         const uint16_t timeoutMs = sbufReadU16(src);
         if (timeoutMs == 0) {
-            fbusMuxFpgaClearOverride();
+            if (!fbusMuxFpgaClearOverride()) {
+                return MSP_RESULT_ERROR;
+            }
             break;
         }
         uint8_t modes[FBUS_MUX_FPGA_CHANNELS];
