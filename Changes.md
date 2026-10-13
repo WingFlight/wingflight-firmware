@@ -21,6 +21,9 @@ bitstream; `STM32F7X2` is unchanged. The board identifier is `S7XM`.
   bridges).
 - CLI: `fpga` shows the state, mode word and bitstream; `fpga reload` and
   `fpga word <hex>` are diagnostics. `status` prints the mux state.
+- The bitstream leaves an FBUS output whose line is stuck (e.g. floating with
+  nothing connected) out of the combined servo response, so it can no longer
+  corrupt every device's answer, and takes it back once the line is idle.
 - New PG `fbusMuxFpgaConfig` (1025). `fbusMasterConfig` version bumped for
   the send pin, so FBUS master settings reset to defaults on update.
 
