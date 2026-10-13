@@ -5074,7 +5074,7 @@ static void cliStatus(const char *cmdName, char *cmdline)
         for (int ch = 0; ch < FBUS_MUX_FPGA_CHANNELS; ch++) {
             cliPrintf(" %s", muxModeNames[fbusMuxFpgaGetChannelMode(ch)]);
         }
-        cliPrintLinef(" (%s)", fbusMuxFpgaBitstreamInfo);
+        cliPrintLinef("%s (%s)", fbusMuxFpgaIsOverrideActive() ? " OVERRIDE" : "", fbusMuxFpgaBitstreamInfo);
     }
 #endif
 

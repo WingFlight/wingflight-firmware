@@ -353,4 +353,7 @@
 // it uses. 0x5F1E-0x5F21 are taken by the FBUS OTA commands on a sibling branch.
 #define MSP2_WING_FBUS_MUX_CONFIG             0x5F22
 #define MSP2_WING_SET_FBUS_MUX_CONFIG         0x5F23
+// Applies FBUS mux channel modes at once without saving them (RAM only, lapses unless
+// refreshed, blocks arming), e.g. FBUS on one output at a time to program XACT servos.
+#define MSP2_WING_SET_FBUS_MUX_OVERRIDE       0x5F24
 #define MSP_V2_FRAME                         255

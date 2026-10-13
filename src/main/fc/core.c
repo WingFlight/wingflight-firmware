@@ -424,7 +424,12 @@ void updateArmingStatus(void)
         }
 #endif
 
-        if (isServoOverrideActive() || isMixerOverrideActive() || isModeOverrideActive()) {
+        bool overrideActive = isServoOverrideActive() || isMixerOverrideActive() || isModeOverrideActive();
+#ifdef USE_FBUS_MUX_FPGA
+        // Always polled, since this also ends a lapsed mux override
+        overrideActive |= fbusMuxFpgaIsOverrideActive();
+#endif
+        if (overrideActive) {
             setArmingDisabled(ARMING_DISABLED_OVERRIDE);
         } else {
             unsetArmingDisabled(ARMING_DISABLED_OVERRIDE);

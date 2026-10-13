@@ -49,6 +49,8 @@
 #include "drivers/serial.h"
 #include "drivers/time.h"
 
+#include "fc/runtime_config.h"
+
 #include "io/serial.h"
 
 #include "pg/fbus_master.h"
@@ -80,6 +82,14 @@ static fbusMuxMode_e channelMode[FBUS_MUX_FPGA_CHANNELS];
 // A channel set to FBUS fell back to PWM because the send pin is assigned but
 // the FBUS master could not claim it (resource conflict)
 static bool fbusSendPinFailed;
+
+// Modes held over MSP (MSP2_WING_SET_FBUS_MUX_OVERRIDE) in place of the saved
+// ones, e.g. to put FBUS on one output at a time while XACT servos get their
+// Physical IDs. RAM only, applied at once, and back to the saved modes when it
+// ends or lapses (see fbusMuxFpgaIsOverrideActive). Blocks arming while set.
+static bool overrideSet;
+static timeMs_t overrideExpiryMs;
+static uint8_t overrideMode[FBUS_MUX_FPGA_CHANNELS];
 
 static extDevice_t fpgaSpi;
 static IO_t csPin = IO_NONE;
@@ -172,7 +182,7 @@ static uint32_t buildModeWord(void)
     fbusSendPinFailed = false;
 
     for (int ch = 0; ch < FBUS_MUX_FPGA_CHANNELS; ch++) {
-        fbusMuxMode_e mode = fbusMuxFpgaConfig()->mode[ch];
+        fbusMuxMode_e mode = overrideSet ? overrideMode[ch] : fbusMuxFpgaConfig()->mode[ch];
 
         // Fall back to PWM where the requested mode cannot work: FBUS needs the
         // master port and its send pin, the DShot bridge needs bidirectional
@@ -301,6 +311,22 @@ static bool initResources(const fbusMuxFpgaConfig_t *config)
     return muxPort != NULL;
 }
 
+// Sends the mode word for the current modes to a configured FPGA. If the FPGA
+// does not confirm it, it is left in an unknown state and the mux is not ready
+// (arming blocked) until a later word gets through or the next boot.
+static bool applyModeWord(void)
+{
+    modeWord = buildModeWord();
+    if (!sendModeWord(modeWord)) {
+        status = FBUS_MUX_FPGA_ERROR_ECHO;
+        resetChannelModes();
+        return false;
+    }
+
+    status = fbusSendPinFailed ? FBUS_MUX_FPGA_ERROR_RESOURCE : FBUS_MUX_FPGA_READY;
+    return !fbusSendPinFailed;
+}
+
 void fbusMuxFpgaInit(void)
 {
     const fbusMuxFpgaConfig_t *config = fbusMuxFpgaConfig();
@@ -328,13 +354,8 @@ void fbusMuxFpgaInit(void)
         return;
     }
 
-    modeWord = buildModeWord();
-    if (sendModeWord(modeWord)) {
-        status = fbusSendPinFailed ? FBUS_MUX_FPGA_ERROR_RESOURCE : FBUS_MUX_FPGA_READY;
-    } else {
-        // The FPGA keeps its reset configuration (all PWM)
-        resetChannelModes();
-    }
+    // On failure the FPGA keeps its reset configuration (all PWM)
+    applyModeWord();
 }
 
 bool fbusMuxFpgaReload(void)
@@ -349,15 +370,41 @@ bool fbusMuxFpgaReload(void)
         return false;
     }
 
-    modeWord = buildModeWord();
-    if (sendModeWord(modeWord)) {
-        status = fbusSendPinFailed ? FBUS_MUX_FPGA_ERROR_RESOURCE : FBUS_MUX_FPGA_READY;
-        return !fbusSendPinFailed;
+    return applyModeWord();
+}
+
+bool fbusMuxFpgaSetOverride(const uint8_t *modes, uint16_t timeoutMs)
+{
+    // Needs a configured FPGA: the bitstream loaded and the configuration port open
+    if (ARMING_FLAG(ARMED) || !muxPort ||
+        status == FBUS_MUX_FPGA_DISABLED || status == FBUS_MUX_FPGA_ERROR_CDONE) {
+        return false;
     }
 
-    status = FBUS_MUX_FPGA_ERROR_ECHO;
-    resetChannelModes();
-    return false;
+    const bool changed = !overrideSet || memcmp(overrideMode, modes, sizeof(overrideMode)) != 0;
+
+    memcpy(overrideMode, modes, sizeof(overrideMode));
+    overrideSet = true;
+    overrideExpiryMs = OVERRIDE_EXPIRY_MS(millis(), timeoutMs);
+
+    // Refreshing the same modes only extends the timeout
+    return changed ? applyModeWord() : fbusMuxFpgaIsReady();
+}
+
+void fbusMuxFpgaClearOverride(void)
+{
+    if (overrideSet) {
+        overrideSet = false;
+        applyModeWord();
+    }
+}
+
+bool fbusMuxFpgaIsOverrideActive(void)
+{
+    if (overrideSet && OVERRIDE_EXPIRED(millis(), overrideExpiryMs)) {
+        fbusMuxFpgaClearOverride();
+    }
+    return overrideSet;
 }
 
 bool fbusMuxFpgaSendRawWord(uint32_t word)

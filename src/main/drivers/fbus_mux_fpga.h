@@ -50,6 +50,17 @@ const char *fbusMuxFpgaGetStatusName(void);
 // Mode word sent to the FPGA and the effective mode per channel
 uint32_t fbusMuxFpgaGetModeWord(void);
 
+// Applies `modes` (fbusMuxMode_e per channel, already validated) at once in place of
+// the saved modes, without saving them. Refreshing with the same modes only extends the
+// timeout (clamped to OVERRIDE_TIMEOUT_MIN_MS..OVERRIDE_TIMEOUT_MAX_MS). Refused while
+// armed or without a configured FPGA; false also if the FPGA did not confirm the modes.
+bool fbusMuxFpgaSetOverride(const uint8_t *modes, uint16_t timeoutMs);
+// Ends the override and applies the saved modes again
+void fbusMuxFpgaClearOverride(void);
+// Whether an override is held. Ends it once its timeout has passed, so it must be
+// polled (fc/core.c does, while updating the arming flags).
+bool fbusMuxFpgaIsOverrideActive(void);
+
 // Diagnostics (CLI "fpga"): reload the bitstream, send a raw word, last echo received
 bool fbusMuxFpgaReload(void);
 bool fbusMuxFpgaSendRawWord(uint32_t word);

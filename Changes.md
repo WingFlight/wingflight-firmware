@@ -24,8 +24,13 @@ bitstream; `STM32F7X2` is unchanged. The board identifier is `S7XM`.
 - MSP: `MSP2_WING_FBUS_MUX_CONFIG` (0x5F22) reads the channel count, the DShot
   channel mask, `fpga_serial`, the mux state, the mode word and, per channel,
   the configured mode and the mode in use. `MSP2_WING_SET_FBUS_MUX_CONFIG`
-  (0x5F23) sets the channel modes, which apply after save and reboot. Both
-  exist on `STM32F7X2M` only; other builds report them as unsupported.
+  (0x5F23) sets the channel modes, which apply after save and reboot.
+  `MSP2_WING_SET_FBUS_MUX_OVERRIDE` (0x5F24) applies channel modes at once
+  without saving them, e.g. FBUS on one output at a time to give XACT servos
+  their Physical IDs. Like `MSP2_WING_SET_MODE_OVERRIDE` it is refused while
+  armed, blocks arming while held (`OVERRIDE`), and lapses back to the saved
+  modes unless refreshed (500-30000 ms). All three exist on `STM32F7X2M`
+  only; other builds report them as unsupported.
 - New PG `fbusMuxFpgaConfig` (1025). `fbusMasterConfig` version bumped for
   the send pin, so FBUS master settings reset to defaults on update.
 
