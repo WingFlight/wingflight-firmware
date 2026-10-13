@@ -58,6 +58,7 @@
 #include "drivers/dshot.h"
 #include "drivers/dshot_command.h"
 #include "drivers/fbus_master.h"
+#include "drivers/fbus_mux_fpga.h"
 #include "drivers/rx_input_backup.h"
 #include "drivers/fbus_sensor.h"
 #include "drivers/fbus_xact.h"
@@ -1376,6 +1377,27 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, 1); // payload version -- only the forwarding slots so far
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
             sbufWriteU8(dst, fbusMasterConfig()->forwardedSensors[i]);
+        }
+        break;
+    }
+#endif
+
+#ifdef USE_FBUS_MUX_FPGA
+    case MSP2_WING_FBUS_MUX_CONFIG: {
+        // U8 version, U8 channel count, U8 DShot channel mask (bit 0 = channel 1),
+        // U8 configuration UART (fpga_serial, 1-based, 0 = none), U8 status
+        // (fbusMuxFpgaStatus_e), U32 mode word sent to the FPGA, then per channel
+        // U8 configured mode and U8 mode in use (fbusMuxMode_e). The mode in use is
+        // PWM where the configured mode cannot work, see buildModeWord().
+        sbufWriteU8(dst, 1);
+        sbufWriteU8(dst, FBUS_MUX_FPGA_CHANNELS);
+        sbufWriteU8(dst, fbusMuxFpgaDshotChannelMask);
+        sbufWriteU8(dst, fbusMuxFpgaConfig()->serialPort);
+        sbufWriteU8(dst, fbusMuxFpgaGetStatus());
+        sbufWriteU32(dst, fbusMuxFpgaGetModeWord());
+        for (int ch = 0; ch < FBUS_MUX_FPGA_CHANNELS; ch++) {
+            sbufWriteU8(dst, fbusMuxFpgaConfig()->mode[ch]);
+            sbufWriteU8(dst, fbusMuxFpgaGetChannelMode(ch));
         }
         break;
     }
@@ -4462,6 +4484,32 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         // them now so the change is live immediately, without a reboot.
         fbusSensorInitForwarding();
         break;
+#endif
+
+#ifdef USE_FBUS_MUX_FPGA
+    case MSP2_WING_SET_FBUS_MUX_CONFIG: {
+        // U8 version, U8 channel count, then count x U8 mode (fbusMuxMode_e). The count
+        // must match the build's. DShot is refused on channels without a DShot bridge.
+        // The FPGA is configured at boot, so the modes apply after save and reboot.
+        if (sbufBytesRemaining(src) < 2) {
+            return MSP_RESULT_ERROR;
+        }
+        sbufReadU8(src); // payload version, unused for now
+        const uint8_t count = sbufReadU8(src);
+        if (count != FBUS_MUX_FPGA_CHANNELS || sbufBytesRemaining(src) != count) {
+            return MSP_RESULT_ERROR;
+        }
+        uint8_t modes[FBUS_MUX_FPGA_CHANNELS];
+        for (int ch = 0; ch < FBUS_MUX_FPGA_CHANNELS; ch++) {
+            modes[ch] = sbufReadU8(src);
+            if (modes[ch] >= FBUS_MUX_MODE_COUNT ||
+                (modes[ch] == FBUS_MUX_MODE_DSHOT && !(fbusMuxFpgaDshotChannelMask & (1 << ch)))) {
+                return MSP_RESULT_ERROR;
+            }
+        }
+        memcpy(fbusMuxFpgaConfigMutable()->mode, modes, sizeof(modes));
+        break;
+    }
 #endif
 
 #ifdef USE_RX_INPUT_BACKUP
