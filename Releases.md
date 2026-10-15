@@ -1,3 +1,13 @@
+# 0.0.35
+
+The MSP API stays at 22.14. Updating keeps your settings. Use the 0.0.35 Configurator and Lua suites with this firmware.
+Add the STM32F7X2M firmware for boards with an FPGA FBUS mux, such as the FrSky Vantac RF007 V3: S1, S2, S3, TAIL and ESC can each carry PWM, the FBUS master line or a bidirectional DShot bridge. The Configurator picks this build from the target config. STM32F7X2 is unchanged.
+Block arming while the FBUS mux is not ready, including when its send pin is claimed by another resource. The block holds until the next boot. An FBUS output with nothing connected no longer corrupts the replies of the other devices on the bus.
+Add the FBUS mux to MSP: MSP2_WING_FBUS_MUX_CONFIG reads the channel modes and mux state, MSP2_WING_SET_FBUS_MUX_CONFIG sets the modes, and MSP2_WING_SET_FBUS_MUX_OVERRIDE switches them at once without saving, for programming XACT servos one output at a time. Like the other setup overrides it lapses unless refreshed and blocks arming (SETUP) while held.
+Reject malformed fpga CLI subcommands instead of reading a missing word as 0.
+Default the battery and current meters to ESC on a new or reset config. Existing configs keep their meter settings.
+Keep the Blackbox logging bit in SYSTEM_STATUS set through the grace period after disarm, while the log is still being written.
+
 # 0.0.34
 
 The MSP API stays at 22.14. Updating keeps your settings; the new saved servo trims start at 0. Use the 0.0.34 Configurator and Lua suites with this firmware.
