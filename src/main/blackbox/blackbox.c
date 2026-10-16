@@ -1617,6 +1617,22 @@ static char header_buffer[128];
         break; \
     }
 
+// "gain_curve_<n>": point count, then x,y for every point slot (unused slots
+// included, so the line always has 1 + 2 * GAIN_CURVE_POINTS values).
+static void blackboxPrintGainCurveHeader(int index)
+{
+    const gainCurve_t *curve = gainCurves(index);
+    char name[16];
+    char *ptr = header_buffer;
+
+    tfp_sprintf(name, "gain_curve_%d", index + 1);
+    ptr += tfp_sprintf(ptr, "%d", curve->count);
+    for (int i = 0; i < GAIN_CURVE_POINTS; i++) {
+        ptr += tfp_sprintf(ptr, ",%d,%d", curve->points[i].x, curve->points[i].y);
+    }
+    blackboxPrintHeaderLine(name, header_buffer);
+}
+
 /**
  * Transmit a portion of the system information headers. Call the first time with xmitState.headerIndex == 0. Returns
  * true iff transmission is complete, otherwise call again later to continue transmission.
@@ -1728,6 +1744,35 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE("fw_spa", "%d,%d,%d",                    fwSpaConfigs(getCurrentPidProfileIndex())->gain,
                                                                             fwSpaConfigs(getCurrentPidProfileIndex())->curve,
                                                                             fwSpaConfigs(getCurrentPidProfileIndex())->speed_max);
+        BLACKBOX_PRINT_HEADER_ARRAY("master_gain", "%d", 3,                 currentPidProfile->master_gain);
+        BLACKBOX_PRINT_HEADER_ARRAY("gain_curve", "%d", 3,                  currentPidProfile->gain_curve);
+        BLACKBOX_PRINT_HEADER_LINE("tvRollPID", "%d,%d,%d,%d,%d",           currentTvPidProfile->pid[PID_ROLL].P,
+                                                                            currentTvPidProfile->pid[PID_ROLL].I,
+                                                                            currentTvPidProfile->pid[PID_ROLL].D,
+                                                                            currentTvPidProfile->pid[PID_ROLL].F,
+                                                                            currentTvPidProfile->pid[PID_ROLL].B);
+        BLACKBOX_PRINT_HEADER_LINE("tvPitchPID", "%d,%d,%d,%d,%d",          currentTvPidProfile->pid[PID_PITCH].P,
+                                                                            currentTvPidProfile->pid[PID_PITCH].I,
+                                                                            currentTvPidProfile->pid[PID_PITCH].D,
+                                                                            currentTvPidProfile->pid[PID_PITCH].F,
+                                                                            currentTvPidProfile->pid[PID_PITCH].B);
+        BLACKBOX_PRINT_HEADER_LINE("tvYawPID", "%d,%d,%d,%d,%d",            currentTvPidProfile->pid[PID_YAW].P,
+                                                                            currentTvPidProfile->pid[PID_YAW].I,
+                                                                            currentTvPidProfile->pid[PID_YAW].D,
+                                                                            currentTvPidProfile->pid[PID_YAW].F,
+                                                                            currentTvPidProfile->pid[PID_YAW].B);
+        BLACKBOX_PRINT_HEADER_ARRAY("tv_master_gain", "%d", 3,              currentTvPidProfile->master_gain);
+        BLACKBOX_PRINT_HEADER_ARRAY("tv_gain_curve", "%d", 3,               currentTvPidProfile->gain_curve);
+        // One line per curve; add lines here if GAIN_CURVE_COUNT grows
+        STATIC_ASSERT(GAIN_CURVE_COUNT == 8, blackbox_gain_curve_headers_mismatch);
+        BLACKBOX_PRINT_HEADER_CUSTOM(blackboxPrintGainCurveHeader(0);)
+        BLACKBOX_PRINT_HEADER_CUSTOM(blackboxPrintGainCurveHeader(1);)
+        BLACKBOX_PRINT_HEADER_CUSTOM(blackboxPrintGainCurveHeader(2);)
+        BLACKBOX_PRINT_HEADER_CUSTOM(blackboxPrintGainCurveHeader(3);)
+        BLACKBOX_PRINT_HEADER_CUSTOM(blackboxPrintGainCurveHeader(4);)
+        BLACKBOX_PRINT_HEADER_CUSTOM(blackboxPrintGainCurveHeader(5);)
+        BLACKBOX_PRINT_HEADER_CUSTOM(blackboxPrintGainCurveHeader(6);)
+        BLACKBOX_PRINT_HEADER_CUSTOM(blackboxPrintGainCurveHeader(7);)
         BLACKBOX_PRINT_HEADER_LINE("cross_axis_relax", "%d,%d,%d,%d",       currentPidProfile->cross_axis_relax_strength,
                                                                             currentPidProfile->cross_axis_relax_level,
                                                                             currentPidProfile->cross_axis_relax_cutoff,
