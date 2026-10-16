@@ -78,6 +78,41 @@ const tvPidAxisData_t * tvPidGetAxisData(void)
     return tvPid.data;
 }
 
+static uint32_t tvPidScaleToCentiPercent(float scale)
+{
+    return lrintf(fmaxf(0.0f, scale) * 10000.0f);
+}
+
+static uint32_t tvPidGainToCenti(float gain)
+{
+    return lrintf(fmaxf(0.0f, gain) * 100.0f);
+}
+
+// Mirrors pidGetRuntimeGains() for this loop, following tvPidApplyAxis():
+// master gain (with its curve) scales P, I, D and F, B is unscaled, and there
+// is no throttle or speed attenuation.
+void tvPidGetRuntimeGains(tvPidRuntimeGains_t *runtimeGains)
+{
+    memset(runtimeGains, 0, sizeof(*runtimeGains));
+
+    for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+        const pidf_t *raw = &currentTvPidProfile->pid[axis];
+        const float gainCurve = pidGetGainCurveScale(tvPid.gainCurveIndex[axis], axis);
+        const float masterGain = tvPid.masterGain[axis] * gainCurve;
+
+        runtimeGains->raw[axis] = *raw;
+        runtimeGains->masterGain[axis] = currentTvPidProfile->master_gain[axis];
+        runtimeGains->gainCurve[axis] = tvPidScaleToCentiPercent(gainCurve);
+        runtimeGains->gainCurvePosition[axis] = tvPidScaleToCentiPercent(pidGetGainCurvePosition(axis));
+
+        runtimeGains->effective[axis].P = tvPidGainToCenti(raw->P * masterGain);
+        runtimeGains->effective[axis].I = tvPidGainToCenti(raw->I * masterGain);
+        runtimeGains->effective[axis].D = tvPidGainToCenti(raw->D * masterGain);
+        runtimeGains->effective[axis].F = tvPidGainToCenti(raw->F * masterGain);
+        runtimeGains->effective[axis].B = tvPidGainToCenti(raw->B);
+    }
+}
+
 void tvPidReset(void)
 {
     memset(tvPid.data, 0, sizeof(tvPid.data));

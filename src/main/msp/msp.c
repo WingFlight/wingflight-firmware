@@ -1337,6 +1337,31 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
     }
 
+    case MSP2_WING_TV_EFFECTIVE_PID_GAINS: {
+        tvPidRuntimeGains_t runtimeGains;
+        tvPidGetRuntimeGains(&runtimeGains);
+
+        sbufWriteU8(dst, 1); // payload version
+        sbufWriteU8(dst, getCurrentTvProfileIndex());
+
+        for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+            sbufWriteU16(dst, runtimeGains.raw[axis].P);
+            sbufWriteU16(dst, runtimeGains.raw[axis].I);
+            sbufWriteU16(dst, runtimeGains.raw[axis].D);
+            sbufWriteU16(dst, runtimeGains.raw[axis].F);
+            sbufWriteU16(dst, runtimeGains.raw[axis].B);
+            sbufWriteU16(dst, runtimeGains.masterGain[axis]);
+            sbufWriteU32(dst, runtimeGains.gainCurve[axis]);
+            sbufWriteU32(dst, runtimeGains.gainCurvePosition[axis]);
+            sbufWriteU32(dst, runtimeGains.effective[axis].P);
+            sbufWriteU32(dst, runtimeGains.effective[axis].I);
+            sbufWriteU32(dst, runtimeGains.effective[axis].D);
+            sbufWriteU32(dst, runtimeGains.effective[axis].F);
+            sbufWriteU32(dst, runtimeGains.effective[axis].B);
+        }
+        break;
+    }
+
 #if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
     case MSP2_WING_FBUS_SENSORS: {
         const uint8_t count = fbusSensorGetObservedCount();
