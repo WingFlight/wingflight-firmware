@@ -194,6 +194,7 @@ float pidGetFeedforward(int axis, float rate);
 const pidAxisData_t * pidGetAxisData(void);
 float pidItermDecayRate(uint8_t decayTime);
 uint8_t pidItermRelaxCutoff(uint8_t score);
+float pidGetGainCurvePosition(uint8_t axis);
 float pidGetGainCurveScale(uint8_t curveIndex, uint8_t axis);
 float pidGetGainCurveScaleAt(uint8_t curveIndex, float position);
 void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains);

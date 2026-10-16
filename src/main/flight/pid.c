@@ -1018,7 +1018,9 @@ static float pidEvaluateGainCurve(const gainCurve_t *curve, float mag)
     return 1.0f;
 }
 
-static float pidAxisGainCurvePosition(uint8_t axis)
+// Gain curve position (0..1) for an axis: its |stick deflection|. Shared with
+// the thrust-vector loop so its runtime gains report the same position.
+float pidGetGainCurvePosition(uint8_t axis)
 {
     return fminf(1.0f, fabsf(getRcDeflection(axis)));
 }
@@ -1029,7 +1031,7 @@ static float pidAxisGainCurvePosition(uint8_t axis)
 // and CLI array writes are unchecked) count as no curve.
 float pidGetGainCurveScale(uint8_t curveIndex, uint8_t axis)
 {
-    return pidGetGainCurveScaleAt(curveIndex, pidAxisGainCurvePosition(axis));
+    return pidGetGainCurveScaleAt(curveIndex, pidGetGainCurvePosition(axis));
 }
 
 // Same, at a caller-supplied 0..1 position (GPS speed attenuation's speed / speed_max).
@@ -1101,7 +1103,7 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
         runtimeGains->raw[axis] = *raw;
         runtimeGains->masterGain[axis] = currentPidProfile->master_gain[axis];
         runtimeGains->gainCurve[axis] = pidScaleToCentiPercent(gainCurve);
-        runtimeGains->gainCurvePosition[axis] = pidScaleToCentiPercent(pidAxisGainCurvePosition(axis));
+        runtimeGains->gainCurvePosition[axis] = pidScaleToCentiPercent(pidGetGainCurvePosition(axis));
 
         runtimeGains->effective[axis].P = pidGainToCenti(raw->P * masterGain * atten);
         runtimeGains->effective[axis].I = pidGainToCenti(raw->I * masterGain);
