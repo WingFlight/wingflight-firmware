@@ -3805,7 +3805,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP2_WING_SET_TV_PID_CONFIG:
-        if (dataSize != PID_ITEM_COUNT * 5 * sizeof(uint16_t) + 3 * sizeof(uint16_t) + 3 + PID_AXIS_COUNT * 6
+        // PIDFB, master gains, iterm_decay_limit, eight per-axis U8 arrays,
+        // hold gain/deadband and hold max rate: 65 bytes
+        if (dataSize != PID_ITEM_COUNT * 5 * sizeof(uint16_t) + 3 * sizeof(uint16_t) + 1 + PID_AXIS_COUNT * 8
                          + 2 * sizeof(uint8_t) + sizeof(uint16_t)) {
             return MSP_RESULT_ERROR;
         }
