@@ -104,6 +104,19 @@ bool mixerSaturated(uint8_t index)
     return (mixer.saturation[index] > 0);
 }
 
+// True if any active rule reads this input. Reads the rules directly rather than the mapping
+// built in mixerInit(), because MSP_SET_MIXER_RULE edits rules live.
+bool mixerInputUsed(uint8_t index)
+{
+    for (int i = 0; i < MIXER_RULE_COUNT; i++) {
+        if (mixerRules(i)->oper != MIXER_OP_NUL && mixerRules(i)->input == index) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // True while PASSTHROUGH or MANUAL replaces the PID output on the stabilized roll/pitch/yaw
 // inputs. Failsafe overrides both (see mixerUpdateInputs()).
 bool mixerStabilizationBypassed(void)
