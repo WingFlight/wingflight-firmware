@@ -42,6 +42,7 @@ typedef struct {
     bool        Active;
     bool        Tracking[3];   // per-axis: true while that axis's target is free-tracking (its own
                                 // stick active, or still settling after the stick was released)
+    bool        Free[3];       // per-axis: never held, always tracking -- see quatHoldSetFree
     float       SettleTime[3]; // per-axis: seconds since that axis's stick returned inside the deadband
     float       StallTime[3];  // per-axis: seconds a frozen axis has had a large error with no motion
     float       BleedTime[3];  // per-axis: seconds of full-rate I decay left after a stall re-capture
@@ -58,6 +59,14 @@ typedef struct {
 // gain is already scaled to deg/s per degree; deadband is a fraction (constrained to 0..1 here).
 void quatHoldInit(quatHold_t *hold, float gain, float deadband, float maxRate);
 void quatHoldSetGain(quatHold_t *hold, float gain);
+
+// Marks an axis the hold has no actuator for, e.g. roll on a pitch/yaw-only thrust-vector nozzle.
+// A free axis always tracks, so it never builds an error it cannot correct. With exactly one free
+// axis the hold keeps only where that body axis points and ignores rotation about it: the target
+// is re-based on the current attitude every loop with the twist about the free axis removed, so
+// the held direction stays fixed in the world while the airframe turns about it. Two or more free
+// axes simply track. Engines that never call this hold all three axes.
+void quatHoldSetFree(quatHold_t *hold, int axis, bool free);
 
 // Call every PID loop with the desired engaged state; captures a fresh target on the rising edge.
 void quatHoldSetState(quatHold_t *hold, bool state);

@@ -104,6 +104,38 @@ void quatHoldSetGain(quatHold_t *hold, float gain)
     hold->Gain = gain;
 }
 
+void quatHoldSetFree(quatHold_t *hold, int axis, bool free)
+{
+    hold->Free[axis] = free;
+}
+
+// Swing part of q about body axis k: q = swing (x) twist, where twist is the rotation about axis k
+// and swing has no component along it. swing moves body axis k exactly where q does, so re-basing
+// the target on swing alone keeps where that axis points and drops any rotation about it. Left
+// unchanged when the twist is undefined (q is a 180 degree swing).
+static void quatHoldSwing(quaternion *q, int k)
+{
+    const float qk = (k == FD_ROLL) ? q->x : (k == FD_PITCH) ? q->y : q->z;
+    const float norm = sqrtf(sq(q->w) + sq(qk));
+
+    if (norm < 1e-6f) {
+        return;
+    }
+
+    quaternion twistConj = { .w = q->w / norm };
+    if (k == FD_ROLL) {
+        twistConj.x = -qk / norm;
+    } else if (k == FD_PITCH) {
+        twistConj.y = -qk / norm;
+    } else {
+        twistConj.z = -qk / norm;
+    }
+
+    quaternion swing;
+    imuQuaternionMultiplication(q, &twistConj, &swing);
+    *q = swing;
+}
+
 // Called once on the rising edge of the mode so a stale target from a previous engagement can
 // never linger.
 void quatHoldSetState(quatHold_t *hold, bool state)
@@ -172,7 +204,7 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
                 hold->BleedTime[i] = fmaxf(0.0f, hold->BleedTime[i] - dT);
             }
 
-            if (fabsf(getDeflection(i)) > hold->Deadband) {
+            if (hold->Free[i] || fabsf(getDeflection(i)) > hold->Deadband) {
                 hold->Tracking[i] = true;
                 hold->SettleTime[i] = 0.0f;
             } else if (hold->Tracking[i]) {
@@ -200,6 +232,23 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
             qError.x = -qError.x;
             qError.y = -qError.y;
             qError.z = -qError.z;
+        }
+
+        // One free axis: hold only where it points (see quatHoldSetFree). Without this, rotation
+        // about the free axis -- e.g. torque roll in a thrust-vector hang -- leaves the held
+        // offset on the other two axes expressed in a turning body frame, so the held direction
+        // drifts with the roll. Zeroing the free axis's component (the qKeep step below) alone
+        // does not remove the twist exactly.
+        int freeAxis = -1;
+        int freeCount = 0;
+        for (int i = 0; i < 3; i++) {
+            if (hold->Free[i]) {
+                freeAxis = i;
+                freeCount++;
+            }
+        }
+        if (freeCount == 1) {
+            quatHoldSwing(&qError, freeAxis);
         }
 
         // Standard geometric attitude-control error term (2 * vector part), singularity-free

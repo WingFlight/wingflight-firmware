@@ -3,6 +3,31 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Thrust Vector Tuned for the Hang
+
+The thrust vector loop now has its own defaults, taken from prop-hang logs of a
+single pusher with a pitch/yaw nozzle, instead of copies of the main loop's.
+
+| Setting | Old | New |
+| --- | --- | --- |
+| `tv_*_p_gain` | 105 (yaw 190) | 150 |
+| `tv_*_i_gain` | 45 | 15 |
+| `tv_*_f_gain` | 65 | 30 |
+| `tv_error_limit` | 45,45,60 | 25,25,25 |
+| `tv_iterm_decay_time` | 60,60,60 | 30,30,30 |
+| `tv_iterm_decay_limit` | 35 | 0 (no cap) |
+| `tv_hold_gain` | 40 | 25 |
+
+The old I parked the nozzle at up to half its travel and took over a second to
+return to centre after a stick move. `PG_THRUST_VECTOR_PROFILE` version bumped,
+so TV profiles reset to the new defaults on update.
+
+A TV axis that no mixer rule drives (`Stabilized TV Roll` on a pitch/yaw nozzle)
+now outputs zero and builds no I. Thrust Vector Attitude Hold leaves that axis
+free: with one free axis it holds only the direction of the thrust axis and
+ignores rotation about it, so torque roll in a hang no longer turns the
+pitch/yaw correction with the airframe. The main loop's ATTHOLD is unchanged.
+
 ## FBUS Mux FPGA (STM32F7X2M)
 
 Boards with an iCE40 FPGA between the MCU and the servo/ESC outputs (FrSky

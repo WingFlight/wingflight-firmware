@@ -507,6 +507,14 @@ static void tvPidApplyAxis(uint8_t axis)
         setpoint = tvHoldApply(axis, setpoint);
     }
 
+    // No mixer rule drives this axis, so there is nothing to stabilize: output zero instead of
+    // integrating I that no actuator can act on (e.g. roll on a pitch/yaw nozzle). After the
+    // hold call above, which must still run for every axis -- it does its shared work on roll.
+    if (!tvPidAxisDriven(axis)) {
+        memset(&tvPid.data[axis], 0, sizeof(tvPid.data[axis]));
+        return;
+    }
+
     // Gyro rate through the TV loop's own filter, independent of the main loop
     const float gyroRate = filterApply(&tvPid.gyrorFilter[axis], gyro.gyroADCf[axis]);
 

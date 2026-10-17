@@ -29,6 +29,7 @@
 #include "config/config.h"
 
 #include "flight/hold_engine.h"
+#include "flight/mixer.h"
 
 #include "tv_hold.h"
 
@@ -70,6 +71,17 @@ void set_ADJUSTMENT_TV_HOLD_GAIN(int value)
 // previous engagement can never linger -- mirrors attHoldSetState.
 void tvHoldSetState(bool state)
 {
+    // An axis no mixer rule drives from its TV input has no actuator, so the hold
+    // leaves it free. On a pitch/yaw nozzle that is roll: the airframe can't stop
+    // torque roll in a hang, and holding roll would only build an error that turns
+    // the pitch/yaw correction with the airframe (see quatHoldSetFree). Taken at
+    // engagement, so live mixer edits apply the next time the hold engages.
+    if (state && !tvHold.Active) {
+        for (int axis = 0; axis < 3; axis++) {
+            quatHoldSetFree(&tvHold, axis, !tvPidAxisDriven(axis));
+        }
+    }
+
     quatHoldSetState(&tvHold, state);
 }
 

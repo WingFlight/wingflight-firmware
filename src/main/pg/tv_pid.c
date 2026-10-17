@@ -38,34 +38,40 @@
 // I 60), matching the main loop. v7->v8: P and I raised by a further 25%
 // (roll and pitch P 150, I 75; yaw P 310, I 75), matching the main loop.
 // v8->v9: P and I lowered (roll and pitch P 105, I 45; yaw P 190, I 45) and
-// F 75 -> 65, matching the main loop.
-PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 9);
+// F 75 -> 65, matching the main loop. v9->v10: tuned for a nozzle instead of
+// copied from the main loop -- see resetTvPidProfile().
+PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 10);
 
-// Nominal starting gains, mirroring the main loop's defaults
-// (resetPidProfile() in pg/pid.c) -- a reasonable bench-tuning starting point
-// rather than an inert (all-zero) loop, since the feature itself already
-// ships behind FEATURE_THRUST_VECTOR (off by default).
+// Defaults for a vectored nozzle, from prop-hang logs of a single pusher with a
+// pitch/yaw nozzle, rather than the main loop's surface defaults:
+// - Same gains on every axis: a nozzle is symmetric. The main loop's higher
+//   yaw P makes up for a weak rudder, which a nozzle is not.
+// - Low F: with no airflow to damp it, a steady nozzle deflection gives a
+//   steady rotational acceleration, not a steady rate, so rate feedforward
+//   over-drives the hang. P carries the response instead.
+// - Small, fast-draining I: the default I parked the nozzle at up to half its
+//   travel and took over a second to bleed off after a stick move. TV hold
+//   already supplies the long-term correction through its attitude error.
+// - A gentler hold gain, so the hold stays well inside the rate loop's response.
 void resetTvPidProfile(tvPidProfile_t *tvPidProfile)
 {
     RESET_CONFIG(tvPidProfile_t, tvPidProfile,
         .pid = {
-            [PID_ROLL]  = { .P = 105, .I = 45, .D = 0, .F = 65, .B = 35, },
-            [PID_PITCH] = { .P = 105, .I = 45, .D = 0, .F = 65, .B = 35, },
-            [PID_YAW]   = { .P = 190, .I = 45, .D = 0, .F = 65, .B = 35, },
+            [PID_ROLL]  = { .P = 150, .I = 15, .D = 0, .F = 30, .B = 35, },
+            [PID_PITCH] = { .P = 150, .I = 15, .D = 0, .F = 30, .B = 35, },
+            [PID_YAW]   = { .P = 150, .I = 15, .D = 0, .F = 30, .B = 35, },
         },
         .master_gain = { [PID_ROLL] = 100, [PID_PITCH] = 100, [PID_YAW] = 100 },
         .gain_curve = { [PID_ROLL] = 0, [PID_PITCH] = 0, [PID_YAW] = 0 },
-        .iterm_decay_time = { 60, 60, 60 },
-        .iterm_decay_limit = 35,
+        .iterm_decay_time = { 30, 30, 30 },
+        .iterm_decay_limit = 0,     // no linear cap, so a large I drains exponentially
         .iterm_relax_level = { 22, 22, 22 },
         .iterm_relax = { ITERM_RELAX_DEFAULT, ITERM_RELAX_DEFAULT, ITERM_RELAX_DEFAULT },
-        .error_limit = { 45, 45, 60 },
+        .error_limit = { 25, 25, 25 },
         .dterm_cutoff = { 15, 15, 20 },
         .bterm_cutoff = { 15, 15, 20 },
         .gyro_cutoff = { 50, 50, 100 },
-        // Mirrors pidProfile_t's atthold defaults (pg/pid.c) -- same reasonable
-        // bench-tuning starting point, not an inert (all-zero) hold.
-        .hold = { .gain = 40, .deadband = 5, .max_rate = 300 },
+        .hold = { .gain = 25, .deadband = 5, .max_rate = 300 },
     );
 }
 
