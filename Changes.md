@@ -59,6 +59,9 @@ bitstream; `STM32F7X2` is unchanged. The board identifier is `S7XM`.
 - The bitstream leaves an FBUS output whose line is stuck (e.g. floating with
   nothing connected) out of the combined servo response, so it can no longer
   corrupt every device's answer, and takes it back once the line is idle.
+- The bitstream is built for the RF007 V3's 26 MHz FPGA oscillator. A board
+  with another oscillator frequency needs a bitstream built for it (the config
+  UART tolerates about ±2 %).
 - New PG `fbusMuxFpgaConfig` (1025). `fbusMasterConfig` version bumped for
   the send pin, so FBUS master settings reset to defaults on update.
 
