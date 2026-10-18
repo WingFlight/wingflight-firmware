@@ -360,4 +360,7 @@
 // axes but without its throttle/speed attenuation, which the TV loop never applies.
 // 0x5F26, not 0x5F25: that one is taken by parameter work on an open branch.
 #define MSP2_WING_TV_EFFECTIVE_PID_GAINS      0x5F26
+// Per PWM servo: the rate (Hz) it really runs at and the first servo on its hardware
+// timer. Servos on one timer run at the lowest rate set among them (flight/servos.c).
+#define MSP2_WING_SERVO_TIMING                0x5F27
 #define MSP_V2_FRAME                         255
