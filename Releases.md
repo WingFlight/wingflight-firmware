@@ -1,3 +1,12 @@
+# 0.0.36
+
+The MSP API stays at 22.14. Updating keeps your settings, except the Thrust Vector profiles, which reset to the new defaults. Use the 0.0.36 Configurator and Lua suites with this firmware.
+Retune the Thrust Vector defaults for a nozzle: P 150 on every axis, I 15, F 30, error limit 25, I-term decay 0.30 s with no linear cap, and hold gain 25.
+Leave a Thrust Vector axis with no mixer rule free: it outputs nothing and builds no I, and TV Hold does not hold it. With roll free, TV Hold keeps only where the thrust points, so torque roll in a hang no longer turns the pitch/yaw correction.
+Fix Thrust Vector saves from the Configurator and the Ethos suite being rejected.
+Report the Thrust Vector loop's live gains over MSP (MSP2_WING_TV_EFFECTIVE_PID_GAINS), and log master gain, the gain curves and the Thrust Vector tune in the Blackbox header.
+Keep each servo's Rate as set when servos share a hardware timer. They still run at the lowest rate among them, but changing one no longer overwrites the others after a reboot. MSP2_WING_SERVO_TIMING reports the rate each servo runs at and which servos share a timer.
+
 # 0.0.35
 
 The MSP API stays at 22.14. Updating keeps your settings. Use the 0.0.35 Configurator and Lua suites with this firmware.
