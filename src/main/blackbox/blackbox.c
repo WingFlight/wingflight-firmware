@@ -211,7 +211,7 @@ static const blackboxDeltaFieldDefinition_t blackboxMainFields[] =
     {"axisB",       1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(BOOST)},
     {"axisB",       2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(BOOST)},
 
-    /* Thrust Vector's independent PID loop (FEATURE_THRUST_VECTOR) */
+    /* Thrust Vector's independent PID loop, when a mixer rule uses it */
     {"tvAxisP",     0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
     {"tvAxisP",     1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
     {"tvAxisP",     2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),    .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(TAG2_3S32),  CONDITION(THRUST_VECTOR)},
@@ -574,8 +574,11 @@ static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
              currentPidProfile->pid[PID_ROLL].B > 0 ||
              currentPidProfile->pid[PID_YAW].B > 0);
 
+    // Taken at log start with the rest of the condition cache, so the field set stays fixed for
+    // the whole log even if the mixer rules are edited while it runs.
     case CONDITION(THRUST_VECTOR):
-        return isFieldEnabled(FIELD_SELECT(PID)) && featureIsEnabled(FEATURE_THRUST_VECTOR);
+        return isFieldEnabled(FIELD_SELECT(PID)) &&
+            (tvPidAxisDriven(PID_ROLL) || tvPidAxisDriven(PID_PITCH) || tvPidAxisDriven(PID_YAW));
 
     case CONDITION(ATTITUDE):
         return isFieldEnabled(FIELD_SELECT(ATTITUDE));

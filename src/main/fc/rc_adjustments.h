@@ -168,7 +168,7 @@ typedef enum {
     ADJUSTMENT_SERVO_TRIM_PITCH           = 90,
     ADJUSTMENT_SERVO_TRIM_YAW             = 91,
 
-    // Thrust Vector -- independent PID loop (FEATURE_THRUST_VECTOR)
+    // Thrust Vector -- independent PID loop
     ADJUSTMENT_TV_MASTER_GAIN_ROLL         = 92,
     ADJUSTMENT_TV_MASTER_GAIN_PITCH        = 93,
     ADJUSTMENT_TV_MASTER_GAIN_YAW          = 94,

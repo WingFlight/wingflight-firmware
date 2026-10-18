@@ -78,7 +78,7 @@ typedef enum {
     BOXAUTOTRIM,        // AUTO TRIM: while armed, captures actual servo output over a fixed window
                          // and writes it as the new center (see flight/autotrim.c)
     BOXTHRUSTVECTOR,    // THRUST VECTOR: live on/off for the independent TV mixer output
-                         // (FEATURE_THRUST_VECTOR) -- gates the mix only, not a flight mode
+                         // -- gates the mix only, not a flight mode
                          // (see subTaskPidController() in fc/core.c)
     BOXTVHOLD,          // THRUST VECTOR ATTITUDE HOLD: independent quaternion attitude/heading hold for the
                          // Thrust Vector loop only (flight/tv_hold.c) -- decoupled from the
