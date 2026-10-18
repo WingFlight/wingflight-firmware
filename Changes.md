@@ -3,6 +3,21 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Thrust Vector Always Available
+
+The `THRUST_VECTOR` feature is gone. The Thrust Vector loop, its mixer inputs
+and the `THRUST VECTOR` and `THRUST VECTOR ATTITUDE HOLD` modes are always
+there; the `THRUST VECTOR` mode switch still turns the nozzle mix on and off.
+Feature bit 24 is now unused and is cleared from stored configs; `feature
+THRUST_VECTOR` is no longer accepted in the CLI. Blackbox logs the TV PID
+terms when a mixer rule uses a TV input, instead of when the feature was on.
+
+`tv_hold_gain` default 25 -> 45. In a hang the nozzle cannot stop torque roll,
+so the pointing error turns round the airframe and the I-term cannot build
+against it; at 25 the hold used only about 30% of the nozzle at 70 degrees off
+target while the nose sagged. `PG_THRUST_VECTOR_PROFILE` version bumped, so TV
+profiles reset to the new defaults on update.
+
 ## Thrust Vector Tuned for the Hang
 
 The thrust vector loop now has its own defaults, taken from prop-hang logs of a

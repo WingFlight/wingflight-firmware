@@ -248,10 +248,8 @@ void initActiveBoxIds(void)
     BME(BOXAUTOTRIM);
     BME(BOXGOVERNOR);
 
-    if (featureIsEnabled(FEATURE_THRUST_VECTOR)) {
-        BME(BOXTHRUSTVECTOR);
-        BME(BOXTVHOLD);
-    }
+    BME(BOXTHRUSTVECTOR);
+    BME(BOXTVHOLD);
 
 #ifdef USE_TELEMETRY
     if (featureIsEnabled(FEATURE_TELEMETRY)) {

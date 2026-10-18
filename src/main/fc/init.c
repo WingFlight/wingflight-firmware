@@ -688,9 +688,8 @@ void init(void)
     // Initialize PID control
     pidInit(currentPidProfile);
 
-    // Initialize the independent Thrust Vector PID loop. Always initialised (state
-    // stays valid even if FEATURE_THRUST_VECTOR is toggled without a reboot) -- only
-    // its execution is gated by the feature flag, in subTaskPidController().
+    // Initialize the independent Thrust Vector PID loop. Always initialised -- only
+    // its execution is gated, by BOXTHRUSTVECTOR in subTaskPidController().
     tvPidInit(currentTvPidProfile);
     tvHoldInit(currentTvPidProfile);
 

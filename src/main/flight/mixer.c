@@ -374,14 +374,12 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_STABILIZED_PITCH, pidGetOutput(PID_PITCH));
     mixerSetInput(MIXER_IN_STABILIZED_YAW, pidGetOutput(PID_YAW));
 
-    // Independent Thrust Vector stabilised inputs. Left at their zero default
-    // when the feature is disabled, so any mixer rule referencing them is a
-    // harmless no-op.
-    if (featureIsEnabled(FEATURE_THRUST_VECTOR)) {
-        mixerSetInput(MIXER_IN_STABILIZED_TV_ROLL, tvPidGetOutput(PID_ROLL));
-        mixerSetInput(MIXER_IN_STABILIZED_TV_PITCH, tvPidGetOutput(PID_PITCH));
-        mixerSetInput(MIXER_IN_STABILIZED_TV_YAW, tvPidGetOutput(PID_YAW));
-    }
+    // Independent Thrust Vector stabilised inputs. Zero while BOXTHRUSTVECTOR is
+    // off (the TV loop is reset then, see subTaskPidController()), so a mixer rule
+    // referencing them is a harmless no-op until the switch is on.
+    mixerSetInput(MIXER_IN_STABILIZED_TV_ROLL, tvPidGetOutput(PID_ROLL));
+    mixerSetInput(MIXER_IN_STABILIZED_TV_PITCH, tvPidGetOutput(PID_PITCH));
+    mixerSetInput(MIXER_IN_STABILIZED_TV_YAW, tvPidGetOutput(PID_YAW));
 
     // BOXPASSTHROUGH/BOXMANUAL bypass PID/leveling entirely, taking whatever the RC channel
     // currently reads. During a real signal loss, aux/mode channels hold their last value

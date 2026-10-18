@@ -39,8 +39,9 @@
 // (roll and pitch P 150, I 75; yaw P 310, I 75), matching the main loop.
 // v8->v9: P and I lowered (roll and pitch P 105, I 45; yaw P 190, I 45) and
 // F 75 -> 65, matching the main loop. v9->v10: tuned for a nozzle instead of
-// copied from the main loop -- see resetTvPidProfile().
-PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 10);
+// copied from the main loop -- see resetTvPidProfile(). v10->v11: hold gain
+// 25 -> 45.
+PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles, PG_THRUST_VECTOR_PROFILE, 11);
 
 // Defaults for a vectored nozzle, from prop-hang logs of a single pusher with a
 // pitch/yaw nozzle, rather than the main loop's surface defaults:
@@ -52,7 +53,12 @@ PG_REGISTER_ARRAY_WITH_RESET_FN(tvPidProfile_t, PID_PROFILE_COUNT, tvPidProfiles
 // - Small, fast-draining I: the default I parked the nozzle at up to half its
 //   travel and took over a second to bleed off after a stick move. TV hold
 //   already supplies the long-term correction through its attitude error.
-// - A gentler hold gain, so the hold stays well inside the rate loop's response.
+// - A firm hold gain. Roll is free on a pitch/yaw nozzle, so in a hang the
+//   airframe torque-rolls and the pointing error turns round the body about
+//   once a second. I cannot build against that, so the hold's attitude error
+//   has to carry the correction: at 25 a 70 degree error used only ~30% of the
+//   nozzle while the nose sagged. The rate loop showed no oscillation, so
+//   there is room for more.
 void resetTvPidProfile(tvPidProfile_t *tvPidProfile)
 {
     RESET_CONFIG(tvPidProfile_t, tvPidProfile,
@@ -71,7 +77,7 @@ void resetTvPidProfile(tvPidProfile_t *tvPidProfile)
         .dterm_cutoff = { 15, 15, 20 },
         .bterm_cutoff = { 15, 15, 20 },
         .gyro_cutoff = { 50, 50, 100 },
-        .hold = { .gain = 25, .deadband = 5, .max_rate = 300 },
+        .hold = { .gain = 45, .deadband = 5, .max_rate = 300 },
     );
 }
 

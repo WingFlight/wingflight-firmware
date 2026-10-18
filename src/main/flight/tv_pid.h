@@ -24,7 +24,7 @@
 
 #include "flight/pid.h"
 
-// Independent Thrust Vector rate-PID loop (FEATURE_THRUST_VECTOR). Targets the
+// Independent Thrust Vector rate-PID loop. Targets the
 // same setpoint as the main roll/pitch/yaw loop but with its own gains/filters/
 // iterm state, feeding the MIXER_IN_STABILIZED_TV_ROLL/PITCH/YAW mixer inputs.
 

@@ -20,7 +20,7 @@
 #include "pg/pg.h"
 #include "pg/pid.h"
 
-// Config for the independent Thrust Vector PID loop (FEATURE_THRUST_VECTOR).
+// Config for the independent Thrust Vector PID loop.
 // A deliberately trimmed-down sibling of pidProfile_t: no pid_mode, gain_curve,
 // fw_tpa, trainer, or cross-axis relax -- those are all main-loop flight-mode
 // concerns that don't apply to a raw vectoring actuator loop. PID_PROFILE_COUNT
