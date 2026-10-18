@@ -77,6 +77,8 @@ ADJFUN_DECLARE(SERVO_TRIM_PITCH)
 ADJFUN_DECLARE(SERVO_TRIM_YAW)
 
 uint8_t getServoCount(void);
+uint16_t getServoRunRate(uint8_t servo);
+uint8_t getServoTimerGroup(uint8_t servo);
 uint16_t getServoOutput(uint8_t servo);
 
 int16_t getServoOverride(uint8_t servo);

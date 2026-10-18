@@ -57,6 +57,13 @@ static FAST_DATA_ZERO_INIT float        servoInput[MAX_SUPPORTED_SERVOS];
 static FAST_DATA_ZERO_INIT float        servoOutput[MAX_SUPPORTED_SERVOS];
 static FAST_DATA_ZERO_INIT float        servoResolution[MAX_SUPPORTED_SERVOS];
 
+// Outputs on one hardware timer share its period, so they all run at the
+// lowest rate set among them (servoInit()). The stored rates are left as set;
+// these hold the rate each output really runs at, and the first output on
+// its timer, for MSP2_WING_SERVO_TIMING.
+static uint16_t servoRunRate[MAX_SUPPORTED_SERVOS];
+static uint8_t  servoTimerGroup[MAX_SUPPORTED_SERVOS];
+
 static FAST_DATA_ZERO_INIT int16_t      servoOverride[MAX_SUPPORTED_SERVOS];
 
 // Lapse time of an override set with a timeout (MSP_SET_SERVO_OVERRIDE with the
@@ -268,6 +275,16 @@ uint8_t getServoCount(void)
     return servoCount;
 }
 
+uint16_t getServoRunRate(uint8_t servo)
+{
+    return (servo < servoCount) ? servoRunRate[servo] : 0;
+}
+
+uint8_t getServoTimerGroup(uint8_t servo)
+{
+    return (servo < servoCount) ? servoTimerGroup[servo] : servo;
+}
+
 uint16_t getServoOutput(uint8_t servo)
 {
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
@@ -434,8 +451,12 @@ void servoInit(void)
     {
         uint32_t update_rate = servoParams(index)->rate;
 
+        servoTimerGroup[index] = index;
+
         for (jndex = 0; jndex < servoCount; jndex++) {
             if (timer[index]->tim == timer[jndex]->tim) {
+                if (jndex < servoTimerGroup[index])
+                    servoTimerGroup[index] = jndex;
                 uint32_t maxpulse = servoParams(jndex)->mid + servoTravelMax(jndex);
                 uint32_t maxrate = MIN(servoParams(jndex)->rate, 950000 / maxpulse);  // 1000000 / (maxpulse +5%)
                 if (maxrate < update_rate)
@@ -452,7 +473,7 @@ void servoInit(void)
         const uint32_t update_rate = rates[index];
         uint32_t timebase;
 
-        servoParamsMutable(index)->rate = update_rate;
+        servoRunRate[index] = update_rate;
 
         if (update_rate > 500) {
             const uint32_t timer_rate = update_rate * 64000;

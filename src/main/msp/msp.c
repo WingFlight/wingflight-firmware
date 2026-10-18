@@ -1337,6 +1337,17 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
     }
 
+    case MSP2_WING_SERVO_TIMING: {
+        const uint8_t count = getServoCount();
+
+        sbufWriteU8(dst, count);
+        for (uint8_t i = 0; i < count; i++) {
+            sbufWriteU16(dst, getServoRunRate(i));
+            sbufWriteU8(dst, getServoTimerGroup(i));
+        }
+        break;
+    }
+
     case MSP2_WING_TV_EFFECTIVE_PID_GAINS: {
         tvPidRuntimeGains_t runtimeGains;
         tvPidGetRuntimeGains(&runtimeGains);
