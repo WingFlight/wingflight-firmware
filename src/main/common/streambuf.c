@@ -36,7 +36,9 @@ sbuf_t *sbufInit(sbuf_t *sbuf, uint8_t *ptr, uint8_t *end)
 // (sbufWriteOverflowed()) instead of writing over whatever follows the buffer;
 // ptr stops at end. A function, not a macro, so `val` is evaluated exactly
 // once even when the byte is dropped (sbufWriteString() passes `*string++`).
-static inline void sbufPush(sbuf_t *dst, uint8_t val)
+// NOINLINE: one copy of the bounds check, not one per sbufWrite*() call site
+// (inlined, it no longer fit STM32F7X2 flash).
+static NOINLINE void sbufPush(sbuf_t *dst, uint8_t val)
 {
     if (dst->ptr < dst->end) {
         *dst->ptr++ = val;
