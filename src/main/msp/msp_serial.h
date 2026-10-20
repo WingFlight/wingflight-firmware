@@ -68,7 +68,13 @@ typedef enum {
 } mspPendingSystemRequest_e;
 
 #define MSP_PORT_INBUF_SIZE 192
-#define MSP_PORT_OUTBUF_SIZE_MIN 320
+// Also the telemetry reply buffer (MSP_TLM_OUTBUF_SIZE). Every reply a radio
+// reads must fit, or it is answered with an error (see sbufWriteOverflowed()):
+// MSP_ADJUSTMENT_RANGES 42 x 14 = 588 bytes, MSP_SERVO_CONFIGURATIONS up to
+// 1 + 32 x 16 = 513 with bus servos, MSP_MIXER_RULES 32 x 14 = 448.
+// MSP_SERVO_CURVES with bus servos (up to 1185) and a long
+// MSP2_WING_FBUS_SENSORS list do not fit: read those per index.
+#define MSP_PORT_OUTBUF_SIZE_MIN 640
 
 #ifdef USE_FLASHFS
 #define MSP_PORT_DATAFLASH_BUFFER_SIZE 4096
