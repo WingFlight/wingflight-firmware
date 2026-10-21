@@ -273,30 +273,28 @@ static uint16_t srxl2escPulseFromNormalized(float normalized)
 #if defined(USE_MOTOR)
     const motorConfig_t *config = motorConfig();
     const motorControlMode_e mode = config->dev.motorControlMode[0];
+    const float minCommand = config->mincommand[0];
+    const float minThrottle = config->minthrottle[0];
+    const float maxThrottle = config->maxthrottle[0];
     if (mode == MOTOR_CONTROL_BIDIR) {
         const float clamped = constrainf(normalized, -1.0f, 1.0f);
         if (clamped == 0.0f) {
-            pulseUs = (float)config->mincommand;
+            pulseUs = minCommand;
         } else {
-            pulseUs = scaleRangef(clamped,
-                -1.0f,
-                1.0f,
-                (float)config->minthrottle,
-                (float)config->maxthrottle);
+            pulseUs = scaleRangef(clamped, -1.0f, 1.0f, minThrottle, maxThrottle);
         }
     } else {
         const float clamped = constrainf(normalized, 0.0f, 1.0f);
         if (clamped == 0.0f) {
-            pulseUs = (float)config->mincommand;
+            pulseUs = minCommand;
         } else {
-            pulseUs = scaleRangef(clamped,
-                0.0f,
-                1.0f,
-                (float)config->minthrottle,
-                (float)config->maxthrottle);
+            pulseUs = scaleRangef(clamped, 0.0f, 1.0f, minThrottle, maxThrottle);
         }
     }
-    pulseUs = constrainf(pulseUs, (float)config->mincommand, (float)config->maxthrottle);
+    // Endpoints may be reversed, so clamp to whichever way round they are
+    const float pulseLow = MIN(minCommand, MIN(minThrottle, maxThrottle));
+    const float pulseHigh = MAX(minCommand, MAX(minThrottle, maxThrottle));
+    pulseUs = constrainf(pulseUs, pulseLow, pulseHigh);
 #else
     const float clamped = constrainf(normalized, 0.0f, 1.0f);
     pulseUs = 1000.0f + clamped * 1000.0f;

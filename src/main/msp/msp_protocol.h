@@ -363,4 +363,8 @@
 // Per PWM servo: the rate (Hz) it really runs at and the first servo on its hardware
 // timer. Servos on one timer run at the lowest rate set among them (flight/servos.c).
 #define MSP2_WING_SERVO_TIMING                0x5F27
+// Per-motor analog PWM endpoints in us: off (min_command), min and max throttle.
+// A min above max reverses that motor. MSP_MOTOR_CONFIG carries motor 1's only.
+#define MSP2_WING_MOTOR_ENDPOINTS             0x5F28
+#define MSP2_WING_SET_MOTOR_ENDPOINTS         0x5F29
 #define MSP_V2_FRAME                         255

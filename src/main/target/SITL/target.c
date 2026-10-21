@@ -607,16 +607,18 @@ pwmOutputPort_t *pwmGetMotors(void) {
     return motors;
 }
 
-static float pwmConvertToInternal(uint8_t mode, float throttle)
+static float pwmConvertToInternal(uint8_t index, uint8_t mode, float throttle)
 {
-    float value = motorConfig()->mincommand;
+    const motorConfig_t *config = motorConfig();
+
+    float value = config->mincommand[index];
 
     if (mode == MOTOR_CONTROL_BIDIR) {
         if (throttle != 0)
-            value = scaleRangef(throttle, -1, 1, motorConfig()->minthrottle, motorConfig()->maxthrottle);
+            value = scaleRangef(throttle, -1, 1, config->minthrottle[index], config->maxthrottle[index]);
     } else {
         if (throttle > 0)
-            value = scaleRangef(throttle, 0, 1, motorConfig()->minthrottle, motorConfig()->maxthrottle);
+            value = scaleRangef(throttle, 0, 1, config->minthrottle[index], config->maxthrottle[index]);
     }
 
     return value;
@@ -636,7 +638,7 @@ static bool pwmEnableMotors(void)
 
 static void pwmWriteMotor(uint8_t index, uint8_t mode, float value)
 {
-    motorsPwm[index] = pwmConvertToInternal(mode, value) - motorConfig()->mincommand;
+    motorsPwm[index] = pwmConvertToInternal(index, mode, value) - motorConfig()->mincommand[index];
 }
 
 static void pwmShutdownPulsesForAllMotors(void)
