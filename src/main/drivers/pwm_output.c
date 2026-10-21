@@ -123,40 +123,20 @@ static void pwmWriteUnused(uint8_t index, uint8_t mode, float value)
     UNUSED(value);
 }
 
-typedef struct {
-    float off;
-    float min;
-    float max;
-} pwmMotorEndpoints_t;
-
-// Taken from the config at init, like the protocol and rate, so an MSP or CLI
-// change applies after a reboot. A live change would move a disarmed motor at
-// once: reversing sets "off" to ~2000us, full throttle on an armed normal ESC.
-static FAST_DATA_ZERO_INIT pwmMotorEndpoints_t pwmEndpoints[MAX_SUPPORTED_MOTORS];
-
-static void pwmLatchEndpoints(void)
-{
-    for (int index = 0; index < MAX_SUPPORTED_MOTORS; index++) {
-        pwmEndpoints[index].off = motorConfig()->mincommand[index];
-        pwmEndpoints[index].min = motorConfig()->minthrottle[index];
-        pwmEndpoints[index].max = motorConfig()->maxthrottle[index];
-    }
-}
-
 // Per-motor endpoints. A minthrottle above maxthrottle reverses the output.
 static float pwmConvertToInternal(uint8_t index, uint8_t mode, float throttle)
 {
-    const pwmMotorEndpoints_t *ends = &pwmEndpoints[index];
+    const motorConfig_t *config = motorConfig();
 
-    float value = ends->off;
+    float value = config->mincommand[index];
 
     if (mode == MOTOR_CONTROL_BIDIR) {
         if (throttle != 0)
-            value = scaleRangef(throttle, -1, 1, ends->min, ends->max);
+            value = scaleRangef(throttle, -1, 1, config->minthrottle[index], config->maxthrottle[index]);
     }
     else {
         if (throttle > 0)
-            value = scaleRangef(throttle, 0, 1, ends->min, ends->max);
+            value = scaleRangef(throttle, 0, 1, config->minthrottle[index], config->maxthrottle[index]);
     }
 
     return value;
@@ -234,8 +214,6 @@ motorDevice_t *motorPwmDevInit(const motorDevConfig_t *motorConfig, uint8_t moto
     bool useUnsyncedPwm = motorConfig->useUnsyncedPwm;
 
     motorPwmDevice.vTable = motorPwmVTable;
-
-    pwmLatchEndpoints();
 
     float sMin = 0;
     float sLen = 0;
