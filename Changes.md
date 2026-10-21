@@ -17,6 +17,10 @@ set min_throttle = 1070,1930
 set max_throttle = 2000,1000
 ```
 
+Endpoint changes take effect after a reboot, like the motor protocol and rate.
+Applying them live would move a disarmed motor at once (a reversed "off" pulse
+is full throttle on a normal ESC).
+
 `set min_throttle = 1100` with a single value now changes motor 1 only. The
 values are clamped to 50-2250 us when the config loads.
 On update, the old single values are copied to every motor, so nothing needs
