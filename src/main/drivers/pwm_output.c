@@ -123,19 +123,20 @@ static void pwmWriteUnused(uint8_t index, uint8_t mode, float value)
     UNUSED(value);
 }
 
+// Per-motor endpoints. A minthrottle above maxthrottle reverses the output.
 static float pwmConvertToInternal(uint8_t index, uint8_t mode, float throttle)
 {
-    UNUSED(index);
+    const motorConfig_t *config = motorConfig();
 
-    float value = motorConfig()->mincommand;
+    float value = config->mincommand[index];
 
     if (mode == MOTOR_CONTROL_BIDIR) {
         if (throttle != 0)
-            value = scaleRangef(throttle, -1, 1, motorConfig()->minthrottle, motorConfig()->maxthrottle);
+            value = scaleRangef(throttle, -1, 1, config->minthrottle[index], config->maxthrottle[index]);
     }
     else {
         if (throttle > 0)
-            value = scaleRangef(throttle, 0, 1, motorConfig()->minthrottle, motorConfig()->maxthrottle);
+            value = scaleRangef(throttle, 0, 1, config->minthrottle[index], config->maxthrottle[index]);
     }
 
     return value;

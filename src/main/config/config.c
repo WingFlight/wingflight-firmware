@@ -143,11 +143,6 @@ uint8_t getCurrentControlRateProfileIndex(void)
     return systemConfig()->activeRateProfile;
 }
 
-uint16_t getCurrentMinthrottle(void)
-{
-    return motorConfig()->minthrottle;
-}
-
 void resetConfig(void)
 {
     pgResetAll();
@@ -290,6 +285,28 @@ static void validateAndFixConfig(void)
             }
 #endif
         }
+    }
+
+    motorConfig_t *config = motorConfigMutable();
+
+    // A config saved before per-motor endpoints has the old single values here (never 0,
+    // the old range started at 50). Give every motor those values, once.
+    if (config->legacyMinthrottle || config->legacyMaxthrottle || config->legacyMincommand) {
+        for (int motorIndex = 0; motorIndex < MAX_SUPPORTED_MOTORS; motorIndex++) {
+            config->minthrottle[motorIndex] = config->legacyMinthrottle;
+            config->maxthrottle[motorIndex] = config->legacyMaxthrottle;
+            config->mincommand[motorIndex] = config->legacyMincommand;
+        }
+        config->legacyMinthrottle = 0;
+        config->legacyMaxthrottle = 0;
+        config->legacyMincommand = 0;
+    }
+
+    // CLI arrays have no range check, so keep the per-motor PWM endpoints in range here
+    for (int motorIndex = 0; motorIndex < MAX_SUPPORTED_MOTORS; motorIndex++) {
+        config->minthrottle[motorIndex] = constrain(config->minthrottle[motorIndex], PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX);
+        config->maxthrottle[motorIndex] = constrain(config->maxthrottle[motorIndex], PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX);
+        config->mincommand[motorIndex] = constrain(config->mincommand[motorIndex], PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX);
     }
 
     validateAndFixGyroConfig();

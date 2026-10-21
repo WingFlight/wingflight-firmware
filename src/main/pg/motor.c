@@ -39,9 +39,6 @@ void pgResetFn_motorConfig(motorConfig_t *motorConfig)
     motorConfig->dev.motorPwmProtocol = PWM_TYPE_STANDARD;
     motorConfig->dev.motorPwmRate = 250;
     motorConfig->dev.useUnsyncedPwm = false;
-    motorConfig->minthrottle = 1070;
-    motorConfig->maxthrottle = 2000;
-    motorConfig->mincommand = 1000;
 
 #ifdef USE_DSHOT_DMAR
     motorConfig->dev.useBurstDshot = ENABLE_DSHOT_DMAR;
@@ -54,6 +51,9 @@ void pgResetFn_motorConfig(motorConfig_t *motorConfig)
 #endif
 
     for (int motorIndex = 0; motorIndex < MAX_SUPPORTED_MOTORS; motorIndex++) {
+        motorConfig->minthrottle[motorIndex] = 1070;
+        motorConfig->maxthrottle[motorIndex] = 2000;
+        motorConfig->mincommand[motorIndex] = 1000;
         motorConfig->motorRpmLpf[motorIndex] = 100;
         motorConfig->motorRpmFactor[motorIndex] = 0;
         motorConfig->motorPoleCount[motorIndex] = 0;

@@ -3,6 +3,37 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Per-Motor PWM Endpoints and Reversing
+
+`min_command`, `min_throttle` and `max_throttle` are now set per motor (one
+value per motor, comma separated, like `motor_control_mode`), so each analog
+PWM motor (standard PWM, Oneshot, Multishot) gets its own off, low and high
+pulse. A `min_throttle` above `max_throttle` reverses that motor. DShot
+ignores them. To reverse motor 2 only:
+
+```
+set min_command = 1000,2000
+set min_throttle = 1070,1930
+set max_throttle = 2000,1000
+```
+
+`set min_throttle = 1100` with a single value now changes motor 1 only. The
+values are clamped to 50-2250 us when the config loads.
+On update, the old single values are copied to every motor, so nothing needs
+setting again. `PG_MOTOR_CONFIG` keeps its version: the old fields stay where
+they were (unused after the copy) and the per-motor arrays are appended, because
+a version bump would also reset the motor pins (`resource MOTOR`).
+
+MSP: `MSP2_WING_MOTOR_ENDPOINTS` (0x5F28) / `MSP2_WING_SET_MOTOR_ENDPOINTS`
+(0x5F29) carry a motor count, then off, min, max (U16 each) per motor.
+`MSP_MOTOR_CONFIG` reports motor 1's values. `MSP_SET_MOTOR_CONFIG` writes a
+value to every motor only when it differs from motor 1's, so re-saving the
+Motors tab keeps per-motor settings.
+
+The SRXL2 ESC clamp now accepts endpoints either way round, so a bidirectional
+SRXL2 ESC whose `min_throttle` is below `min_command` is no longer clipped at
+`min_command`.
+
 ## Thrust Vector Always Available
 
 The `THRUST_VECTOR` feature is gone. The Thrust Vector loop, its mixer inputs

@@ -1759,9 +1759,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 
     case MSP_MOTOR_CONFIG:
-        sbufWriteU16(dst, motorConfig()->minthrottle);
-        sbufWriteU16(dst, motorConfig()->maxthrottle);
-        sbufWriteU16(dst, motorConfig()->mincommand);
+        // Motor 1's endpoints; MSP2_WING_MOTOR_ENDPOINTS has every motor's
+        sbufWriteU16(dst, motorConfig()->minthrottle[0]);
+        sbufWriteU16(dst, motorConfig()->maxthrottle[0]);
+        sbufWriteU16(dst, motorConfig()->mincommand[0]);
 
         sbufWriteU8(dst, getMotorCount()); // compat: BLHeliSuite
         sbufWriteU8(dst, motorConfig()->motorPoleCount[0]); // compat: BLHeliSuite
@@ -1784,6 +1785,15 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU16(dst, motorConfig()->motor1GearRatio[1]);
         sbufWriteU16(dst, motorConfig()->motor2GearRatio[0]);
         sbufWriteU16(dst, motorConfig()->motor2GearRatio[1]);
+        break;
+
+    case MSP2_WING_MOTOR_ENDPOINTS:
+        sbufWriteU8(dst, MAX_SUPPORTED_MOTORS);
+        for (int i = 0; i < MAX_SUPPORTED_MOTORS; i++) {
+            sbufWriteU16(dst, motorConfig()->mincommand[i]);
+            sbufWriteU16(dst, motorConfig()->minthrottle[i]);
+            sbufWriteU16(dst, motorConfig()->maxthrottle[i]);
+        }
         break;
 
 #ifdef USE_GPS
@@ -2932,6 +2942,18 @@ static void mspFcDataFlashReadCommand(sbuf_t *dst, sbuf_t *src)
 }
 #endif
 
+// For MSP_SET_MOTOR_CONFIG, which only carries motor 1's value
+static void setAllMotorEndpointsIfChanged(uint16_t *endpoints, uint16_t value)
+{
+    if (value == endpoints[0]) {
+        return;
+    }
+    value = constrain(value, PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX);
+    for (int i = 0; i < MAX_SUPPORTED_MOTORS; i++) {
+        endpoints[i] = value;
+    }
+}
+
 static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, sbuf_t *src)
 {
     uint32_t i;
@@ -3125,9 +3147,12 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP_SET_MOTOR_CONFIG:
-        motorConfigMutable()->minthrottle = sbufReadU16(src);
-        motorConfigMutable()->maxthrottle = sbufReadU16(src);
-        motorConfigMutable()->mincommand = sbufReadU16(src);
+        // Motor 1's endpoints, as MSP_MOTOR_CONFIG reports them. A changed value goes to
+        // every motor; an unchanged one leaves per-motor settings (e.g. a reversed motor 2)
+        // alone, so re-saving the motors page doesn't wipe them.
+        setAllMotorEndpointsIfChanged(motorConfigMutable()->minthrottle, sbufReadU16(src));
+        setAllMotorEndpointsIfChanged(motorConfigMutable()->maxthrottle, sbufReadU16(src));
+        setAllMotorEndpointsIfChanged(motorConfigMutable()->mincommand, sbufReadU16(src));
 
         // sbufReadU8(src); MSP_MOTOR_CONFIG has motorCount here
         sbufReadU8(src); // compat: motorPoleCount
@@ -3151,6 +3176,22 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         motorConfigMutable()->motor2GearRatio[0] = sbufReadU16(src);
         motorConfigMutable()->motor2GearRatio[1] = sbufReadU16(src);
         break;
+
+    case MSP2_WING_SET_MOTOR_ENDPOINTS: {
+        // Motors beyond the count sent are left alone; extra ones sent are skipped
+        const uint8_t count = sbufReadU8(src);
+        for (int i = 0; i < count && sbufBytesRemaining(src) >= 6; i++) {
+            const uint16_t mincommand = sbufReadU16(src);
+            const uint16_t minthrottle = sbufReadU16(src);
+            const uint16_t maxthrottle = sbufReadU16(src);
+            if (i < MAX_SUPPORTED_MOTORS) {
+                motorConfigMutable()->mincommand[i] = constrain(mincommand, PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX);
+                motorConfigMutable()->minthrottle[i] = constrain(minthrottle, PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX);
+                motorConfigMutable()->maxthrottle[i] = constrain(maxthrottle, PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX);
+            }
+        }
+        break;
+    }
 
 #ifdef USE_GPS
     case MSP_SET_GPS_CONFIG:

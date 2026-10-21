@@ -57,9 +57,11 @@ typedef struct motorDevConfig_s {
 typedef struct motorConfig_s {
     motorDevConfig_t dev;
 
-    uint16_t minthrottle;                   // Set the minimum throttle command sent to the ESC (Electronic Speed Controller). This is the minimum value that allow motors to run at a idle speed.
-    uint16_t maxthrottle;                   // This is the maximum value for the ESCs at full power this value can be increased up to 2000
-    uint16_t mincommand;                    // This is the value for the ESCs when they are not armed. In some cases, this value must be lowered down to 900 for some specific ESCs
+    // Pre per-motor endpoints, kept so stored configs still line up without a PG version bump
+    // (a bump would reset the motor pins too). Copied to every motor once, then zeroed.
+    uint16_t legacyMinthrottle;
+    uint16_t legacyMaxthrottle;
+    uint16_t legacyMincommand;
 
     uint8_t motorPoleCount[MAX_SUPPORTED_MOTORS]; // Magnetic poles in the motors for calculating actual RPM from eRPM provided by ESC telemetry
     uint8_t motorRpmLpf[MAX_SUPPORTED_MOTORS];    // RPM low pass filter cutoff frequency
@@ -67,6 +69,13 @@ typedef struct motorConfig_s {
 
     uint16_t motor1GearRatio[2];         // Motor 1 gear ratio, output shaft : motor [N,D]
     uint16_t motor2GearRatio[2];         // Motor 2 gear ratio, output shaft : motor [N,D]
+
+    // Analog PWM endpoints per motor, in us. Throttle 0..1 maps to minthrottle..maxthrottle
+    // and "off" sends mincommand. A minthrottle above maxthrottle reverses the output.
+    // DShot ignores these. Appended last, so configs saved before them load the defaults.
+    uint16_t minthrottle[MAX_SUPPORTED_MOTORS];
+    uint16_t maxthrottle[MAX_SUPPORTED_MOTORS];
+    uint16_t mincommand[MAX_SUPPORTED_MOTORS];
 
 } motorConfig_t;
 
