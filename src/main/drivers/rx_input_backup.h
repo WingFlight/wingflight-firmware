@@ -63,6 +63,9 @@ typedef enum {
 // public API the rest of the firmware uses (that's the plain functions below).
 typedef struct rxInputBackupOps_s {
     uint32_t baudRate;
+    // Second speed the same protocol may run at (FBUS/F.Port2), 0 if none.
+    // rx_input_backup.c switches between the two until valid frames arrive.
+    uint32_t altBaudRate;
     // Protocol-fixed framing (stopbits/parity) PLUS this provider's own
     // translation of the user's shared inverted/halfDuplex config into the
     // correct SERIAL_INVERTED/SERIAL_NOT_INVERTED and SERIAL_BIDIR[_PP]

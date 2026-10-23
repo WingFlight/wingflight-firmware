@@ -3,6 +3,17 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## FBUS and F.Port2 Speed Detected
+
+FBUS (460800 baud) and F.Port2 (115200 baud) are the same protocol, so
+`serialrx_provider` `FBUS` and `FPORT2` now both detect the receiver's speed.
+The port starts at the selected speed and switches to the other one every
+150 ms until three good frames arrive, then keeps it. No telemetry is sent
+until then. If no frame arrives for 1 s while disarmed, it searches again, so
+changing the receiver's setting needs no reboot. The backup RX
+(`rx_input_backup_provider` `FBUS`/`FPORT2`) does the same. Both names stay
+valid in the CLI and MSP; the Configurator shows them as one option.
+
 ## Thrust Vector Always Available
 
 The `THRUST_VECTOR` feature is gone. The Thrust Vector loop, its mixer inputs
