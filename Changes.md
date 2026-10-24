@@ -3,6 +3,15 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## F.Bus Master Speed Selectable
+
+The F.Bus master output runs at 460800 baud by default. The new CLI setting
+`fbus_master_baud_fast = OFF` runs it at 115200 instead, for receivers set to
+F.Port2 speed. At 115200 the frame rate is capped at 150 Hz, since a frame and
+the sensor reply take 4-5 ms. CLI only, no MSP change.
+`PG_DRIVER_FBUS_MASTER_CONFIG` version bumped, so F.Bus master settings reset
+to defaults on update.
+
 ## FBUS and F.Port2 Speed Detected
 
 FBUS (460800 baud) and F.Port2 (115200 baud) are the same protocol, so
