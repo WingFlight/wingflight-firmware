@@ -68,6 +68,9 @@ typedef enum {
 #define FBUS_GPS_LAT_LON_BIT30      (1U << 30)  // 0=North/East, 1=South/West
 #define FBUS_GPS_LAT_LON_DATA_MASK  0x3FFFFFFF  // Bits 0-29: Data
 
+// Fewest satellites in use for a 3D fix
+#define FBUS_GPS_MIN_SATS_FOR_FIX   4
+
 // GPS Time data byte definitions
 #define FBUS_GPS_TIME_TYPE_TIME     0x00  // D3: UTC Time (Second/Minute/Hour)
 #define FBUS_GPS_TIME_TYPE_DATE     0x01  // D3: Date (Date/Month/Year)
@@ -224,6 +227,7 @@ uint16_t fbusGpsConvertSpeed(uint32_t fbusData);
 uint16_t fbusGpsConvertCourse(uint32_t fbusData);
 bool fbusGpsConvertTime(uint32_t fbusData, fbusGpsTime_t *time);
 bool fbusGpsConvertDate(uint32_t fbusData, fbusGpsDate_t *date);
+bool fbusGpsHasFix(const fbusGpsData_t *gps);
 
 // Servo data conversion functions
 void fbusServoConvertData(uint32_t fbusData, uint16_t *current, uint16_t *voltage, uint16_t *temperature);

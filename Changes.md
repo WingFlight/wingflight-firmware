@@ -3,6 +3,26 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## FBUS GPS Fix, Speed and Position
+
+Three fixes for FBUS/S.Port GPS sensors such as the FrSky GPS ADV
+(`src/main/drivers/fbus_sensor.c`):
+
+- **Fix state.** FrSky GPS sensors keep sending latitude/longitude as 0 while
+  they have no fix. `GPS_FIX` used to be set by any position frame, so the 0/0
+  placeholder counted as a fix. Now the fix needs a non-zero latitude and
+  longitude and, when the sensor sends its satellite count (`0x0860`), at
+  least 4 satellites. Without a fix the last real position is kept and
+  `gpsSol.numSat` still shows the sensor's satellite count.
+- **Ground speed** was 10 times too low: `gpsSol.groundSpeed` is in cm/s, the
+  conversion gave 0.1 m/s.
+- **Latitude/longitude** are converted with integer maths. The float
+  conversion was off by up to about 3 m.
+
+A sensor that also sends the temperature IDs `0x0400`/`0x0410` (T1/T2) could be
+classified as an RPM sensor when one of those arrived first, and its GPS data
+was then dropped. A GPS App ID now always classifies the sensor as GPS.
+
 ## FBUS and F.Port2 Speed Detected
 
 FBUS (460800 baud) and F.Port2 (115200 baud) are the same protocol, so
