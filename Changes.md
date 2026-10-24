@@ -3,6 +3,36 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## FBUS/S.Port Sensor Readings over MSP
+
+New read-only `MSP2_WING_FBUS_SENSORS_STATUS` (0x5F33) returns the latest
+decoded value from each FBUS/S.Port sensor type the master understands
+(`drivers/fbus_sensor.c`): GPS, current (FAS), cells (FLVSS), ESC/RPM sensor
+and XACT servo. Each block starts with a flags byte; 0 means nothing fresh in
+the last second, and the block's fields are then zero. Built with
+`USE_FBUS_MASTER` or `USE_SPORT_MASTER`, like `MSP2_WING_FBUS_SENSORS`. The
+Configurator's FBUS/S.Port Sensors tab shows these as live readings.
+
+## F.Bus Master Speed Selectable
+
+The F.Bus master output runs at 460800 baud by default. The new CLI setting
+`fbus_master_baud_fast = OFF` runs it at 115200 instead, for receivers set to
+F.Port2 speed. At 115200 the frame rate is capped at 150 Hz, since a frame and
+the sensor reply take 4-5 ms. CLI only, no MSP change.
+`PG_DRIVER_FBUS_MASTER_CONFIG` version bumped, so F.Bus master settings reset
+to defaults on update.
+
+## FBUS and F.Port2 Speed Detected
+
+FBUS (460800 baud) and F.Port2 (115200 baud) are the same protocol, so
+`serialrx_provider` `FBUS` and `FPORT2` now both detect the receiver's speed.
+The port starts at the selected speed and switches to the other one every
+150 ms until three good frames arrive, then keeps it. No telemetry is sent
+until then. If no frame arrives for 1 s while disarmed, it searches again, so
+changing the receiver's setting needs no reboot. The backup RX
+(`rx_input_backup_provider` `FBUS`/`FPORT2`) does the same. Both names stay
+valid in the CLI and MSP; the Configurator shows them as one option.
+
 ## Thrust Vector Always Available
 
 The `THRUST_VECTOR` feature is gone. The Thrust Vector loop, its mixer inputs
