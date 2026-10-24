@@ -363,4 +363,7 @@
 // Per PWM servo: the rate (Hz) it really runs at and the first servo on its hardware
 // timer. Servos on one timer run at the lowest rate set among them (flight/servos.c).
 #define MSP2_WING_SERVO_TIMING                0x5F27
+// Latest decoded FBUS/S.Port sensor values (drivers/fbus_sensor.c), one block per sensor
+// type, for the configurator's sensors page. 0x5F28-0x5F32 are taken on open branches.
+#define MSP2_WING_FBUS_SENSORS_STATUS         0x5F33
 #define MSP_V2_FRAME                         255

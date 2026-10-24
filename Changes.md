@@ -3,6 +3,16 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## FBUS/S.Port Sensor Readings over MSP
+
+New read-only `MSP2_WING_FBUS_SENSORS_STATUS` (0x5F33) returns the latest
+decoded value from each FBUS/S.Port sensor type the master understands
+(`drivers/fbus_sensor.c`): GPS, current (FAS), cells (FLVSS), ESC/RPM sensor
+and XACT servo. Each block starts with a flags byte; 0 means nothing fresh in
+the last second, and the block's fields are then zero. Built with
+`USE_FBUS_MASTER` or `USE_SPORT_MASTER`, like `MSP2_WING_FBUS_SENSORS`. The
+Configurator's FBUS/S.Port Sensors tab shows these as live readings.
+
 ## F.Bus Master Speed Selectable
 
 The F.Bus master output runs at 460800 baud by default. The new CLI setting
