@@ -1,3 +1,13 @@
+# 0.0.37
+
+The MSP API stays at 22.14. Updating keeps your settings, except the Thrust Vector profiles, which reset to the new defaults. Use the 0.0.37 Configurator and Lua suites with this firmware.
+Make Thrust Vector always available: the THRUST_VECTOR feature is gone, and the THRUST VECTOR mode alone turns the nozzle mix on. Blackbox logs the Thrust Vector terms when a mixer rule uses a Thrust Vector input.
+Raise the default TV Hold gain (tv_hold_gain) from 25 to 45, so the hold keeps the nose up in a hang while the model torque-rolls.
+Detect FBUS or F.Port2 speed on the RX port and on the backup RX, whichever of the two is set.
+Fix motor RPM from FBUS/S.Port ESC sensors reading 100 times too low, seen with AM32 ESCs.
+Fix long MSP replies overwriting memory when a radio read adjustment ranges, mixer rules or servo setups over telemetry. Every reply the radio suites read now fits, and a reply that still doesn't is answered with an error.
+Build the RF007 V3 FBUS mux bitstream for the 26 MHz oscillator every board carries (it was built for 25 MHz).
+
 # 0.0.36
 
 The MSP API stays at 22.14. Updating keeps your settings, except the Thrust Vector profiles, which reset to the new defaults. Use the 0.0.36 Configurator and Lua suites with this firmware.
