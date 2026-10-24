@@ -160,7 +160,9 @@ typedef struct {
     uint8_t satellites;      // Number of satellites
     fbusGpsTime_t time;     // UTC time
     fbusGpsDate_t date;     // UTC date
-    bool hasPosition;       // Position data valid
+    bool hasLatitude;       // Latitude received since the last timeout
+    bool hasLongitude;      // Longitude received since the last timeout
+    bool hasPosition;       // Position data valid: both of the above
     bool hasAltitude;       // Altitude data valid
     bool hasSpeed;          // Speed data valid
     bool hasCourse;         // Course data valid

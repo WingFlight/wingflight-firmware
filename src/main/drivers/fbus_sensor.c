@@ -487,10 +487,14 @@ bool fbusSensorProcessDataWithSource(uint8_t physicalId, uint16_t appId, uint32_
         if (appId >= FBUS_GPS_LATITUDE_BASE && appId <= (FBUS_GPS_LATITUDE_BASE + 0x0F)) {
             if (data & FBUS_GPS_LAT_LON_BIT31) {
                 fbusGps.longitude = fbusGpsConvertLatLon(data);
+                fbusGps.hasLongitude = true;
             } else {
                 fbusGps.latitude = fbusGpsConvertLatLon(data);
+                fbusGps.hasLatitude = true;
             }
-            fbusGps.hasPosition = true;
+            // Latitude and longitude come in separate frames: after a timeout,
+            // wait for both so a fresh one is never paired with a stale one.
+            fbusGps.hasPosition = fbusGps.hasLatitude && fbusGps.hasLongitude;
             fbusGps.lastUpdateUs = currentTimeUs;  
 
         } else if (appId >= FBUS_GPS_ALTITUDE_BASE && appId <= (FBUS_GPS_ALTITUDE_BASE + 0x0F)) {
@@ -700,6 +704,8 @@ bool fbusGpsHasFix(const fbusGpsData_t *gps)
 void fbusSensorUpdate(timeUs_t currentTimeUs)
 {
     if (fbusGps.lastUpdateUs > 0 && (currentTimeUs - fbusGps.lastUpdateUs) > 1000000) {
+        fbusGps.hasLatitude = false;
+        fbusGps.hasLongitude = false;
         fbusGps.hasPosition = false;
         fbusGps.hasAltitude = false;
         fbusGps.hasSpeed = false;
