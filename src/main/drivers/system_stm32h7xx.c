@@ -101,40 +101,6 @@ void systemInit(void)
     // SysTick is updated whenever HAL_RCC_ClockConfig is called.
 }
 
-#if defined(USE_XIP)
-// Boot requests understood by the boot loader that starts this firmware from the external flash,
-// see ArduPilot's stm32_util.h. The boot loader reads and clears them in RTC backup register 0.
-#define BOOT_LOADER_REQUEST_HOLD    0xB0070001  // stay in the boot loader, e.g. for a firmware update
-#define BOOT_LOADER_REQUEST_FAST    0xB0070002  // start the firmware without waiting for an update
-
-static void systemEnableBackupAccess(void)
-{
-    __HAL_RCC_RTC_CLK_ENABLE();
-    PWR->CR1 |= PWR_CR1_DBP;
-}
-
-static void systemSetBootLoaderRequest(uint32_t request)
-{
-    systemEnableBackupAccess();
-    RTC->BKP0R = request;
-}
-
-static void systemResetToBootLoader(void)
-{
-    // Clear the request first, or the firmware would return to the boot loader after every update
-    systemEnableBackupAccess();
-    persistentObjectWrite(PERSISTENT_OBJECT_RESET_REASON, RESET_NONE);
-
-    __disable_irq();
-
-    SCB_DisableDCache();
-    SCB_DisableICache();
-
-    systemSetBootLoaderRequest(BOOT_LOADER_REQUEST_HOLD);
-    NVIC_SystemReset();
-}
-#endif
-
 void systemResetHard(void)
 {
     // Interrupts first: a handler running while the D-cache is cleaned and disabled can read stale RAM
@@ -143,18 +109,12 @@ void systemResetHard(void)
     SCB_DisableDCache();
     SCB_DisableICache();
 
-#if defined(USE_XIP)
-    systemSetBootLoaderRequest(BOOT_LOADER_REQUEST_FAST);
-#endif
     NVIC_SystemReset();
 }
 
 void systemResetWithoutDisablingCaches(void)
 {
     __disable_irq();
-#if defined(USE_XIP)
-    systemSetBootLoaderRequest(BOOT_LOADER_REQUEST_FAST);
-#endif
     NVIC_SystemReset();
 }
 
@@ -191,11 +151,11 @@ void systemProcessResetReason(void)
     switch (bootloaderRequest) {
 #if defined(USE_XIP)
     case RESET_BOOTLOADER_REQUEST_FLASH:
-        // The flash boot loader is the one that started this firmware, ask it to stay active after a reset
-        systemResetToBootLoader();
-        break;
-
     case RESET_BOOTLOADER_REQUEST_ROM:
+        // The loader in the internal flash takes both requests before it starts the firmware
+        // (src/loader/main.c). Only a firmware started some other way, e.g. by a debugger, gets here.
+        persistentObjectWrite(PERSISTENT_OBJECT_RESET_REASON, RESET_NONE);
+        break;
 #else
     case RESET_BOOTLOADER_REQUEST_FLASH:
     case RESET_BOOTLOADER_REQUEST_ROM:

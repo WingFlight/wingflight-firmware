@@ -31,21 +31,13 @@
 
 #define PERSISTENT_OBJECT_MAGIC_VALUE (('B' << 24)|('e' << 16)|('f' << 8)|('1' << 0))
 
-#if defined(USE_XIP)
-// The boot loader keeps its boot requests in backup register 0 and clears it on every boot,
-// so the persistent objects start at the next register.
-#define PERSISTENT_OBJECT_BKP_OFFSET 1
-#else
-#define PERSISTENT_OBJECT_BKP_OFFSET 0
-#endif
-
 #ifdef USE_HAL_DRIVER
 
 uint32_t persistentObjectRead(persistentObjectId_e id)
 {
     RTC_HandleTypeDef rtcHandle = { .Instance = RTC };
 
-    uint32_t value = HAL_RTCEx_BKUPRead(&rtcHandle, id + PERSISTENT_OBJECT_BKP_OFFSET);
+    uint32_t value = HAL_RTCEx_BKUPRead(&rtcHandle, id);
 
     return value;
 }
@@ -54,7 +46,7 @@ void persistentObjectWrite(persistentObjectId_e id, uint32_t value)
 {
     RTC_HandleTypeDef rtcHandle = { .Instance = RTC };
 
-    HAL_RTCEx_BKUPWrite(&rtcHandle, id + PERSISTENT_OBJECT_BKP_OFFSET, value);
+    HAL_RTCEx_BKUPWrite(&rtcHandle, id, value);
 
 #ifdef USE_SPRACING_PERSISTENT_RTC_WORKAROUND
     // Also write the persistent location used by the bootloader to support DFU etc.
@@ -63,7 +55,7 @@ void persistentObjectWrite(persistentObjectId_e id, uint32_t value)
         if (value == RESET_MSC_REQUEST) {
             value = RESET_NONE;
         }
-        HAL_RTCEx_BKUPWrite(&rtcHandle, PERSISTENT_OBJECT_RESET_REASON_FWONLY + PERSISTENT_OBJECT_BKP_OFFSET, value);
+        HAL_RTCEx_BKUPWrite(&rtcHandle, PERSISTENT_OBJECT_RESET_REASON_FWONLY, value);
     }
 #endif
 }
@@ -98,14 +90,6 @@ void persistentObjectRTCEnable(void)
 #endif // STM32G4
 
     // We don't need a clock source for RTC itself. Skip it.
-
-#if defined(USE_XIP)
-    // Except that the boot loader resets the backup domain, and with it the backup registers,
-    // on every boot when the RTC clock is not LSI. Select it, unless a clock is already selected.
-    if ((RCC->BDCR & RCC_BDCR_RTCSEL) == 0) {
-        RCC->BDCR |= RCC_BDCR_RTCSEL_1; // LSI
-    }
-#endif
 
     __HAL_RTC_WRITEPROTECTION_ENABLE(&rtcHandle);  // Reset sequence
     __HAL_RTC_WRITEPROTECTION_DISABLE(&rtcHandle); // Apply sequence

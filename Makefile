@@ -366,10 +366,22 @@ $(TARGET_BIN): $(TARGET_ELF)
 	@echo "Creating BIN $(TARGET_BIN)" "$(STDOUT)"
 	$(V1) $(OBJCOPY) -O binary $< $@
 
+ifeq ($(XIP),yes)
+# The firmware executes in place from the external flash. Its hex also carries the loader for the
+# internal flash that starts it and takes firmware updates over DFU, see src/loader/main.c.
+include $(ROOT)/src/loader/loader.mk
+$(TARGET_HEX): $(LOADER_HEX)
+endif
+
 $(TARGET_HEX): $(TARGET_ELF)
 ifeq ($(SIMULATOR_BUILD),yes)
 	@echo "SITL is a native executable ($(TARGET_ELF)); skipping Intel HEX generation" "$(STDOUT)"
 	$(V1) touch $@
+else ifeq ($(XIP),yes)
+	@echo "Creating HEX $(TARGET_HEX) with the loader" "$(STDOUT)"
+	$(V1) $(OBJCOPY) -O ihex --set-start 0x8000000 $< $@.firmware
+	$(V1) (grep -v -e '^:00000001FF' -e '^:04000005' $(LOADER_HEX); cat $@.firmware) > $@
+	$(V1) rm $@.firmware
 else
 	@echo "Creating HEX $(TARGET_HEX)" "$(STDOUT)"
 	$(V1) $(OBJCOPY) -O ihex --set-start 0x8000000 $< $@

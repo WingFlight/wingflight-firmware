@@ -27,15 +27,16 @@ ENTRY(Reset_Handler)
 0x38000000 to 0x38003FFF   16K SRAM4, D3 domain, unused
 0x38800000 to 0x38800FFF    4K BACKUP SRAM, Backup domain, unused
 
-0x08000000 to 0x0801FFFF  128K internal flash, holds the boot loader
-0x90000000 to 0x901FFFFF    2M OCTOSPI1 NOR flash, memory mapped by the boot loader
+0x08000000 to 0x0801FFFF  128K internal flash, holds the loader (src/loader)
+0x90000000 to 0x901EFFFF    2M OCTOSPI1 NOR flash, memory mapped by the loader, minus
+0x901F0000 to 0x901FFFFF   64K at its end for the loader's image marker
 */
 
 /*
 
-The internal flash only holds the boot loader. It puts the OCTOSPI1 flash into memory mapped mode and jumps to
-the vector table at the start of the image, from where the firmware executes in place. The boot loader leaves
-the clocks feeding the OCTOSPI1 running, so the firmware must not reset or reconfigure them.
+The internal flash only holds the loader. It puts the OCTOSPI1 flash into memory mapped mode and jumps to
+the vector table at the start of the image, from where the firmware executes in place. The OCTOSPI1 runs from
+HCLK3, so the firmware must not reset or reconfigure the clocks feeding it, only change their speed.
 
 The configuration is not stored in the OCTOSPI1 flash, the firmware cannot write to it while executing from it.
 
@@ -61,7 +62,7 @@ MEMORY
     /* The firmware image, laid out like the start of the internal flash on the other H7 targets */
     OCTOSPI1_VECTAB (rx)          : ORIGIN = ORIGIN(OCTOSPI1), LENGTH = 10K
     OCTOSPI1_CUSTOM_DEFAULTS (r)  : ORIGIN = ORIGIN(OCTOSPI1) + 10K, LENGTH = 54K
-    OCTOSPI1_CODE (rx)            : ORIGIN = ORIGIN(OCTOSPI1) + 64K, LENGTH = 2M - 64K
+    OCTOSPI1_CODE (rx)            : ORIGIN = ORIGIN(OCTOSPI1) + 64K, LENGTH = 2M - 64K - 64K
 }
 
 REGION_ALIAS("STACKRAM", DTCM_RAM)

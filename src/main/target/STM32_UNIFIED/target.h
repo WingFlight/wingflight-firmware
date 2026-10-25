@@ -470,11 +470,11 @@
 
 #define USBD_PRODUCT_STRING     "Wingflight STM32H730"
 
-// The ArduPilot boot loader in the internal flash takes firmware updates: bl and the
-// Configurator's reboot request go there, not to the ROM DFU, which would overwrite it.
+// The loader in the internal flash (src/loader) takes firmware updates over DFU:
+// bl and the Configurator's reboot request go there, bl rom to the ROM DFU.
 #define USE_FLASH_BOOT_LOADER
 
-// The internal flash only holds the boot loader, the config is kept on the SPI flash.
+// The internal flash only holds the loader, the config is kept on the SPI flash.
 // It has to be accessible before the config is loaded, so its bus and pins are defaults of this target.
 // These are the ones of the FrSky Aegis Lite.
 #define CONFIG_IN_EXTERNAL_FLASH
