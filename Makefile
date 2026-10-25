@@ -367,6 +367,12 @@ $(TARGET_BIN): $(TARGET_ELF)
 	$(V1) $(OBJCOPY) -O binary $< $@
 
 ifeq ($(XIP),yes)
+ifeq ($(filter $(TARGET),$(H730xB_TARGETS)),)
+$(error XIP=yes is only supported for the STM32H730)
+endif
+ifneq ($(EXST),no)
+$(error XIP=yes and EXST=$(EXST) cannot be combined)
+endif
 # The firmware executes in place from the external flash. Its hex also carries the loader for the
 # internal flash that starts it and takes firmware updates over DFU, see src/loader/main.c.
 include $(ROOT)/src/loader/loader.mk

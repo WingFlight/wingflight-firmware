@@ -206,7 +206,7 @@ static bool inImage(uint32_t address, uint32_t length)
 
 static uint16_t dfuErase(uint32_t address)
 {
-    if (!inImage(address, 1) || !invalidateImage()) {
+    if (!flashReady || !inImage(address, 1) || !invalidateImage()) {
         return USBD_FAIL;
     }
     const uint32_t offset = (address - OSPI_FLASH_BASE) & ~(OSPI_FLASH_BLOCK_SIZE - 1);
@@ -216,7 +216,7 @@ static uint16_t dfuErase(uint32_t address)
 static uint16_t dfuWrite(uint8_t *src, uint8_t *dest, uint32_t length)
 {
     const uint32_t address = (uint32_t)dest;
-    if (!inImage(address, length) || !invalidateImage()) {
+    if (!flashReady || !inImage(address, length) || !invalidateImage()) {
         return USBD_FAIL;
     }
     return ospiFlashWrite(address - OSPI_FLASH_BASE, src, length) ? USBD_OK : USBD_FAIL;
@@ -225,7 +225,7 @@ static uint16_t dfuWrite(uint8_t *src, uint8_t *dest, uint32_t length)
 static uint8_t *dfuRead(uint8_t *src, uint8_t *dest, uint32_t length)
 {
     const uint32_t address = (uint32_t)src;
-    if (!inImage(address, length) || !ospiFlashRead(address - OSPI_FLASH_BASE, dest, length)) {
+    if (!flashReady || !inImage(address, length) || !ospiFlashRead(address - OSPI_FLASH_BASE, dest, length)) {
         memset(dest, 0, length);
     }
     return dest;

@@ -43,7 +43,7 @@ LOADER_CFLAGS := \
     -mthumb -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-sp-d16 \
     -DSTM32H730xx -DUSE_HAL_DRIVER \
     -Os -g -std=gnu17 -Wall \
-    -ffunction-sections -fdata-sections \
+    -ffunction-sections -fdata-sections -MMD -MP \
     $(addprefix -I,$(LOADER_INCLUDES))
 
 LOADER_LDFLAGS := \
@@ -61,6 +61,9 @@ $(LOADER_OBJ_DIR)/%.s.o: $(ROOT)/%.s
 	@echo "%% (loader) $(notdir $<)" "$(STDOUT)"
 	$(V1) mkdir -p $(dir $@)
 	$(V1) $(CROSS_CC) -c -o $@ $(LOADER_CFLAGS) -x assembler-with-cpp $<
+
+# Header dependencies, written by -MMD next to the objects
+-include $(LOADER_OBJS:.o=.d)
 
 $(LOADER_ELF): $(LOADER_OBJS) $(LOADER_LD)
 	@echo "Linking loader $@" "$(STDOUT)"
