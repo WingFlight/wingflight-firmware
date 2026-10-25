@@ -374,6 +374,19 @@ void init(void)
     }
     initFlags |= FLASH_INIT_ATTEMPTED;
 
+    // "Erase chip" through the loader's DFU: the config isn't on the flash it erases, so wipe it here.
+    // The invalid config then falls back to the defaults below.
+    if (persistentObjectRead(PERSISTENT_OBJECT_ERASE_CONFIG) == PERSISTENT_ERASE_CONFIG_REQUEST) {
+        persistentObjectWrite(PERSISTENT_OBJECT_ERASE_CONFIG, 0);
+
+        const flashPartition_t *configPartition = flashPartitionFindByType(FLASH_PARTITION_TYPE_CONFIG);
+        const uint32_t sectorSize = flashGetGeometry()->sectorSize;
+        for (flashSector_t sector = configPartition->startSector; sector <= configPartition->endSector; sector++) {
+            flashEraseSector(sector * sectorSize);
+            flashWaitForReady();
+        }
+    }
+
 #endif // CONFIG_IN_EXTERNAL_FLASH
 
     initEEPROM();

@@ -204,8 +204,19 @@ static bool inImage(uint32_t address, uint32_t length)
     return address >= OSPI_FLASH_BASE && length <= IMAGE_SIZE && address - OSPI_FLASH_BASE <= IMAGE_SIZE - length;
 }
 
+// The firmware's config is on another flash this loader doesn't drive. An erase just past the end of
+// the image, which the host sends for "erase chip", asks the firmware to wipe it when it starts.
+static uint16_t requestConfigErase(void)
+{
+    backupRegisters()[PERSISTENT_OBJECT_ERASE_CONFIG] = PERSISTENT_ERASE_CONFIG_REQUEST;
+    return USBD_OK;
+}
+
 static uint16_t dfuErase(uint32_t address)
 {
+    if (address == OSPI_FLASH_BASE + IMAGE_SIZE) {
+        return requestConfigErase();
+    }
     if (!flashReady || !inImage(address, 1) || !invalidateImage()) {
         return USBD_FAIL;
     }
