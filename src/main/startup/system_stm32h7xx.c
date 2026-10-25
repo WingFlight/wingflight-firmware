@@ -926,16 +926,16 @@ static void SystemClockSwitchToHSE(void)
 void SystemClock_Config(void)
 {
 #if defined(USE_XIP)
-    if (__HAL_RCC_GET_SYSCLK_SOURCE() == RCC_SYSCLKSOURCE_STATUS_PLLCLK) {
-        // The boot loader already runs the system from PLL1 and clocks the OCTOSPI flash we execute from.
-        // Keep its power supply and bus clock configuration, and turn on the oscillators used below,
-        // which SystemInit() would otherwise have enabled.
-        SystemClockSwitchToHSE();
+    // SystemInit() leaves the clocks alone when executing in place, turn on the HSI48 for USB here
+    __HAL_RCC_HSI48_ENABLE();
+    while (!__HAL_RCC_GET_FLAG(RCC_FLAG_HSI48RDY)) {
+        // Empty
+    }
 
-        __HAL_RCC_HSI48_ENABLE();
-        while (!__HAL_RCC_GET_FLAG(RCC_FLAG_HSI48RDY)) {
-            // Empty
-        }
+    if (__HAL_RCC_GET_SYSCLK_SOURCE() == RCC_SYSCLKSOURCE_STATUS_PLLCLK) {
+        // A boot loader already runs the system from PLL1 and clocks the OCTOSPI flash we execute from.
+        // Keep its power supply and bus clock configuration.
+        SystemClockSwitchToHSE();
     } else
 #endif
     {

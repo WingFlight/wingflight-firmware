@@ -16,8 +16,9 @@
  */
 
 /*
- * Winbond W25Q NOR flash on OCTOSPI1 (FrSky Aegis Lite: 2 MB), in indirect mode for the
- * DFU transfers and in memory mapped quad mode for the firmware to execute from.
+ * Quad SPI NOR flash on OCTOSPI1, in indirect mode for the DFU transfers and in memory mapped
+ * quad mode for the firmware to execute from. The FrSky Aegis Lite has a GigaDevice GD25Q128
+ * (16 MB, of which the loader uses the first 2 MB). Winbond's W25Q has the same commands.
  */
 
 #include <stdbool.h>
@@ -30,6 +31,7 @@
 #define CMD_WRITE_ENABLE        0x06
 #define CMD_READ_STATUS1        0x05
 #define CMD_READ_STATUS2        0x35
+#define CMD_WRITE_STATUS        0x01
 #define CMD_WRITE_STATUS2       0x31
 #define CMD_READ_JEDEC_ID       0x9F
 #define CMD_PAGE_PROGRAM        0x02
@@ -47,10 +49,13 @@
 #define PAGE_SIZE               256
 
 // The kernel clock is HCLK3: 64 MHz HSI in the loader, 260 MHz once the firmware has set up its clocks.
-// Divided by 3 that is 21 / 87 MHz, below the 104 MHz the W25Q reads at.
+// Divided by 3 that is 21 / 87 MHz, below the 104 MHz these flashes read at in quad I/O mode.
 #define CLOCK_PRESCALER         3
 
 static OSPI_HandleTypeDef hospi;
+
+#define JEDEC_GIGADEVICE        0xC8
+#define JEDEC_WINBOND           0xEF
 
 static void pinInit(GPIO_TypeDef *gpio, uint32_t pin, uint32_t af)
 {
@@ -130,28 +135,43 @@ static void flashReset(void)
     HAL_Delay(1); // tRST 30 us
 }
 
-static bool enableQuad(void)
+static bool writeStatus(uint8_t instruction, uint8_t *data, uint32_t length)
+{
+    OSPI_RegularCmdTypeDef cmd = command(instruction, HAL_OSPI_INSTRUCTION_1_LINE);
+    cmd.DataMode = HAL_OSPI_DATA_1_LINE;
+    cmd.NbData = length;
+    return sendCommand(CMD_WRITE_ENABLE, HAL_OSPI_INSTRUCTION_1_LINE) &&
+        HAL_OSPI_Command(&hospi, &cmd, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) == HAL_OK &&
+        HAL_OSPI_Transmit(&hospi, data, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) == HAL_OK &&
+        waitReady(100); // tW max 30 ms
+}
+
+static bool quadEnabled(void)
 {
     uint8_t status2;
-    if (!readRegister(CMD_READ_STATUS2, &status2, 1)) {
-        return false;
-    }
-    if (status2 & STATUS2_QE) {
+    return readRegister(CMD_READ_STATUS2, &status2, 1) && (status2 & STATUS2_QE);
+}
+
+// The quad enable bit is non-volatile, so this writes the status register once per flash chip
+static bool enableQuad(void)
+{
+    if (quadEnabled()) {
         return true;
     }
 
-    status2 |= STATUS2_QE;
-    OSPI_RegularCmdTypeDef cmd = command(CMD_WRITE_STATUS2, HAL_OSPI_INSTRUCTION_1_LINE);
-    cmd.DataMode = HAL_OSPI_DATA_1_LINE;
-    cmd.NbData = 1;
-    if (!sendCommand(CMD_WRITE_ENABLE, HAL_OSPI_INSTRUCTION_1_LINE) ||
-        HAL_OSPI_Command(&hospi, &cmd, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK ||
-        HAL_OSPI_Transmit(&hospi, &status2, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK ||
-        !waitReady(100)) {
+    uint8_t status[2];
+    if (!readRegister(CMD_READ_STATUS1, &status[0], 1) || !readRegister(CMD_READ_STATUS2, &status[1], 1)) {
         return false;
     }
+    status[1] |= STATUS2_QE;
 
-    return readRegister(CMD_READ_STATUS2, &status2, 1) && (status2 & STATUS2_QE);
+    // Write Status Register-2 (W25Q, GD25Q128E), else both registers at once (GD25Q128C)
+    writeStatus(CMD_WRITE_STATUS2, &status[1], 1);
+    if (quadEnabled()) {
+        return true;
+    }
+    writeStatus(CMD_WRITE_STATUS, status, 2);
+    return quadEnabled();
 }
 
 bool ospiFlashInit(void)
@@ -205,8 +225,11 @@ bool ospiFlashInit(void)
 
     flashReset();
 
+    // Manufacturer, memory type, capacity as a power of two, at least the 2 MB used
     uint8_t id[3];
-    if (!readRegister(CMD_READ_JEDEC_ID, id, sizeof(id)) || id[0] != 0xEF) { // Winbond
+    if (!readRegister(CMD_READ_JEDEC_ID, id, sizeof(id)) ||
+        (id[0] != JEDEC_GIGADEVICE && id[0] != JEDEC_WINBOND) ||
+        id[2] < 21 || id[2] > 24) {
         return false;
     }
 

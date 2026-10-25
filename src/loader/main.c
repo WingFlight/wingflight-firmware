@@ -37,6 +37,7 @@
 #include "stm32h7xx_hal.h"
 
 #include "usbd_core.h"
+#include "usbd_ctlreq.h"
 #include "usbd_dfu.h"
 #include "usbd_desc.h"
 
@@ -52,6 +53,8 @@
 // Shared with the firmware, see src/main/drivers/persistent.c
 #define PERSISTENT_OBJECT_MAGIC_VALUE (('B' << 24) | ('e' << 16) | ('f' << 8) | ('1' << 0))
 
+#define SYSTEM_MEMORY_BASE      0x1FF00000
+#define SYSTEM_MEMORY_SIZE      0x20000
 #define SYSTEM_MEMORY_VECTORS   ((const uint32_t *)0x1FF09800)
 
 #define LED_PORT                GPIOE
@@ -71,8 +74,12 @@ static USBD_HandleTypeDef usbDevice;
 static bool flashReady;
 static bool imageChanged;
 
+static void handleRomDfuExit(void);
+
 void SystemInit(void)
 {
+    handleRomDfuExit();
+
     SCB->CPACR |= (3UL << 10 * 2) | (3UL << 11 * 2); // FPU
     SCB->VTOR = FLASH_BANK1_BASE;
 }
@@ -98,14 +105,41 @@ static void jumpTo(const uint32_t *vectors)
     while (1);
 }
 
-// A firmware request left in the RTC backup registers before a soft reset, see systemReset()
-static uint32_t takeResetRequest(void)
+static volatile uint32_t *backupRegisters(void)
 {
     HAL_PWR_EnableBkUpAccess();
     __HAL_RCC_RTC_CLK_ENABLE();
 
     RTC_TypeDef *rtc = RTC;
-    volatile uint32_t *bkp = &rtc->BKP0R;
+    return &rtc->BKP0R;
+}
+
+// Started by the ROM DFU when it leaves: it jumps here with the vector table still in system memory,
+// where a reset never leaves it. It has just written this loader, and the host continues with the
+// firmware through the loader's DFU. Ask for that and start over from a reset.
+// Called first thing in SystemInit(), which moves the vector table, before RAM is initialised.
+static void handleRomDfuExit(void)
+{
+    if (SCB->VTOR < SYSTEM_MEMORY_BASE || SCB->VTOR >= SYSTEM_MEMORY_BASE + SYSTEM_MEMORY_SIZE) {
+        return;
+    }
+
+    volatile uint32_t *bkp = backupRegisters();
+    if (bkp[PERSISTENT_OBJECT_MAGIC] != PERSISTENT_OBJECT_MAGIC_VALUE) {
+        for (unsigned i = 1; i < PERSISTENT_OBJECT_COUNT; i++) {
+            bkp[i] = 0;
+        }
+        bkp[PERSISTENT_OBJECT_MAGIC] = PERSISTENT_OBJECT_MAGIC_VALUE;
+    }
+    bkp[PERSISTENT_OBJECT_RESET_REASON] = RESET_BOOTLOADER_REQUEST_FLASH;
+
+    NVIC_SystemReset();
+}
+
+// A firmware request left in the RTC backup registers before a soft reset, see systemReset()
+static uint32_t takeResetRequest(void)
+{
+    volatile uint32_t *bkp = backupRegisters();
 
     if (!(RCC->RSR & RCC_RSR_SFTRSTF) || bkp[PERSISTENT_OBJECT_MAGIC] != PERSISTENT_OBJECT_MAGIC_VALUE) {
         return RESET_NONE;
@@ -220,6 +254,20 @@ static USBD_DFU_MediaTypeDef dfuMedia = {
     dfuGetStatus,
 };
 
+// The class answers string indices it doesn't know with a NULL buffer of undefined length, which the
+// library then sends (e.g. for Windows' 0xEE OS descriptor query). Stall them instead.
+static uint8_t *dfuUserString(USBD_HandleTypeDef *pdev, uint8_t index, uint16_t *length)
+{
+    if (index == USBD_IDX_INTERFACE_STR + 1) {
+        return USBD_DFU.GetUsrStrDescriptor(pdev, index, length);
+    }
+    *length = 0;
+    USBD_CtlError(pdev, &pdev->request);
+    return NULL;
+}
+
+static USBD_ClassTypeDef dfuClass;
+
 static void usbClockInit(void)
 {
     __HAL_RCC_HSI48_ENABLE();
@@ -282,7 +330,9 @@ int main(void)
     // DFU, the LED blinks
     usbClockInit();
     USBD_Init(&usbDevice, &dfuDescriptors, DEVICE_FS);
-    USBD_RegisterClass(&usbDevice, USBD_DFU_CLASS);
+    dfuClass = USBD_DFU;
+    dfuClass.GetUsrStrDescriptor = dfuUserString;
+    USBD_RegisterClass(&usbDevice, &dfuClass);
     USBD_DFU_RegisterMedia(&usbDevice, &dfuMedia);
     USBD_Start(&usbDevice);
 
