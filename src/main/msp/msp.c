@@ -2671,6 +2671,88 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         break;
 #endif
 
+    // Serial port diagnostics, like the CLI's serialdebug: every port, then an
+    // optional detail block for the port id in the request, with one sub-block per
+    // function on it that reports state (GPS for now).
+    case MSP2_WING_SERIAL_STATUS: {
+        const int detailId = sbufBytesRemaining(src) ? sbufReadU8(src) : 0xFF;
+        sbufWriteU8(dst, 1); // payload version
+
+        sbufWriteU8(dst, SERIAL_PORT_COUNT);
+        for (int i = 0; i < SERIAL_PORT_COUNT; i++) {
+            const serialPortIdentifier_e id = serialPortIdentifiers[i];
+            const serialPortConfig_t *cfg = serialFindPortConfiguration(id);
+            const serialPortUsage_t *usage = findSerialPortUsageByIdentifier(id);
+            ioTag_t rxTag, txTag;
+            uint32_t baud;
+            const uint8_t flags = serialGetPortDiagnostics(id, &rxTag, &txTag, &baud);
+            uint8_t options = 0;
+            if (usage && usage->serialPort) {
+                options = ((usage->serialPort->options & SERIAL_INVERTED) ? BIT(0) : 0) |
+                          ((usage->serialPort->options & SERIAL_BIDIR) ? BIT(1) : 0) |
+                          ((usage->serialPort->mode & MODE_RX) ? BIT(2) : 0) |
+                          ((usage->serialPort->mode & MODE_TX) ? BIT(3) : 0);
+            }
+            sbufWriteU8(dst, id);
+            sbufWriteU32(dst, cfg ? cfg->functionMask : 0);
+            sbufWriteU8(dst, rxTag);    // DEFIO tag: ((gpio + 1) << 4) | pin, 0 = none
+            sbufWriteU8(dst, txTag);
+            sbufWriteU8(dst, flags);    // serialDiagFlags_e
+            sbufWriteU32(dst, baud);    // 0 when closed
+            sbufWriteU8(dst, options);
+        }
+
+        const serialPortConfig_t *detailCfg = detailId != 0xFF ? serialFindPortConfiguration(detailId) : NULL;
+        if (!detailCfg) {
+            sbufWriteU8(dst, 0xFF);     // no detail
+            break;
+        }
+        sbufWriteU8(dst, detailId);
+        sbufWriteU32(dst, baudRates[detailCfg->msp_baudrateIndex]);
+        sbufWriteU32(dst, baudRates[detailCfg->gps_baudrateIndex]);
+        sbufWriteU32(dst, baudRates[detailCfg->telemetry_baudrateIndex]);
+        sbufWriteU32(dst, baudRates[detailCfg->blackbox_baudrateIndex]);
+
+        uint8_t *blockCountPtr = sbufPtr(dst);
+        sbufWriteU8(dst, 0);
+        uint8_t blockCount = 0;
+
+#ifdef USE_GPS
+        if (detailCfg->functionMask & FUNCTION_GPS) {
+            const serialPort_t *gpsSerial = gpsGetPort();
+            const serialPortConfig_t *gpsCfg = findSerialPortConfig(FUNCTION_GPS);
+            sbufWriteU32(dst, FUNCTION_GPS);
+            uint8_t *lenPtr = sbufPtr(dst);
+            sbufWriteU8(dst, 0);
+            uint8_t *start = sbufPtr(dst);
+
+            sbufWriteU8(dst, (gpsIsEnabled() ? BIT(0) : 0) |
+                (gpsIsConfigured() ? BIT(1) : 0) |
+                (STATE(GPS_FIX) ? BIT(2) : 0) |
+                ((gpsCfg && gpsCfg->identifier == detailId) ? BIT(3) : 0) |   // this is the port GPS uses
+                (gpsSerial ? BIT(4) : 0));                                      // and it is open
+            sbufWriteU8(dst, gpsConfig()->provider);
+            sbufWriteU32(dst, gpsSerial ? gpsSerial->baudRate : 0);
+            sbufWriteU8(dst, gpsData.state);
+            sbufWriteU32(dst, millis() - gpsData.lastMessage);
+            sbufWriteU32(dst, gpsGetRxByteCount());
+            sbufWriteU32(dst, GPS_packetCount);
+            sbufWriteU32(dst, gpsData.errors);
+            sbufWriteU32(dst, gpsData.timeouts);
+            sbufWriteU8(dst, gpsSol.numSat);
+            uint8_t recent[64];
+            const uint8_t recentCount = gpsGetRecentBytes(recent, sizeof(recent));
+            sbufWriteU8(dst, recentCount);
+            sbufWriteData(dst, recent, recentCount);
+
+            *lenPtr = sbufPtr(dst) - start;
+            blockCount++;
+        }
+#endif
+        *blockCountPtr = blockCount;
+        break;
+    }
+
     case MSP_BOXNAMES:
         {
             const int page = sbufBytesRemaining(src) ? sbufReadU8(src) : 0;

@@ -3,6 +3,40 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Serial Port Diagnostics: `serialdebug` CLI Command and `MSP2_WING_SERIAL_STATUS`
+
+New CLI command for serial wiring and setup problems (`cli/cli.c`), generic
+across what the port carries:
+
+- `serialdebug` lists every port with its pins, functions, whether it opened
+  and at what baud, and flags pins owned by something else. Footer hints
+  name a port whose function did not open and a `gps_provider` that has no
+  matching port.
+- `serialdebug <id>` shows one port in detail: configured baud rates, live
+  mode, inversion and half duplex, bytes waiting, then a block from each
+  function on it that reports state. GPS is the first: provider, state,
+  byte/packet/error/timeout counters and hints. Receiver, ESC telemetry and
+  others can add a block the same way.
+- `serialdebug monitor <id> [<baud>] [<seconds>] [inverted]` prints the raw
+  bytes a port receives (non-text as `<hex>`), default 5 s.
+- `serialdebug scan <id> [inverted]` listens at GPS and receiver baud rates
+  (9600 to 460800) and reports NMEA, UBX, CRSF and FBUS frames seen at each.
+
+Listening blocks the scheduler like `serialpassthrough`. A port that is
+already open is borrowed and its baud and RX callback restored afterwards.
+`io/serial.c` gains `serialGetPortDiagnostics()` for the shared per-port
+checks, and `io/gps.c` keeps the last 64 bytes read from the GPS port.
+
+New read-only `MSP2_WING_SERIAL_STATUS` (0x5F34) returns the same: a
+version byte, then every port (identifier, function mask, RX/TX pin tags,
+diagnostic flags, baud, options), then a detail block for the port id given
+in the request (0xFF/none when absent or unknown): its four configured baud
+rates and one sub-block per reporting function, each as function id, length
+and payload, so a client skips blocks it does not know. The GPS sub-block
+carries flags, provider, baud, state, last-message age, the counters,
+satellite count and the recent bytes. The Configurator's GPS tab shows this
+as a Diagnostics panel. Belongs to the next API version.
+
 ## GPS Feature Removed (API 22.15)
 
 `FEATURE_GPS` (feature bit 7) is gone. GPS now runs when `gps_provider`

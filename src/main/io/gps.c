@@ -396,6 +396,47 @@ bool gpsIsEnabled(void)
     return gpsEnabled;
 }
 
+// Last bytes read from the GPS port, for diagnostics (MSP2_WING_SERIAL_STATUS)
+#define GPS_RECENT_BYTES 64     // power of two, so the index wraps cleanly
+static uint8_t gpsRecentBytes[GPS_RECENT_BYTES];
+static uint32_t gpsRxByteCount;
+
+static void gpsRecordRxByte(uint8_t c)
+{
+    gpsRecentBytes[gpsRxByteCount % GPS_RECENT_BYTES] = c;
+    gpsRxByteCount++;
+}
+
+uint32_t gpsGetRxByteCount(void)
+{
+    return gpsRxByteCount;
+}
+
+// Copies up to max of the most recent bytes, oldest first
+uint8_t gpsGetRecentBytes(uint8_t *buf, uint8_t max)
+{
+    const uint32_t count = MIN(MIN(gpsRxByteCount, (uint32_t)GPS_RECENT_BYTES), (uint32_t)max);
+    for (uint32_t i = 0; i < count; i++) {
+        buf[i] = gpsRecentBytes[(gpsRxByteCount - count + i) % GPS_RECENT_BYTES];
+    }
+    return count;
+}
+
+// For CLI diagnostics: the serial port GPS opened (NULL for MSP/FBUS/CRSF or if it failed to open)
+const serialPort_t *gpsGetPort(void)
+{
+    return gpsPort;
+}
+
+const char *gpsGetStateName(void)
+{
+    static const char * const names[GPS_STATE_COUNT] = {
+        "UNKNOWN", "INITIALIZING", "INITIALIZED", "CHANGE_BAUD",
+        "CONFIGURE", "RECEIVING_DATA", "LOST_COMMUNICATION",
+    };
+    return gpsData.state < GPS_STATE_COUNT ? names[gpsData.state] : "?";
+}
+
 void gpsInit(void)
 {
     gpsData.baudrateIndex = 0;
@@ -855,7 +896,9 @@ void gpsUpdate(timeUs_t currentTimeUs)
                 rescheduleTask(TASK_SELF, TASK_PERIOD_HZ(TASK_GPS_RATE_FAST));
                 return;
             }
-            gpsNewData(serialRead(gpsPort));
+            const uint8_t c = serialRead(gpsPort);
+            gpsRecordRxByte(c);
+            gpsNewData(c);
         }
         // Restore default task rate
         rescheduleTask(TASK_SELF, TASK_PERIOD_HZ(TASK_GPS_RATE));

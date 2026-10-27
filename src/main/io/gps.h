@@ -150,6 +150,10 @@ static inline bool gpsIsEnabled(void) { return false; }
 #endif
 struct serialPort_s;
 void gpsEnablePassthrough(struct serialPort_s *gpsPassthroughPort);
+const struct serialPort_s *gpsGetPort(void);
+const char *gpsGetStateName(void);
+uint32_t gpsGetRxByteCount(void);
+uint8_t gpsGetRecentBytes(uint8_t *buf, uint8_t max);
 void onGpsNewData(void);
 void GPS_reset_home_position(void);
 void GPS_calc_longitude_scaling(int32_t lat);
