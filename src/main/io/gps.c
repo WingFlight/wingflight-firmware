@@ -354,6 +354,48 @@ bool gpsUsesCrsfTransport(void)
 #endif
 }
 
+// GPS is in use only when the port and gps_provider match:
+//  - provider NMEA or UBLOX and a serial port assigned FUNCTION_GPS, or
+//  - provider FBUS and an FBUS master or S.Port master port, or
+//  - provider CRSF and a CRSF sensors port, or
+//  - provider MSP (fed by MSP_SET_RAW_GPS, no port needed).
+// A port whose provider doesn't match (e.g. a GPS port with provider FBUS) doesn't count.
+bool gpsIsConfigured(void)
+{
+    switch (gpsConfig()->provider) {
+    case GPS_NMEA:
+    case GPS_UBLOX:
+        return findSerialPortConfig(FUNCTION_GPS) != NULL;
+    case GPS_MSP:
+        return true;
+    case GPS_FBUS:
+        return gpsUsesFbusTransport();
+    case GPS_CRSF:
+        return gpsUsesCrsfTransport();
+    default:
+        return false;
+    }
+}
+
+// Port and provider changes take effect after a reboot, like features. Latch the result
+// once, on the first config load at boot, so hot paths (blackbox, telemetry) read a
+// cached flag and the answer stays consistent with the tasks started at boot.
+static bool gpsEnabled;
+static bool gpsEnabledLatched;
+
+void gpsLatchEnabled(void)
+{
+    if (!gpsEnabledLatched) {
+        gpsEnabled = gpsIsConfigured();
+        gpsEnabledLatched = true;
+    }
+}
+
+bool gpsIsEnabled(void)
+{
+    return gpsEnabled;
+}
+
 void gpsInit(void)
 {
     gpsData.baudrateIndex = 0;

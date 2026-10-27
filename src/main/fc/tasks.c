@@ -494,7 +494,7 @@ void tasksInit(void)
 #endif
 
 #ifdef USE_GPS
-    setTaskEnabled(TASK_GPS, featureIsEnabled(FEATURE_GPS));
+    setTaskEnabled(TASK_GPS, gpsIsEnabled());
 #endif
 
 #ifdef USE_MAG

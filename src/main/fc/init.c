@@ -767,7 +767,7 @@ void init(void)
     positionInit();
 
 #ifdef USE_GPS
-    if (featureIsEnabled(FEATURE_GPS)) {
+    if (gpsIsEnabled()) {
         gpsInit();
     }
 #endif

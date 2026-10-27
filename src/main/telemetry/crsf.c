@@ -473,7 +473,7 @@ static void crsfFlightModeInfo(char *buf)
         flightMode = "DISABLED";
     } else
 #if defined(USE_GPS)
-    if (!ARMING_FLAG(ARMED) && featureIsEnabled(FEATURE_GPS) && (!STATE(GPS_FIX) || !STATE(GPS_FIX_HOME))) {
+    if (!ARMING_FLAG(ARMED) && gpsIsEnabled() && (!STATE(GPS_FIX) || !STATE(GPS_FIX_HOME))) {
         flightMode = "GPS-WAIT";
     } else
 #endif

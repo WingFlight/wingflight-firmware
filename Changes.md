@@ -3,6 +3,16 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## GPS Feature Removed (API 22.15)
+
+`FEATURE_GPS` (feature bit 7) is gone. GPS now runs when `gps_provider`
+matches a port: `NMEA` or `UBLOX` with a `GPS` port, `FBUS` with an FBUS or
+S.Port master port, `CRSF` with a CRSF sensors port, or `MSP` with no port.
+This is read once at boot (`gpsIsEnabled()` in `io/gps.c`), like features.
+Bit 7 is cleared at boot and on save, so `MSP_FEATURE_CONFIG` no longer
+reports it and `MSP_SET_FEATURE_CONFIG` ignores it. `feature GPS` is no
+longer a CLI feature name. No MSP layout change.
+
 ## FBUS/S.Port Sensor Readings over MSP
 
 New read-only `MSP2_WING_FBUS_SENSORS_STATUS` (0x5F33) returns the latest

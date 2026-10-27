@@ -374,7 +374,7 @@ void beeperUpdate(timeUs_t currentTimeUs)
     if (IS_RC_MODE_ACTIVE(BOXBEEPERON)) {
         beeper(BEEPER_RX_SET);
 #ifdef USE_GPS
-    } else if (featureIsEnabled(FEATURE_GPS) && IS_RC_MODE_ACTIVE(BOXBEEPGPSCOUNT)) {
+    } else if (gpsIsEnabled() && IS_RC_MODE_ACTIVE(BOXBEEPGPSCOUNT)) {
         beeperGpsStatus();
 #endif
     }

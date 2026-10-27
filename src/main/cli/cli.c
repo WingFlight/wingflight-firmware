@@ -267,7 +267,7 @@ static const char * const featureNames[] = {
     [ 4] = "",
     [ 5] = "",
     [ 6] = "SOFTSERIAL",
-    [ 7] = "GPS",
+    [ 7] = "",
     [ 8] = "",
     [ 9] = "",
     [10] = "TELEMETRY",
@@ -3687,12 +3687,6 @@ static void cliFeature(const char *cmdName, char *cmdline)
 
             if (strncasecmp(cmdline, featureNames[i], len) == 0) {
                 feature = 1 << i;
-#ifndef USE_GPS
-                if (feature & FEATURE_GPS) {
-                    cliPrintLine("unavailable");
-                    break;
-                }
-#endif
                 if (remove) {
                     featureConfigClear(feature);
                     cliPrint("Disabled");

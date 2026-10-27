@@ -370,7 +370,7 @@ static void showRateProfilePage(void)
 #ifdef USE_GPS
 static void showGpsPage(void)
 {
-    if (!featureIsEnabled(FEATURE_GPS)) {
+    if (!gpsIsEnabled()) {
         pageState.pageFlags |= PAGE_STATE_FLAG_FORCE_PAGE_CHANGE;
         return;
     }

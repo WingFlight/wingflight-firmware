@@ -264,12 +264,12 @@ void initGhstTelemetry(void)
     }
 
 #ifdef USE_GPS
-    if (featureIsEnabled(FEATURE_GPS)
+    if (gpsIsEnabled()
        && telemetryIsSensorEnabled(SENSOR_ALTITUDE | SENSOR_LAT_LONG)) {
         ghstSchedule[index++] = BIT(GHST_FRAME_GPS_PRIMARY_INDEX);
     }
 
-    if (featureIsEnabled(FEATURE_GPS)
+    if (gpsIsEnabled()
        && telemetryIsSensorEnabled(SENSOR_GROUND_SPEED | SENSOR_HEADING)) {
         ghstSchedule[index++] = BIT(GHST_FRAME_GPS_SECONDARY_INDEX);
      }
