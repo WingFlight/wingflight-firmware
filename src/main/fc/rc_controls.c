@@ -209,7 +209,7 @@ void processRcStickPositions(void)
         gyroStartCalibration(false);
 
 #ifdef USE_GPS
-        if (featureIsEnabled(FEATURE_GPS)) {
+        if (gpsIsEnabled()) {
             GPS_reset_home_position();
         }
 #endif

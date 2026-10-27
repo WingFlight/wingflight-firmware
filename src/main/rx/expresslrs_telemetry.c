@@ -34,6 +34,8 @@
 #include "config/feature.h"
 #include "fc/runtime_config.h"
 
+#include "io/gps.h"
+
 #include "msp/msp_protocol.h"
 
 #include "rx/crsf_protocol.h"
@@ -334,7 +336,7 @@ void initTelemetry(void)
         tlmSensors |= BIT(CRSF_FRAME_FLIGHT_MODE_INDEX);
     }
 #ifdef USE_GPS
-    if (featureIsEnabled(FEATURE_GPS)
+    if (gpsIsEnabled()
        && telemetryIsSensorEnabled(SENSOR_ALTITUDE | SENSOR_LAT_LONG | SENSOR_GROUND_SPEED | SENSOR_HEADING)) {
         tlmSensors |= BIT(CRSF_FRAME_GPS_INDEX);
     }
