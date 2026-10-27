@@ -4957,6 +4957,11 @@ static void cliStatus(const char *cmdName, char *cmdline)
     cliPrintLinefeed();
 #endif
 
+#if defined(USE_XIP)
+    cliPrintLinef("XIP flash: %s Quad I/O, %dMHz, %d dummy cycles", xipFlashMode.dtr ? "DTR" : "SDR",
+        (int)(HAL_RCC_GetHCLKFreq() / xipFlashMode.prescaler / 1000000), xipFlashMode.dummyCycles);
+#endif
+
     // Stack and config sizes and usages
 
     cliPrintf("Stack size: %d, Stack address: 0x%x", stackTotalSize(), stackHighMem());

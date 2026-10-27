@@ -252,6 +252,10 @@ static void swdPinsInit(void)
 
 void init(void)
 {
+#ifdef CONFIG_IN_EXTERNAL_FLASH
+    bool eraseChipRequested = false;
+#endif
+
 #ifdef USE_ITM_PRINTF
     printfITMInit();
 #endif
@@ -264,6 +268,10 @@ void init(void)
 
     // initialize IO (needed for all IO operations)
     IOInitGlobal();
+
+#if defined(USE_XIP)
+    IOReserveBootLoaderPins();
+#endif
 
 #ifdef USE_HARDWARE_REVISION_DETECTION
     detectHardwareRevision();
@@ -369,6 +377,21 @@ void init(void)
         failureMode(FAILURE_EXTERNAL_FLASH_INIT_FAILED);
     }
     initFlags |= FLASH_INIT_ATTEMPTED;
+
+    // "Erase chip" through the loader's DFU: this flash isn't the one it erases, so wipe it here.
+    // The invalid config then falls back to the defaults below; the blackbox is erased once
+    // flashfs is up, see below.
+    if (persistentObjectRead(PERSISTENT_OBJECT_ERASE_CONFIG) == PERSISTENT_ERASE_CONFIG_REQUEST) {
+        persistentObjectWrite(PERSISTENT_OBJECT_ERASE_CONFIG, 0);
+        eraseChipRequested = true;
+
+        const flashPartition_t *configPartition = flashPartitionFindByType(FLASH_PARTITION_TYPE_CONFIG);
+        const uint32_t sectorSize = flashGetGeometry()->sectorSize;
+        for (flashSector_t sector = configPartition->startSector; sector <= configPartition->endSector; sector++) {
+            flashEraseSector(sector * sectorSize);
+            flashWaitForReady();
+        }
+    }
 
 #endif // CONFIG_IN_EXTERNAL_FLASH
 
@@ -575,6 +598,12 @@ void init(void)
         configureSPIAndQuadSPI();
         initFlags |= SPI_AND_QSPI_INIT_ATTEMPTED;
     }
+#if defined(CONFIG_IN_EXTERNAL_FLASH) && defined(USE_SPI)
+    else {
+        // Only the buses with default pins could be set up before the config was loaded, set up the others now
+        spiInitPendingDevices(spiPinConfig(0));
+    }
+#endif
 
 #if defined(USE_SDCARD_SDIO) && !defined(CONFIG_IN_SDCARD) && defined(STM32H7)
     sdioPinConfigure();
@@ -822,6 +851,12 @@ void init(void)
 #endif
 #ifdef USE_FLASHFS
     flashfsInit();
+#ifdef CONFIG_IN_EXTERNAL_FLASH
+    // Takes a while, so it runs in the background like "Erase dataflash"
+    if (eraseChipRequested) {
+        flashfsEraseCompletely();
+    }
+#endif
 #endif
 
 #ifdef USE_BLACKBOX
