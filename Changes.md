@@ -3,7 +3,7 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
-## GPS Feature Removed
+## GPS Feature Removed (API 22.15)
 
 `FEATURE_GPS` (feature bit 7) is gone. GPS now runs when `gps_provider`
 matches a port: `NMEA` or `UBLOX` with a `GPS` port, `FBUS` with an FBUS or
