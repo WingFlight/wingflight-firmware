@@ -26,6 +26,7 @@
  * External flash layout:
  *   0x90000000-0x901EFFFF  firmware image, written over DFU (31 blocks of 64K)
  *   0x901F0000             image marker, written when a DFU download ends with a manifest
+ *   0x901F1000-0x901FFFFF  unused, erased with the marker block on "erase chip"
  *
  * The loader runs from the 64 MHz HSI. The firmware sets up its own clocks.
  */
@@ -204,10 +205,17 @@ static bool inImage(uint32_t address, uint32_t length)
     return address >= OSPI_FLASH_BASE && length <= IMAGE_SIZE && address - OSPI_FLASH_BASE <= IMAGE_SIZE - length;
 }
 
-// The firmware's config is on another flash this loader doesn't drive. An erase just past the end of
-// the image, which the host sends for "erase chip", asks the firmware to wipe it when it starts.
-static uint16_t requestConfigErase(void)
+// An erase just past the end of the image, which the host sends for "erase chip". The host erases
+// the image blocks itself; this erases the marker block after them, so nothing of a previous
+// firmware (e.g. ArduPilot) is left on this flash. The firmware's config and blackbox are on
+// another flash this loader doesn't drive, so it asks the firmware to wipe that when it starts.
+static uint16_t eraseChipRequest(void)
 {
+    if (!flashReady || !ospiFlashEraseBlock(IMAGE_MARKER_OFFSET)) {
+        return USBD_FAIL;
+    }
+    imageChanged = true;
+
     backupRegisters()[PERSISTENT_OBJECT_ERASE_CONFIG] = PERSISTENT_ERASE_CONFIG_REQUEST;
     return USBD_OK;
 }
@@ -215,7 +223,7 @@ static uint16_t requestConfigErase(void)
 static uint16_t dfuErase(uint32_t address)
 {
     if (address == OSPI_FLASH_BASE + IMAGE_SIZE) {
-        return requestConfigErase();
+        return eraseChipRequest();
     }
     if (!flashReady || !inImage(address, 1) || !invalidateImage()) {
         return USBD_FAIL;

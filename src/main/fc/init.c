@@ -252,6 +252,10 @@ static void swdPinsInit(void)
 
 void init(void)
 {
+#ifdef CONFIG_IN_EXTERNAL_FLASH
+    bool eraseChipRequested = false;
+#endif
+
 #ifdef USE_ITM_PRINTF
     printfITMInit();
 #endif
@@ -374,10 +378,12 @@ void init(void)
     }
     initFlags |= FLASH_INIT_ATTEMPTED;
 
-    // "Erase chip" through the loader's DFU: the config isn't on the flash it erases, so wipe it here.
-    // The invalid config then falls back to the defaults below.
+    // "Erase chip" through the loader's DFU: this flash isn't the one it erases, so wipe it here.
+    // The invalid config then falls back to the defaults below; the blackbox is erased once
+    // flashfs is up, see below.
     if (persistentObjectRead(PERSISTENT_OBJECT_ERASE_CONFIG) == PERSISTENT_ERASE_CONFIG_REQUEST) {
         persistentObjectWrite(PERSISTENT_OBJECT_ERASE_CONFIG, 0);
+        eraseChipRequested = true;
 
         const flashPartition_t *configPartition = flashPartitionFindByType(FLASH_PARTITION_TYPE_CONFIG);
         const uint32_t sectorSize = flashGetGeometry()->sectorSize;
@@ -845,6 +851,12 @@ void init(void)
 #endif
 #ifdef USE_FLASHFS
     flashfsInit();
+#ifdef CONFIG_IN_EXTERNAL_FLASH
+    // Takes a while, so it runs in the background like "Erase dataflash"
+    if (eraseChipRequested) {
+        flashfsEraseCompletely();
+    }
+#endif
 #endif
 
 #ifdef USE_BLACKBOX
