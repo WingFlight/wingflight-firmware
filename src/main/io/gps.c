@@ -146,6 +146,16 @@ static const gpsInitData_t gpsInitData[] = {
 #define DEFAULT_BAUD_RATE_INDEX 0
 
 #ifdef USE_GPS_UBLOX
+// Rates the u-blox init sends the "switch to the configured rate" command at.
+// Wider than gpsInitData: ArduPilot leaves u-blox modules at 230400 and saves
+// it in the module (the FrSky Aegis Lite's stock firmware does this), so a
+// module coming from it only hears the command at that rate.
+static const baudRate_e ubloxInitBaudRates[] = {
+    BAUD_460800, BAUD_230400, BAUD_115200, BAUD_57600, BAUD_38400, BAUD_19200, BAUD_9600,
+};
+#endif
+
+#ifdef USE_GPS_UBLOX
 enum {
     PREAMBLE1 = 0xB5,
     PREAMBLE2 = 0x62,
@@ -699,9 +709,9 @@ void gpsInitUblox(void)
             if (now - gpsData.state_ts < GPS_BAUDRATE_CHANGE_DELAY)
                 return;
 
-            if (gpsData.state_position < GPS_INIT_ENTRIES) {
+            if (gpsData.state_position < ARRAYLEN(ubloxInitBaudRates)) {
                 // try different speed to INIT
-                baudRate_e newBaudRateIndex = gpsInitData[gpsData.state_position].baudrateIndex;
+                baudRate_e newBaudRateIndex = ubloxInitBaudRates[gpsData.state_position];
 
                 gpsData.state_ts = now;
 
