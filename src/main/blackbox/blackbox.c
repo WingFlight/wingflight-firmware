@@ -2072,7 +2072,7 @@ static void blackboxLogIteration(timeUs_t currentTimeUs)
     }
 
 #ifdef USE_GPS
-    if (featureIsEnabled(FEATURE_GPS) && isFieldEnabled(FIELD_SELECT(GPS))) {
+    if (gpsIsEnabled() && isFieldEnabled(FIELD_SELECT(GPS))) {
         if (blackboxShouldLogGPSFrame()) {
             if (blackboxShouldLogGpsHomeFrame()) {
                 writeGPSHomeFrame();
@@ -2178,7 +2178,7 @@ void blackboxUpdate(timeUs_t currentTimeUs)
         if (!sendFieldDefinition('I', 'P', blackboxMainFields, blackboxMainFields + 1, ARRAYLEN(blackboxMainFields),
                 &blackboxMainFields[0].condition, &blackboxMainFields[1].condition)) {
 #ifdef USE_GPS
-            if (featureIsEnabled(FEATURE_GPS) && isFieldEnabled(FIELD_SELECT(GPS))) {
+            if (gpsIsEnabled() && isFieldEnabled(FIELD_SELECT(GPS))) {
                 blackboxSetState(BLACKBOX_STATE_SEND_GPS_H_HEADER);
             } else
 #endif

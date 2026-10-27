@@ -97,7 +97,7 @@
 #define SERIAL_PORT_COUNT 8
 
 #define DEFAULT_RX_FEATURE      FEATURE_RX_MSP
-#define DEFAULT_FEATURES        (FEATURE_GPS | FEATURE_TELEMETRY)
+#define DEFAULT_FEATURES        (FEATURE_TELEMETRY)
 
 // SITL-specific config defaults (GPS provider = MSP, second MSP port on
 // UART2/TCP 5762 for the JSBSim bridge's --msp-gps feed) - see config.c.

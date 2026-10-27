@@ -293,7 +293,7 @@ void initJetiExBusTelemetry(void)
         bitArraySet(&exSensorEnabled, EX_HEADING);
     }
 
-    enableGpsTelemetry(featureIsEnabled(FEATURE_GPS));
+    enableGpsTelemetry(gpsIsEnabled());
 
 
     bitArraySet(&exSensorEnabled, EX_MOTOR1SPEED);
@@ -627,7 +627,7 @@ uint8_t sendJetiExBusTelemetry(uint8_t packetID, uint8_t item)
         requestLoop--;
         if (requestLoop == 0) {
             item = firstActiveSensor;
-            if (featureIsEnabled(FEATURE_GPS)) {
+            if (gpsIsEnabled()) {
                 enableGpsTelemetry(false);
                 allSensorsActive = false;
             }
