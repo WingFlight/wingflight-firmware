@@ -360,12 +360,6 @@ $(OBJECT_DIR)/$(TARGET)/build/version.o : $(SRC)
 $(TARGET_LST): $(TARGET_ELF)
 	$(V0) $(OBJDUMP) -S --disassemble $< > $@
 
-ifeq ($(EXST),no)
-
-$(TARGET_BIN): $(TARGET_ELF)
-	@echo "Creating BIN $(TARGET_BIN)" "$(STDOUT)"
-	$(V1) $(OBJCOPY) -O binary $< $@
-
 ifeq ($(XIP),yes)
 ifeq ($(filter $(TARGET),$(H730xB_TARGETS)),)
 $(error XIP=yes is only supported for the STM32H730)
@@ -373,6 +367,15 @@ endif
 ifneq ($(EXST),no)
 $(error XIP=yes and EXST=$(EXST) cannot be combined)
 endif
+endif
+
+ifeq ($(EXST),no)
+
+$(TARGET_BIN): $(TARGET_ELF)
+	@echo "Creating BIN $(TARGET_BIN)" "$(STDOUT)"
+	$(V1) $(OBJCOPY) -O binary $< $@
+
+ifeq ($(XIP),yes)
 # The firmware executes in place from the external flash. Its hex also carries the loader for the
 # internal flash that starts it and takes firmware updates over DFU, see src/loader/main.c.
 include $(ROOT)/src/loader/loader.mk
@@ -585,6 +588,9 @@ endif
 	$(V0) dfu-util -a 0 -D $(TARGET_DFU) -s :force:mass-erase:leave
 
 st-flash_$(TARGET): $(TARGET_BIN)
+ifeq ($(XIP),yes)
+	$(error st-flash writes to the internal flash only, flash an XIP target's hex over DFU instead)
+endif
 	$(V0) st-flash --reset write $< 0x08000000
 
 ## st-flash          : flash firmware (.bin) onto flight controller

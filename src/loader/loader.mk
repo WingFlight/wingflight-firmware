@@ -9,6 +9,7 @@ LOADER_OBJ_DIR  := $(OBJECT_DIR)/$(TARGET)/loader
 LOADER_ELF      := $(LOADER_OBJ_DIR)/$(FORKNAME)_loader_$(TARGET).elf
 LOADER_HEX      := $(LOADER_OBJ_DIR)/$(FORKNAME)_loader_$(TARGET).hex
 LOADER_LD       := $(LOADER_DIR)/stm32h730_loader.ld
+LOADER_MK       := $(LOADER_DIR)/loader.mk
 
 LOADER_HAL_DIR  := $(ROOT)/lib/main/STM32H7/Drivers/STM32H7xx_HAL_Driver
 LOADER_CMSIS    := $(ROOT)/lib/main/STM32H7/Drivers/CMSIS/Device/ST/STM32H7xx
@@ -52,12 +53,13 @@ LOADER_LDFLAGS := \
     -Wl,--gc-sections -Wl,-Map,$(LOADER_OBJ_DIR)/loader.map \
     -T$(LOADER_LD)
 
-$(LOADER_OBJ_DIR)/%.c.o: $(ROOT)/%.c
+# Rebuilt when the flags here change
+$(LOADER_OBJ_DIR)/%.c.o: $(ROOT)/%.c $(LOADER_MK)
 	@echo "%% (loader) $(notdir $<)" "$(STDOUT)"
 	$(V1) mkdir -p $(dir $@)
 	$(V1) $(CROSS_CC) -c -o $@ $(LOADER_CFLAGS) $<
 
-$(LOADER_OBJ_DIR)/%.s.o: $(ROOT)/%.s
+$(LOADER_OBJ_DIR)/%.s.o: $(ROOT)/%.s $(LOADER_MK)
 	@echo "%% (loader) $(notdir $<)" "$(STDOUT)"
 	$(V1) mkdir -p $(dir $@)
 	$(V1) $(CROSS_CC) -c -o $@ $(LOADER_CFLAGS) -x assembler-with-cpp $<
@@ -65,7 +67,7 @@ $(LOADER_OBJ_DIR)/%.s.o: $(ROOT)/%.s
 # Header dependencies, written by -MMD next to the objects
 -include $(LOADER_OBJS:.o=.d)
 
-$(LOADER_ELF): $(LOADER_OBJS) $(LOADER_LD)
+$(LOADER_ELF): $(LOADER_OBJS) $(LOADER_LD) $(LOADER_MK)
 	@echo "Linking loader $@" "$(STDOUT)"
 	$(V1) $(CROSS_CC) -o $@ $(LOADER_OBJS) $(LOADER_LDFLAGS)
 	$(V1) $(SIZE) $@
