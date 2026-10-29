@@ -3,6 +3,15 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Motor PWM Default: 50 Hz
+
+`motor_pwm_rate` now defaults to 50 Hz instead of 250 Hz (`pg/motor.c`).
+The motor parameter-group version is incremented, so stored motor settings
+from older builds reset to the current defaults on upgrade. Review motor
+protocol, throttle endpoints and other motor settings before use. MSP and
+CLI formats are unchanged; the Configurator's Virtual FC and help text
+use the same default.
+
 ## Serial Port Diagnostics: `serialdebug` CLI Command and `MSP2_WING_SERIAL_STATUS`
 
 New CLI command for serial wiring and setup problems (`cli/cli.c`), generic
