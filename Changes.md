@@ -214,17 +214,18 @@ clients. Flight behaviour is unchanged.
 - Statistics accumulate across flights and clear when the PID gains, master
   gains, I-term relax, PID mode, rates or active profiles change (checked on
   arming).
-- `MSP2_WING_TUNE_ADVISOR` (0x5F18) reads one axis per request, so the reply
-  (65 bytes) fits MSP over telemetry. Request: `U8 axis` (0 roll, 1 pitch,
-  2 yaw). Reply, payload v1: `U8 version, U8 collecting, U16 seconds,
-  U8 axis`, then `U16 P, U16 F, U16 B, U8 iterm_relax, U8 rc_rate`,
-  `U16 ffCount, S16 ffGain, S16 ffCorr, U16 ffLagMs`,
-  3 x `S16 gain, U16 count` by request (40-100, 100-200, 200+ deg/s),
-  3 x `S16 gain, U16 count` by throttle (<30%, 30-60%, 60%+),
-  `U16 fullCount, U16 fullSatCount, S16 fullRatio, U16 fullMaxRate`,
-  `U16 releases, U16 bigRebounds, S16 meanRebound, S16 meanOvershoot,
-  S16 meanCounter, S16 meanIterm`. Ratios are x1000, counts saturate at
-  65535.
+- `MSP2_WING_TUNE_ADVISOR` (0x5F18) reads one axis per request. Request:
+  `U8 axis` (0 roll, 1 pitch, 2 yaw). Reply (48 bytes: one CRSF frame),
+  payload v2: `U8 version, U8 flags` (bits 0-1 axis, bit 2 collecting),
+  `U16 seconds`, then `U32 P | F << 10 | B << 20, U8 iterm_relax, U8 rc_rate`,
+  `U16 ffCount, U8 ffGain x64, S8 ffCorr x100, U8 ffLagMs`,
+  3 x `U8 gain x64, U16 count` by request (40-100, 100-200, 200+ deg/s),
+  3 x `U8 gain x64, U16 count` by throttle (<30%, 30-60%, 60%+),
+  `U16 fullCount, U16 fullSatCount, U8 fullRatio x100, U8 fullMaxRate`
+  (10 deg/s steps), `U16 releases, U16 bigRebounds, U8 meanRebound x100,
+  U8 meanOvershoot x64, U8 meanCounter x100, S16 meanIterm x1000`. Scaled
+  values saturate at their byte's range, counts at 65535. Payload v1
+  (65 bytes, snapshots 0.0.32 to 0.0.38) was 16-bit throughout.
 - `MSP2_WING_TUNE_ADVISOR_CLEAR` (0x5F19) clears them.
 - New messages only, so the API version is unchanged. Firmware without the
   feature answers 0x5F18 with an error.

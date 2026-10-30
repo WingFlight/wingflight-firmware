@@ -936,6 +936,23 @@ static uint16_t mspRatio(float value)
 {
     return (uint16_t)(int16_t)constrain(lrintf(value * 1000), INT16_MIN, INT16_MAX);
 }
+
+// A value x scale in one byte, unsigned or signed, saturated to the byte's range
+static uint8_t mspScaledU8(float value, float scale)
+{
+    return (uint8_t)constrain(lrintf(value * scale), 0, UINT8_MAX);
+}
+
+static uint8_t mspScaledS8(float value, float scale)
+{
+    return (uint8_t)(int8_t)constrain(lrintf(value * scale), INT8_MIN, INT8_MAX);
+}
+
+// P, F and B (0..PID_GAIN_MAX) in 10 bits each: bits 0-9, 10-19 and 20-29
+static uint32_t mspPackGains(uint16_t p, uint16_t f, uint16_t b)
+{
+    return (uint32_t)MIN(p, 1023) | ((uint32_t)MIN(f, 1023) << 10) | ((uint32_t)MIN(b, 1023) << 20);
+}
 #endif
 
 static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
@@ -2767,9 +2784,11 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         break;
 #ifdef USE_TUNE_ADVISOR
     case MSP2_WING_TUNE_ADVISOR: {
-        // One axis per request (U8 axis: 0 roll, 1 pitch, 2 yaw) so the reply, 65 bytes, fits
-        // MSP over telemetry. Ratios are x1000 (signed), counts saturate at 65535 (about 11 min
-        // of 100 Hz samples).
+        // One axis per request (U8 axis: 0 roll, 1 pitch, 2 yaw). Payload version 2 packs each
+        // value into as few bytes as the client needs: 48 bytes, within one CRSF frame (at most
+        // 51: a frame holds 58 bytes after a 6-byte MSP header, and sendMspReply() sends a reply
+        // that exactly fills one as two) and 11 S.Port/FBUS frames instead of 14. Counts saturate at 65535
+        // (about 11 min of 100 Hz samples); scaled values saturate at their byte's range.
         if (sbufBytesRemaining(src) != 1) {
             return MSP_RESULT_ERROR;
         }
@@ -2781,42 +2800,41 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         tuneAdvisorAxis_t ta;
         tuneAdvisorGetAxis(axis, &ta);
 
-        sbufWriteU8(dst, 1); // payload version
-        sbufWriteU8(dst, tuneAdvisorIsCollecting() ? 1 : 0);
+        sbufWriteU8(dst, 2); // payload version
+        // bits 0-1 axis, bit 2 collecting now
+        sbufWriteU8(dst, axis | (tuneAdvisorIsCollecting() ? 0x04 : 0));
         sbufWriteU16(dst, mspSatU16(tuneAdvisorGetValidSamples() / TA_SAMPLE_HZ));
-        sbufWriteU8(dst, axis);
 
         // The tune these numbers belong to, so a client can suggest new values
-        sbufWriteU16(dst, currentPidProfile->pid[axis].P);
-        sbufWriteU16(dst, currentPidProfile->pid[axis].F);
-        sbufWriteU16(dst, currentPidProfile->pid[axis].B);
+        sbufWriteU32(dst, mspPackGains(currentPidProfile->pid[axis].P, currentPidProfile->pid[axis].F,
+                                       currentPidProfile->pid[axis].B));
         sbufWriteU8(dst, currentPidProfile->iterm_relax[axis]);
         sbufWriteU8(dst, currentControlRateProfile->rcRates[axis]);
 
         sbufWriteU16(dst, mspSatU16(ta.ffCount));
-        sbufWriteU16(dst, mspRatio(ta.ffGain));
-        sbufWriteU16(dst, mspRatio(ta.ffCorr));
-        sbufWriteU16(dst, ta.ffLagMs);
+        sbufWriteU8(dst, mspScaledU8(ta.ffGain, 64));               // x64, 0..3.98
+        sbufWriteU8(dst, mspScaledS8(ta.ffCorr, 100));              // x100, -1..1
+        sbufWriteU8(dst, MIN(ta.ffLagMs, UINT8_MAX));               // ms, 0..250
         for (int i = 0; i < TA_SP_BAND_COUNT; i++) {
-            sbufWriteU16(dst, mspRatio(ta.spBand[i].gain));
+            sbufWriteU8(dst, mspScaledU8(ta.spBand[i].gain, 64));
             sbufWriteU16(dst, mspSatU16(ta.spBand[i].count));
         }
         for (int i = 0; i < TA_THR_BAND_COUNT; i++) {
-            sbufWriteU16(dst, mspRatio(ta.thrBand[i].gain));
+            sbufWriteU8(dst, mspScaledU8(ta.thrBand[i].gain, 64));
             sbufWriteU16(dst, mspSatU16(ta.thrBand[i].count));
         }
 
         sbufWriteU16(dst, mspSatU16(ta.fullCount));
         sbufWriteU16(dst, mspSatU16(ta.fullSatCount));
-        sbufWriteU16(dst, mspRatio(ta.fullRatio));
-        sbufWriteU16(dst, mspSatU16(lrintf(ta.fullMaxRate)));
+        sbufWriteU8(dst, mspScaledU8(ta.fullRatio, 100));           // x100, 0..2.55
+        sbufWriteU8(dst, mspScaledU8(ta.fullMaxRate, 0.1f));        // 10 deg/s steps, 0..2550
 
         sbufWriteU16(dst, ta.releases);
         sbufWriteU16(dst, ta.bigRebounds);
-        sbufWriteU16(dst, mspRatio(ta.meanRebound));
-        sbufWriteU16(dst, mspRatio(ta.meanOvershoot));
-        sbufWriteU16(dst, mspRatio(ta.meanCounter));
-        sbufWriteU16(dst, mspRatio(ta.meanIterm));
+        sbufWriteU8(dst, mspScaledU8(ta.meanRebound, 100));         // x100, 0..2.55
+        sbufWriteU8(dst, mspScaledU8(ta.meanOvershoot, 64));        // x64, 0..3.98
+        sbufWriteU8(dst, mspScaledU8(ta.meanCounter, 100));         // x100, 0..2.55
+        sbufWriteU16(dst, mspRatio(ta.meanIterm));                  // x1000, signed: needs the range and the 0.01s
         break;
     }
 #endif
