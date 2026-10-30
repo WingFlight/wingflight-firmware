@@ -25,6 +25,7 @@ extern "C" {
 #include "fc/runtime_config.h"
 #include "flight/autotrim.h"
 #include "flight/failsafe.h"
+#include "flight/trim_monitor.h"
 #include "sensors/battery.h"
 #include "sensors/sensors.h"
 #include "telemetry/status.h"
@@ -43,9 +44,10 @@ static struct {
     bool saturationLatch;
     timeMs_t now;
     bool gyroOverflow, accCalibrated;
-    bool servoOverride, mixerOverride, motorOverride;
+    bool servoOverride, mixerOverride, motorOverride, modeOverride;
     bool attHold, tvHold, trainer;
     autoTrimState_e autoTrim;
+    trimMonitorState_e trim[3];
     bool blackboxLogging, blackboxFull;
     bool logic[16];
     uint8_t pidProfile, ratesProfile, batteryProfile, tvProfile;
@@ -81,10 +83,12 @@ bool gyroOverflowDetected(void) { return fc.gyroOverflow; }
 bool accHasBeenCalibrated(void) { return fc.accCalibrated; }
 bool isServoOverrideActive(void) { return fc.servoOverride; }
 bool isMixerOverrideActive(void) { return fc.mixerOverride; }
+bool isModeOverrideActive(void) { return fc.modeOverride; }
 bool attHoldIsHolding(int axis) { return fc.attHold && axis == 0; }
 bool tvHoldIsHolding(int axis) { return fc.tvHold && axis == 1; }
 bool acroTrainerIsLimiting(int axis) { return fc.trainer && axis == 1; }
 autoTrimState_e autoTrimGetState(void) { return fc.autoTrim; }
+trimMonitorState_e trimMonitorGetState(int axis) { return fc.trim[axis]; }
 bool blackboxIsLogging(void) { return fc.blackboxLogging; }
 bool isBlackboxDeviceFull(void) { return fc.blackboxFull; }
 bool logicConditionGetValue(int index) { return index >= 0 && index < 16 && fc.logic[index]; }
@@ -239,6 +243,9 @@ TEST_F(TelemetryStatusTest, AnyOverrideOrAssistSetsItsBit)
     fc.mixerOverride = true;
     EXPECT_EQ(TELEM_STATUS_OVERRIDE_ACTIVE, telemetrySystemStatus());
     fc.mixerOverride = false;
+    fc.modeOverride = true;
+    EXPECT_EQ(TELEM_STATUS_OVERRIDE_ACTIVE, telemetrySystemStatus());
+    fc.modeOverride = false;
 
     fc.attHold = true;
     EXPECT_EQ(TELEM_STATUS_ASSIST_HOLDING, telemetrySystemStatus());
@@ -268,11 +275,24 @@ TEST_F(TelemetryStatusTest, ConfigLayoutIsFixed)
     EXPECT_EQ(expected, telemetrySystemConfig());
 }
 
+// The radio decodes these per axis: 0 in trim, 1 right / nose up, 2 left / nose down.
+TEST_F(TelemetryStatusTest, TrimFieldsPerAxis)
+{
+    fc.trim[FD_ROLL] = TRIM_MONITOR_RIGHT_UP;
+    fc.trim[FD_PITCH] = TRIM_MONITOR_LEFT_DOWN;
+    fc.trim[FD_YAW] = TRIM_MONITOR_IN_TRIM;
+    EXPECT_EQ((1u << 23) | (2u << 25), telemetrySystemConfig() & (0x3Fu << 23));
+
+    fc.trim[FD_ROLL] = TRIM_MONITOR_IN_TRIM;
+    fc.trim[FD_YAW] = TRIM_MONITOR_LEFT_DOWN;
+    EXPECT_EQ((2u << 25) | (2u << 27), telemetrySystemConfig() & (0x3Fu << 23));
+}
+
 TEST_F(TelemetryStatusTest, SignBitIsNeverSet)
 {
     for (bool *flag : {&fc.airborne, &fc.motorsRunning, &fc.rxLink, &fc.backupEnabled, &fc.backupActive,
             &fc.gpsHealthy, &fc.canRth, &fc.canLoiter, &fc.rthSwitch, &fc.loiterSwitch, &fc.saturationLatch,
-            &fc.gyroOverflow, &fc.servoOverride, &fc.mixerOverride, &fc.motorOverride, &fc.attHold,
+            &fc.gyroOverflow, &fc.servoOverride, &fc.mixerOverride, &fc.motorOverride, &fc.modeOverride, &fc.attHold,
             &fc.tvHold, &fc.trainer, &fc.blackboxLogging, &fc.blackboxFull,
             &fc.dirty, &fc.saving, &fc.reboot, &fc.beeper, &fc.rpm}) {
         *flag = true;
@@ -284,6 +304,7 @@ TEST_F(TelemetryStatusTest, SignBitIsNeverSet)
     fc.failsafe = FAILSAFE_GPS_RESCUE;
     fc.battery = BATTERY_INIT;
     fc.autoTrim = AUTOTRIM_SAVE_PENDING;
+    fc.trim[FD_ROLL] = fc.trim[FD_PITCH] = fc.trim[FD_YAW] = TRIM_MONITOR_LEFT_DOWN;
     fc.pidProfile = fc.ratesProfile = fc.batteryProfile = fc.tvProfile = 5;
     armingFlags = 0xFF;
     stateFlags = 0xFF;

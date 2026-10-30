@@ -81,6 +81,7 @@
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
+#include "flight/trim_monitor.h"
 #include "flight/tune_advisor.h"
 
 #include "io/beeper.h"
@@ -1003,6 +1004,9 @@ static void subTaskPidController(timeUs_t currentTimeUs)
 
 #ifdef USE_TUNE_ADVISOR
     tuneAdvisorUpdate(pidGetDT());
+#endif
+#ifdef USE_SERVOS
+    trimMonitorUpdate(pidGetDT());
 #endif
 }
 

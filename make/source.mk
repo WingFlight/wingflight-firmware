@@ -122,6 +122,7 @@ COMMON_SRC = \
             flight/atthold.c \
             flight/tv_hold.c \
             flight/autotrim.c \
+            flight/trim_monitor.c \
             flight/setpoint.c \
             flight/wiggle.c \
             flight/airborne.c \
