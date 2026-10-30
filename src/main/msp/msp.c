@@ -2785,8 +2785,9 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
 #ifdef USE_TUNE_ADVISOR
     case MSP2_WING_TUNE_ADVISOR: {
         // One axis per request (U8 axis: 0 roll, 1 pitch, 2 yaw). Payload version 2 packs each
-        // value into as few bytes as the client needs: 48 bytes, within one CRSF frame (52 after
-        // the MSP header) and 11 S.Port/FBUS frames instead of 14. Counts saturate at 65535
+        // value into as few bytes as the client needs: 48 bytes, within one CRSF frame (at most
+        // 51: a frame holds 58 bytes after a 6-byte MSP header, and sendMspReply() sends a reply
+        // that exactly fills one as two) and 11 S.Port/FBUS frames instead of 14. Counts saturate at 65535
         // (about 11 min of 100 Hz samples); scaled values saturate at their byte's range.
         if (sbufBytesRemaining(src) != 1) {
             return MSP_RESULT_ERROR;
