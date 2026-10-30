@@ -45,6 +45,7 @@
 #include "flight/motors.h"
 #include "flight/servos.h"
 #include "flight/trainer.h"
+#include "flight/trim_monitor.h"
 #include "flight/tv_hold.h"
 
 #include "io/beeper.h"
@@ -245,6 +246,12 @@ uint32_t telemetrySystemConfig(void)
 #endif
     if (isRpmSourceActive())
         config |= TELEM_CONFIG_RPM_SOURCE_ACTIVE;
+
+#ifdef USE_SERVOS
+    config |= field(trimMonitorGetState(FD_ROLL), TELEM_CONFIG_TRIM_MASK, TELEM_CONFIG_TRIM_ROLL_SHIFT);
+    config |= field(trimMonitorGetState(FD_PITCH), TELEM_CONFIG_TRIM_MASK, TELEM_CONFIG_TRIM_PITCH_SHIFT);
+    config |= field(trimMonitorGetState(FD_YAW), TELEM_CONFIG_TRIM_MASK, TELEM_CONFIG_TRIM_YAW_SHIFT);
+#endif
 
     return config;
 }
