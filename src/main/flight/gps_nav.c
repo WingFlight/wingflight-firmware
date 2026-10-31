@@ -268,6 +268,12 @@ static void navCaptureTarget(timeMs_t nowMs)
             nav.targetLat = pos.lat;
             nav.targetLon = pos.lon;
             nav.targetSet = true;
+            // GPS_distance_cm_bearing() scales longitude by GPS_scaleLonDown, which is only
+            // set when home is recorded. Loiter engaged before that would otherwise use 1.0
+            // (exact only on the equator) and distort the orbit.
+            if (!STATE(GPS_FIX_HOME)) {
+                GPS_calc_longitude_scaling(pos.lat);
+            }
         }
     }
 }

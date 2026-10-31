@@ -57,6 +57,8 @@ timeMs_t millis(void) { stubMillis += stubMillisStep; return stubMillis; }
 // Same contract as io/gps.c: the bearing FROM the current position TO the destination, in
 // centidegrees clockwise from north, in [0, 36000). Positions are 1e-7 degrees. Flat-earth with
 // no longitude scaling, which is exact on the equator where these tests are placed.
+void GPS_calc_longitude_scaling(int32_t) {}
+
 void GPS_distance_cm_bearing(int32_t *currentLat1, int32_t *currentLon1, int32_t *destinationLat2,
                              int32_t *destinationLon2, uint32_t *dist, int32_t *bearing)
 {
