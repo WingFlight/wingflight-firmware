@@ -3,6 +3,16 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## No I-Term Build-Up Before Takeoff
+
+The rate loop's I-term no longer accumulates until the aircraft is airborne
+(`isAirborne()`, which latches on sustained roll/pitch response and holds until
+disarm), and it decays at the normal rate until then (`flight/pid.c`). Before,
+a tail-dragger armed on the ground in ANGLE asked for nose-down it could never
+reach; with decay suspended under leveling, I built up to `error_limit` and the
+aircraft took off with the elevator already wound in. A launch with sticks
+centred starts I at the first sustained correction. No MSP, CLI or PG change.
+
 ## Roll D Scaled Like Pitch and Yaw
 
 `roll_d_gain` (and `tv_roll_d_gain`) used a D scale 10 times smaller than

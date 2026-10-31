@@ -50,6 +50,7 @@
 #include "fc/rc_rates.h"
 #include "fc/runtime_config.h"
 
+#include "flight/airborne.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/trainer.h"
@@ -1169,8 +1170,15 @@ static void pidApplyMode1(uint8_t axis)
     // accumulation; decay below still applies as normal.
     const bool bypassed = mixerStabilizationBypassed();
 
+    // Before takeoff (isAirborne(), latched until disarm) the aircraft is on the ground and
+    // cannot follow the setpoint: a tail-dragger sitting nose-up in ANGLE asks for nose-down
+    // that never comes. Arming is often half a minute before takeoff, and with leveling
+    // suspending decay, I reached error_limit and the aircraft took off with the elevator
+    // wound in. Hold the accumulation until airborne; decay below runs at the normal rate.
+    const bool onGround = !isAirborne();
+
     // I-term change
-    const float itermDelta = (saturation || bypassed) ? 0 : itermErrorRate * pid.dT;
+    const float itermDelta = (saturation || bypassed || onGround) ? 0 : itermErrorRate * pid.dT;
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
@@ -1229,7 +1237,12 @@ static void pidApplyMode1(uint8_t axis)
     const bool levelingModeShapingThisAxis = trainerLimitingThisAxis
         || (!isYaw && FLIGHT_MODE(rollPitchLevelingModes));
 
-    if (!levelingModeShapingThisAxis) {
+    // On the ground I is not accumulating, so decay at the normal rate whatever the mode.
+    if (onGround) {
+        attHoldDecayScale = 1.0f;
+    }
+
+    if (!levelingModeShapingThisAxis || onGround) {
         const float errorDecay = limitf(pid.data[axis].axisError * pid.itermDecayRate[axis] * attHoldDecayScale, pid.itermDecayLimit * attHoldDecayScale);
 
         pid.data[axis].axisError -= errorDecay * pid.dT;
