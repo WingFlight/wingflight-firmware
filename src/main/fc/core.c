@@ -916,8 +916,11 @@ void processRxModes(timeUs_t currentTimeUs)
     // continuously active and never re-capture a fresh target, so once the safety mode clears and
     // priority falls back to the hold, it resumes whatever attitude target was captured before the
     // preemption instead of the aircraft's current attitude. Mirrors pid.c's own priority mask.
+    // PASSTHROUGH and MANUAL bypass the hold's output the same way: the surfaces follow the
+    // sticks, the attitude drifts, and the frozen target goes stale. Disengage while bypassed so
+    // the release re-captures the current attitude instead of slewing back at max_rate.
     const bool safetyLevelingActive = FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE);
-    attHoldSetState(FLIGHT_MODE(ATTHOLD_MODE) && !safetyLevelingActive);
+    attHoldSetState(FLIGHT_MODE(ATTHOLD_MODE) && !safetyLevelingActive && !mixerStabilizationBypassed());
 #endif // USE_ACC
 #ifdef USE_SERVOS
     autoTrimUpdate();
@@ -1009,8 +1012,11 @@ static void subTaskPidController(timeUs_t currentTimeUs)
         // then -- same mask as attHoldSetState's below/above): leaving it "engaged" but
         // unapplied would let the target go stale, and the nozzle would head back to the
         // pre-safety-mode attitude once the safety mode cleared instead of re-capturing.
+        // PASSTHROUGH zeroes the TV mixer inputs (same condition as tv_pid.c's I hold), so the
+        // nozzle is not following the hold: disengage so the release re-captures.
         const bool tvSafetyLevelingActive = FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE);
-        tvHoldSetState(IS_RC_MODE_ACTIVE(BOXTVHOLD) && !tvSafetyLevelingActive);
+        const bool tvBypassed = mixerStabilizationBypassed() && IS_RC_MODE_ACTIVE(BOXPASSTHROUGH);
+        tvHoldSetState(IS_RC_MODE_ACTIVE(BOXTVHOLD) && !tvSafetyLevelingActive && !tvBypassed);
         tvPidController(currentTimeUs);
     } else {
         tvHoldSetState(false);
