@@ -1829,10 +1829,19 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         for (int i = 0; i < MAX_MODE_ACTIVATION_CONDITION_COUNT; i++) {
             const modeActivationCondition_t *mac = modeActivationConditions(i);
             const box_t *box = findBoxByBoxId(mac->modeId);
-            sbufWriteU8(dst, box->permanentId);
-            sbufWriteU8(dst, mac->auxChannelIndex);
-            sbufWriteU8(dst, mac->range.startStep);
-            sbufWriteU8(dst, mac->range.endStep);
+            if (box) {
+                sbufWriteU8(dst, box->permanentId);
+                sbufWriteU8(dst, mac->auxChannelIndex);
+                sbufWriteU8(dst, mac->range.startStep);
+                sbufWriteU8(dst, mac->range.endStep);
+            } else {
+                // Saved range for a mode this build no longer has: report an
+                // empty slot (start == end), which clients skip.
+                sbufWriteU8(dst, 0);
+                sbufWriteU8(dst, 0);
+                sbufWriteU8(dst, 0);
+                sbufWriteU8(dst, 0);
+            }
         }
         break;
 
@@ -1843,9 +1852,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             const modeActivationCondition_t *mac = modeActivationConditions(i);
             const box_t *box = findBoxByBoxId(mac->modeId);
             const box_t *linkedBox = findBoxByBoxId(mac->linkedTo);
-            sbufWriteU8(dst, box->permanentId);     // each element is aligned with MODE_RANGES by the permanentId
+            sbufWriteU8(dst, box ? box->permanentId : 0);     // each element is aligned with MODE_RANGES by the permanentId
             sbufWriteU8(dst, mac->modeLogic);
-            sbufWriteU8(dst, linkedBox->permanentId);
+            sbufWriteU8(dst, linkedBox ? linkedBox->permanentId : 0);
         }
         break;
 
@@ -3242,7 +3251,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
                     mac->modeLogic = sbufReadU8(src);
 
                     i = sbufReadU8(src);
-                    mac->linkedTo = findBoxByPermanentId(i)->boxId;
+                    const box_t *linkedBox = findBoxByPermanentId(i);
+                    mac->linkedTo = linkedBox ? linkedBox->boxId : 0;
                 }
                 rcControlsInit();
             } else {
