@@ -57,6 +57,8 @@ timeMs_t millis(void) { stubMillis += stubMillisStep; return stubMillis; }
 // Same contract as io/gps.c: the bearing FROM the current position TO the destination, in
 // centidegrees clockwise from north, in [0, 36000). Positions are 1e-7 degrees. Flat-earth with
 // no longitude scaling, which is exact on the equator where these tests are placed.
+void GPS_calc_longitude_scaling(int32_t) {}
+
 void GPS_distance_cm_bearing(int32_t *currentLat1, int32_t *currentLon1, int32_t *destinationLat2,
                              int32_t *destinationLon2, uint32_t *dist, int32_t *bearing)
 {
@@ -407,6 +409,7 @@ class GpsNavHealthTest : public ::testing::Test {
         gpsSol.llh.lat = 0;
         gpsSol.llh.lon = 0;
         stubMillisStep = 10000;
+        stubMillis += 60000; // so no test sees a still-fresh estimate left by the one before
         stateFlags = GPS_FIX;
     }
 
@@ -563,9 +566,11 @@ TEST_F(GpsNavDeadReckoningTest, TurningFlightFollowsTheImuHeading)
 TEST_F(GpsNavDeadReckoningTest, OneSatelliteUnderTheMinimumIsToleratedOnceNavigating)
 {
     // minSats is 6. With a fresh estimate, 5 satellites still count as a good sample, so the
-    // position keeps tracking the GPS well past the dead-reckoning window.
+    // position keeps tracking the GPS well past the dead-reckoning window. Each tick is a new
+    // fix 1.5 m further east (15 m/s): an unchanged position is not a new sample.
     gpsSol.numSat = 5;
     for (int i = 0; i < 80; i++) { // 8 s
+        gpsSol.llh.lon += 135;
         updateGpsNav();
     }
     EXPECT_TRUE(navCanLoiter());
@@ -573,6 +578,7 @@ TEST_F(GpsNavDeadReckoningTest, OneSatelliteUnderTheMinimumIsToleratedOnceNaviga
     // Two under is not enough.
     gpsSol.numSat = 4;
     for (int i = 0; i < 80; i++) {
+        gpsSol.llh.lon += 135;
         updateGpsNav();
     }
     EXPECT_FALSE(navCanLoiter());
@@ -582,6 +588,19 @@ TEST_F(GpsNavDeadReckoningTest, OneSatelliteUnderTheMinimumIsToleratedOnceNaviga
     EXPECT_FALSE(navCanLoiter());
     gpsSol.numSat = 6;
     EXPECT_TRUE(navCanLoiter());
+}
+
+TEST_F(GpsNavDeadReckoningTest, UnchangedFixIsDeadReckonedNotRestamped)
+{
+    // A serial gap: GPS_FIX and the last solution stay set, but nothing new arrives. The
+    // position must still move forward at the last ground speed, not freeze on the last fix.
+    for (int i = 0; i < 20; i++) { // 2 s, fix still flagged
+        updateGpsNav();
+    }
+    int32_t lat, lon;
+    ASSERT_TRUE(navGetEstimatedPosition(&lat, &lon));
+    EXPECT_NEAR(0, lat, 2 * UNITS_PER_METER);
+    EXPECT_NEAR(30 * UNITS_PER_METER, lon, 3 * UNITS_PER_METER);
 }
 
 } // namespace

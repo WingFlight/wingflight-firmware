@@ -22,6 +22,7 @@
 #include <string.h>
 
 #include "build/build_config.h"
+#include "common/curve.h"
 #include "common/maths.h"
 #include "common/time.h"
 #include "fc/runtime_config.h"
@@ -160,6 +161,13 @@ float sbusOutGetValueMixer(uint8_t channel, float *lastPos, float dt)
     if (servo->flags & SERVO_FLAG_GEO_CORR)
         input = geometryCorrection(input);
 #endif
+
+    // Servo balance curve, as servoUpdate() in servos.c: a small delta added on
+    // top of the output so twin servos on one surface can be matched.
+    {
+        const servoCurve_t *curve = servoCurves(servoIndex);
+        input += evaluateCurvePoints(curve->points, curve->count, input * 1000.0f, 0.0f) / 1000.0f;
+    }
 
     // Guard the boundary: a NaN here would otherwise sit in
     // *lastPos and poison every future sbusLimitSpeed() call

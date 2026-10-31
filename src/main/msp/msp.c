@@ -3057,8 +3057,14 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
                 sbufInit(&packetOut.buf, dst->ptr, dst->end);
                 packetIn.cmd = newMSP;
                 mspFcProcessCommand(srcDesc, &packetIn, &packetOut, NULL);
-                uint8_t mspSize = sbufPtr(&packetOut.buf) - dst->ptr;
-                mspSize++; // need to add length information for each MSP
+                // Each reply's length goes in one byte, so a reply over 255 bytes (or one
+                // that did not fit at all) cannot be batched; stop before it rather than
+                // send a wrapped length the client would misparse.
+                const int replySize = sbufPtr(&packetOut.buf) - dst->ptr;
+                if (sbufWriteOverflowed(&packetOut.buf) || replySize > UINT8_MAX) {
+                    break;
+                }
+                const int mspSize = replySize + 1; // need to add length information for each MSP
                 bytesRemaining -= mspSize;
                 if (bytesRemaining >= 0) {
                     maxMSPs++;
@@ -4019,6 +4025,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP2_WING_SET_BOARD_MOUNT_TRIM:
+        if (dataSize < 3 * sizeof(int16_t)) {
+            return MSP_RESULT_ERROR;
+        }
         boardAlignmentMutable()->mountTrim.roll = sbufReadS16(src);
         boardAlignmentMutable()->mountTrim.pitch = sbufReadS16(src);
         boardAlignmentMutable()->mountTrim.yaw = sbufReadS16(src);
@@ -4082,9 +4091,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP2_WING_COPY_TV_PID_PROFILE: {
+        if (dataSize < 2) {
+            return MSP_RESULT_ERROR;
+        }
         const uint8_t dstTvProfileIndex = sbufReadU8(src);
         const uint8_t srcTvProfileIndex = sbufReadU8(src);
-        if (dstTvProfileIndex < PID_PROFILE_COUNT && srcTvProfileIndex < PID_PROFILE_COUNT) {
+        if (dstTvProfileIndex < PID_PROFILE_COUNT && srcTvProfileIndex < PID_PROFILE_COUNT &&
+            dstTvProfileIndex != srcTvProfileIndex) {
             memcpy(tvPidProfilesMutable(dstTvProfileIndex), tvPidProfiles(srcTvProfileIndex), sizeof(tvPidProfile_t));
             if (!ARMING_FLAG(ARMED) && dstTvProfileIndex == getCurrentTvProfileIndex()) {
                 changeTvProfile(dstTvProfileIndex);
@@ -4192,9 +4205,12 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             }
             gainCurvesMutable(i)->count = pointCount;
         }
+        // Clamp to the documented ranges (pg/pid.h): x is |deflection| * 1000 and
+        // y a percent multiplier up to 500. An unchecked y up to 65535 meant a
+        // 655x gain on every axis using the curve.
         for (int p = 0; p < GAIN_CURVE_POINTS; p++) {
-            gainCurvesMutable(i)->points[p].x = sbufReadU16(src);
-            gainCurvesMutable(i)->points[p].y = sbufReadU16(src);
+            gainCurvesMutable(i)->points[p].x = MIN(sbufReadU16(src), 1000);
+            gainCurvesMutable(i)->points[p].y = MIN(sbufReadU16(src), 500);
         }
         break;
 
@@ -4301,6 +4317,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP2_WING_SET_GPS_NAV_CONFIG:
+        if (dataSize < 12) {
+            return MSP_RESULT_ERROR;
+        }
         gpsNavConfigMutable()->loiterRadiusM = sbufReadU16(src);
         gpsNavConfigMutable()->loiterDirection = sbufReadU8(src);
         gpsNavConfigMutable()->rthAltitudeM = sbufReadU16(src);
@@ -4742,6 +4761,9 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
 #endif
 
     case MSP2_WING_SET_GOVERNOR_CONFIG:
+        if (dataSize < 14) {
+            return MSP_RESULT_ERROR;
+        }
         governorConfigMutable()->governor_mode = sbufReadU8(src);
         governorConfigMutable()->governor_rpm = sbufReadU16(src);
         governorConfigMutable()->governor_gain = sbufReadU16(src);
@@ -4765,6 +4787,9 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         break;
 
     case MSP2_WING_SET_FBUS_MASTER_CONFIG:
+        if (dataSize < FBUS_MASTER_MAX_FORWARDED_SENSORS) {
+            return MSP_RESULT_ERROR;
+        }
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
             fbusMasterConfigMutable()->forwardedSensors[i] = sbufReadU8(src);
         }
@@ -4817,6 +4842,9 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
 
 #ifdef USE_RX_INPUT_BACKUP
     case MSP2_WING_SET_RX_INPUT_BACKUP_CONFIG:
+        if (dataSize < 5) {
+            return MSP_RESULT_ERROR;
+        }
         sbufReadU8(src); // payload version, unused for now
         rxInputBackupConfigMutable()->provider = sbufReadU8(src);
         rxInputBackupConfigMutable()->inverted = sbufReadU8(src);

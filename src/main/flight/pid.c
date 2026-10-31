@@ -1285,17 +1285,19 @@ void pidController(const pidProfile_t *pidProfile, timeUs_t currentTimeUs)
     DEBUG(GAIN_ATTEN, 4, STATE(GPS_FIX) ? 1 : 0);
 #endif
 
-    // Apply PID for each axis
+    // Apply PID for each axis. Only mode 0 (feedforward only, no gyro) and mode 1
+    // exist; pid_mode accepts 0..9, so any other value runs the stabilized mode 1
+    // rather than silently dropping all gyro correction.
     switch (pid.pidMode) {
-        case 1:
-            pidApplyMode1(PID_ROLL);
-            pidApplyMode1(PID_PITCH);
-            pidApplyMode1(PID_YAW);
-            break;
-        default:
+        case 0:
             pidApplyMode0(PID_ROLL);
             pidApplyMode0(PID_PITCH);
             pidApplyMode0(PID_YAW);
+            break;
+        default:
+            pidApplyMode1(PID_ROLL);
+            pidApplyMode1(PID_PITCH);
+            pidApplyMode1(PID_YAW);
             break;
     }
 

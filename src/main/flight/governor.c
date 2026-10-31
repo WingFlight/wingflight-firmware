@@ -71,6 +71,7 @@ float governorApply(float throttle)
     static pt1Filter_t rpmErrorFilter;
     static pt1Filter_t rpmLimitErrorFilter;
     static bool rangeFaultLatched = false;
+    static bool handoverBlend = false;    // easing from idle hold back down to the stick
 
     const governorConfig_t *cfg = governorConfig();
 
@@ -116,6 +117,7 @@ float governorApply(float throttle)
     if (!failsafeActive && cfg->governor_mode != GOVERNOR_MODE_OFF &&
         isModeActivationConditionPresent(BOXGOVERNOR) && !IS_RC_MODE_ACTIVE(BOXGOVERNOR)) {
         governorOutput = 0.0f;
+        handoverBlend = false;
         rpmErrorFilter.y1 = 0.0f;
         rpmLimitErrorFilter.y1 = 0.0f;
         integrator = 0.0f;
@@ -226,13 +228,27 @@ float governorApply(float throttle)
     }
 
     if (!active) {
-        governorOutput = throttle;
         rpmErrorFilter.y1 = 0.0f;
         rpmLimitErrorFilter.y1 = 0.0f;
         integrator = 0.0f;
         limitIntegrator = 0.0f;
-        return throttle;
+
+        // Leaving idle hold with the stick above governor_handover but below the
+        // held idle (governor_throttle defaults above governor_handover) would step
+        // the motor down. Ease down to the stick instead. Only while still armed,
+        // engaged and out of failsafe, so a disarm or failsafe still cuts at once,
+        // and never upward, so a punch-out is not delayed.
+        if (handoverBlend && ARMING_FLAG(ARMED) && !failsafeActive &&
+            IS_RC_MODE_ACTIVE(BOXGOVERNOR) && throttle < governorOutput) {
+            governorOutput = slewLimit(governorOutput, throttle, GOVERNOR_SLEW_RATE * pidGetDT());
+        } else {
+            handoverBlend = false;
+            governorOutput = throttle;
+        }
+        return governorOutput;
     }
+
+    handoverBlend = !fullRange && !rpmLimit;
 
     const float slewRate = rpmLimit ? GOVERNOR_RPM_LIMIT_SLEW_RATE :
         (fullRange ? GOVERNOR_RPM_RANGE_SLEW_RATE : GOVERNOR_SLEW_RATE);

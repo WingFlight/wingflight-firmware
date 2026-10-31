@@ -418,23 +418,22 @@ bool fbusSensorPeekForwardedFrame(uint8_t physicalId, fbusSensorFrame_t *frame)
 
 bool fbusSensorGetForwardedFrame(uint8_t physicalId, fbusSensorFrame_t *frame)
 {
-    if (!fbusSensorPeekForwardedFrame(physicalId, frame)) {
-        return false;
+    bool result = false;
+
+    // addFrameToBuffer() runs in the FBUS master UART RX callback and also moves
+    // readIndex and count, so take the frame and advance in one atomic step.
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        if (fbusSensorPeekForwardedFrame(physicalId, frame)) {
+            result = true;
+            fbusSensorForwardBuffer_t *buffer = getForwardBuffer(physicalId);
+            if (frame->valid && buffer) {
+                buffer->readIndex = (buffer->readIndex + 1) % FBUS_FORWARDED_FRAME_BUFFER_SIZE;
+                buffer->count--;
+            }
+        }
     }
 
-    if (!frame->valid) {
-        return true;
-    }
-
-    fbusSensorForwardBuffer_t *buffer = getForwardBuffer(physicalId);
-    if (!buffer) {
-        return false;
-    }
-
-    buffer->readIndex = (buffer->readIndex + 1) % FBUS_FORWARDED_FRAME_BUFFER_SIZE;
-    buffer->count--;
-
-    return true;
+    return result;
 }
 
 bool fbusSensorNeedsStartupFrame(uint8_t physicalId)
@@ -693,84 +692,88 @@ bool fbusGpsHasFix(const fbusGpsData_t *gps)
 
 void fbusSensorUpdate(timeUs_t currentTimeUs)
 {
-    if (fbusGps.lastUpdateUs > 0 && (currentTimeUs - fbusGps.lastUpdateUs) > 1000000) {
-        fbusGps.hasLatitude = false;
-        fbusGps.hasLongitude = false;
-        fbusGps.hasPosition = false;
-        fbusGps.hasAltitude = false;
-        fbusGps.hasSpeed = false;
-        fbusGps.hasCourse = false;
-        fbusGps.hasSatellites = false;
-        fbusGps.hasTime = false;
-        fbusGps.hasDate = false;
-    }
-    
-    if (fbusServo.lastUpdateUs > 0 && (currentTimeUs - fbusServo.lastUpdateUs) > 1000000) {
-        fbusServo.hasData = false;
-    }
+    // The FBUS master UART RX callback writes these structs (fbusSensorProcessData()),
+    // so clear stale flags and copy the GPS solution with it held off.
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        if (fbusGps.lastUpdateUs > 0 && (currentTimeUs - fbusGps.lastUpdateUs) > 1000000) {
+            fbusGps.hasLatitude = false;
+            fbusGps.hasLongitude = false;
+            fbusGps.hasPosition = false;
+            fbusGps.hasAltitude = false;
+            fbusGps.hasSpeed = false;
+            fbusGps.hasCourse = false;
+            fbusGps.hasSatellites = false;
+            fbusGps.hasTime = false;
+            fbusGps.hasDate = false;
+        }
+        
+        if (fbusServo.lastUpdateUs > 0 && (currentTimeUs - fbusServo.lastUpdateUs) > 1000000) {
+            fbusServo.hasData = false;
+        }
 
-    if (fbusCurrent.lastUpdateUs > 0 && (currentTimeUs - fbusCurrent.lastUpdateUs) > 1000000) {
-        fbusCurrent.hasCurrent = false;
-        fbusCurrent.hasVoltage = false;
-        fbusCurrent.hasHighPrecisionCurrent = false;
-    }
+        if (fbusCurrent.lastUpdateUs > 0 && (currentTimeUs - fbusCurrent.lastUpdateUs) > 1000000) {
+            fbusCurrent.hasCurrent = false;
+            fbusCurrent.hasVoltage = false;
+            fbusCurrent.hasHighPrecisionCurrent = false;
+        }
 
-    if (fbusEsc.lastUpdateUs > 0 && (currentTimeUs - fbusEsc.lastUpdateUs) > 1000000) {
-        fbusEsc.hasPower = false;
-        fbusEsc.hasRpm = false;
-        fbusEsc.hasConsumption = false;
-        fbusEsc.hasTemperature = false;
-    }
+        if (fbusEsc.lastUpdateUs > 0 && (currentTimeUs - fbusEsc.lastUpdateUs) > 1000000) {
+            fbusEsc.hasPower = false;
+            fbusEsc.hasRpm = false;
+            fbusEsc.hasConsumption = false;
+            fbusEsc.hasTemperature = false;
+        }
 
-    if (fbusFlvss.lastUpdateUs > 0 && (currentTimeUs - fbusFlvss.lastUpdateUs) > 1000000) {
-        memset(fbusFlvss.cellVoltageCentiVolts, 0, sizeof(fbusFlvss.cellVoltageCentiVolts));
-        fbusFlvss.voltageCentiVolts = 0;
-        fbusFlvss.cellCount = 0;
-        fbusFlvss.hasVoltage = false;
-    }
+        if (fbusFlvss.lastUpdateUs > 0 && (currentTimeUs - fbusFlvss.lastUpdateUs) > 1000000) {
+            memset(fbusFlvss.cellVoltageCentiVolts, 0, sizeof(fbusFlvss.cellVoltageCentiVolts));
+            fbusFlvss.voltageCentiVolts = 0;
+            fbusFlvss.cellCount = 0;
+            fbusFlvss.hasVoltage = false;
+        }
 
 #ifdef USE_GPS
-    if (gpsUsesFbusTransport()) {
-        if (fbusGps.hasPosition) {
-            const bool hasFix = fbusGpsHasFix(&fbusGps);
+        if (gpsUsesFbusTransport()) {
+            if (fbusGps.hasPosition) {
+                const bool hasFix = fbusGpsHasFix(&fbusGps);
 
-            // Without a fix the position is the sensor's 0/0 placeholder:
-            // keep the last real solution instead.
-            if (hasFix) {
-                gpsSol.llh.lat = fbusGps.latitude;
-                gpsSol.llh.lon = fbusGps.longitude;
+                // Without a fix the position is the sensor's 0/0 placeholder:
+                // keep the last real solution instead.
+                if (hasFix) {
+                    gpsSol.llh.lat = fbusGps.latitude;
+                    gpsSol.llh.lon = fbusGps.longitude;
 
-                if (fbusGps.hasAltitude) {
-                    gpsSol.llh.altCm = fbusGps.altitudeCm;
+                    if (fbusGps.hasAltitude) {
+                        gpsSol.llh.altCm = fbusGps.altitudeCm;
+                    }
+
+                    if (fbusGps.hasSpeed) {
+                        gpsSol.groundSpeed = fbusGpsConvertSpeed(fbusGps.speedMilliKnots);
+                        gpsSol.speed3d = gpsSol.groundSpeed;
+                    }
+
+                    if (fbusGps.hasCourse) {
+                        gpsSol.groundCourse = fbusGps.courseDeg;
+                    }
                 }
 
-                if (fbusGps.hasSpeed) {
-                    gpsSol.groundSpeed = fbusGpsConvertSpeed(fbusGps.speedMilliKnots);
-                    gpsSol.speed3d = gpsSol.groundSpeed;
-                }
-
-                if (fbusGps.hasCourse) {
-                    gpsSol.groundCourse = fbusGps.courseDeg;
-                }
+                // Older FBUS GPS sensors do not report satellite count. Leave it
+                // at zero by default rather than inventing a value that could
+                // satisfy RTH/Loiter/GPS Rescue minimum-satellite checks. Users
+                // can explicitly opt into an assumed CLI value for those sensors;
+                // real satellite-count data always wins when the sensor sends it.
+                gpsSol.numSat = fbusGps.hasSatellites ? fbusGps.satellites : gpsConfig()->fbus_assumed_sats;
+                gpsSol.hdop = 100;
+                gpsData.lastMessage = millis();
+                gpsSetFixState(hasFix);
+                GPS_update |= GPS_MSP_UPDATE;
+            } else {
+                sensorsClear(SENSOR_GPS);
+                gpsSetFixState(false);
+                gpsSol.numSat = 0;
             }
-
-            // Older FBUS GPS sensors do not report satellite count. Leave it
-            // at zero by default rather than inventing a value that could
-            // satisfy RTH/Loiter/GPS Rescue minimum-satellite checks. Users
-            // can explicitly opt into an assumed CLI value for those sensors;
-            // real satellite-count data always wins when the sensor sends it.
-            gpsSol.numSat = fbusGps.hasSatellites ? fbusGps.satellites : gpsConfig()->fbus_assumed_sats;
-            gpsSol.hdop = 100;
-            gpsData.lastMessage = millis();
-            gpsSetFixState(hasFix);
-            GPS_update |= GPS_MSP_UPDATE;
-        } else {
-            sensorsClear(SENSOR_GPS);
-            gpsSetFixState(false);
-            gpsSol.numSat = 0;
         }
-    }
 #endif
+    }
 }
 
 void fbusSensorGetGpsData(fbusGpsData_t *gpsData)

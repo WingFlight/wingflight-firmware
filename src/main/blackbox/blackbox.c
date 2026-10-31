@@ -615,6 +615,8 @@ static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
         return isFieldEnabled(FIELD_SELECT(TEMP));
     case CONDITION(TESC):
         return featureIsEnabled(FEATURE_ESC_SENSOR) && (isFieldEnabled(FIELD_SELECT(TEMP)) || isFieldEnabled(FIELD_SELECT(ESC)));
+    case CONDITION(TBEC):
+        return featureIsEnabled(FEATURE_ESC_SENSOR) && (isFieldEnabled(FIELD_SELECT(TEMP)) || isFieldEnabled(FIELD_SELECT(BEC)));
     case CONDITION(TESC2):
         return featureIsEnabled(FEATURE_ESC_SENSOR) && isFieldEnabled(FIELD_SELECT(ESC2));
 

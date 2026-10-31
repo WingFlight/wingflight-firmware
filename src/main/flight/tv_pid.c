@@ -32,6 +32,7 @@
 
 #include "config/config.h"
 
+#include "fc/rc_modes.h"
 #include "fc/runtime_config.h"
 
 #include "flight/pid.h"
@@ -536,7 +537,13 @@ static void tvPidApplyAxis(uint8_t axis)
     const float itermErrorRate = tvApplyItermRelax(axis, errorRate, setpoint);
 
     const bool saturation = (tvPidAxisSaturated(axis) && tvPid.data[axis].axisError * itermErrorRate > 0);
-    const float itermDelta = saturation ? 0 : itermErrorRate * pidGetDT();
+
+    // PASSTHROUGH zeroes the TV mixer inputs (mixer.c), so the nozzle is not tracking
+    // this setpoint: hold the accumulation, as pid.c does for the main loop, or the
+    // wound-up I steps the nozzle on switching back. Decay below still applies.
+    const bool bypassed = mixerStabilizationBypassed() && IS_RC_MODE_ACTIVE(BOXPASSTHROUGH);
+
+    const float itermDelta = (saturation || bypassed) ? 0 : itermErrorRate * pidGetDT();
 
     tvPid.data[axis].axisError = limitf(tvPid.data[axis].axisError + itermDelta, tvPid.errorLimit[axis]);
     tvPid.data[axis].I = tvPid.coef[axis].Ki * masterGain * tvPid.data[axis].axisError;

@@ -321,6 +321,18 @@ void updateArmingStatus(void)
             unsetArmingDisabled(ARMING_DISABLED_THROTTLE);
         }
 
+        // An engaged governor switch takes the motor to idle (or the RPM_RANGE
+        // minimum) the moment the model arms, whatever the stick says. Its
+        // switch is the motor interlock, so require it off to arm, like the
+        // throttle check above.
+        if (governorConfig()->governor_mode != GOVERNOR_MODE_OFF &&
+            isModeActivationConditionPresent(BOXGOVERNOR) &&
+            IS_RC_MODE_ACTIVE(BOXGOVERNOR) && !allowAirborneRearm) {
+            setArmingDisabled(ARMING_DISABLED_GOVERNOR);
+        } else {
+            unsetArmingDisabled(ARMING_DISABLED_GOVERNOR);
+        }
+
         if (!isAttitudeEstimateReady() && !allowAirborneRearm) {
             setArmingDisabled(ARMING_DISABLED_ANGLE);
         } else {
@@ -768,8 +780,11 @@ void processRxModes(timeUs_t currentTimeUs)
             static bool wasRthActive = false;
             static bool wasLoiterActive = false;
 
+            // Start nav on the switch's off->on edge, and also whenever the mode is
+            // on but nav is not running: failsafe recovery calls navStop() while the
+            // switch is still held, and nothing else would restart it.
             if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXRTH)) {
-                if (!wasRthActive) {
+                if (!wasRthActive || !navIsActive()) {
                     navRthStart();
                 }
                 ENABLE_FLIGHT_MODE(RTH_MODE);
@@ -794,7 +809,7 @@ void processRxModes(timeUs_t currentTimeUs)
             }
 
             if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXLOITER) && !FLIGHT_MODE(RTH_MODE)) {
-                if (!wasLoiterActive) {
+                if (!wasLoiterActive || !navIsActive()) {
                     navLoiterStart();
                 }
                 ENABLE_FLIGHT_MODE(LOITER_MODE);
