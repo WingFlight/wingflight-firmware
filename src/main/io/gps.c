@@ -49,6 +49,7 @@
 
 #include "config/config.h"
 #include "fc/runtime_config.h"
+#include "fc/core.h"
 
 #include "flight/imu.h"
 #include "flight/pid.h"
@@ -1057,8 +1058,19 @@ void gpsUpdate(timeUs_t currentTimeUs)
     if (sensors(SENSOR_GPS)) {
         updateGpsIndicator(currentTimeUs);
     }
-    if (!ARMING_FLAG(ARMED) && !gpsConfig()->gps_set_home_point_once) {
-        DISABLE_STATE(GPS_FIX_HOME);
+    if (!ARMING_FLAG(ARMED)) {
+        // Keep home through an in-flight disarm and re-arm (rearm_grace_seconds), so the
+        // re-arm does not move it to wherever the aircraft is at the time.
+        if (!gpsConfig()->gps_set_home_point_once && !isRearmGraceActive()) {
+            DISABLE_STATE(GPS_FIX_HOME);
+        }
+    } else if (!STATE(GPS_FIX_HOME) && STATE(GPS_FIX) && gpsSol.numSat >= 5) {
+        // Armed before the fix (allowed on every re-arm, and whenever BOXRTH is not mapped
+        // or gps_rescue_allow_arming_without_fix is set): take home from the first usable
+        // fix rather than fly with none, which left BOXRTH and the GPS-RESCUE failsafe with
+        // no target -- wings level, cruise throttle, straight line away. A fix that arrives
+        // a little way into a hand launch gives a home near the launch.
+        GPS_reset_home_position();
     }
 
     uint8_t minSats = 5;
