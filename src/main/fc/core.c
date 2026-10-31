@@ -321,18 +321,6 @@ void updateArmingStatus(void)
             unsetArmingDisabled(ARMING_DISABLED_THROTTLE);
         }
 
-        // An engaged governor switch takes the motor to idle (or the RPM_RANGE
-        // minimum) the moment the model arms, whatever the stick says. Its
-        // switch is the motor interlock, so require it off to arm, like the
-        // throttle check above.
-        if (governorConfig()->governor_mode != GOVERNOR_MODE_OFF &&
-            isModeActivationConditionPresent(BOXGOVERNOR) &&
-            IS_RC_MODE_ACTIVE(BOXGOVERNOR) && !allowAirborneRearm) {
-            setArmingDisabled(ARMING_DISABLED_GOVERNOR);
-        } else {
-            unsetArmingDisabled(ARMING_DISABLED_GOVERNOR);
-        }
-
         if (!isAttitudeEstimateReady() && !allowAirborneRearm) {
             setArmingDisabled(ARMING_DISABLED_ANGLE);
         } else {
