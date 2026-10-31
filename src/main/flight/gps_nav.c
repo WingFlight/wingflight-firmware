@@ -364,10 +364,8 @@ float navTurnCoordinationYawRate(void)
     // While dead reckoning, the live ground speed is stale (or zero); use the last good one.
     const float groundSpeedCms = navGpsSampleGood(nowMs) ? gpsSol.groundSpeed : est.speedCms;
     const float speedCms = fmaxf(groundSpeedCms, NAV_MIN_TURN_SPEED_CMS);
-    // attitude.values are int16 decidegrees -- divide as float; DECIDEGREES_TO_RADIANS() would
-    // integer-divide by 10 first.
-    const float rollRad = DEGREES_TO_RADIANS(attitude.values.roll / 10.0f);
-    const float pitchRad = DEGREES_TO_RADIANS(attitude.values.pitch / 10.0f);
+    const float rollRad = DECIDEGREES_TO_RADIANS(attitude.values.roll);
+    const float pitchRad = DECIDEGREES_TO_RADIANS(attitude.values.pitch);
     const float yawRateDps = RADIANS_TO_DEGREES(NAV_GRAVITY_CMSS * sin_approx(rollRad) * cos_approx(pitchRad) / speedCms);
 
     return -gain * constrainf(yawRateDps, -NAV_MAX_TURN_YAW_RATE_DPS, NAV_MAX_TURN_YAW_RATE_DPS);
