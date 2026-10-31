@@ -43,7 +43,7 @@ enum {
 enum {
     LOGIC_CONDITION_OPERAND_TYPE_VALUE = 0,    // literal constant
     LOGIC_CONDITION_OPERAND_TYPE_RC_CHANNEL,   // 0-based index into rcInput[] (0-3=Roll/Pitch/Yaw/Throttle, 4+=AUX1..)
-    LOGIC_CONDITION_OPERAND_TYPE_FLIGHT_MODE,  // a boxId_e - evaluates to 1/0 via IS_RC_MODE_ACTIVE
+    LOGIC_CONDITION_OPERAND_TYPE_FLIGHT_MODE,  // a mode's permanent ID (MSP_BOXIDS) - evaluates to 1/0 via IS_RC_MODE_ACTIVE
     LOGIC_CONDITION_OPERAND_TYPE_CONDITION,    // another condition's own last result (0-based index)
     LOGIC_CONDITION_OPERAND_TYPE_SENSOR,       // a logicSensor_e - live reading from a common sensor
     LOGIC_CONDITION_OPERAND_TYPE_PROFILE,      // a logicProfile_e - which profile of that kind is active
@@ -51,7 +51,7 @@ enum {
 };
 
 // Common sensor readings usable as a logic condition operand, selected the same way
-// OPERAND_TYPE_FLIGHT_MODE selects a boxId_e - value is the index below, not the reading itself.
+// OPERAND_TYPE_FLIGHT_MODE selects a mode - value is the index below, not the reading itself.
 enum {
     LOGIC_SENSOR_ALTITUDE = 0,  // 0.1m units (decimeters), getAltitude() * 10
     LOGIC_SENSOR_VOLTAGE,       // 0.1V units, getBatteryVoltage() / 10

@@ -40,6 +40,8 @@
 #include "flight/motors.h"
 #include "flight/position.h"
 
+#include "msp/msp_box.h"
+
 #include "sensors/battery.h"
 
 // Runtime-only state for the stateful operators (STICKY/DELAY/EDGE) - not
@@ -68,8 +70,13 @@ static float logicConditionGetOperandValue(uint8_t type, int16_t value)
             return 0;
 
         case LOGIC_CONDITION_OPERAND_TYPE_FLIGHT_MODE:
-            if (value >= 0 && value < CHECKBOX_ITEM_COUNT) {
-                return IS_RC_MODE_ACTIVE((boxId_e)value) ? 1 : 0;
+            // value is the mode's permanent ID (as in MSP_BOXIDS and the CLI
+            // "aux" command), not its boxId_e, which is internal and may change.
+            if (value >= 0 && value <= UINT8_MAX) {
+                const box_t *box = findBoxByPermanentId(value);
+                if (box) {
+                    return IS_RC_MODE_ACTIVE((boxId_e)box->boxId) ? 1 : 0;
+                }
             }
             return 0;
 
