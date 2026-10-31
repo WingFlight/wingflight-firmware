@@ -473,7 +473,7 @@ static void crsfFlightModeInfo(char *buf)
         flightMode = "DISABLED";
     } else
 #if defined(USE_GPS)
-    if (!ARMING_FLAG(ARMED) && featureIsEnabled(FEATURE_GPS) && (!STATE(GPS_FIX) || !STATE(GPS_FIX_HOME))) {
+    if (!ARMING_FLAG(ARMED) && gpsIsEnabled() && (!STATE(GPS_FIX) || !STATE(GPS_FIX_HOME))) {
         flightMode = "GPS-WAIT";
     } else
 #endif
@@ -1225,8 +1225,11 @@ void INIT_CODE initCrsfTelemetry(void)
 
     if (crsfTelemetryState)
     {
-        const float rate = telemetryConfig()->crsf_telemetry_link_rate;
-        const float ratio = telemetryConfig()->crsf_telemetry_link_ratio;
+        // Both accept 0 at the CLI. A zero ratio made the quanta infinite and the bucket
+        // NaN, and a zero rate never refilled it: either stopped all CRSF telemetry and
+        // MSP-over-CRSF. Treat them as at least 1.
+        const float rate = MAX(telemetryConfig()->crsf_telemetry_link_rate, 1);
+        const float ratio = MAX(telemetryConfig()->crsf_telemetry_link_ratio, 1);
 
         crsfTelemetryRateQuanta = rate / (ratio * 1000000);
         crsfTelemetryRateBucket = 0;

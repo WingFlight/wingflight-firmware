@@ -267,7 +267,7 @@ static const char * const featureNames[] = {
     [ 4] = "",
     [ 5] = "",
     [ 6] = "SOFTSERIAL",
-    [ 7] = "GPS",
+    [ 7] = "",
     [ 8] = "",
     [ 9] = "",
     [10] = "TELEMETRY",
@@ -1524,6 +1524,605 @@ static void cliSerial(const char *cmdName, char *cmdline)
         baudRates[portConfig.blackbox_baudrateIndex]
         );
 
+}
+
+// serialdebug: show what every serial port is doing, and listen to one to see raw bytes.
+// Blocks the scheduler while listening, like serialpassthrough, so it is CLI (disarmed) only.
+
+#define SERIAL_DEBUG_MONITOR_MAX_SECONDS  60
+#define SERIAL_DEBUG_MONITOR_MAX_PRINT    4096
+#define SERIAL_DEBUG_SCAN_MS              1500
+
+static const struct {
+    serialPortFunction_e function;
+    const char *name;
+} serialDebugFunctionNames[] = {
+    { FUNCTION_MSP,                 "MSP" },
+    { FUNCTION_GPS,                 "GPS" },
+    { FUNCTION_TELEMETRY_FRSKY_HUB, "FRSKY_HUB" },
+    { FUNCTION_TELEMETRY_HOTT,      "HOTT" },
+    { FUNCTION_TELEMETRY_LTM,       "LTM" },
+    { FUNCTION_TELEMETRY_SMARTPORT, "SMARTPORT" },
+    { FUNCTION_RX_SERIAL,           "RX_SERIAL" },
+    { FUNCTION_BLACKBOX,            "BLACKBOX" },
+    { FUNCTION_TELEMETRY_MAVLINK,   "MAVLINK" },
+    { FUNCTION_ESC_SENSOR,          "ESC_SENSOR" },
+    { FUNCTION_TELEMETRY_IBUS,      "IBUS" },
+    { FUNCTION_RCDEVICE,            "RCDEVICE" },
+    { FUNCTION_LIDAR_TF,            "LIDAR_TF" },
+    { FUNCTION_PRINTF,              "PRINTF" },
+    { FUNCTION_SBUS_OUT,            "SBUS_OUT" },
+    { FUNCTION_FBUS_MASTER,         "FBUS_MASTER" },
+    { FUNCTION_SPORT_MASTER,        "SPORT_MASTER" },
+    { FUNCTION_SRXL2_ESC,           "SRXL2_ESC" },
+    { FUNCTION_CRSF_SENSORS,        "CRSF_SENSORS" },
+    { FUNCTION_RX_INPUT_BACKUP,     "RX_BACKUP" },
+};
+
+static void serialDebugPortName(char *buf, size_t len, int id)
+{
+    if (id == SERIAL_PORT_USB_VCP) {
+        tfp_sprintf(buf, "VCP");
+    } else if (id >= SERIAL_PORT_USART1 && id <= SERIAL_PORT_USART10) {
+        tfp_sprintf(buf, "UART%d", id - SERIAL_PORT_USART1 + 1);
+    } else if (id >= SERIAL_PORT_SOFTSERIAL1 && id <= SERIAL_PORT_SOFTSERIAL2) {
+        tfp_sprintf(buf, "SOFT%d", id - SERIAL_PORT_SOFTSERIAL1 + 1);
+    } else if (id == SERIAL_PORT_LPUART1) {
+        tfp_sprintf(buf, "LPUART1");
+    } else {
+        tfp_sprintf(buf, "?%d", id);
+    }
+    UNUSED(len);
+}
+
+// Accepts the `serial` command's port number (e.g. 6) or a name (e.g. UART7)
+static bool serialDebugParsePort(const char *arg, int *id)
+{
+    if (!arg || !*arg) {
+        return false;
+    }
+    if (*arg >= '0' && *arg <= '9') {
+        *id = atoi(arg);
+        return true;
+    }
+    for (int i = 0; i < SERIAL_PORT_COUNT; i++) {
+        char name[12];
+        serialDebugPortName(name, sizeof(name), serialPortIdentifiers[i]);
+        const size_t n = strlen(name);
+        if (strncasecmp(arg, name, n) == 0 && (arg[n] == ' ' || arg[n] == '\0')) {
+            *id = serialPortIdentifiers[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+static void serialDebugPrintPadded(const char *str, int width)
+{
+    cliPrint(str);
+    for (int n = strlen(str); n < width; n++) {
+        cliWrite(' ');
+    }
+}
+
+static void serialDebugPinName(char *buf, ioTag_t tag)
+{
+    if (tag) {
+        tfp_sprintf(buf, "%c%02d", IO_GPIOPortIdxByTag(tag) + 'A', IO_GPIOPinIdxByTag(tag));
+    } else {
+        tfp_sprintf(buf, "-");
+    }
+}
+
+static void serialDebugPrintFunctions(uint32_t mask)
+{
+    char buf[48] = "";
+    if (!mask) {
+        strcpy(buf, "-");
+    }
+    for (unsigned i = 0; i < ARRAYLEN(serialDebugFunctionNames); i++) {
+        if (mask & serialDebugFunctionNames[i].function) {
+            if (buf[0] && strlen(buf) + strlen(serialDebugFunctionNames[i].name) + 2 < sizeof(buf)) {
+                strcat(buf, ",");
+            }
+            if (strlen(buf) + strlen(serialDebugFunctionNames[i].name) + 1 < sizeof(buf)) {
+                strcat(buf, serialDebugFunctionNames[i].name);
+            }
+        }
+    }
+    serialDebugPrintPadded(buf, 18);
+}
+
+static void serialDebugStatus(void)
+{
+    bool anyConflict = false;
+
+    cliPrintLine("port     id  rx   tx   functions         open  baud");
+    for (int i = 0; i < SERIAL_PORT_COUNT; i++) {
+        const int id = serialPortIdentifiers[i];
+        const serialPortConfig_t *cfg = serialFindPortConfiguration(id);
+        const uint32_t mask = cfg ? cfg->functionMask : 0;
+        ioTag_t rxTag, txTag;
+        uint32_t baud;
+        const uint8_t diag = serialGetPortDiagnostics(id, &rxTag, &txTag, &baud);
+
+        char name[12];
+        serialDebugPortName(name, sizeof(name), id);
+        serialDebugPrintPadded(name, 9);
+        cliPrintf("%2d  ", id);
+
+        char pin[8];
+        serialDebugPinName(pin, rxTag);
+        serialDebugPrintPadded(pin, 5);
+        serialDebugPinName(pin, txTag);
+        serialDebugPrintPadded(pin, 5);
+        serialDebugPrintFunctions(mask);
+
+        if (id == SERIAL_PORT_USB_VCP) {
+            cliPrint(diag & SERIAL_DIAG_OPEN ? "yes" : "no");
+        } else if (diag & SERIAL_DIAG_NO_PINS) {
+            cliPrint("no pins");
+        } else if (diag & SERIAL_DIAG_OPEN) {
+            cliPrintf("yes   %d", (int)baud);
+            if (diag & SERIAL_DIAG_RX_CALLBACK) {
+                cliPrint(" (irq rx)");
+            }
+            if (diag & SERIAL_DIAG_TX_ONLY) {
+                cliPrint(" (tx only)");
+            }
+        } else {
+            cliPrint(mask ? "NO" : "no");
+        }
+        if (diag & SERIAL_DIAG_PIN_CONFLICT) {
+            cliPrint("  PIN CONFLICT");
+            anyConflict = true;
+        }
+        cliPrintLinefeed();
+    }
+
+    // Generic checks: a function that was given a port but isn't running, and a
+    // provider setting that needs a port function nobody has.
+    for (int i = 0; i < SERIAL_PORT_COUNT; i++) {
+        const int id = serialPortIdentifiers[i];
+        const serialPortConfig_t *cfg = serialFindPortConfiguration(id);
+        ioTag_t rxTag, txTag;
+        uint32_t baud;
+        const uint8_t diag = serialGetPortDiagnostics(id, &rxTag, &txTag, &baud);
+        if (cfg && cfg->functionMask && id != SERIAL_PORT_USB_VCP && !(diag & SERIAL_DIAG_OPEN)) {
+            char name[12];
+            serialDebugPortName(name, sizeof(name), id);
+            if (diag & SERIAL_DIAG_NO_PINS) {
+                cliPrintLinef("# %s has a function but no pins, see `resource`", name);
+            } else {
+                cliPrintLinef("# %s has a function but did not open: its feature or provider may be off, see `serialdebug %d`", name, id);
+            }
+        }
+    }
+    if (anyConflict) {
+        cliPrintLine("# PIN CONFLICT: a pin is owned by something else, see `resource show`");
+    }
+#ifdef USE_GPS
+    if (!gpsIsConfigured() && gpsConfig()->provider != GPS_MSP) {
+        const char *needed = "GPS";
+        if (gpsConfig()->provider == GPS_FBUS) {
+            needed = "FBUS_MASTER or SPORT_MASTER";
+        } else if (gpsConfig()->provider == GPS_CRSF) {
+            needed = "CRSF_SENSORS";
+        }
+        cliPrintLinef("# gps_provider is %s but no port has the %s function, so GPS is off",
+            lookupTables[TABLE_GPS_PROVIDER].values[gpsConfig()->provider], needed);
+    }
+#endif
+}
+
+#ifdef USE_GPS
+// GPS detail for `serialdebug <port>` on a port with the GPS function
+static void serialDebugGpsDetail(int id)
+{
+    const bool serialProvider = gpsConfig()->provider == GPS_NMEA || gpsConfig()->provider == GPS_UBLOX;
+    const serialPort_t *gpsSerial = gpsGetPort();
+    const serialPortConfig_t *gpsCfg = findSerialPortConfig(FUNCTION_GPS);
+
+    cliPrintLinefeed();
+    cliPrintLinef("GPS: provider %s, active %s%s", lookupTables[TABLE_GPS_PROVIDER].values[gpsConfig()->provider],
+        gpsIsEnabled() ? "yes" : "no",
+        gpsIsEnabled() != gpsIsConfigured() ? " (setup changed: save and reboot)" : "");
+
+    if (!serialProvider) {
+        cliPrintLine("# gps_provider doesn't use a GPS port: set it to NMEA or UBLOX for a module on this port");
+        return;
+    }
+    if (gpsCfg && gpsCfg->identifier != id) {
+        char name[12];
+        serialDebugPortName(name, sizeof(name), gpsCfg->identifier);
+        cliPrintLinef("# GPS is set on more than one port and %s (id %d) comes first, so this one is not used", name, gpsCfg->identifier);
+        return;
+    }
+    if (!gpsIsEnabled()) {
+        return;
+    }
+    if (!gpsSerial) {
+        cliPrintLine("# the GPS port did not open");
+        return;
+    }
+    cliPrintLinef("GPS: state %s, last valid message %dms ago, at %d baud", gpsGetStateName(),
+        (int)(millis() - gpsData.lastMessage), (int)gpsSerial->baudRate);
+    cliPrintLinef("GPS: bytes %d, packets %d, errors %d, timeouts %d, sats %d, fix %s",
+        (int)gpsGetRxByteCount(), (int)GPS_packetCount, (int)gpsData.errors, (int)gpsData.timeouts,
+        gpsSol.numSat, STATE(GPS_FIX) ? "yes" : "no");
+
+    if (gpsGetRxByteCount() == 0) {
+        cliPrintLinef("# nothing received from the module: check its TX goes to this port's RX pin, power and ground; `serialdebug monitor %d` shows raw data", id);
+    } else if (GPS_packetCount == 0) {
+        cliPrintLinef("# data arriving but no valid messages: wrong baud rate or protocol, try `serialdebug scan %d`", id);
+    } else if (!gpsIsHealthy()) {
+        cliPrintLine("# the module answered before but has gone quiet");
+    }
+}
+#endif
+
+// One port in detail: its setup, live state, then whatever each function on it reports
+static void serialDebugPortDetail(int id)
+{
+    const serialPortConfig_t *cfg = serialFindPortConfiguration(id);
+    const serialPortUsage_t *usage = findSerialPortUsageByIdentifier(id);
+    ioTag_t rxTag, txTag;
+    uint32_t baud;
+    const uint8_t diag = serialGetPortDiagnostics(id, &rxTag, &txTag, &baud);
+    const uint32_t mask = cfg ? cfg->functionMask : 0;
+
+    char name[12];
+    serialDebugPortName(name, sizeof(name), id);
+    if (!usage && !cfg) {
+        cliPrintLinef("%s (id %d) is not on this board", name, id);
+        return;
+    }
+
+    char rxPin[8], txPin[8];
+    serialDebugPinName(rxPin, rxTag);
+    serialDebugPinName(txPin, txTag);
+    cliPrintf("%s (id %d): rx %s, tx %s, functions ", name, id, rxPin, txPin);
+    serialDebugPrintFunctions(mask);
+    cliPrintLinefeed();
+    if (cfg) {
+        cliPrintLinef("configured baud: msp %d, gps %d, telemetry %d, blackbox %d",
+            (int)baudRates[cfg->msp_baudrateIndex], (int)baudRates[cfg->gps_baudrateIndex],
+            (int)baudRates[cfg->telemetry_baudrateIndex], (int)baudRates[cfg->blackbox_baudrateIndex]);
+    }
+
+    if (id != SERIAL_PORT_USB_VCP && (diag & SERIAL_DIAG_NO_PINS)) {
+        cliPrintLine("open: no, no pins assigned (see `resource SERIAL_RX` / `SERIAL_TX`)");
+    } else if (!(diag & SERIAL_DIAG_OPEN)) {
+        cliPrintLine(mask ? "open: NO, although a function is set" : "open: no, nothing uses it");
+    } else {
+        const serialPort_t *port = usage->serialPort;
+        cliPrintf("open: yes, %d baud, %s%s%s", (int)baud,
+            (port->mode & MODE_RX) && (port->mode & MODE_TX) ? "rx+tx" : (port->mode & MODE_RX) ? "rx only" : "tx only",
+            (port->options & SERIAL_INVERTED) ? ", inverted" : "",
+            (port->options & SERIAL_BIDIR) ? ", half duplex" : "");
+        if (diag & SERIAL_DIAG_RX_CALLBACK) {
+            cliPrint(", rx read in interrupt");
+        }
+        cliPrintLinefeed();
+        cliPrintLinef("rx buffer: %d bytes waiting", (int)serialRxBytesWaiting(port));
+    }
+    if (diag & SERIAL_DIAG_PIN_CONFLICT) {
+        cliPrintLine("# PIN CONFLICT: a pin is owned by something else, see `resource show`");
+    }
+
+    // Function-specific detail; add a block here when a subsystem can report its state
+#ifdef USE_GPS
+    if (mask & FUNCTION_GPS) {
+        serialDebugGpsDetail(id);
+    }
+#endif
+}
+
+static void serialDebugPrintUsage(void)
+{
+    cliPrintLine("serialdebug                                         show all serial ports");
+    cliPrintLine("serialdebug <id>                                    one port in detail, with what its function reports");
+    cliPrintLine("serialdebug monitor <id> [<baud>] [<s>] [inverted]  print what a port receives (default 5s)");
+    cliPrintLine("serialdebug scan <id> [inverted]                    try common baud rates, look for known protocols");
+    cliPrintLine("<id> is the number in the id column, or a name like UART7");
+}
+
+// A port borrowed for listening. An open port is used as is (its owner's task
+// doesn't run while the CLI command blocks), and restored afterwards.
+typedef struct serialDebugSession_s {
+    serialPort_t *port;
+    bool opened;
+    uint32_t baud;
+    serialReceiveCallbackPtr rxCallback;
+    void *rxCallbackData;
+} serialDebugSession_t;
+
+static bool serialDebugAcquire(serialDebugSession_t *s, int id, uint32_t baud, bool inverted)
+{
+    memset(s, 0, sizeof(*s));
+
+    if (cliPort && id == cliPort->identifier) {
+        cliPrintLine("That is the CLI port");
+        return false;
+    }
+    serialPortUsage_t *usage = findSerialPortUsageByIdentifier(id);
+    if (!usage) {
+        cliPrintLine("Port not available: no pins assigned (see `resource`) or not on this MCU");
+        return false;
+    }
+
+    if (usage->serialPort) {
+        s->port = usage->serialPort;
+        if (!(s->port->mode & MODE_RX)) {
+            cliPrintLine("Port is open TX only, can't listen");
+            return false;
+        }
+        s->baud = s->port->baudRate;
+        s->rxCallback = s->port->rxCallback;
+        s->rxCallbackData = s->port->rxCallbackData;
+        s->port->rxCallback = NULL;
+        if (baud && baud != s->baud) {
+            serialSetBaudRate(s->port, baud);
+        }
+        cliPrintLinef("Listening on the open port at %d baud, %s%s", (int)s->port->baudRate,
+            (s->port->options & SERIAL_INVERTED) ? "inverted" : "not inverted",
+            (s->port->options & SERIAL_BIDIR) ? ", half duplex" : "");
+        if (inverted) {
+            cliPrintLine("(the port is open, so it keeps its own inversion setting)");
+        }
+    } else {
+        if (!baud) {
+            const serialPortConfig_t *cfg = serialFindPortConfiguration(id);
+            baud = (cfg && (cfg->functionMask & FUNCTION_GPS)) ? baudRates[cfg->gps_baudrateIndex] : 115200;
+        }
+        // RX only, so nothing is driven onto the line
+        s->port = openSerialPort(id, FUNCTION_NONE, NULL, NULL, baud, MODE_RX, inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED);
+        if (!s->port) {
+            cliPrintLine("Port could not be opened");
+            return false;
+        }
+        s->opened = true;
+        cliPrintLinef("Opened the port at %d baud, %s", (int)baud, inverted ? "inverted" : "not inverted");
+    }
+
+    while (serialRxBytesWaiting(s->port)) {
+        serialRead(s->port);
+    }
+    return true;
+}
+
+static void serialDebugRelease(serialDebugSession_t *s)
+{
+    if (s->opened) {
+        closeSerialPort(s->port);
+    } else {
+        if (s->port->baudRate != s->baud) {
+            serialSetBaudRate(s->port, s->baud);
+        }
+        s->port->rxCallbackData = s->rxCallbackData;
+        s->port->rxCallback = s->rxCallback;
+    }
+}
+
+static bool serialDebugAbortRequested(void)
+{
+    bool abort = false;
+    while (cliPort && serialRxBytesWaiting(cliPort)) {
+        serialRead(cliPort);
+        abort = true;
+    }
+    return abort;
+}
+
+static void serialDebugMonitor(int id, uint32_t baud, int seconds, bool inverted)
+{
+    serialDebugSession_t s;
+    if (!serialDebugAcquire(&s, id, baud, inverted)) {
+        return;
+    }
+    cliPrintLinef("Listening for %ds, press any key to stop. Non-text bytes show as <hex>.", seconds);
+
+    uint32_t total = 0;
+    uint32_t printed = 0;
+    const timeMs_t end = millis() + seconds * 1000;
+    while (cmp32(millis(), end) < 0 && !serialDebugAbortRequested()) {
+        bool wrote = false;
+        while (serialRxBytesWaiting(s.port)) {
+            const uint8_t c = serialRead(s.port);
+            total++;
+            if (printed >= SERIAL_DEBUG_MONITOR_MAX_PRINT) {
+                continue;
+            }
+            printed++;
+            if (c == '\n') {
+                cliPrintLinefeed();
+            } else if (c == '\r') {
+                // shown by the '\n'
+            } else if (c >= 0x20 && c < 0x7f) {
+                cliWrite(c);
+            } else {
+                cliPrintf("<%02X>", c);
+            }
+            wrote = true;
+        }
+        if (wrote) {
+            bufWriterFlush(cliWriter);
+        }
+    }
+
+    cliPrintLinefeed();
+    if (total > printed) {
+        cliPrintLinef("(output stopped after %d bytes)", (int)printed);
+    }
+    cliPrintLinef("%d bytes received", (int)total);
+    if (total == 0) {
+        cliPrintLine("# nothing received: check the device's TX goes to this port's RX pin, power and ground");
+    }
+
+    serialDebugRelease(&s);
+}
+
+// Protocols the scan recognises from short byte patterns
+typedef enum {
+    SCAN_NMEA,      // '$' + capital letter
+    SCAN_UBX,       // 0xB5 0x62
+    SCAN_CRSF,      // 0xC8, length, RC channels or link statistics frame type
+    SCAN_FBUS,      // F.Port2/FBUS control frame: length 0x18, type 0xFF
+    SCAN_PROTOCOL_COUNT
+} serialDebugScanProtocol_e;
+
+static const char * const serialDebugScanProtocolNames[SCAN_PROTOCOL_COUNT] = { "NMEA", "UBX", "CRSF", "FBUS" };
+
+// GPS rates plus receiver rates (SBUS 100000, CRSF 400000/416666/420000, FBUS 460800)
+static const uint32_t serialDebugScanBauds[] = {
+    9600, 19200, 38400, 57600, 100000, 115200, 230400, 400000, 416666, 420000, 460800
+};
+
+static void serialDebugScan(int id, bool inverted)
+{
+    serialDebugSession_t s;
+    if (!serialDebugAcquire(&s, id, 0, inverted)) {
+        return;
+    }
+    cliPrintLinef("Listening %dms at each baud rate, press any key to stop", SERIAL_DEBUG_SCAN_MS);
+
+    uint32_t bestBaud = 0;
+    uint32_t bestFrames = 0;
+    int bestProtocol = 0;
+    uint32_t anyBytes = 0;
+    for (unsigned b = 0; b < ARRAYLEN(serialDebugScanBauds); b++) {
+        serialSetBaudRate(s.port, serialDebugScanBauds[b]);
+        delay(20);
+        while (serialRxBytesWaiting(s.port)) {
+            serialRead(s.port);
+        }
+
+        uint32_t bytes = 0, text = 0;
+        uint32_t frames[SCAN_PROTOCOL_COUNT] = { 0 };
+        uint8_t prev = 0, prev2 = 0;
+        bool aborted = false;
+        const timeMs_t end = millis() + SERIAL_DEBUG_SCAN_MS;
+        while (cmp32(millis(), end) < 0) {
+            if (serialDebugAbortRequested()) {
+                aborted = true;
+                break;
+            }
+            while (serialRxBytesWaiting(s.port)) {
+                const uint8_t c = serialRead(s.port);
+                bytes++;
+                if ((c >= 0x20 && c < 0x7f) || c == '\r' || c == '\n') {
+                    text++;
+                }
+                if (prev == '$' && c >= 'A' && c <= 'Z') {
+                    frames[SCAN_NMEA]++;
+                }
+                if (prev == 0xB5 && c == 0x62) {
+                    frames[SCAN_UBX]++;
+                }
+                if (prev2 == 0xC8 && prev >= 2 && prev <= 62 && (c == 0x16 || c == 0x14)) {
+                    frames[SCAN_CRSF]++;
+                }
+                if (prev == 0x18 && c == 0xFF) {
+                    frames[SCAN_FBUS]++;
+                }
+                prev2 = prev;
+                prev = c;
+            }
+        }
+        if (aborted) {
+            break;
+        }
+
+        cliPrintf("%7d: %5d bytes, %3d%% text", (int)serialDebugScanBauds[b], (int)bytes, bytes ? (int)(text * 100 / bytes) : 0);
+        for (int p = 0; p < SCAN_PROTOCOL_COUNT; p++) {
+            if (frames[p]) {
+                cliPrintf(", %d %s", (int)frames[p], serialDebugScanProtocolNames[p]);
+            }
+            if (frames[p] > bestFrames) {
+                bestFrames = frames[p];
+                bestProtocol = p;
+                bestBaud = serialDebugScanBauds[b];
+            }
+        }
+        cliPrintLinefeed();
+        anyBytes += bytes;
+    }
+
+    serialDebugRelease(&s);
+
+    if (bestBaud) {
+        cliPrintLinef("# looks like %s at %d baud", serialDebugScanProtocolNames[bestProtocol], (int)bestBaud);
+    } else if (anyBytes) {
+        cliPrintLine("# data seen but no known protocol: try `inverted`, or it is a protocol the scan doesn't know (SBUS isn't detected)");
+    } else {
+        cliPrintLine("# nothing received at any baud: check the device's TX goes to this port's RX pin, power and ground");
+    }
+}
+
+// Remaining args: optional numbers (baud, then seconds) and the word "inverted", in any order
+static void serialDebugParseOptions(const char *arg, uint32_t *baud, int *seconds, bool *inverted)
+{
+    bool haveBaud = false;
+    for (; arg && *arg; arg = nextArg(arg)) {
+        if (strncasecmp(arg, "inverted", 8) == 0) {
+            *inverted = true;
+        } else if (*arg >= '0' && *arg <= '9') {
+            if (!haveBaud) {
+                *baud = atoi(arg);
+                haveBaud = true;
+            } else {
+                *seconds = atoi(arg);
+            }
+        }
+    }
+}
+
+static void cliSerialDebug(const char *cmdName, char *cmdline)
+{
+    if (isEmpty(cmdline)) {
+        serialDebugStatus();
+        cliPrintLinefeed();
+        serialDebugPrintUsage();
+        return;
+    }
+    if (strncasecmp(cmdline, "help", 4) == 0) {
+        serialDebugPrintUsage();
+        return;
+    }
+
+    const bool monitor = strncasecmp(cmdline, "monitor", 7) == 0;
+    const bool scan = strncasecmp(cmdline, "scan", 4) == 0;
+    const char *arg = monitor || scan ? nextArg(cmdline) : cmdline;
+    int id;
+    if (!serialDebugParsePort(arg, &id)) {
+        cliShowParseError(cmdName);
+        serialDebugPrintUsage();
+        return;
+    }
+
+    if (!monitor && !scan) {
+        serialDebugPortDetail(id);
+        return;
+    }
+
+    uint32_t baud = 0;
+    int seconds = 5;
+    bool inverted = false;
+    serialDebugParseOptions(nextArg(arg), &baud, &seconds, &inverted);
+
+    if (scan) {
+        serialDebugScan(id, inverted);
+        return;
+    }
+    if (baud && (baud < 1200 || baud > 3000000)) {
+        cliShowArgumentRangeError(cmdName, "baud", 1200, 3000000);
+        return;
+    }
+    if (seconds < 1 || seconds > SERIAL_DEBUG_MONITOR_MAX_SECONDS) {
+        cliShowArgumentRangeError(cmdName, "seconds", 1, SERIAL_DEBUG_MONITOR_MAX_SECONDS);
+        return;
+    }
+    serialDebugMonitor(id, baud, seconds, inverted);
 }
 
 #if defined(USE_SERIAL_PASSTHROUGH)
@@ -2783,6 +3382,7 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 int index = atoi(args[RULE]);
                 if (index >= 0 && index < MIXER_RULE_COUNT) {
                     memset(mixerRulesMutable(index), 0, sizeof(mixerRule_t));
+                    mixerUpdateMapping();
                 } else {
                     cliShowArgumentRangeError(cmdName, NULL, 0, 0);
                 }
@@ -2845,6 +3445,7 @@ static void cliMixer(const char *cmdName, char *cmdline)
                 mix->condition = vals[CONDITION];
                 mix->role      = vals[ROLE];
                 mixerCaptureRuleSign(vals[RULE]);
+                mixerUpdateMapping();
             } else {
                 cliShowArgumentRangeError(cmdName, NULL, 0, 0);
             }
@@ -3687,12 +4288,6 @@ static void cliFeature(const char *cmdName, char *cmdline)
 
             if (strncasecmp(cmdline, featureNames[i], len) == 0) {
                 feature = 1 << i;
-#ifndef USE_GPS
-                if (feature & FEATURE_GPS) {
-                    cliPrintLine("unavailable");
-                    break;
-                }
-#endif
                 if (remove) {
                     featureConfigClear(feature);
                     cliPrint("Disabled");
@@ -4961,6 +5556,11 @@ static void cliStatus(const char *cmdName, char *cmdline)
     cliPrintLinef(", Vref=%d.%2dV, Core temp=%ddegC", vrefintMv / 1000, (vrefintMv % 1000) / 10, coretemp);
 #else
     cliPrintLinefeed();
+#endif
+
+#if defined(USE_XIP)
+    cliPrintLinef("XIP flash: %s Quad I/O, %dMHz, %d dummy cycles", xipFlashMode.dtr ? "DTR" : "SDR",
+        (int)(HAL_RCC_GetHCLKFreq() / xipFlashMode.prescaler / 1000000), xipFlashMode.dummyCycles);
 #endif
 
     // Stack and config sizes and usages
@@ -6939,6 +7539,7 @@ const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("sd_info", "sdcard info", NULL, cliSdInfo),
 #endif
     CLI_COMMAND_DEF("serial", "configure serial ports", NULL, cliSerial),
+    CLI_COMMAND_DEF("serialdebug", "serial port diagnostics", "<> | <id> | monitor <id> [<baud>] [<seconds>] [inverted] | scan <id> [inverted]", cliSerialDebug),
 #if defined(USE_SERIAL_PASSTHROUGH)
 #if defined(USE_PINIO)
     CLI_COMMAND_DEF("serialpassthrough", "passthrough serial data data from port 1 to VCP / port 2", "<id1> [<baud1>] [<mode1>] [none|<dtr pinio>|reset] [<id2>] [<baud2>] [<mode2>]", cliSerialPassthrough),

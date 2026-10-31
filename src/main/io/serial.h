@@ -25,6 +25,7 @@
 
 #include "pg/serial.h"
 #include "drivers/serial.h"
+#include "drivers/io_types.h"
 
 typedef enum {
     PORTSHARING_UNUSED = 0,
@@ -158,6 +159,16 @@ serialPort_t *openSerialPort(
     portOptions_e options
 );
 void closeSerialPort(serialPort_t *serialPort);
+
+typedef enum {
+    SERIAL_DIAG_OPEN         = (1 << 0),  // port is running
+    SERIAL_DIAG_RX_CALLBACK  = (1 << 1),  // owner reads RX bytes in the interrupt
+    SERIAL_DIAG_TX_ONLY      = (1 << 2),  // opened without RX
+    SERIAL_DIAG_PIN_CONFLICT = (1 << 3),  // a pin is owned by something else
+    SERIAL_DIAG_NO_PINS      = (1 << 4),  // no RX or TX pin assigned
+} serialDiagFlags_e;
+
+uint8_t serialGetPortDiagnostics(serialPortIdentifier_e identifier, ioTag_t *rxTag, ioTag_t *txTag, uint32_t *baudRate);
 
 void waitForSerialPortToFinishTransmitting(serialPort_t *serialPort);
 

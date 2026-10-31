@@ -68,7 +68,7 @@
 
 #define NAV_GRAVITY_CMSS            980.665f
 
-// Dead reckoning. Every GPS task tick with a good fix (navSampleGps()) records the position,
+// Dead reckoning. Every new GPS position with a good fix (navSampleGps()) records the position,
 // ground speed and course, plus the IMU heading at that moment. When the fix drops out -- a
 // satellite or two lost in a bank, a single 2D frame, a short serial gap -- position is carried
 // forward from the last good sample at the last ground speed, along a course turned by however
@@ -166,6 +166,16 @@ static void navSampleGps(timeMs_t nowMs)
     if (!navGpsSampleGood(nowMs)) {
         return;
     }
+    // Only a new solution is a new sample. gpsIsHealthy() and GPS_FIX stay set for
+    // up to GPS_TIMEOUT after the last frame, and CRSF/FBUS republish their last
+    // values every tick, so re-stamping an unchanged solution would freeze the
+    // position with age 0 instead of dead-reckoning through the gap. A moving
+    // aircraft always changes position; a stationary one loses nothing by keeping
+    // the old stamp, and a change of speed alone still counts as new.
+    if (navEstimateFresh(nowMs) && gpsSol.llh.lat == est.lat && gpsSol.llh.lon == est.lon &&
+        gpsSol.groundSpeed == est.speedCms) {
+        return;
+    }
     est.valid = true;
     est.lat = gpsSol.llh.lat;
     est.lon = gpsSol.llh.lon;
@@ -258,6 +268,12 @@ static void navCaptureTarget(timeMs_t nowMs)
             nav.targetLat = pos.lat;
             nav.targetLon = pos.lon;
             nav.targetSet = true;
+            // GPS_distance_cm_bearing() scales longitude by GPS_scaleLonDown, which is only
+            // set when home is recorded. Loiter engaged before that would otherwise use 1.0
+            // (exact only on the equator) and distort the orbit.
+            if (!STATE(GPS_FIX_HOME)) {
+                GPS_calc_longitude_scaling(pos.lat);
+            }
         }
     }
 }
@@ -299,6 +315,11 @@ void navLoiterStart(void)
 void navRthStart(void)
 {
     navBegin(NAV_TARGET_HOME);
+}
+
+bool navIsActive(void)
+{
+    return nav.active;
 }
 
 void navStop(void)
@@ -343,10 +364,8 @@ float navTurnCoordinationYawRate(void)
     // While dead reckoning, the live ground speed is stale (or zero); use the last good one.
     const float groundSpeedCms = navGpsSampleGood(nowMs) ? gpsSol.groundSpeed : est.speedCms;
     const float speedCms = fmaxf(groundSpeedCms, NAV_MIN_TURN_SPEED_CMS);
-    // attitude.values are int16 decidegrees -- divide as float; DECIDEGREES_TO_RADIANS() would
-    // integer-divide by 10 first.
-    const float rollRad = DEGREES_TO_RADIANS(attitude.values.roll / 10.0f);
-    const float pitchRad = DEGREES_TO_RADIANS(attitude.values.pitch / 10.0f);
+    const float rollRad = DECIDEGREES_TO_RADIANS(attitude.values.roll);
+    const float pitchRad = DECIDEGREES_TO_RADIANS(attitude.values.pitch);
     const float yawRateDps = RADIANS_TO_DEGREES(NAV_GRAVITY_CMSS * sin_approx(rollRad) * cos_approx(pitchRad) / speedCms);
 
     return -gain * constrainf(yawRateDps, -NAV_MAX_TURN_YAW_RATE_DPS, NAV_MAX_TURN_YAW_RATE_DPS);

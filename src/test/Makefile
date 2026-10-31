@@ -432,6 +432,18 @@ speed_atten_unittest_SRC := \
 tune_advisor_unittest_SRC := \
         $(USER_DIR)/flight/tune_advisor.c
 
+fbus_sensor_unittest_SRC := \
+        $(USER_DIR)/drivers/fbus_sensor.c
+
+fbus_sensor_unittest_DEFINES := \
+        USE_FBUS_MASTER=
+
+trim_monitor_unittest_SRC := \
+        $(USER_DIR)/flight/trim_monitor.c
+
+trim_monitor_unittest_DEFINES := \
+        USE_SERVOS=
+
 tune_advisor_unittest_DEFINES := \
         USE_TUNE_ADVISOR=
 

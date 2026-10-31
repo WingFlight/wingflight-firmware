@@ -29,6 +29,7 @@ extern int32_t navAngle[ANGLE_INDEX_COUNT]; // NOTE: ANGLES ARE IN CENTIDEGREES,
 void navLoiterStart(void);
 void navRthStart(void);
 void navStop(void);
+bool navIsActive(void);
 void updateGpsNav(void);
 bool navCanRTH(void);
 bool navCanLoiter(void);

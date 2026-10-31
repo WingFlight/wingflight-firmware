@@ -50,6 +50,7 @@
 #include "fc/rc_rates.h"
 #include "fc/runtime_config.h"
 
+#include "flight/airborne.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/trainer.h"
@@ -1057,11 +1058,7 @@ static float pidThrottleAttenuation(void)
     // optional curve from the same shared pool further shapes it by
     // throttle (0..1) instead of |stick deflection|. Applied (with GPS speed) to P, D,
     // F and B through pidSurfaceAttenuation(); not to I or MANUAL.
-    const float curveMult = pid.fwTpaCurveIndex > 0
-        ? pidEvaluateGainCurve(gainCurves(pid.fwTpaCurveIndex - 1), getThrottle())
-        : 1.0f;
-
-    return pid.fwTpaGain * curveMult;
+    return pid.fwTpaGain * pidGetGainCurveScaleAt(pid.fwTpaCurveIndex, getThrottle());
 }
 
 // Throttle and GPS speed attenuation together, as applied to the surface terms.
@@ -1173,8 +1170,15 @@ static void pidApplyMode1(uint8_t axis)
     // accumulation; decay below still applies as normal.
     const bool bypassed = mixerStabilizationBypassed();
 
+    // Before takeoff (isAirborne(), latched until disarm) the aircraft is on the ground and
+    // cannot follow the setpoint: a tail-dragger sitting nose-up in ANGLE asks for nose-down
+    // that never comes. Arming is often half a minute before takeoff, and with leveling
+    // suspending decay, I reached error_limit and the aircraft took off with the elevator
+    // wound in. Hold the accumulation until airborne; decay below runs at the normal rate.
+    const bool onGround = !isAirborne();
+
     // I-term change
-    const float itermDelta = (saturation || bypassed) ? 0 : itermErrorRate * pid.dT;
+    const float itermDelta = (saturation || bypassed || onGround) ? 0 : itermErrorRate * pid.dT;
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
@@ -1233,7 +1237,12 @@ static void pidApplyMode1(uint8_t axis)
     const bool levelingModeShapingThisAxis = trainerLimitingThisAxis
         || (!isYaw && FLIGHT_MODE(rollPitchLevelingModes));
 
-    if (!levelingModeShapingThisAxis) {
+    // On the ground I is not accumulating, so decay at the normal rate whatever the mode.
+    if (onGround) {
+        attHoldDecayScale = 1.0f;
+    }
+
+    if (!levelingModeShapingThisAxis || onGround) {
         const float errorDecay = limitf(pid.data[axis].axisError * pid.itermDecayRate[axis] * attHoldDecayScale, pid.itermDecayLimit * attHoldDecayScale);
 
         pid.data[axis].axisError -= errorDecay * pid.dT;
@@ -1289,17 +1298,19 @@ void pidController(const pidProfile_t *pidProfile, timeUs_t currentTimeUs)
     DEBUG(GAIN_ATTEN, 4, STATE(GPS_FIX) ? 1 : 0);
 #endif
 
-    // Apply PID for each axis
+    // Apply PID for each axis. Only mode 0 (feedforward only, no gyro) and mode 1
+    // exist; pid_mode accepts 0..9, so any other value runs the stabilized mode 1
+    // rather than silently dropping all gyro correction.
     switch (pid.pidMode) {
-        case 1:
-            pidApplyMode1(PID_ROLL);
-            pidApplyMode1(PID_PITCH);
-            pidApplyMode1(PID_YAW);
-            break;
-        default:
+        case 0:
             pidApplyMode0(PID_ROLL);
             pidApplyMode0(PID_PITCH);
             pidApplyMode0(PID_YAW);
+            break;
+        default:
+            pidApplyMode1(PID_ROLL);
+            pidApplyMode1(PID_PITCH);
+            pidApplyMode1(PID_YAW);
             break;
     }
 

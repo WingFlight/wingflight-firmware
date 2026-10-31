@@ -141,9 +141,17 @@ void positionUpdate(void)
 #ifdef USE_BARO
     if (alt.source == ALT_SOURCE_DEFAULT || alt.source == ALT_SOURCE_BARO_ONLY) {
         if (sensors(SENSOR_BARO) && baroIsReady()) {
-            if (baro.baroAltitude < 15000 && baro.baroAltitude > -2500) {
+            // baroAltitude is relative to the boot location. Accept a sanity range that a
+            // flight stays inside (-1000 m .. +10000 m): the old +150 m / -25 m window was
+            // inside a normal glider flight, and a reading outside it was dropped while the
+            // last value stayed valid, so the estimate froze at the edge with zero vario and
+            // RTH commanded nose-down. A reading outside the range now drops the measurement
+            // so the fusion coasts and reports invalid instead of a stale altitude.
+            if (baro.baroAltitude < 1000000 && baro.baroAltitude > -100000) {
                 alt.baroAlt = filterApply(&alt.baroFilter, baro.baroAltitude / 100.0f);
                 alt.haveBaroAlt = true;
+            } else {
+                alt.haveBaroAlt = false;
             }
         }
         else {

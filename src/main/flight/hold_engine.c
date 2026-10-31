@@ -87,6 +87,9 @@
 // axis bleeds at the normal full rate instead, which clears a saturated I in about 2-3 s.
 #define HOLD_STALL_BLEED_S   3.0f
 
+// Lowest max_rate (deg/s) the hold runs with.
+#define HOLD_MIN_MAX_RATE    10.0f
+
 void quatHoldInit(quatHold_t *hold, float gain, float deadband, float maxRate)
 {
     hold->Gain = gain;
@@ -96,7 +99,9 @@ void quatHoldInit(quatHold_t *hold, float gain, float deadband, float maxRate)
     // normal [-1, 1] stick input, so the hold would keep correcting instead of passing through
     // even at full stick.
     hold->Deadband = constrainf(deadband, 0.0f, 1.0f);
-    hold->MaxRate = maxRate;
+    // max_rate accepts 0, which scaled every correction to nothing and quietly turned
+    // the hold into plain rate mode. Keep a small floor so the limit stays a limit.
+    hold->MaxRate = MAX(maxRate, HOLD_MIN_MAX_RATE);
 }
 
 void quatHoldSetGain(quatHold_t *hold, float gain)

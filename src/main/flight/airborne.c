@@ -113,7 +113,11 @@ void airborneUpdate(const float rc[XYZ_AXIS_COUNT])
 
     const timeUs_t now = micros();
     bool flightEvidence = false;
-    if (!ARMING_FLAG(ARMED)) {
+    // The failsafe LANDED phase disarms while the aircraft is still gliding, and keeps
+    // FAILSAFE_MODE set until the link returns. Dropping to LANDED on that disarm cut the
+    // self-level glide to the pre-airborne 25% authority with no I-term, which is the
+    // opposite of what the procedure needs. Hold the flight state until the failsafe ends.
+    if (!ARMING_FLAG(ARMED) && !FLIGHT_MODE(FAILSAFE_MODE)) {
         airborne.state = AIRBORNE_STATE_LANDED;
         resetResponse();
     } else if (airborne.state != AIRBORNE_STATE_AIRBORNE) {

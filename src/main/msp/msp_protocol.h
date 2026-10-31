@@ -55,7 +55,7 @@
 #define MSP_PROTOCOL_VERSION                 0
 
 #define API_VERSION_MAJOR                    22
-#define API_VERSION_MINOR                    14
+#define API_VERSION_MINOR                    15
 #define API_VERSION_LENGTH                   2
 
 #define FLIGHT_CONTROLLER_IDENTIFIER_LENGTH  4
@@ -366,4 +366,7 @@
 // Latest decoded FBUS/S.Port sensor values (drivers/fbus_sensor.c), one block per sensor
 // type, for the configurator's sensors page. 0x5F28-0x5F32 are taken on open branches.
 #define MSP2_WING_FBUS_SENSORS_STATUS         0x5F33
+// Serial port and GPS diagnostics (like CLI serialdebug): per port pins, functions, open
+// state and baud, then GPS status and the last bytes received on the GPS port.
+#define MSP2_WING_SERIAL_STATUS               0x5F34
 #define MSP_V2_FRAME                         255

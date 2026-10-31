@@ -81,6 +81,7 @@
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
+#include "flight/trim_monitor.h"
 #include "flight/tune_advisor.h"
 
 #include "io/beeper.h"
@@ -200,16 +201,24 @@ static bool airborneRearmGraceActive(timeUs_t currentTimeUs)
     return true;
 }
 
+bool isRearmGraceActive(void)
+{
+    return airborneRearmGraceActive(micros());
+}
+
 static void updateAirborneRearmEligibility(timeUs_t currentTimeUs, bool inFlightLatched)
 {
     if (!ARMING_FLAG(ARMED)) {
         return;
     }
 
+    // Track the in-flight latch rather than set-once: when the governor-off heuristic
+    // below declares the flight over, the grace must not be granted at the following
+    // disarm, or the throttle, attitude and governor-switch arming checks are skipped
+    // for a re-arm on the ground.
     const timeDelta_t armedTimeUs = cmpTimeUs(currentTimeUs, armStartedAtUs);
-    if (inFlightLatched && armedTimeUs >= (timeDelta_t)armingConfig()->rearm_min_armed_seconds * 1000000) {
-        airborneRearmEligible = true;
-    }
+    airborneRearmEligible = inFlightLatched &&
+        armedTimeUs >= (timeDelta_t)armingConfig()->rearm_min_armed_seconds * 1000000;
 }
 
 static void updateAirborneRearmOnArm(timeUs_t currentTimeUs)
@@ -318,6 +327,18 @@ void updateArmingStatus(void)
             setArmingDisabled(ARMING_DISABLED_THROTTLE);
         } else {
             unsetArmingDisabled(ARMING_DISABLED_THROTTLE);
+        }
+
+        // An engaged governor switch takes the motor to idle (or the RPM_RANGE
+        // minimum) the moment the model arms, whatever the stick says. Its
+        // switch is the motor interlock, so require it off to arm, like the
+        // throttle check above.
+        if (governorConfig()->governor_mode != GOVERNOR_MODE_OFF &&
+            isModeActivationConditionPresent(BOXGOVERNOR) &&
+            IS_RC_MODE_ACTIVE(BOXGOVERNOR) && !allowAirborneRearm) {
+            setArmingDisabled(ARMING_DISABLED_GOVERNOR);
+        } else {
+            unsetArmingDisabled(ARMING_DISABLED_GOVERNOR);
         }
 
         if (!isAttitudeEstimateReady() && !allowAirborneRearm) {
@@ -583,6 +604,8 @@ void tryArm(void)
 #endif
 
         ENABLE_ARMING_FLAG(ARMED);
+        // Read before updateAirborneRearmOnArm() clears the window.
+        const bool inFlightRearm = airborneRearmGraceActive(currentTimeUs);
         updateAirborneRearmOnArm(currentTimeUs);
 
         armingDelayed = ARMING_NOT_DELAYED;
@@ -604,10 +627,14 @@ void tryArm(void)
         lastArmingDisabledReason = 0;
 
 #ifdef USE_GPS
-        GPS_reset_home_position();
+        // An in-flight re-arm inside rearm_grace_seconds keeps the home it took off from;
+        // re-capturing here would move home to wherever the aircraft is now.
+        if (!(inFlightRearm && STATE(GPS_FIX_HOME))) {
+            GPS_reset_home_position();
+        }
 
         //beep to indicate arming
-        if (featureIsEnabled(FEATURE_GPS)) {
+        if (gpsIsEnabled()) {
             if (STATE(GPS_FIX) && gpsSol.numSat >= 5) {
                 beeper(BEEPER_ARMING_GPS_FIX);
             } else {
@@ -680,7 +707,7 @@ void processRxModes(timeUs_t currentTimeUs)
     ) {
         if (isUsingSticksForArming()) {
             if (throttleOff) {
-                if ((autoDisarmDelayUs > 0) && (currentTimeUs > disarmAt)) {
+                if ((autoDisarmDelayUs > 0) && (cmpTimeUs(currentTimeUs, disarmAt) > 0)) {
                     // auto-disarm configured and delay is over
                     disarm(DISARM_REASON_THROTTLE_TIMEOUT);
                     armedBeeperOn = false;
@@ -767,8 +794,11 @@ void processRxModes(timeUs_t currentTimeUs)
             static bool wasRthActive = false;
             static bool wasLoiterActive = false;
 
+            // Start nav on the switch's off->on edge, and also whenever the mode is
+            // on but nav is not running: failsafe recovery calls navStop() while the
+            // switch is still held, and nothing else would restart it.
             if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXRTH)) {
-                if (!wasRthActive) {
+                if (!wasRthActive || !navIsActive()) {
                     navRthStart();
                 }
                 ENABLE_FLIGHT_MODE(RTH_MODE);
@@ -793,7 +823,7 @@ void processRxModes(timeUs_t currentTimeUs)
             }
 
             if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXLOITER) && !FLIGHT_MODE(RTH_MODE)) {
-                if (!wasLoiterActive) {
+                if (!wasLoiterActive || !navIsActive()) {
                     navLoiterStart();
                 }
                 ENABLE_FLIGHT_MODE(LOITER_MODE);
@@ -900,8 +930,11 @@ void processRxModes(timeUs_t currentTimeUs)
     // continuously active and never re-capture a fresh target, so once the safety mode clears and
     // priority falls back to the hold, it resumes whatever attitude target was captured before the
     // preemption instead of the aircraft's current attitude. Mirrors pid.c's own priority mask.
+    // PASSTHROUGH and MANUAL bypass the hold's output the same way: the surfaces follow the
+    // sticks, the attitude drifts, and the frozen target goes stale. Disengage while bypassed so
+    // the release re-captures the current attitude instead of slewing back at max_rate.
     const bool safetyLevelingActive = FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE);
-    attHoldSetState(FLIGHT_MODE(ATTHOLD_MODE) && !safetyLevelingActive);
+    attHoldSetState(FLIGHT_MODE(ATTHOLD_MODE) && !safetyLevelingActive && !mixerStabilizationBypassed());
 #endif // USE_ACC
 #ifdef USE_SERVOS
     autoTrimUpdate();
@@ -993,8 +1026,11 @@ static void subTaskPidController(timeUs_t currentTimeUs)
         // then -- same mask as attHoldSetState's below/above): leaving it "engaged" but
         // unapplied would let the target go stale, and the nozzle would head back to the
         // pre-safety-mode attitude once the safety mode cleared instead of re-capturing.
+        // PASSTHROUGH zeroes the TV mixer inputs (same condition as tv_pid.c's I hold), so the
+        // nozzle is not following the hold: disengage so the release re-captures.
         const bool tvSafetyLevelingActive = FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE);
-        tvHoldSetState(IS_RC_MODE_ACTIVE(BOXTVHOLD) && !tvSafetyLevelingActive);
+        const bool tvBypassed = mixerStabilizationBypassed() && IS_RC_MODE_ACTIVE(BOXPASSTHROUGH);
+        tvHoldSetState(IS_RC_MODE_ACTIVE(BOXTVHOLD) && !tvSafetyLevelingActive && !tvBypassed);
         tvPidController(currentTimeUs);
     } else {
         tvHoldSetState(false);
@@ -1003,6 +1039,9 @@ static void subTaskPidController(timeUs_t currentTimeUs)
 
 #ifdef USE_TUNE_ADVISOR
     tuneAdvisorUpdate(pidGetDT());
+#endif
+#ifdef USE_SERVOS
+    trimMonitorUpdate(pidGetDT());
 #endif
 }
 
@@ -1013,9 +1052,16 @@ static void subTaskMixerUpdate(timeUs_t currentTimeUs)
 
 static void subTaskMotorsServosUpdate(timeUs_t currentTimeUs)
 {
-    UNUSED(currentTimeUs);
+    // Latch once the boot grace has passed. timeUs_t is 32 bits, so a plain
+    // currentTimeUs > MOTORS_GRACE_TIME_US goes false again for 2 s every time
+    // micros() wraps (71.6 min), freezing servos and starving the motors in flight.
+    static bool motorsGraceOver = false;
 
-    if (currentTimeUs > MOTORS_GRACE_TIME_US) {
+    if (!motorsGraceOver && cmpTimeUs(currentTimeUs, MOTORS_GRACE_TIME_US) > 0) {
+        motorsGraceOver = true;
+    }
+
+    if (motorsGraceOver) {
 #ifdef USE_SERVOS
         servoUpdate();
 #endif

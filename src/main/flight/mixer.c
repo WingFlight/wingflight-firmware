@@ -602,12 +602,12 @@ void set_ADJUSTMENT_DIFF_THRUST_YAW_GAIN(int value)
     applyRoleWeight(MIXER_RULE_ROLE_DIFFERENTIAL_THRUST_YAW, &value, true);
 }
 
-static void INIT_CODE setMapping(uint8_t in, uint8_t out)
+static void setMapping(uint8_t in, uint8_t out)
 {
     mixer.mapping[out] = MIXER_INPUT_BIT(in);
 }
 
-static void INIT_CODE addMapping(uint8_t in, uint8_t out)
+static void addMapping(uint8_t in, uint8_t out)
 {
     mixer.mapping[out] |= MIXER_INPUT_BIT(in);
 }
@@ -615,15 +615,14 @@ static void INIT_CODE addMapping(uint8_t in, uint8_t out)
 #define addServoMapping(INDEX,SERVO)    addMapping((INDEX), mixerServoOutputIndex(SERVO))
 #define addMotorMapping(INDEX,MOTOR)    addMapping((INDEX), MIXER_MOTOR_OFFSET + (MOTOR))
 
-void INIT_CODE mixerInit(void)
+// Rebuild the output -> inputs map that mixerSaturateOutput() uses to flag the
+// stabilized inputs feeding a servo at its travel limit. Called at init and after
+// every rule write (MSP_SET_MIXER_RULE, CLI "mixer rule"), which edit rules live,
+// so anti-windup follows the current wiring rather than the boot-time one.
+void mixerUpdateMapping(void)
 {
     for (int i = 0; i < MIXER_OUTPUT_COUNT; i++) {
-        mixer.output[i] = 0;
         mixer.mapping[i] = 0;
-    }
-
-    for (int i = 1; i < MIXER_INPUT_COUNT; i++) {
-        mixer.override[i] = MIXER_OVERRIDE_OFF;
     }
 
     for (int i = 0; i < MIXER_RULE_COUNT; i++)
@@ -641,6 +640,19 @@ void INIT_CODE mixerInit(void)
                 break;
         }
     }
+}
+
+void INIT_CODE mixerInit(void)
+{
+    for (int i = 0; i < MIXER_OUTPUT_COUNT; i++) {
+        mixer.output[i] = 0;
+    }
+
+    for (int i = 1; i < MIXER_INPUT_COUNT; i++) {
+        mixer.override[i] = MIXER_OVERRIDE_OFF;
+    }
+
+    mixerUpdateMapping();
 
     wiggleInit();
 }

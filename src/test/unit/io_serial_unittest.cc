@@ -23,6 +23,8 @@
 extern "C" {
     #include "platform.h"
 
+    #include "drivers/io.h"
+    #include "drivers/resource.h"
     #include "drivers/serial.h"
     #include "drivers/serial_softserial.h"
     #include "drivers/serial_uart.h"
@@ -85,4 +87,7 @@ extern "C" {
     void serialSetBaudRateCb(serialPort_t *, void (*)(serialPort_t *context, uint32_t baud), serialPort_t *) {}
 
     void pinioSet(int, bool) {}
+
+    IO_t IOGetByTag(ioTag_t) { return NULL; }
+    resourceOwner_e IOGetOwner(IO_t) { return OWNER_FREE; }
 }

@@ -98,16 +98,20 @@ int32_t fbusGpsConvertLatLon(uint32_t fbusData)
 {
     bool isNegative = (fbusData & FBUS_GPS_LAT_LON_BIT30) != 0;
     uint32_t minutesTimes10000 = fbusData & FBUS_GPS_LAT_LON_DATA_MASK;
-    
-    float minutes = (float)minutesTimes10000 / 10000.0f;
-    float degrees = minutes / 60.0f;
-    
-    int32_t result = (int32_t)(degrees * 1e7f);
-    
+
+    // minutes/10000 -> degrees * 1e7 is * 1e7 / 600000 = * 50 / 3. Integer
+    // maths: float loses up to about 3 m at large longitudes.
+    uint64_t degreesE7 = ((uint64_t)minutesTimes10000 * 50U + 1U) / 3U;
+    if (degreesE7 > 1800000000U) {
+        degreesE7 = 1800000000U;
+    }
+
+    int32_t result = (int32_t)degreesE7;
+
     if (isNegative) {
         result = -result;
     }
-    
+
     return result;
 }
 
@@ -116,13 +120,12 @@ int32_t fbusGpsConvertAltitude(uint32_t fbusData)
     return (int32_t)fbusData;
 }
 
+// knots/1000 -> cm/s (gpsSol.groundSpeed): 1 kn = 51.4444 cm/s
 uint16_t fbusGpsConvertSpeed(uint32_t fbusData)
 {
-    float knots = (float)fbusData / 1000.0f;
-    float metersPerSec = knots * 0.514444f;
-    uint16_t result = (uint16_t)(metersPerSec * 10.0f);
-    
-    return result;
+    uint64_t cmPerSec = ((uint64_t)fbusData * 514444U + 5000000U) / 10000000U;
+
+    return (uint16_t)MIN(cmPerSec, (uint64_t)UINT16_MAX);
 }
 
 uint16_t fbusGpsConvertCourse(uint32_t fbusData)
@@ -318,11 +321,13 @@ static fbusObservedSensor_t* trackObservedSensor(uint8_t physicalId, uint16_t ap
             sensor->appIds[sensor->appIdCount++] = appId;
         }
 
-        if (sensor->detectedType == FBUS_DETECTED_SENSOR_UNKNOWN) {
-            const fbusDetectedSensorType_e detected = classifySensorTypeByAppId(appId);
-            if (detected != FBUS_DETECTED_SENSOR_UNKNOWN) {
-                sensor->detectedType = detected;
-            }
+        // The first classifiable App ID decides the type, except that a GPS
+        // App ID always wins: a GPS can also send the shared temperature IDs
+        // 0x0400/0x0410 (T1/T2), which alone would classify it as RPM.
+        const fbusDetectedSensorType_e detected = classifySensorTypeByAppId(appId);
+        if (detected != FBUS_DETECTED_SENSOR_UNKNOWN &&
+            (sensor->detectedType == FBUS_DETECTED_SENSOR_UNKNOWN || detected == FBUS_DETECTED_SENSOR_GPS)) {
+            sensor->detectedType = detected;
         }
     }
 
@@ -339,10 +344,6 @@ void fbusSensorInitForwarding(void)
 #else
         forwardBuffers[i].physicalId = FBUS_INVALID_PHYSICAL_ID;
 #endif
-        forwardBuffers[i].writeIndex = 0;
-        forwardBuffers[i].readIndex = 0;
-        forwardBuffers[i].count = 0;
-        forwardBuffers[i].startupFrameSent = false;
     }
 }
 
@@ -366,26 +367,48 @@ static fbusSensorForwardBuffer_t* getForwardBuffer(uint8_t physicalId)
     return NULL;
 }
 
-static void addFrameToBuffer(uint8_t physicalId, uint16_t appId, uint32_t data)
+// Runs in the FBUS master UART RX callback
+static void addFrameToBuffer(uint8_t physicalId, uint16_t appId, uint32_t data, timeUs_t currentTimeUs)
 {
     fbusSensorForwardBuffer_t *buffer = getForwardBuffer(physicalId);
     if (!buffer) {
         return;
     }
-    
-    // If buffer is full, discard oldest frame
-    if (buffer->count >= FBUS_FORWARDED_FRAME_BUFFER_SIZE) {
-        buffer->readIndex = (buffer->readIndex + 1) % FBUS_FORWARDED_FRAME_BUFFER_SIZE;
-        buffer->count--;
+
+    buffer->lastUpdateUs = currentTimeUs;
+
+    // App ID 0: a sensor with nothing to send this time, still alive
+    if (appId == 0) {
+        return;
     }
-    
-    buffer->frames[buffer->writeIndex].physicalId = physicalId;
-    buffer->frames[buffer->writeIndex].appId = appId;
-    buffer->frames[buffer->writeIndex].data = data;
-    buffer->frames[buffer->writeIndex].valid = true;
-    
-    buffer->writeIndex = (buffer->writeIndex + 1) % FBUS_FORWARDED_FRAME_BUFFER_SIZE;
-    buffer->count++;
+
+    // keep the latest value for each App ID
+    uint8_t slot = buffer->valueCount;
+    for (uint8_t i = 0; i < buffer->valueCount; i++) {
+        if (buffer->values[i].appId == appId) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == FBUS_FORWARDED_VALUES) {
+        // more App IDs than kept: reuse one already sent
+        for (uint8_t i = 0; i < FBUS_FORWARDED_VALUES; i++) {
+            if (!buffer->values[i].fresh) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot == FBUS_FORWARDED_VALUES) {
+            return;
+        }
+    } else if (slot == buffer->valueCount) {
+        buffer->valueCount++;
+    }
+
+    buffer->values[slot].appId = appId;
+    buffer->values[slot].data = data;
+    buffer->values[slot].fresh = true;
+    buffer->lastValue = slot;
 }
 
 bool fbusSensorPeekForwardedFrame(uint8_t physicalId, fbusSensorFrame_t *frame)
@@ -394,60 +417,70 @@ bool fbusSensorPeekForwardedFrame(uint8_t physicalId, fbusSensorFrame_t *frame)
         return false;
     }
 
-    fbusSensorForwardBuffer_t *buffer = getForwardBuffer(physicalId);
-    if (!buffer) {
-        return false;
+    bool result = false;
+
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        const fbusSensorForwardBuffer_t *buffer = getForwardBuffer(physicalId);
+        if (buffer) {
+            result = true;
+            frame->physicalId = physicalId;
+            frame->valid = buffer->valueCount > 0;
+            frame->appId = frame->valid ? buffer->values[buffer->lastValue].appId : 0;
+            frame->data = frame->valid ? buffer->values[buffer->lastValue].data : 0;
+        }
     }
 
-    if (buffer->count == 0) {
-        frame->physicalId = physicalId;
-        frame->appId = 0;
-        frame->data = 0;
-        frame->valid = false;
-        return true;
-    }
-
-    memcpy(frame, &buffer->frames[buffer->readIndex], sizeof(fbusSensorFrame_t));
-    return true;
+    return result;
 }
 
 bool fbusSensorGetForwardedFrame(uint8_t physicalId, fbusSensorFrame_t *frame)
 {
-    if (!fbusSensorPeekForwardedFrame(physicalId, frame)) {
-        return false;
+    bool result = false;
+
+    // addFrameToBuffer() runs in the FBUS master UART RX callback
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        fbusSensorForwardBuffer_t *buffer = getForwardBuffer(physicalId);
+        const timeUs_t currentTimeUs = micros();
+        if (buffer && buffer->lastUpdateUs != 0 &&
+            cmpTimeUs(currentTimeUs, buffer->lastUpdateUs) <= FBUS_FORWARDED_STALE_US) {
+            result = true;
+            frame->physicalId = physicalId;
+            frame->appId = 0;
+            frame->data = 0;
+            frame->valid = false;
+
+            int8_t send = -1;
+            for (uint8_t n = 0; n < buffer->valueCount; n++) {
+                const uint8_t i = (buffer->nextValue + n) % buffer->valueCount;
+                if (buffer->values[i].fresh) {
+                    send = i;
+                    break;
+                }
+            }
+            if (send < 0) {
+                // nothing new: repeat the value sent longest ago, if that was a while ago
+                timeDelta_t oldest = FBUS_FORWARDED_REPEAT_US;
+                for (uint8_t i = 0; i < buffer->valueCount; i++) {
+                    const timeDelta_t age = cmpTimeUs(currentTimeUs, buffer->values[i].lastSentUs);
+                    if (age > oldest) {
+                        oldest = age;
+                        send = i;
+                    }
+                }
+            }
+            if (send >= 0) {
+                fbusForwardedValue_t *value = &buffer->values[send];
+                frame->appId = value->appId;
+                frame->data = value->data;
+                frame->valid = true;
+                value->fresh = false;
+                value->lastSentUs = currentTimeUs;
+                buffer->nextValue = (send + 1) % buffer->valueCount;
+            }
+        }
     }
 
-    if (!frame->valid) {
-        return true;
-    }
-
-    fbusSensorForwardBuffer_t *buffer = getForwardBuffer(physicalId);
-    if (!buffer) {
-        return false;
-    }
-
-    buffer->readIndex = (buffer->readIndex + 1) % FBUS_FORWARDED_FRAME_BUFFER_SIZE;
-    buffer->count--;
-
-    return true;
-}
-
-bool fbusSensorNeedsStartupFrame(uint8_t physicalId)
-{
-    fbusSensorForwardBuffer_t *buffer = getForwardBuffer(physicalId);
-    if (buffer) {
-        return !buffer->startupFrameSent;
-    }
-
-    return false;
-}
-
-void fbusSensorMarkStartupFrameSent(uint8_t physicalId)
-{
-    fbusSensorForwardBuffer_t *buffer = getForwardBuffer(physicalId);
-    if (buffer) {
-        buffer->startupFrameSent = true;
-    }
+    return result;
 }
 
 bool fbusSensorProcessDataWithSource(uint8_t physicalId, uint16_t appId, uint32_t data, fbusSensorSource_e source)
@@ -465,17 +498,21 @@ bool fbusSensorProcessDataWithSource(uint8_t physicalId, uint16_t appId, uint32_
     sensorCacheIndex = (sensorCacheIndex + 1) % FBUS_SENSOR_CACHE_SIZE;
 
     if (fbusSensorIsForwarded(physicalId)) {
-        addFrameToBuffer(physicalId, appId, data);
+        addFrameToBuffer(physicalId, appId, data, currentTimeUs);
     }
 
     if (detectedType == FBUS_DETECTED_SENSOR_GPS) {
         if (appId >= FBUS_GPS_LATITUDE_BASE && appId <= (FBUS_GPS_LATITUDE_BASE + 0x0F)) {
             if (data & FBUS_GPS_LAT_LON_BIT31) {
                 fbusGps.longitude = fbusGpsConvertLatLon(data);
+                fbusGps.hasLongitude = true;
             } else {
                 fbusGps.latitude = fbusGpsConvertLatLon(data);
+                fbusGps.hasLatitude = true;
             }
-            fbusGps.hasPosition = true;
+            // Latitude and longitude come in separate frames: after a timeout,
+            // wait for both so a fresh one is never paired with a stale one.
+            fbusGps.hasPosition = fbusGps.hasLatitude && fbusGps.hasLongitude;
             fbusGps.lastUpdateUs = currentTimeUs;  
 
         } else if (appId >= FBUS_GPS_ALTITUDE_BASE && appId <= (FBUS_GPS_ALTITUDE_BASE + 0x0F)) {
@@ -663,78 +700,109 @@ void fbusSensorObservePhysicalId(uint8_t physicalId)
     fbusSensorObservePhysicalIdWithSource(physicalId, FBUS_SENSOR_SOURCE_FBUS);
 }
 
+// FrSky GPS sensors (GPS ADV and others) keep sending latitude/longitude as 0
+// while they have no fix, so a position frame alone does not mean a fix. When
+// the sensor reports its satellite count (0x0860), that decides; otherwise a
+// non-zero position counts as a fix. Latitude and longitude come in separate
+// frames, so one of them already 0 means the fix is being lost (a real 0 is
+// only within about 10 cm of the equator or the prime meridian).
+bool fbusGpsHasFix(const fbusGpsData_t *gps)
+{
+    if (!gps->hasPosition || gps->latitude == 0 || gps->longitude == 0) {
+        return false;
+    }
+
+    if (gps->hasSatellites) {
+        return gps->satellites >= FBUS_GPS_MIN_SATS_FOR_FIX;
+    }
+
+    return true;
+}
+
 void fbusSensorUpdate(timeUs_t currentTimeUs)
 {
-    if (fbusGps.lastUpdateUs > 0 && (currentTimeUs - fbusGps.lastUpdateUs) > 1000000) {
-        fbusGps.hasPosition = false;
-        fbusGps.hasAltitude = false;
-        fbusGps.hasSpeed = false;
-        fbusGps.hasCourse = false;
-        fbusGps.hasSatellites = false;
-        fbusGps.hasTime = false;
-        fbusGps.hasDate = false;
-    }
-    
-    if (fbusServo.lastUpdateUs > 0 && (currentTimeUs - fbusServo.lastUpdateUs) > 1000000) {
-        fbusServo.hasData = false;
-    }
+    // The FBUS master UART RX callback writes these structs (fbusSensorProcessData()),
+    // so clear stale flags and copy the GPS solution with it held off.
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        if (fbusGps.lastUpdateUs > 0 && (currentTimeUs - fbusGps.lastUpdateUs) > 1000000) {
+            fbusGps.hasLatitude = false;
+            fbusGps.hasLongitude = false;
+            fbusGps.hasPosition = false;
+            fbusGps.hasAltitude = false;
+            fbusGps.hasSpeed = false;
+            fbusGps.hasCourse = false;
+            fbusGps.hasSatellites = false;
+            fbusGps.hasTime = false;
+            fbusGps.hasDate = false;
+        }
+        
+        if (fbusServo.lastUpdateUs > 0 && (currentTimeUs - fbusServo.lastUpdateUs) > 1000000) {
+            fbusServo.hasData = false;
+        }
 
-    if (fbusCurrent.lastUpdateUs > 0 && (currentTimeUs - fbusCurrent.lastUpdateUs) > 1000000) {
-        fbusCurrent.hasCurrent = false;
-        fbusCurrent.hasVoltage = false;
-        fbusCurrent.hasHighPrecisionCurrent = false;
-    }
+        if (fbusCurrent.lastUpdateUs > 0 && (currentTimeUs - fbusCurrent.lastUpdateUs) > 1000000) {
+            fbusCurrent.hasCurrent = false;
+            fbusCurrent.hasVoltage = false;
+            fbusCurrent.hasHighPrecisionCurrent = false;
+        }
 
-    if (fbusEsc.lastUpdateUs > 0 && (currentTimeUs - fbusEsc.lastUpdateUs) > 1000000) {
-        fbusEsc.hasPower = false;
-        fbusEsc.hasRpm = false;
-        fbusEsc.hasConsumption = false;
-        fbusEsc.hasTemperature = false;
-    }
+        if (fbusEsc.lastUpdateUs > 0 && (currentTimeUs - fbusEsc.lastUpdateUs) > 1000000) {
+            fbusEsc.hasPower = false;
+            fbusEsc.hasRpm = false;
+            fbusEsc.hasConsumption = false;
+            fbusEsc.hasTemperature = false;
+        }
 
-    if (fbusFlvss.lastUpdateUs > 0 && (currentTimeUs - fbusFlvss.lastUpdateUs) > 1000000) {
-        memset(fbusFlvss.cellVoltageCentiVolts, 0, sizeof(fbusFlvss.cellVoltageCentiVolts));
-        fbusFlvss.voltageCentiVolts = 0;
-        fbusFlvss.cellCount = 0;
-        fbusFlvss.hasVoltage = false;
-    }
+        if (fbusFlvss.lastUpdateUs > 0 && (currentTimeUs - fbusFlvss.lastUpdateUs) > 1000000) {
+            memset(fbusFlvss.cellVoltageCentiVolts, 0, sizeof(fbusFlvss.cellVoltageCentiVolts));
+            fbusFlvss.voltageCentiVolts = 0;
+            fbusFlvss.cellCount = 0;
+            fbusFlvss.hasVoltage = false;
+        }
 
 #ifdef USE_GPS
-    if (gpsUsesFbusTransport()) {
-        if (fbusGps.hasPosition) {
-            gpsSol.llh.lat = fbusGps.latitude;
-            gpsSol.llh.lon = fbusGps.longitude;
+        if (gpsUsesFbusTransport()) {
+            if (fbusGps.hasPosition) {
+                const bool hasFix = fbusGpsHasFix(&fbusGps);
 
-            if (fbusGps.hasAltitude) {
-                gpsSol.llh.altCm = fbusGps.altitudeCm;
+                // Without a fix the position is the sensor's 0/0 placeholder:
+                // keep the last real solution instead.
+                if (hasFix) {
+                    gpsSol.llh.lat = fbusGps.latitude;
+                    gpsSol.llh.lon = fbusGps.longitude;
+
+                    if (fbusGps.hasAltitude) {
+                        gpsSol.llh.altCm = fbusGps.altitudeCm;
+                    }
+
+                    if (fbusGps.hasSpeed) {
+                        gpsSol.groundSpeed = fbusGpsConvertSpeed(fbusGps.speedMilliKnots);
+                        gpsSol.speed3d = gpsSol.groundSpeed;
+                    }
+
+                    if (fbusGps.hasCourse) {
+                        gpsSol.groundCourse = fbusGps.courseDeg;
+                    }
+                }
+
+                // Older FBUS GPS sensors do not report satellite count. Leave it
+                // at zero by default rather than inventing a value that could
+                // satisfy RTH/Loiter/GPS Rescue minimum-satellite checks. Users
+                // can explicitly opt into an assumed CLI value for those sensors;
+                // real satellite-count data always wins when the sensor sends it.
+                gpsSol.numSat = fbusGps.hasSatellites ? fbusGps.satellites : gpsConfig()->fbus_assumed_sats;
+                gpsSol.hdop = 100;
+                gpsData.lastMessage = millis();
+                gpsSetFixState(hasFix);
+                GPS_update |= GPS_MSP_UPDATE;
+            } else {
+                sensorsClear(SENSOR_GPS);
+                gpsSetFixState(false);
+                gpsSol.numSat = 0;
             }
-
-            if (fbusGps.hasSpeed) {
-                gpsSol.groundSpeed = fbusGpsConvertSpeed(fbusGps.speedMilliKnots);
-                gpsSol.speed3d = gpsSol.groundSpeed;
-            }
-
-            if (fbusGps.hasCourse) {
-                gpsSol.groundCourse = fbusGps.courseDeg;
-            }
-
-            // Older FBUS GPS sensors do not report satellite count. Leave it
-            // at zero by default rather than inventing a value that could
-            // satisfy RTH/Loiter/GPS Rescue minimum-satellite checks. Users
-            // can explicitly opt into an assumed CLI value for those sensors;
-            // real satellite-count data always wins when the sensor sends it.
-            gpsSol.numSat = fbusGps.hasSatellites ? fbusGps.satellites : gpsConfig()->fbus_assumed_sats;
-            gpsSol.hdop = 100;
-            gpsData.lastMessage = millis();
-            gpsSetFixState(true);
-            GPS_update |= GPS_MSP_UPDATE;
-        } else {
-            sensorsClear(SENSOR_GPS);
-            gpsSetFixState(false);
-            gpsSol.numSat = 0;
         }
-    }
 #endif
+    }
 }
 
 void fbusSensorGetGpsData(fbusGpsData_t *gpsData)
@@ -884,6 +952,44 @@ void fbusSensorClearObserved(void)
 {
     memset(observedSensors, 0, sizeof(observedSensors));
     observedSensorCount = 0;
+}
+
+// The observed sensors are updated by the FBUS master UART RX callback.
+bool fbusSensorIsObservedOnFbus(uint8_t physicalId)
+{
+    bool found = false;
+
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        found = getObservedSensor(physicalId, FBUS_SENSOR_SOURCE_FBUS) != NULL;
+    }
+
+    return found;
+}
+
+int8_t fbusSensorFindFbusPhysicalId(uint16_t appId)
+{
+    int8_t physicalId = -1;
+
+    if (appId == 0) {
+        return -1;
+    }
+
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        for (uint8_t i = 0; i < observedSensorCount && physicalId < 0; i++) {
+            const fbusObservedSensor_t *sensor = &observedSensors[i];
+            if (sensor->source != FBUS_SENSOR_SOURCE_FBUS) {
+                continue;
+            }
+            for (uint8_t j = 0; j < sensor->appIdCount; j++) {
+                if (sensor->appIds[j] == appId) {
+                    physicalId = sensor->physicalId;
+                    break;
+                }
+            }
+        }
+    }
+
+    return physicalId;
 }
 
 const char* fbusSensorGetName(uint8_t physicalId)

@@ -24,7 +24,7 @@
 #include "config/config_reset.h"
 
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(logicCondition_t, LOGIC_CONDITION_COUNT, logicConditions, PG_GENERIC_LOGIC_CONDITIONS, 0);
+PG_REGISTER_ARRAY_WITH_RESET_FN(logicCondition_t, LOGIC_CONDITION_COUNT, logicConditions, PG_GENERIC_LOGIC_CONDITIONS, 1);
 
 void pgResetFn_logicConditions(logicCondition_t *condition)
 {

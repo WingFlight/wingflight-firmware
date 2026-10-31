@@ -38,8 +38,8 @@
 
 
 // axis[0..2] mirror the MIXER_IN_STABILIZED_{ROLL,PITCH,YAW} slots mixerSetInput()
-// reads from while disarmed (see mixer.c); axis[3] (legacy collective slot) is
-// unused on fixed-wing and not read by the mixer.
+// reads from while disarmed (see mixer.c). The "jump" moves that drove the
+// helicopter collective use pitch (elevator) instead.
 typedef struct {
     bitmap_t    flags;
     float       strength;
@@ -48,7 +48,7 @@ typedef struct {
     int         param;
     int         state;
     timeUs_t    start;
-    float       axis[4];
+    float       axis[3];
 } wiggleState_t;
 
 static wiggleState_t wgl = INIT_ZERO;
@@ -80,7 +80,7 @@ void wiggleTrigger(int wiggle, int param)
 
 static inline void wiggleResetAxis(void)
 {
-    wgl.axis[0] = wgl.axis[1] = wgl.axis[2] = wgl.axis[3] = 0;
+    wgl.axis[0] = wgl.axis[1] = wgl.axis[2] = 0;
 }
 
 static void wiggleSetState(timeUs_t currentTimeUs, uint8_t state)
@@ -130,7 +130,6 @@ static void wiggleActionReady(timeUs_t currentTimeUs)
             sincosf_t sincos = sincos_approx(angle);
             wgl.axis[FD_ROLL] = sincos.sin * wgl.strength;
             wgl.axis[FD_PITCH] = sincos.cos * wgl.strength;
-            wgl.axis[3] = 0;
             wiggleNextStateAfter(currentTimeUs, circle_period);
             break;
         }
@@ -138,23 +137,20 @@ static void wiggleActionReady(timeUs_t currentTimeUs)
         {
             wgl.axis[FD_ROLL] = 0;
             wgl.axis[FD_PITCH] = 0;
-            wgl.axis[3] = 0;
             wiggleNextStateAfter(currentTimeUs, jump_period);
             break;
         }
         case 3:
         {
             wgl.axis[FD_ROLL] = 0;
-            wgl.axis[FD_PITCH] = 0;
-            wgl.axis[3] = wgl.strength;
+            wgl.axis[FD_PITCH] = wgl.strength;
             wiggleNextStateAfter(currentTimeUs, jump_period);
             break;
         }
         case 4:
         {
             wgl.axis[FD_ROLL] = 0;
-            wgl.axis[FD_PITCH] = 0;
-            wgl.axis[3] = -wgl.strength;
+            wgl.axis[FD_PITCH] = -wgl.strength;
             wiggleNextStateAfter(currentTimeUs, jump_period);
             break;
         }
@@ -162,8 +158,7 @@ static void wiggleActionReady(timeUs_t currentTimeUs)
         {
             const float time = wiggleStateTime(currentTimeUs);
             wgl.axis[FD_ROLL] = 0;
-            wgl.axis[FD_PITCH] = 0;
-            wgl.axis[3] = -(wgl.strength * (exit_period - time) / exit_period);
+            wgl.axis[FD_PITCH] = -(wgl.strength * (exit_period - time) / exit_period);
             wiggleNextStateAfter(currentTimeUs, exit_period);
             break;
         }
@@ -189,19 +184,19 @@ static void wiggleActionArmed(timeUs_t currentTimeUs)
         }
         case 1:
         {
-            wgl.axis[3] = -wgl.strength;
+            wgl.axis[FD_PITCH] = -wgl.strength;
             wiggleNextStateAfter(currentTimeUs, jump_period);
             break;
         }
         case 2:
         {
-            wgl.axis[3] = 0;
+            wgl.axis[FD_PITCH] = 0;
             wiggleNextStateAfter(currentTimeUs, jump_period);
             break;
         }
         case 3:
         {
-            wgl.axis[3] = wgl.strength;
+            wgl.axis[FD_PITCH] = wgl.strength;
             wiggleNextStateAfter(currentTimeUs, jump_period);
             break;
         }
@@ -226,7 +221,7 @@ static void wiggleActionError(timeUs_t currentTimeUs)
         case 1:
         {
             const int cycle = wiggleStateTime(currentTimeUs) / wgl.period;
-            wgl.axis[3] = (cycle & 1) ? -wgl.strength : wgl.strength;
+            wgl.axis[FD_PITCH] = (cycle & 1) ? -wgl.strength : wgl.strength;
             wiggleNextStateAfter(currentTimeUs, wgl.param);
             break;
         }
@@ -255,7 +250,7 @@ static void wiggleActionFatal(timeUs_t currentTimeUs)
             const timeDelta_t time = wiggleStateTime(currentTimeUs);
             const int freq = (time % period) / wgl.period;
             const int step = time / period;
-            wgl.axis[3] = (step & 1) ? 0 : ((freq & 1) ? -wgl.strength : wgl.strength);
+            wgl.axis[FD_PITCH] = (step & 1) ? 0 : ((freq & 1) ? -wgl.strength : wgl.strength);
             wiggleNextStateAfter(currentTimeUs, wgl.param);
             break;
         }

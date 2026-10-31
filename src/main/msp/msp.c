@@ -936,6 +936,23 @@ static uint16_t mspRatio(float value)
 {
     return (uint16_t)(int16_t)constrain(lrintf(value * 1000), INT16_MIN, INT16_MAX);
 }
+
+// A value x scale in one byte, unsigned or signed, saturated to the byte's range
+static uint8_t mspScaledU8(float value, float scale)
+{
+    return (uint8_t)constrain(lrintf(value * scale), 0, UINT8_MAX);
+}
+
+static uint8_t mspScaledS8(float value, float scale)
+{
+    return (uint8_t)(int8_t)constrain(lrintf(value * scale), INT8_MIN, INT8_MAX);
+}
+
+// P, F and B (0..PID_GAIN_MAX) in 10 bits each: bits 0-9, 10-19 and 20-29
+static uint32_t mspPackGains(uint16_t p, uint16_t f, uint16_t b)
+{
+    return (uint32_t)MIN(p, 1023) | ((uint32_t)MIN(f, 1023) << 10) | ((uint32_t)MIN(b, 1023) << 20);
+}
 #endif
 
 static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
@@ -1812,10 +1829,19 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         for (int i = 0; i < MAX_MODE_ACTIVATION_CONDITION_COUNT; i++) {
             const modeActivationCondition_t *mac = modeActivationConditions(i);
             const box_t *box = findBoxByBoxId(mac->modeId);
-            sbufWriteU8(dst, box->permanentId);
-            sbufWriteU8(dst, mac->auxChannelIndex);
-            sbufWriteU8(dst, mac->range.startStep);
-            sbufWriteU8(dst, mac->range.endStep);
+            if (box) {
+                sbufWriteU8(dst, box->permanentId);
+                sbufWriteU8(dst, mac->auxChannelIndex);
+                sbufWriteU8(dst, mac->range.startStep);
+                sbufWriteU8(dst, mac->range.endStep);
+            } else {
+                // Saved range for a mode this build no longer has: report an
+                // empty slot (start == end), which clients skip.
+                sbufWriteU8(dst, 0);
+                sbufWriteU8(dst, 0);
+                sbufWriteU8(dst, 0);
+                sbufWriteU8(dst, 0);
+            }
         }
         break;
 
@@ -1826,9 +1852,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             const modeActivationCondition_t *mac = modeActivationConditions(i);
             const box_t *box = findBoxByBoxId(mac->modeId);
             const box_t *linkedBox = findBoxByBoxId(mac->linkedTo);
-            sbufWriteU8(dst, box->permanentId);     // each element is aligned with MODE_RANGES by the permanentId
+            sbufWriteU8(dst, box ? box->permanentId : 0);     // each element is aligned with MODE_RANGES by the permanentId
             sbufWriteU8(dst, mac->modeLogic);
-            sbufWriteU8(dst, linkedBox->permanentId);
+            sbufWriteU8(dst, linkedBox ? linkedBox->permanentId : 0);
         }
         break;
 
@@ -2671,6 +2697,88 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         break;
 #endif
 
+    // Serial port diagnostics, like the CLI's serialdebug: every port, then an
+    // optional detail block for the port id in the request, with one sub-block per
+    // function on it that reports state (GPS for now).
+    case MSP2_WING_SERIAL_STATUS: {
+        const int detailId = sbufBytesRemaining(src) ? sbufReadU8(src) : 0xFF;
+        sbufWriteU8(dst, 1); // payload version
+
+        sbufWriteU8(dst, SERIAL_PORT_COUNT);
+        for (int i = 0; i < SERIAL_PORT_COUNT; i++) {
+            const serialPortIdentifier_e id = serialPortIdentifiers[i];
+            const serialPortConfig_t *cfg = serialFindPortConfiguration(id);
+            const serialPortUsage_t *usage = findSerialPortUsageByIdentifier(id);
+            ioTag_t rxTag, txTag;
+            uint32_t baud;
+            const uint8_t flags = serialGetPortDiagnostics(id, &rxTag, &txTag, &baud);
+            uint8_t options = 0;
+            if (usage && usage->serialPort) {
+                options = ((usage->serialPort->options & SERIAL_INVERTED) ? BIT(0) : 0) |
+                          ((usage->serialPort->options & SERIAL_BIDIR) ? BIT(1) : 0) |
+                          ((usage->serialPort->mode & MODE_RX) ? BIT(2) : 0) |
+                          ((usage->serialPort->mode & MODE_TX) ? BIT(3) : 0);
+            }
+            sbufWriteU8(dst, id);
+            sbufWriteU32(dst, cfg ? cfg->functionMask : 0);
+            sbufWriteU8(dst, rxTag);    // DEFIO tag: ((gpio + 1) << 4) | pin, 0 = none
+            sbufWriteU8(dst, txTag);
+            sbufWriteU8(dst, flags);    // serialDiagFlags_e
+            sbufWriteU32(dst, baud);    // 0 when closed
+            sbufWriteU8(dst, options);
+        }
+
+        const serialPortConfig_t *detailCfg = detailId != 0xFF ? serialFindPortConfiguration(detailId) : NULL;
+        if (!detailCfg) {
+            sbufWriteU8(dst, 0xFF);     // no detail
+            break;
+        }
+        sbufWriteU8(dst, detailId);
+        sbufWriteU32(dst, baudRates[detailCfg->msp_baudrateIndex]);
+        sbufWriteU32(dst, baudRates[detailCfg->gps_baudrateIndex]);
+        sbufWriteU32(dst, baudRates[detailCfg->telemetry_baudrateIndex]);
+        sbufWriteU32(dst, baudRates[detailCfg->blackbox_baudrateIndex]);
+
+        uint8_t *blockCountPtr = sbufPtr(dst);
+        sbufWriteU8(dst, 0);
+        uint8_t blockCount = 0;
+
+#ifdef USE_GPS
+        if (detailCfg->functionMask & FUNCTION_GPS) {
+            const serialPort_t *gpsSerial = gpsGetPort();
+            const serialPortConfig_t *gpsCfg = findSerialPortConfig(FUNCTION_GPS);
+            sbufWriteU32(dst, FUNCTION_GPS);
+            uint8_t *lenPtr = sbufPtr(dst);
+            sbufWriteU8(dst, 0);
+            uint8_t *start = sbufPtr(dst);
+
+            sbufWriteU8(dst, (gpsIsEnabled() ? BIT(0) : 0) |
+                (gpsIsConfigured() ? BIT(1) : 0) |
+                (STATE(GPS_FIX) ? BIT(2) : 0) |
+                ((gpsCfg && gpsCfg->identifier == detailId) ? BIT(3) : 0) |   // this is the port GPS uses
+                (gpsSerial ? BIT(4) : 0));                                      // and it is open
+            sbufWriteU8(dst, gpsConfig()->provider);
+            sbufWriteU32(dst, gpsSerial ? gpsSerial->baudRate : 0);
+            sbufWriteU8(dst, gpsData.state);
+            sbufWriteU32(dst, millis() - gpsData.lastMessage);
+            sbufWriteU32(dst, gpsGetRxByteCount());
+            sbufWriteU32(dst, GPS_packetCount);
+            sbufWriteU32(dst, gpsData.errors);
+            sbufWriteU32(dst, gpsData.timeouts);
+            sbufWriteU8(dst, gpsSol.numSat);
+            uint8_t recent[64];
+            const uint8_t recentCount = gpsGetRecentBytes(recent, sizeof(recent));
+            sbufWriteU8(dst, recentCount);
+            sbufWriteData(dst, recent, recentCount);
+
+            *lenPtr = sbufPtr(dst) - start;
+            blockCount++;
+        }
+#endif
+        *blockCountPtr = blockCount;
+        break;
+    }
+
     case MSP_BOXNAMES:
         {
             const int page = sbufBytesRemaining(src) ? sbufReadU8(src) : 0;
@@ -2685,9 +2793,11 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         break;
 #ifdef USE_TUNE_ADVISOR
     case MSP2_WING_TUNE_ADVISOR: {
-        // One axis per request (U8 axis: 0 roll, 1 pitch, 2 yaw) so the reply, 65 bytes, fits
-        // MSP over telemetry. Ratios are x1000 (signed), counts saturate at 65535 (about 11 min
-        // of 100 Hz samples).
+        // One axis per request (U8 axis: 0 roll, 1 pitch, 2 yaw). Payload version 2 packs each
+        // value into as few bytes as the client needs: 48 bytes, within one CRSF frame (at most
+        // 51: a frame holds 58 bytes after a 6-byte MSP header, and sendMspReply() sends a reply
+        // that exactly fills one as two) and 11 S.Port/FBUS frames instead of 14. Counts saturate at 65535
+        // (about 11 min of 100 Hz samples); scaled values saturate at their byte's range.
         if (sbufBytesRemaining(src) != 1) {
             return MSP_RESULT_ERROR;
         }
@@ -2699,42 +2809,41 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         tuneAdvisorAxis_t ta;
         tuneAdvisorGetAxis(axis, &ta);
 
-        sbufWriteU8(dst, 1); // payload version
-        sbufWriteU8(dst, tuneAdvisorIsCollecting() ? 1 : 0);
+        sbufWriteU8(dst, 2); // payload version
+        // bits 0-1 axis, bit 2 collecting now
+        sbufWriteU8(dst, axis | (tuneAdvisorIsCollecting() ? 0x04 : 0));
         sbufWriteU16(dst, mspSatU16(tuneAdvisorGetValidSamples() / TA_SAMPLE_HZ));
-        sbufWriteU8(dst, axis);
 
         // The tune these numbers belong to, so a client can suggest new values
-        sbufWriteU16(dst, currentPidProfile->pid[axis].P);
-        sbufWriteU16(dst, currentPidProfile->pid[axis].F);
-        sbufWriteU16(dst, currentPidProfile->pid[axis].B);
+        sbufWriteU32(dst, mspPackGains(currentPidProfile->pid[axis].P, currentPidProfile->pid[axis].F,
+                                       currentPidProfile->pid[axis].B));
         sbufWriteU8(dst, currentPidProfile->iterm_relax[axis]);
         sbufWriteU8(dst, currentControlRateProfile->rcRates[axis]);
 
         sbufWriteU16(dst, mspSatU16(ta.ffCount));
-        sbufWriteU16(dst, mspRatio(ta.ffGain));
-        sbufWriteU16(dst, mspRatio(ta.ffCorr));
-        sbufWriteU16(dst, ta.ffLagMs);
+        sbufWriteU8(dst, mspScaledU8(ta.ffGain, 64));               // x64, 0..3.98
+        sbufWriteU8(dst, mspScaledS8(ta.ffCorr, 100));              // x100, -1..1
+        sbufWriteU8(dst, MIN(ta.ffLagMs, UINT8_MAX));               // ms, 0..250
         for (int i = 0; i < TA_SP_BAND_COUNT; i++) {
-            sbufWriteU16(dst, mspRatio(ta.spBand[i].gain));
+            sbufWriteU8(dst, mspScaledU8(ta.spBand[i].gain, 64));
             sbufWriteU16(dst, mspSatU16(ta.spBand[i].count));
         }
         for (int i = 0; i < TA_THR_BAND_COUNT; i++) {
-            sbufWriteU16(dst, mspRatio(ta.thrBand[i].gain));
+            sbufWriteU8(dst, mspScaledU8(ta.thrBand[i].gain, 64));
             sbufWriteU16(dst, mspSatU16(ta.thrBand[i].count));
         }
 
         sbufWriteU16(dst, mspSatU16(ta.fullCount));
         sbufWriteU16(dst, mspSatU16(ta.fullSatCount));
-        sbufWriteU16(dst, mspRatio(ta.fullRatio));
-        sbufWriteU16(dst, mspSatU16(lrintf(ta.fullMaxRate)));
+        sbufWriteU8(dst, mspScaledU8(ta.fullRatio, 100));           // x100, 0..2.55
+        sbufWriteU8(dst, mspScaledU8(ta.fullMaxRate, 0.1f));        // 10 deg/s steps, 0..2550
 
         sbufWriteU16(dst, ta.releases);
         sbufWriteU16(dst, ta.bigRebounds);
-        sbufWriteU16(dst, mspRatio(ta.meanRebound));
-        sbufWriteU16(dst, mspRatio(ta.meanOvershoot));
-        sbufWriteU16(dst, mspRatio(ta.meanCounter));
-        sbufWriteU16(dst, mspRatio(ta.meanIterm));
+        sbufWriteU8(dst, mspScaledU8(ta.meanRebound, 100));         // x100, 0..2.55
+        sbufWriteU8(dst, mspScaledU8(ta.meanOvershoot, 64));        // x64, 0..3.98
+        sbufWriteU8(dst, mspScaledU8(ta.meanCounter, 100));         // x100, 0..2.55
+        sbufWriteU16(dst, mspRatio(ta.meanIterm));                  // x1000, signed: needs the range and the 0.01s
         break;
     }
 #endif
@@ -2948,8 +3057,14 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
                 sbufInit(&packetOut.buf, dst->ptr, dst->end);
                 packetIn.cmd = newMSP;
                 mspFcProcessCommand(srcDesc, &packetIn, &packetOut, NULL);
-                uint8_t mspSize = sbufPtr(&packetOut.buf) - dst->ptr;
-                mspSize++; // need to add length information for each MSP
+                // Each reply's length goes in one byte, so a reply over 255 bytes (or one
+                // that did not fit at all) cannot be batched; stop before it rather than
+                // send a wrapped length the client would misparse.
+                const int replySize = sbufPtr(&packetOut.buf) - dst->ptr;
+                if (sbufWriteOverflowed(&packetOut.buf) || replySize > UINT8_MAX) {
+                    break;
+                }
+                const int mspSize = replySize + 1; // need to add length information for each MSP
                 bytesRemaining -= mspSize;
                 if (bytesRemaining >= 0) {
                     maxMSPs++;
@@ -3142,7 +3257,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
                     mac->modeLogic = sbufReadU8(src);
 
                     i = sbufReadU8(src);
-                    mac->linkedTo = findBoxByPermanentId(i)->boxId;
+                    const box_t *linkedBox = findBoxByPermanentId(i);
+                    mac->linkedTo = linkedBox ? linkedBox->boxId : 0;
                 }
                 rcControlsInit();
             } else {
@@ -3614,8 +3730,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         }
         /* Fixed-wing throttle-based gain attenuation (gain + curve index) */
         if (sbufBytesRemaining(src) >= 2) {
-            currentPidProfile->fw_tpa_gain = sbufReadU8(src);
-            currentPidProfile->fw_tpa_curve = sbufReadU8(src);
+            currentPidProfile->fw_tpa_gain = constrain(sbufReadU8(src), 25, 200);
+            currentPidProfile->fw_tpa_curve = MIN(sbufReadU8(src), GAIN_CURVE_COUNT);
         }
         /* Master gain (per axis) */
         if (sbufBytesRemaining(src) >= 6) {
@@ -3909,6 +4025,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP2_WING_SET_BOARD_MOUNT_TRIM:
+        if (dataSize < 3 * sizeof(int16_t)) {
+            return MSP_RESULT_ERROR;
+        }
         boardAlignmentMutable()->mountTrim.roll = sbufReadS16(src);
         boardAlignmentMutable()->mountTrim.pitch = sbufReadS16(src);
         boardAlignmentMutable()->mountTrim.yaw = sbufReadS16(src);
@@ -3972,9 +4091,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP2_WING_COPY_TV_PID_PROFILE: {
+        if (dataSize < 2) {
+            return MSP_RESULT_ERROR;
+        }
         const uint8_t dstTvProfileIndex = sbufReadU8(src);
         const uint8_t srcTvProfileIndex = sbufReadU8(src);
-        if (dstTvProfileIndex < PID_PROFILE_COUNT && srcTvProfileIndex < PID_PROFILE_COUNT) {
+        if (dstTvProfileIndex < PID_PROFILE_COUNT && srcTvProfileIndex < PID_PROFILE_COUNT &&
+            dstTvProfileIndex != srcTvProfileIndex) {
             memcpy(tvPidProfilesMutable(dstTvProfileIndex), tvPidProfiles(srcTvProfileIndex), sizeof(tvPidProfile_t));
             if (!ARMING_FLAG(ARMED) && dstTvProfileIndex == getCurrentTvProfileIndex()) {
                 changeTvProfile(dstTvProfileIndex);
@@ -4018,17 +4141,31 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (i >= MIXER_RULE_COUNT) {
             return MSP_RESULT_ERROR;
         }
-        mixerRulesMutable(i)->oper = sbufReadU8(src);
-        mixerRulesMutable(i)->input = sbufReadU8(src);
-        mixerRulesMutable(i)->output = sbufReadU8(src);
-        mixerRulesMutable(i)->offset = sbufReadU16(src);
-        mixerRulesMutable(i)->weight = sbufReadU16(src);
-        mixerRulesMutable(i)->weightNeg = sbufReadU16(src);
-        mixerRulesMutable(i)->speed = sbufReadU16(src);
-        mixerRulesMutable(i)->curve = sbufReadU8(src);
-        mixerRulesMutable(i)->condition = sbufReadU8(src);
-        mixerRulesMutable(i)->role = sbufReadU8(src);
+        {
+            // mixerUpdateRules() indexes mixer.input[] / mixer.output[] with
+            // these on every loop, and validateAndFixMixerConfig() only runs
+            // at boot, so reject anything out of range here (as the CLI does).
+            mixerRule_t rule;
+            rule.oper = sbufReadU8(src);
+            rule.input = sbufReadU8(src);
+            rule.output = sbufReadU8(src);
+            rule.offset = sbufReadU16(src);
+            rule.weight = sbufReadU16(src);
+            rule.weightNeg = sbufReadU16(src);
+            rule.speed = sbufReadU16(src);
+            rule.curve = sbufReadU8(src);
+            rule.condition = sbufReadU8(src);
+            rule.role = sbufReadU8(src);
+            if (rule.oper >= MIXER_OP_COUNT ||
+                rule.input >= MIXER_INPUT_COUNT ||
+                rule.output >= MIXER_OUTPUT_COUNT ||
+                rule.role >= MIXER_RULE_ROLE_COUNT) {
+                return MSP_RESULT_ERROR;
+            }
+            *mixerRulesMutable(i) = rule;
+        }
         mixerCaptureRuleSign(i);
+        mixerUpdateMapping();
         break;
 
     case MSP_SET_MIXER_CURVE:
@@ -4069,9 +4206,12 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             }
             gainCurvesMutable(i)->count = pointCount;
         }
+        // Clamp to the documented ranges (pg/pid.h): x is |deflection| * 1000 and
+        // y a percent multiplier up to 500. An unchecked y up to 65535 meant a
+        // 655x gain on every axis using the curve.
         for (int p = 0; p < GAIN_CURVE_POINTS; p++) {
-            gainCurvesMutable(i)->points[p].x = sbufReadU16(src);
-            gainCurvesMutable(i)->points[p].y = sbufReadU16(src);
+            gainCurvesMutable(i)->points[p].x = MIN(sbufReadU16(src), 1000);
+            gainCurvesMutable(i)->points[p].y = MIN(sbufReadU16(src), 500);
         }
         break;
 
@@ -4178,6 +4318,9 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP2_WING_SET_GPS_NAV_CONFIG:
+        if (dataSize < 12) {
+            return MSP_RESULT_ERROR;
+        }
         gpsNavConfigMutable()->loiterRadiusM = sbufReadU16(src);
         gpsNavConfigMutable()->loiterDirection = sbufReadU8(src);
         gpsNavConfigMutable()->rthAltitudeM = sbufReadU16(src);
@@ -4619,6 +4762,9 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
 #endif
 
     case MSP2_WING_SET_GOVERNOR_CONFIG:
+        if (dataSize < 14) {
+            return MSP_RESULT_ERROR;
+        }
         governorConfigMutable()->governor_mode = sbufReadU8(src);
         governorConfigMutable()->governor_rpm = sbufReadU16(src);
         governorConfigMutable()->governor_gain = sbufReadU16(src);
@@ -4642,6 +4788,9 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         break;
 
     case MSP2_WING_SET_FBUS_MASTER_CONFIG:
+        if (dataSize < FBUS_MASTER_MAX_FORWARDED_SENSORS) {
+            return MSP_RESULT_ERROR;
+        }
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
             fbusMasterConfigMutable()->forwardedSensors[i] = sbufReadU8(src);
         }
@@ -4694,6 +4843,9 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
 
 #ifdef USE_RX_INPUT_BACKUP
     case MSP2_WING_SET_RX_INPUT_BACKUP_CONFIG:
+        if (dataSize < 5) {
+            return MSP_RESULT_ERROR;
+        }
         sbufReadU8(src); // payload version, unused for now
         rxInputBackupConfigMutable()->provider = sbufReadU8(src);
         rxInputBackupConfigMutable()->inverted = sbufReadU8(src);

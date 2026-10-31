@@ -58,7 +58,12 @@ defined in linker script */
     .section  .text.Reset_Handler
   .weak  Reset_Handler
   .type  Reset_Handler, %function
-Reset_Handler:  
+Reset_Handler:
+  /* A boot loader may start the firmware in thread mode on the process stack (CONTROL.SPSEL = 1).
+     Switch back to the main stack, so exceptions do not push their frames onto the stack in use. */
+  movs  r0, #0
+  msr   control, r0
+  isb
   ldr   sp, =_estack      /* set stack pointer */
 
   bl persistentObjectInit

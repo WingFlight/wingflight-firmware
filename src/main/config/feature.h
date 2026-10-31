@@ -38,7 +38,7 @@ typedef enum {
     FEATURE_UNUSED_4               = BIT(4),
     FEATURE_UNUSED_5               = BIT(5),
     FEATURE_SOFTSERIAL             = BIT(6),
-    FEATURE_GPS                    = BIT(7),
+    FEATURE_UNUSED_7               = BIT(7), // was FEATURE_GPS (retired: GPS follows the port/provider setup, see gpsIsEnabled()). Do not reuse: configurators still set it for older firmware.
     FEATURE_UNUSED_8               = BIT(8),
     FEATURE_UNUSED_9               = BIT(9),
     FEATURE_TELEMETRY              = BIT(10),
