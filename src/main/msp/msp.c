@@ -3057,8 +3057,14 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
                 sbufInit(&packetOut.buf, dst->ptr, dst->end);
                 packetIn.cmd = newMSP;
                 mspFcProcessCommand(srcDesc, &packetIn, &packetOut, NULL);
-                uint8_t mspSize = sbufPtr(&packetOut.buf) - dst->ptr;
-                mspSize++; // need to add length information for each MSP
+                // Each reply's length goes in one byte, so a reply over 255 bytes (or one
+                // that did not fit at all) cannot be batched; stop before it rather than
+                // send a wrapped length the client would misparse.
+                const int replySize = sbufPtr(&packetOut.buf) - dst->ptr;
+                if (sbufWriteOverflowed(&packetOut.buf) || replySize > UINT8_MAX) {
+                    break;
+                }
+                const int mspSize = replySize + 1; // need to add length information for each MSP
                 bytesRemaining -= mspSize;
                 if (bytesRemaining >= 0) {
                     maxMSPs++;
