@@ -118,11 +118,11 @@ int32_t fbusGpsConvertAltitude(uint32_t fbusData)
 
 uint16_t fbusGpsConvertSpeed(uint32_t fbusData)
 {
-    float knots = (float)fbusData / 1000.0f;
-    float metersPerSec = knots * 0.514444f;
-    uint16_t result = (uint16_t)(metersPerSec * 10.0f);
-    
-    return result;
+    // FrSky GPS_SPEED is knots * 1000; gpsSol.groundSpeed is cm/s.
+    // 1 knot = 51.4444 cm/s.
+    const float cmPerSec = (float)fbusData * (51.4444f / 1000.0f);
+
+    return (uint16_t)MIN(cmPerSec, (float)UINT16_MAX);
 }
 
 uint16_t fbusGpsConvertCourse(uint32_t fbusData)
