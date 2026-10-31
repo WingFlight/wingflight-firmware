@@ -84,9 +84,9 @@ static float logicConditionGetOperandValue(uint8_t type, int16_t value)
                 case LOGIC_SENSOR_ALTITUDE:
                     return getAltitude() * 10.0f;
                 case LOGIC_SENSOR_VOLTAGE:
-                    return getBatteryVoltage();
+                    return getBatteryVoltage() / 10.0f;   // 0.01V -> 0.1V
                 case LOGIC_SENSOR_CURRENT:
-                    return getBatteryCurrent();
+                    return getBatteryCurrent() / 10.0f;   // 0.01A -> 0.1A
                 case LOGIC_SENSOR_RPM:
                     return getMotorRPMf(0);
                 case LOGIC_SENSOR_RSSI:
@@ -96,7 +96,7 @@ static float logicConditionGetOperandValue(uint8_t type, int16_t value)
                 case LOGIC_SENSOR_MAH_DRAWN:
                     return getBatteryCapacityUsed();
                 case LOGIC_SENSOR_GPS_SPEED:
-                    return STATE(GPS_FIX) ? gpsSol.groundSpeed : 0;
+                    return STATE(GPS_FIX) ? gpsSol.groundSpeed / 10.0f : 0;   // cm/s -> 0.1m/s
                 default:
                     return 0;
             }

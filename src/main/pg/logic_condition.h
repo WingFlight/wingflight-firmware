@@ -54,13 +54,13 @@ enum {
 // OPERAND_TYPE_FLIGHT_MODE selects a boxId_e - value is the index below, not the reading itself.
 enum {
     LOGIC_SENSOR_ALTITUDE = 0,  // 0.1m units (decimeters), getAltitude() * 10
-    LOGIC_SENSOR_VOLTAGE,       // 0.1V units, getBatteryVoltage()
-    LOGIC_SENSOR_CURRENT,       // 0.1A units, getBatteryCurrent()
+    LOGIC_SENSOR_VOLTAGE,       // 0.1V units, getBatteryVoltage() / 10
+    LOGIC_SENSOR_CURRENT,       // 0.1A units, getBatteryCurrent() / 10
     LOGIC_SENSOR_RPM,           // motor 1 RPM, getMotorRPMf(0)
     LOGIC_SENSOR_RSSI,          // %, getRssiPercent()
     LOGIC_SENSOR_BATTERY_PERCENT, // %, calculateBatteryPercentageRemaining()
     LOGIC_SENSOR_MAH_DRAWN,     // mAh, getBatteryCapacityUsed()
-    LOGIC_SENSOR_GPS_SPEED,     // 0.1m/s units, gpsSol.groundSpeed (0 without a GPS fix)
+    LOGIC_SENSOR_GPS_SPEED,     // 0.1m/s units, gpsSol.groundSpeed / 10 (0 without a GPS fix)
     LOGIC_SENSOR_COUNT
 };
 
