@@ -201,6 +201,11 @@ static bool airborneRearmGraceActive(timeUs_t currentTimeUs)
     return true;
 }
 
+bool isRearmGraceActive(void)
+{
+    return airborneRearmGraceActive(micros());
+}
+
 static void updateAirborneRearmEligibility(timeUs_t currentTimeUs, bool inFlightLatched)
 {
     if (!ARMING_FLAG(ARMED)) {
@@ -596,6 +601,8 @@ void tryArm(void)
 #endif
 
         ENABLE_ARMING_FLAG(ARMED);
+        // Read before updateAirborneRearmOnArm() clears the window.
+        const bool inFlightRearm = airborneRearmGraceActive(currentTimeUs);
         updateAirborneRearmOnArm(currentTimeUs);
 
         armingDelayed = ARMING_NOT_DELAYED;
@@ -617,7 +624,11 @@ void tryArm(void)
         lastArmingDisabledReason = 0;
 
 #ifdef USE_GPS
-        GPS_reset_home_position();
+        // An in-flight re-arm inside rearm_grace_seconds keeps the home it took off from;
+        // re-capturing here would move home to wherever the aircraft is now.
+        if (!(inFlightRearm && STATE(GPS_FIX_HOME))) {
+            GPS_reset_home_position();
+        }
 
         //beep to indicate arming
         if (gpsIsEnabled()) {
