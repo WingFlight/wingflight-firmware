@@ -76,3 +76,5 @@ struct serialPort_s;
 void smartPortWriteFrameSerial(const smartPortPayload_t *payload, struct serialPort_s *port, uint16_t checksum);
 void smartPortSendByte(uint8_t c, uint16_t *checksum, struct serialPort_s *port);
 bool smartPortPayloadContainsMSP(const smartPortPayload_t *payload);
+// MSP reply chunks written so far, for the FBUS debug counters.
+uint32_t smartPortMspReplyChunksSent(void);
