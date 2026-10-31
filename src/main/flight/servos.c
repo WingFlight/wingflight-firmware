@@ -427,7 +427,8 @@ void servoInit(void)
         servoOverride[index] = SERVO_OVERRIDE_OFF;
     }
 
-    for (index = 0; index < MAX_SUPPORTED_SERVOS && ioTags[index]; index++)
+    // PWM servos only: indices from BUS_SERVO_OFFSET up are the SBUS/FBUS bus servos.
+    for (index = 0; index < MAX_SUPPORTED_PWM_SERVOS && ioTags[index]; index++)
     {
         const ioTag_t tag = ioTags[index];
         const IO_t io = IOGetByTag(tag);
