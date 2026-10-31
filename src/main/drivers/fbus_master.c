@@ -82,8 +82,9 @@ uint8_t phsIdList[FBUS_MAX_PHYS_ID] = {0};
 uint8_t physIdsfound = 0;
 uint8_t physIdCnt = 0;
 uint8_t currentPhysId = 0;
-uint8_t readIngoreBytes = 0;
-uint8_t readBytes = 0;
+// Shared with the UART RX callback.
+static volatile uint8_t readIngoreBytes = 0;
+static volatile uint8_t readBytes = 0;
 uint8_t buffer[FBUS_MASTER_BUFFER_SIZE] = {0};
 
 static timeUs_t nextTelemetryPollTimeUs = 0;
@@ -485,10 +486,12 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
 
     const size_t frameSize = controlSize + sizeof(downlink);
 
-    // serial output
-    serialWriteBuf(fbusMasterPort, frame, frameSize);
-    readIngoreBytes = frameSize;
+    // Arm the echo skip before transmitting: on a half-duplex line the first echoed
+    // byte can arrive before serialWriteBuf() returns, and would otherwise be taken as
+    // a sensor reply byte while the count of bytes to skip was still stale.
     readBytes = 0;
+    readIngoreBytes = frameSize;
+    serialWriteBuf(fbusMasterPort, frame, frameSize);
 }
 
 // The send pin is high while the UART transmits. An FBUS mux (e.g. the RF007-V3
