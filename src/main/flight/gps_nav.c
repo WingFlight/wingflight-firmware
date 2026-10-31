@@ -68,7 +68,7 @@
 
 #define NAV_GRAVITY_CMSS            980.665f
 
-// Dead reckoning. Every GPS task tick with a good fix (navSampleGps()) records the position,
+// Dead reckoning. Every new GPS position with a good fix (navSampleGps()) records the position,
 // ground speed and course, plus the IMU heading at that moment. When the fix drops out -- a
 // satellite or two lost in a bank, a single 2D frame, a short serial gap -- position is carried
 // forward from the last good sample at the last ground speed, along a course turned by however
@@ -164,6 +164,16 @@ static bool navGpsSampleGood(timeMs_t nowMs)
 static void navSampleGps(timeMs_t nowMs)
 {
     if (!navGpsSampleGood(nowMs)) {
+        return;
+    }
+    // Only a new solution is a new sample. gpsIsHealthy() and GPS_FIX stay set for
+    // up to GPS_TIMEOUT after the last frame, and CRSF/FBUS republish their last
+    // values every tick, so re-stamping an unchanged solution would freeze the
+    // position with age 0 instead of dead-reckoning through the gap. A moving
+    // aircraft always changes position; a stationary one loses nothing by keeping
+    // the old stamp, and a change of speed alone still counts as new.
+    if (navEstimateFresh(nowMs) && gpsSol.llh.lat == est.lat && gpsSol.llh.lon == est.lon &&
+        gpsSol.groundSpeed == est.speedCms) {
         return;
     }
     est.valid = true;
