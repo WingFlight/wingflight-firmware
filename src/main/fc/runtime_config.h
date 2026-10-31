@@ -45,7 +45,7 @@ typedef enum {
     ARMING_DISABLED_RX_FAILSAFE     = (1 << 2),
     ARMING_DISABLED_BAD_RX_RECOVERY = (1 << 3),
     ARMING_DISABLED_BOXFAILSAFE     = (1 << 4),
-    ARMING_DISABLED_GOVERNOR        = (1 << 5), // reserved (heli governor removed) -- never set
+    ARMING_DISABLED_GOVERNOR        = (1 << 5), // governor switch engaged
     ARMING_DISABLED_RPM_SIGNAL      = (1 << 6),
     ARMING_DISABLED_THROTTLE        = (1 << 7),
     ARMING_DISABLED_ANGLE           = (1 << 8),
