@@ -3,6 +3,15 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Roll D Scaled Like Pitch and Yaw
+
+`roll_d_gain` (and `tv_roll_d_gain`) used a D scale 10 times smaller than
+pitch and yaw, left over from the helicopter firmware (`flight/pid.h`). All
+three axes now use the same scale, so the same D value gives the same damping
+on every axis. D defaults to 0, so default tunes are unchanged. A tune with a
+non-zero roll D now gets 10 times the roll damping: divide `roll_d_gain` and
+`tv_roll_d_gain` by 10 to keep the old behaviour. No MSP, CLI or PG change.
+
 ## FBUS GPS Fix, Speed and Position
 
 Three fixes for FBUS/S.Port GPS sensors such as the FrSky GPS ADV
