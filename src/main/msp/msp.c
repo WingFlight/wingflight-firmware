@@ -4165,6 +4165,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             *mixerRulesMutable(i) = rule;
         }
         mixerCaptureRuleSign(i);
+        mixerUpdateMapping();
         break;
 
     case MSP_SET_MIXER_CURVE:
