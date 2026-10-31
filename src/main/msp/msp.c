@@ -4199,9 +4199,12 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             }
             gainCurvesMutable(i)->count = pointCount;
         }
+        // Clamp to the documented ranges (pg/pid.h): x is |deflection| * 1000 and
+        // y a percent multiplier up to 500. An unchecked y up to 65535 meant a
+        // 655x gain on every axis using the curve.
         for (int p = 0; p < GAIN_CURVE_POINTS; p++) {
-            gainCurvesMutable(i)->points[p].x = sbufReadU16(src);
-            gainCurvesMutable(i)->points[p].y = sbufReadU16(src);
+            gainCurvesMutable(i)->points[p].x = MIN(sbufReadU16(src), 1000);
+            gainCurvesMutable(i)->points[p].y = MIN(sbufReadU16(src), 500);
         }
         break;
 
