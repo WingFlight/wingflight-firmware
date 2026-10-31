@@ -207,10 +207,13 @@ static void updateAirborneRearmEligibility(timeUs_t currentTimeUs, bool inFlight
         return;
     }
 
+    // Track the in-flight latch rather than set-once: when the governor-off heuristic
+    // below declares the flight over, the grace must not be granted at the following
+    // disarm, or the throttle, attitude and governor-switch arming checks are skipped
+    // for a re-arm on the ground.
     const timeDelta_t armedTimeUs = cmpTimeUs(currentTimeUs, armStartedAtUs);
-    if (inFlightLatched && armedTimeUs >= (timeDelta_t)armingConfig()->rearm_min_armed_seconds * 1000000) {
-        airborneRearmEligible = true;
-    }
+    airborneRearmEligible = inFlightLatched &&
+        armedTimeUs >= (timeDelta_t)armingConfig()->rearm_min_armed_seconds * 1000000;
 }
 
 static void updateAirborneRearmOnArm(timeUs_t currentTimeUs)
