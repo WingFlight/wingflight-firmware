@@ -56,18 +56,19 @@
 
 #define FW_P_TERM_SCALE             0.00000666666f
 #define FW_I_TERM_SCALE             0.0002f
+#define FW_D_TERM_SCALE             1.0e-6f
 #define FW_F_TERM_SCALE             0.000025f
 #define FW_B_TERM_SCALE             0.1e-6f
 
 #define ROLL_P_TERM_SCALE           FW_P_TERM_SCALE
 #define ROLL_I_TERM_SCALE           FW_I_TERM_SCALE
-#define ROLL_D_TERM_SCALE           0.1e-6f
+#define ROLL_D_TERM_SCALE           FW_D_TERM_SCALE
 #define ROLL_F_TERM_SCALE           FW_F_TERM_SCALE
 #define ROLL_B_TERM_SCALE           FW_B_TERM_SCALE
 
 #define PITCH_P_TERM_SCALE          FW_P_TERM_SCALE
 #define PITCH_I_TERM_SCALE          FW_I_TERM_SCALE
-#define PITCH_D_TERM_SCALE          1.0e-6f
+#define PITCH_D_TERM_SCALE          FW_D_TERM_SCALE
 #define PITCH_F_TERM_SCALE          FW_F_TERM_SCALE
 #define PITCH_B_TERM_SCALE          FW_B_TERM_SCALE
 
