@@ -33,6 +33,12 @@
 #define FBUS_MASTER_DISCOVERY_TIME_MIN_MS 100
 #define FBUS_MASTER_DISCOVERY_TIME_MAX_MS 10000
 
+#define FBUS_MASTER_BAUD_FAST 460800
+#define FBUS_MASTER_BAUD_SLOW 115200
+
+// At 115200 a frame plus the sensor reply takes 4-5ms, so the frame rate is capped
+#define FBUS_MASTER_FRAME_RATE_MAX_SLOW_HZ 150
+
 typedef struct fbusMasterConfig_s {
     uint16_t frameRate;
     uint8_t pinSwap;
@@ -53,6 +59,8 @@ typedef struct fbusMasterConfig_s {
     // Optional GPIO, high while the master transmits (direction control for
     // an external FBUS mux / FPGA). Only supported by the HAL UART driver.
     ioTag_t sendPin;
+    // ON = 460800 baud (FBUS), OFF = 115200 baud (F.Port2 speed)
+    uint8_t baudFast;
 
 } fbusMasterConfig_t;
 

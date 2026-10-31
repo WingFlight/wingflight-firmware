@@ -30,6 +30,8 @@
 
 #include "common/utils.h"
 
+#include "drivers/io.h"
+#include "drivers/resource.h"
 #include "drivers/time.h"
 #include "drivers/system.h"
 #include "drivers/serial.h"
@@ -56,6 +58,7 @@
 
 #include "pg/pg.h"
 #include "pg/pg_ids.h"
+#include "pg/serial_pinconfig.h"
 
 #ifdef USE_TELEMETRY
 #include "telemetry/telemetry.h"
@@ -440,6 +443,56 @@ serialPort_t *openSerialPort(
     serialPortUsage->serialPort = serialPort;
 
     return serialPort;
+}
+
+#if !defined(SIMULATOR_BUILD)
+// Pin owned by something other than a serial port, e.g. a servo or LED on the same pin
+static bool serialPinConflict(ioTag_t tag)
+{
+    if (!tag) {
+        return false;
+    }
+    const resourceOwner_e owner = IOGetOwner(IOGetByTag(tag));
+    return owner != OWNER_FREE && owner != OWNER_SERIAL_TX && owner != OWNER_SERIAL_RX;
+}
+#endif
+
+// Port state for diagnostics (CLI serialdebug, MSP2_WING_SERIAL_STATUS)
+uint8_t serialGetPortDiagnostics(serialPortIdentifier_e identifier, ioTag_t *rxTag, ioTag_t *txTag, uint32_t *baudRate)
+{
+    uint8_t flags = 0;
+    *rxTag = 0;
+    *txTag = 0;
+    *baudRate = 0;
+
+#if !defined(SIMULATOR_BUILD)
+    if (identifier != SERIAL_PORT_USB_VCP && identifier >= 0) {
+        const int index = SERIAL_PORT_IDENTIFIER_TO_INDEX(identifier);
+        if (index < SERIAL_PORT_MAX_INDEX) {
+            *rxTag = serialPinConfig()->ioTagRx[index];
+            *txTag = serialPinConfig()->ioTagTx[index];
+        }
+        if (!*rxTag && !*txTag) {
+            flags |= SERIAL_DIAG_NO_PINS;
+        }
+        if (serialPinConflict(*rxTag) || serialPinConflict(*txTag)) {
+            flags |= SERIAL_DIAG_PIN_CONFLICT;
+        }
+    }
+#endif
+
+    const serialPortUsage_t *usage = findSerialPortUsageByIdentifier(identifier);
+    if (usage && usage->serialPort) {
+        flags |= SERIAL_DIAG_OPEN;
+        *baudRate = usage->serialPort->baudRate;
+        if (usage->serialPort->rxCallback) {
+            flags |= SERIAL_DIAG_RX_CALLBACK;
+        }
+        if (!(usage->serialPort->mode & MODE_RX)) {
+            flags |= SERIAL_DIAG_TX_ONLY;
+        }
+    }
+    return flags;
 }
 
 void closeSerialPort(serialPort_t *serialPort)

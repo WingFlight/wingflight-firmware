@@ -436,3 +436,35 @@ void IOTraversePins(IOTraverseFuncPtr_t fnPtr)
         fnPtr(&ioRecs[i]);
     }
 }
+
+#if defined(USE_XIP)
+// Pins in alternate function mode when the boot loader started the firmware, one mask per port
+static uint16_t bootLoaderPins[ARRAYLEN(ioDefUsedMask)];
+
+// The boot loader leaves the pins of the external flash we execute from in alternate function mode.
+// Called at startup before any pin is configured by the firmware.
+void IOSaveBootLoaderPins(void)
+{
+    for (unsigned port = 0; port < ARRAYLEN(ioDefUsedMask); port++) {
+        const GPIO_TypeDef *gpio = (GPIO_TypeDef *)(GPIOA_BASE + (port << 10));
+        for (unsigned pin = 0; pin < 16; pin++) {
+            if (((gpio->MODER >> (pin * 2)) & 0x3) == 0x2) { // MODER 0b10: alternate function
+                bootLoaderPins[port] |= 1 << pin;
+            }
+        }
+    }
+}
+
+static void IOReserveBootLoaderPin(IO_t io)
+{
+    if (IOGetOwner(io) == OWNER_FREE && (bootLoaderPins[IO_GPIOPortIdx(io)] & IO_Pin(io))) {
+        IOInit(io, OWNER_SYSTEM, 0);
+    }
+}
+
+// Mark the pins saved by IOSaveBootLoaderPins() as in use, so that they are not reconfigured, e.g. as unused pins.
+void IOReserveBootLoaderPins(void)
+{
+    IOTraversePins(IOReserveBootLoaderPin);
+}
+#endif

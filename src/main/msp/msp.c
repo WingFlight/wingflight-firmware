@@ -936,6 +936,23 @@ static uint16_t mspRatio(float value)
 {
     return (uint16_t)(int16_t)constrain(lrintf(value * 1000), INT16_MIN, INT16_MAX);
 }
+
+// A value x scale in one byte, unsigned or signed, saturated to the byte's range
+static uint8_t mspScaledU8(float value, float scale)
+{
+    return (uint8_t)constrain(lrintf(value * scale), 0, UINT8_MAX);
+}
+
+static uint8_t mspScaledS8(float value, float scale)
+{
+    return (uint8_t)(int8_t)constrain(lrintf(value * scale), INT8_MIN, INT8_MAX);
+}
+
+// P, F and B (0..PID_GAIN_MAX) in 10 bits each: bits 0-9, 10-19 and 20-29
+static uint32_t mspPackGains(uint16_t p, uint16_t f, uint16_t b)
+{
+    return (uint32_t)MIN(p, 1023) | ((uint32_t)MIN(f, 1023) << 10) | ((uint32_t)MIN(b, 1023) << 20);
+}
 #endif
 
 static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
@@ -1409,6 +1426,105 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
     }
 
+    case MSP2_WING_FBUS_SENSORS_STATUS: {
+        // Latest decoded value from each sensor type the driver understands.
+        // Each block starts with a flags byte: 0 means no fresh data (nothing
+        // within the last second), and its fields are then sent as zero.
+        sbufWriteU8(dst, 1); // payload version
+
+        fbusGpsData_t gps;
+        fbusSensorGetGpsData(&gps);
+        uint8_t gpsFlags = 0;
+        // Any fresh GPS field counts, not only position (which
+        // fbusSensorHasGpsData() requires for navigation), so fields sent
+        // before a position fix still show.
+        if (gps.lastUpdateUs > 0 && cmpTimeUs(micros(), gps.lastUpdateUs) < 1000000) {
+            gpsFlags = (gps.hasPosition   ? BIT(0) : 0) |
+                       (gps.hasAltitude   ? BIT(1) : 0) |
+                       (gps.hasSpeed      ? BIT(2) : 0) |
+                       (gps.hasCourse     ? BIT(3) : 0) |
+                       (gps.hasSatellites ? BIT(4) : 0) |
+                       (gps.hasTime       ? BIT(5) : 0) |
+                       (gps.hasDate       ? BIT(6) : 0);
+        }
+        if (!gpsFlags) {
+            memset(&gps, 0, sizeof(gps));
+        }
+        sbufWriteU8(dst, gpsFlags);
+        sbufWriteS32(dst, gps.latitude);
+        sbufWriteS32(dst, gps.longitude);
+        sbufWriteS32(dst, gps.altitudeCm);
+        sbufWriteU32(dst, gps.speedMilliKnots);
+        sbufWriteU16(dst, gps.courseDeg);
+        sbufWriteU8(dst, gps.satellites);
+        sbufWriteU8(dst, gps.time.hours);
+        sbufWriteU8(dst, gps.time.minutes);
+        sbufWriteU8(dst, gps.time.seconds);
+        sbufWriteU8(dst, gps.date.day);
+        sbufWriteU8(dst, gps.date.month);
+        sbufWriteU16(dst, gps.date.year);
+
+        fbusCurrentData_t current;
+        fbusSensorGetCurrentData(&current);
+        uint8_t currentFlags = 0;
+        if (fbusSensorHasCurrentData()) {
+            currentFlags = (current.hasCurrent              ? BIT(0) : 0) |
+                           (current.hasVoltage              ? BIT(1) : 0) |
+                           (current.hasHighPrecisionCurrent ? BIT(2) : 0);
+        }
+        if (!currentFlags) {
+            memset(&current, 0, sizeof(current));
+        }
+        sbufWriteU8(dst, currentFlags);
+        sbufWriteU32(dst, current.currentDeciAmps);
+        sbufWriteU32(dst, current.voltageCentiVolts);
+        sbufWriteU16(dst, current.currentMilliAmps);
+
+        fbusFlvssData_t flvss;
+        fbusSensorGetFlvssData(&flvss);
+        const bool hasFlvss = fbusSensorHasFlvssData();
+        const uint8_t cellCount = hasFlvss ? MIN(flvss.cellCount, FBUS_FLVSS_MAX_CELLS) : 0;
+        sbufWriteU8(dst, hasFlvss ? BIT(0) : 0);
+        sbufWriteU8(dst, cellCount);
+        for (uint8_t i = 0; i < cellCount; i++) {
+            sbufWriteU16(dst, flvss.cellVoltageCentiVolts[i]);
+        }
+        sbufWriteU32(dst, hasFlvss ? flvss.voltageCentiVolts : 0);
+
+        // Shared by FrSky ESC sensors and the FrSky RPM sensor
+        fbusEscData_t esc;
+        fbusSensorGetEscData(&esc);
+        uint8_t escFlags = 0;
+        if (fbusSensorHasEscData()) {
+            escFlags = (esc.hasPower       ? BIT(0) : 0) |
+                       (esc.hasRpm         ? BIT(1) : 0) |
+                       (esc.hasConsumption ? BIT(2) : 0) |
+                       (esc.hasTemperature ? BIT(3) : 0);
+        }
+        if (!escFlags) {
+            memset(&esc, 0, sizeof(esc));
+        }
+        sbufWriteU8(dst, escFlags);
+        sbufWriteU16(dst, esc.voltageCentiVolts);
+        sbufWriteU16(dst, esc.currentCentiAmps);
+        sbufWriteU32(dst, esc.erpm);
+        sbufWriteU16(dst, esc.consumptionMah);
+        sbufWriteU8(dst, esc.temperatureDegC);
+        sbufWriteU8(dst, esc.temperature2DegC);
+
+        fbusServoData_t servo;
+        fbusSensorGetServoData(&servo);
+        const bool hasServo = fbusSensorHasServoData();
+        if (!hasServo) {
+            memset(&servo, 0, sizeof(servo));
+        }
+        sbufWriteU8(dst, hasServo ? BIT(0) : 0);
+        sbufWriteU16(dst, servo.currentDeciAmps);
+        sbufWriteU16(dst, servo.voltageDeciVolts);
+        sbufWriteU16(dst, servo.temperatureDegC);
+        break;
+    }
+
     case MSP2_WING_FBUS_MASTER_CONFIG: {
         sbufWriteU8(dst, 1); // payload version -- only the forwarding slots so far
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
@@ -1713,10 +1829,19 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         for (int i = 0; i < MAX_MODE_ACTIVATION_CONDITION_COUNT; i++) {
             const modeActivationCondition_t *mac = modeActivationConditions(i);
             const box_t *box = findBoxByBoxId(mac->modeId);
-            sbufWriteU8(dst, box->permanentId);
-            sbufWriteU8(dst, mac->auxChannelIndex);
-            sbufWriteU8(dst, mac->range.startStep);
-            sbufWriteU8(dst, mac->range.endStep);
+            if (box) {
+                sbufWriteU8(dst, box->permanentId);
+                sbufWriteU8(dst, mac->auxChannelIndex);
+                sbufWriteU8(dst, mac->range.startStep);
+                sbufWriteU8(dst, mac->range.endStep);
+            } else {
+                // Saved range for a mode this build no longer has: report an
+                // empty slot (start == end), which clients skip.
+                sbufWriteU8(dst, 0);
+                sbufWriteU8(dst, 0);
+                sbufWriteU8(dst, 0);
+                sbufWriteU8(dst, 0);
+            }
         }
         break;
 
@@ -1727,9 +1852,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             const modeActivationCondition_t *mac = modeActivationConditions(i);
             const box_t *box = findBoxByBoxId(mac->modeId);
             const box_t *linkedBox = findBoxByBoxId(mac->linkedTo);
-            sbufWriteU8(dst, box->permanentId);     // each element is aligned with MODE_RANGES by the permanentId
+            sbufWriteU8(dst, box ? box->permanentId : 0);     // each element is aligned with MODE_RANGES by the permanentId
             sbufWriteU8(dst, mac->modeLogic);
-            sbufWriteU8(dst, linkedBox->permanentId);
+            sbufWriteU8(dst, linkedBox ? linkedBox->permanentId : 0);
         }
         break;
 
@@ -2572,6 +2697,88 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         break;
 #endif
 
+    // Serial port diagnostics, like the CLI's serialdebug: every port, then an
+    // optional detail block for the port id in the request, with one sub-block per
+    // function on it that reports state (GPS for now).
+    case MSP2_WING_SERIAL_STATUS: {
+        const int detailId = sbufBytesRemaining(src) ? sbufReadU8(src) : 0xFF;
+        sbufWriteU8(dst, 1); // payload version
+
+        sbufWriteU8(dst, SERIAL_PORT_COUNT);
+        for (int i = 0; i < SERIAL_PORT_COUNT; i++) {
+            const serialPortIdentifier_e id = serialPortIdentifiers[i];
+            const serialPortConfig_t *cfg = serialFindPortConfiguration(id);
+            const serialPortUsage_t *usage = findSerialPortUsageByIdentifier(id);
+            ioTag_t rxTag, txTag;
+            uint32_t baud;
+            const uint8_t flags = serialGetPortDiagnostics(id, &rxTag, &txTag, &baud);
+            uint8_t options = 0;
+            if (usage && usage->serialPort) {
+                options = ((usage->serialPort->options & SERIAL_INVERTED) ? BIT(0) : 0) |
+                          ((usage->serialPort->options & SERIAL_BIDIR) ? BIT(1) : 0) |
+                          ((usage->serialPort->mode & MODE_RX) ? BIT(2) : 0) |
+                          ((usage->serialPort->mode & MODE_TX) ? BIT(3) : 0);
+            }
+            sbufWriteU8(dst, id);
+            sbufWriteU32(dst, cfg ? cfg->functionMask : 0);
+            sbufWriteU8(dst, rxTag);    // DEFIO tag: ((gpio + 1) << 4) | pin, 0 = none
+            sbufWriteU8(dst, txTag);
+            sbufWriteU8(dst, flags);    // serialDiagFlags_e
+            sbufWriteU32(dst, baud);    // 0 when closed
+            sbufWriteU8(dst, options);
+        }
+
+        const serialPortConfig_t *detailCfg = detailId != 0xFF ? serialFindPortConfiguration(detailId) : NULL;
+        if (!detailCfg) {
+            sbufWriteU8(dst, 0xFF);     // no detail
+            break;
+        }
+        sbufWriteU8(dst, detailId);
+        sbufWriteU32(dst, baudRates[detailCfg->msp_baudrateIndex]);
+        sbufWriteU32(dst, baudRates[detailCfg->gps_baudrateIndex]);
+        sbufWriteU32(dst, baudRates[detailCfg->telemetry_baudrateIndex]);
+        sbufWriteU32(dst, baudRates[detailCfg->blackbox_baudrateIndex]);
+
+        uint8_t *blockCountPtr = sbufPtr(dst);
+        sbufWriteU8(dst, 0);
+        uint8_t blockCount = 0;
+
+#ifdef USE_GPS
+        if (detailCfg->functionMask & FUNCTION_GPS) {
+            const serialPort_t *gpsSerial = gpsGetPort();
+            const serialPortConfig_t *gpsCfg = findSerialPortConfig(FUNCTION_GPS);
+            sbufWriteU32(dst, FUNCTION_GPS);
+            uint8_t *lenPtr = sbufPtr(dst);
+            sbufWriteU8(dst, 0);
+            uint8_t *start = sbufPtr(dst);
+
+            sbufWriteU8(dst, (gpsIsEnabled() ? BIT(0) : 0) |
+                (gpsIsConfigured() ? BIT(1) : 0) |
+                (STATE(GPS_FIX) ? BIT(2) : 0) |
+                ((gpsCfg && gpsCfg->identifier == detailId) ? BIT(3) : 0) |   // this is the port GPS uses
+                (gpsSerial ? BIT(4) : 0));                                      // and it is open
+            sbufWriteU8(dst, gpsConfig()->provider);
+            sbufWriteU32(dst, gpsSerial ? gpsSerial->baudRate : 0);
+            sbufWriteU8(dst, gpsData.state);
+            sbufWriteU32(dst, millis() - gpsData.lastMessage);
+            sbufWriteU32(dst, gpsGetRxByteCount());
+            sbufWriteU32(dst, GPS_packetCount);
+            sbufWriteU32(dst, gpsData.errors);
+            sbufWriteU32(dst, gpsData.timeouts);
+            sbufWriteU8(dst, gpsSol.numSat);
+            uint8_t recent[64];
+            const uint8_t recentCount = gpsGetRecentBytes(recent, sizeof(recent));
+            sbufWriteU8(dst, recentCount);
+            sbufWriteData(dst, recent, recentCount);
+
+            *lenPtr = sbufPtr(dst) - start;
+            blockCount++;
+        }
+#endif
+        *blockCountPtr = blockCount;
+        break;
+    }
+
     case MSP_BOXNAMES:
         {
             const int page = sbufBytesRemaining(src) ? sbufReadU8(src) : 0;
@@ -2586,9 +2793,11 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         break;
 #ifdef USE_TUNE_ADVISOR
     case MSP2_WING_TUNE_ADVISOR: {
-        // One axis per request (U8 axis: 0 roll, 1 pitch, 2 yaw) so the reply, 65 bytes, fits
-        // MSP over telemetry. Ratios are x1000 (signed), counts saturate at 65535 (about 11 min
-        // of 100 Hz samples).
+        // One axis per request (U8 axis: 0 roll, 1 pitch, 2 yaw). Payload version 2 packs each
+        // value into as few bytes as the client needs: 48 bytes, within one CRSF frame (at most
+        // 51: a frame holds 58 bytes after a 6-byte MSP header, and sendMspReply() sends a reply
+        // that exactly fills one as two) and 11 S.Port/FBUS frames instead of 14. Counts saturate at 65535
+        // (about 11 min of 100 Hz samples); scaled values saturate at their byte's range.
         if (sbufBytesRemaining(src) != 1) {
             return MSP_RESULT_ERROR;
         }
@@ -2600,42 +2809,41 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         tuneAdvisorAxis_t ta;
         tuneAdvisorGetAxis(axis, &ta);
 
-        sbufWriteU8(dst, 1); // payload version
-        sbufWriteU8(dst, tuneAdvisorIsCollecting() ? 1 : 0);
+        sbufWriteU8(dst, 2); // payload version
+        // bits 0-1 axis, bit 2 collecting now
+        sbufWriteU8(dst, axis | (tuneAdvisorIsCollecting() ? 0x04 : 0));
         sbufWriteU16(dst, mspSatU16(tuneAdvisorGetValidSamples() / TA_SAMPLE_HZ));
-        sbufWriteU8(dst, axis);
 
         // The tune these numbers belong to, so a client can suggest new values
-        sbufWriteU16(dst, currentPidProfile->pid[axis].P);
-        sbufWriteU16(dst, currentPidProfile->pid[axis].F);
-        sbufWriteU16(dst, currentPidProfile->pid[axis].B);
+        sbufWriteU32(dst, mspPackGains(currentPidProfile->pid[axis].P, currentPidProfile->pid[axis].F,
+                                       currentPidProfile->pid[axis].B));
         sbufWriteU8(dst, currentPidProfile->iterm_relax[axis]);
         sbufWriteU8(dst, currentControlRateProfile->rcRates[axis]);
 
         sbufWriteU16(dst, mspSatU16(ta.ffCount));
-        sbufWriteU16(dst, mspRatio(ta.ffGain));
-        sbufWriteU16(dst, mspRatio(ta.ffCorr));
-        sbufWriteU16(dst, ta.ffLagMs);
+        sbufWriteU8(dst, mspScaledU8(ta.ffGain, 64));               // x64, 0..3.98
+        sbufWriteU8(dst, mspScaledS8(ta.ffCorr, 100));              // x100, -1..1
+        sbufWriteU8(dst, MIN(ta.ffLagMs, UINT8_MAX));               // ms, 0..250
         for (int i = 0; i < TA_SP_BAND_COUNT; i++) {
-            sbufWriteU16(dst, mspRatio(ta.spBand[i].gain));
+            sbufWriteU8(dst, mspScaledU8(ta.spBand[i].gain, 64));
             sbufWriteU16(dst, mspSatU16(ta.spBand[i].count));
         }
         for (int i = 0; i < TA_THR_BAND_COUNT; i++) {
-            sbufWriteU16(dst, mspRatio(ta.thrBand[i].gain));
+            sbufWriteU8(dst, mspScaledU8(ta.thrBand[i].gain, 64));
             sbufWriteU16(dst, mspSatU16(ta.thrBand[i].count));
         }
 
         sbufWriteU16(dst, mspSatU16(ta.fullCount));
         sbufWriteU16(dst, mspSatU16(ta.fullSatCount));
-        sbufWriteU16(dst, mspRatio(ta.fullRatio));
-        sbufWriteU16(dst, mspSatU16(lrintf(ta.fullMaxRate)));
+        sbufWriteU8(dst, mspScaledU8(ta.fullRatio, 100));           // x100, 0..2.55
+        sbufWriteU8(dst, mspScaledU8(ta.fullMaxRate, 0.1f));        // 10 deg/s steps, 0..2550
 
         sbufWriteU16(dst, ta.releases);
         sbufWriteU16(dst, ta.bigRebounds);
-        sbufWriteU16(dst, mspRatio(ta.meanRebound));
-        sbufWriteU16(dst, mspRatio(ta.meanOvershoot));
-        sbufWriteU16(dst, mspRatio(ta.meanCounter));
-        sbufWriteU16(dst, mspRatio(ta.meanIterm));
+        sbufWriteU8(dst, mspScaledU8(ta.meanRebound, 100));         // x100, 0..2.55
+        sbufWriteU8(dst, mspScaledU8(ta.meanOvershoot, 64));        // x64, 0..3.98
+        sbufWriteU8(dst, mspScaledU8(ta.meanCounter, 100));         // x100, 0..2.55
+        sbufWriteU16(dst, mspRatio(ta.meanIterm));                  // x1000, signed: needs the range and the 0.01s
         break;
     }
 #endif
@@ -3043,7 +3251,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
                     mac->modeLogic = sbufReadU8(src);
 
                     i = sbufReadU8(src);
-                    mac->linkedTo = findBoxByPermanentId(i)->boxId;
+                    const box_t *linkedBox = findBoxByPermanentId(i);
+                    mac->linkedTo = linkedBox ? linkedBox->boxId : 0;
                 }
                 rcControlsInit();
             } else {
@@ -3515,8 +3724,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         }
         /* Fixed-wing throttle-based gain attenuation (gain + curve index) */
         if (sbufBytesRemaining(src) >= 2) {
-            currentPidProfile->fw_tpa_gain = sbufReadU8(src);
-            currentPidProfile->fw_tpa_curve = sbufReadU8(src);
+            currentPidProfile->fw_tpa_gain = constrain(sbufReadU8(src), 25, 200);
+            currentPidProfile->fw_tpa_curve = MIN(sbufReadU8(src), GAIN_CURVE_COUNT);
         }
         /* Master gain (per axis) */
         if (sbufBytesRemaining(src) >= 6) {
@@ -3919,16 +4128,29 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (i >= MIXER_RULE_COUNT) {
             return MSP_RESULT_ERROR;
         }
-        mixerRulesMutable(i)->oper = sbufReadU8(src);
-        mixerRulesMutable(i)->input = sbufReadU8(src);
-        mixerRulesMutable(i)->output = sbufReadU8(src);
-        mixerRulesMutable(i)->offset = sbufReadU16(src);
-        mixerRulesMutable(i)->weight = sbufReadU16(src);
-        mixerRulesMutable(i)->weightNeg = sbufReadU16(src);
-        mixerRulesMutable(i)->speed = sbufReadU16(src);
-        mixerRulesMutable(i)->curve = sbufReadU8(src);
-        mixerRulesMutable(i)->condition = sbufReadU8(src);
-        mixerRulesMutable(i)->role = sbufReadU8(src);
+        {
+            // mixerUpdateRules() indexes mixer.input[] / mixer.output[] with
+            // these on every loop, and validateAndFixMixerConfig() only runs
+            // at boot, so reject anything out of range here (as the CLI does).
+            mixerRule_t rule;
+            rule.oper = sbufReadU8(src);
+            rule.input = sbufReadU8(src);
+            rule.output = sbufReadU8(src);
+            rule.offset = sbufReadU16(src);
+            rule.weight = sbufReadU16(src);
+            rule.weightNeg = sbufReadU16(src);
+            rule.speed = sbufReadU16(src);
+            rule.curve = sbufReadU8(src);
+            rule.condition = sbufReadU8(src);
+            rule.role = sbufReadU8(src);
+            if (rule.oper >= MIXER_OP_COUNT ||
+                rule.input >= MIXER_INPUT_COUNT ||
+                rule.output >= MIXER_OUTPUT_COUNT ||
+                rule.role >= MIXER_RULE_ROLE_COUNT) {
+                return MSP_RESULT_ERROR;
+            }
+            *mixerRulesMutable(i) = rule;
+        }
         mixerCaptureRuleSign(i);
         break;
 

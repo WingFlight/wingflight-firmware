@@ -23,6 +23,78 @@ A sensor that also sends the temperature IDs `0x0400`/`0x0410` (T1/T2) could be
 classified as an RPM sensor when one of those arrived first, and its GPS data
 was then dropped. A GPS App ID now always classifies the sensor as GPS.
 
+## Motor PWM Default: 50 Hz
+
+`motor_pwm_rate` now defaults to 50 Hz instead of 250 Hz (`pg/motor.c`).
+The motor parameter-group version is incremented, so stored motor settings
+from older builds reset to the current defaults on upgrade. Review motor
+protocol, throttle endpoints and other motor settings before use. MSP and
+CLI formats are unchanged; the Configurator's Virtual FC and help text
+use the same default.
+
+## Serial Port Diagnostics: `serialdebug` CLI Command and `MSP2_WING_SERIAL_STATUS`
+
+New CLI command for serial wiring and setup problems (`cli/cli.c`), generic
+across what the port carries:
+
+- `serialdebug` lists every port with its pins, functions, whether it opened
+  and at what baud, and flags pins owned by something else. Footer hints
+  name a port whose function did not open and a `gps_provider` that has no
+  matching port.
+- `serialdebug <id>` shows one port in detail: configured baud rates, live
+  mode, inversion and half duplex, bytes waiting, then a block from each
+  function on it that reports state. GPS is the first: provider, state,
+  byte/packet/error/timeout counters and hints. Receiver, ESC telemetry and
+  others can add a block the same way.
+- `serialdebug monitor <id> [<baud>] [<seconds>] [inverted]` prints the raw
+  bytes a port receives (non-text as `<hex>`), default 5 s.
+- `serialdebug scan <id> [inverted]` listens at GPS and receiver baud rates
+  (9600 to 460800) and reports NMEA, UBX, CRSF and FBUS frames seen at each.
+
+Listening blocks the scheduler like `serialpassthrough`. A port that is
+already open is borrowed and its baud and RX callback restored afterwards.
+`io/serial.c` gains `serialGetPortDiagnostics()` for the shared per-port
+checks, and `io/gps.c` keeps the last 64 bytes read from the GPS port.
+
+New read-only `MSP2_WING_SERIAL_STATUS` (0x5F34) returns the same: a
+version byte, then every port (identifier, function mask, RX/TX pin tags,
+diagnostic flags, baud, options), then a detail block for the port id given
+in the request (0xFF/none when absent or unknown): its four configured baud
+rates and one sub-block per reporting function, each as function id, length
+and payload, so a client skips blocks it does not know. The GPS sub-block
+carries flags, provider, baud, state, last-message age, the counters,
+satellite count and the recent bytes. The Configurator's GPS tab shows this
+as a Diagnostics panel. Belongs to the next API version.
+
+## GPS Feature Removed (API 22.15)
+
+`FEATURE_GPS` (feature bit 7) is gone. GPS now runs when `gps_provider`
+matches a port: `NMEA` or `UBLOX` with a `GPS` port, `FBUS` with an FBUS or
+S.Port master port, `CRSF` with a CRSF sensors port, or `MSP` with no port.
+This is read once at boot (`gpsIsEnabled()` in `io/gps.c`), like features.
+Bit 7 is cleared at boot and on save, so `MSP_FEATURE_CONFIG` no longer
+reports it and `MSP_SET_FEATURE_CONFIG` ignores it. `feature GPS` is no
+longer a CLI feature name. No MSP layout change.
+
+## FBUS/S.Port Sensor Readings over MSP
+
+New read-only `MSP2_WING_FBUS_SENSORS_STATUS` (0x5F33) returns the latest
+decoded value from each FBUS/S.Port sensor type the master understands
+(`drivers/fbus_sensor.c`): GPS, current (FAS), cells (FLVSS), ESC/RPM sensor
+and XACT servo. Each block starts with a flags byte; 0 means nothing fresh in
+the last second, and the block's fields are then zero. Built with
+`USE_FBUS_MASTER` or `USE_SPORT_MASTER`, like `MSP2_WING_FBUS_SENSORS`. The
+Configurator's FBUS/S.Port Sensors tab shows these as live readings.
+
+## F.Bus Master Speed Selectable
+
+The F.Bus master output runs at 460800 baud by default. The new CLI setting
+`fbus_master_baud_fast = OFF` runs it at 115200 instead, for receivers set to
+F.Port2 speed. At 115200 the frame rate is capped at 150 Hz, since a frame and
+the sensor reply take 4-5 ms. CLI only, no MSP change.
+`PG_DRIVER_FBUS_MASTER_CONFIG` version bumped, so F.Bus master settings reset
+to defaults on update.
+
 ## FBUS and F.Port2 Speed Detected
 
 FBUS (460800 baud) and F.Port2 (115200 baud) are the same protocol, so
@@ -162,17 +234,18 @@ clients. Flight behaviour is unchanged.
 - Statistics accumulate across flights and clear when the PID gains, master
   gains, I-term relax, PID mode, rates or active profiles change (checked on
   arming).
-- `MSP2_WING_TUNE_ADVISOR` (0x5F18) reads one axis per request, so the reply
-  (65 bytes) fits MSP over telemetry. Request: `U8 axis` (0 roll, 1 pitch,
-  2 yaw). Reply, payload v1: `U8 version, U8 collecting, U16 seconds,
-  U8 axis`, then `U16 P, U16 F, U16 B, U8 iterm_relax, U8 rc_rate`,
-  `U16 ffCount, S16 ffGain, S16 ffCorr, U16 ffLagMs`,
-  3 x `S16 gain, U16 count` by request (40-100, 100-200, 200+ deg/s),
-  3 x `S16 gain, U16 count` by throttle (<30%, 30-60%, 60%+),
-  `U16 fullCount, U16 fullSatCount, S16 fullRatio, U16 fullMaxRate`,
-  `U16 releases, U16 bigRebounds, S16 meanRebound, S16 meanOvershoot,
-  S16 meanCounter, S16 meanIterm`. Ratios are x1000, counts saturate at
-  65535.
+- `MSP2_WING_TUNE_ADVISOR` (0x5F18) reads one axis per request. Request:
+  `U8 axis` (0 roll, 1 pitch, 2 yaw). Reply (48 bytes: one CRSF frame),
+  payload v2: `U8 version, U8 flags` (bits 0-1 axis, bit 2 collecting),
+  `U16 seconds`, then `U32 P | F << 10 | B << 20, U8 iterm_relax, U8 rc_rate`,
+  `U16 ffCount, U8 ffGain x64, S8 ffCorr x100, U8 ffLagMs`,
+  3 x `U8 gain x64, U16 count` by request (40-100, 100-200, 200+ deg/s),
+  3 x `U8 gain x64, U16 count` by throttle (<30%, 30-60%, 60%+),
+  `U16 fullCount, U16 fullSatCount, U8 fullRatio x100, U8 fullMaxRate`
+  (10 deg/s steps), `U16 releases, U16 bigRebounds, U8 meanRebound x100,
+  U8 meanOvershoot x64, U8 meanCounter x100, S16 meanIterm x1000`. Scaled
+  values saturate at their byte's range, counts at 65535. Payload v1
+  (65 bytes, snapshots 0.0.32 to 0.0.38) was 16-bit throughout.
 - `MSP2_WING_TUNE_ADVISOR_CLEAR` (0x5F19) clears them.
 - New messages only, so the API version is unchanged. Firmware without the
   feature answers 0x5F18 with an error.

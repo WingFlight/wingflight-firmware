@@ -385,7 +385,7 @@ const uartHardware_t uartHardware[UARTDEV_COUNT] = {
         .txDMAResource = (dmaResource_t *)UART10_TX_DMA_STREAM,
 #endif
         .rxPins = {
-            { DEFIO_TAG_E(PE2), GPIO_AF11_USART10 }
+            { DEFIO_TAG_E(PE2), GPIO_AF4_USART10 }
         },
         .txPins = {
             { DEFIO_TAG_E(PE3), GPIO_AF11_USART10 }

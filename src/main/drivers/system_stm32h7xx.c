@@ -103,10 +103,12 @@ void systemInit(void)
 
 void systemResetHard(void)
 {
+    // Interrupts first: a handler running while the D-cache is cleaned and disabled can read stale RAM
+    __disable_irq();
+
     SCB_DisableDCache();
     SCB_DisableICache();
 
-    __disable_irq();
     NVIC_SystemReset();
 }
 
@@ -147,8 +149,17 @@ void systemProcessResetReason(void)
     uint32_t bootloaderRequest = persistentObjectRead(PERSISTENT_OBJECT_RESET_REASON);
 
     switch (bootloaderRequest) {
+#if defined(USE_XIP)
     case RESET_BOOTLOADER_REQUEST_FLASH:
     case RESET_BOOTLOADER_REQUEST_ROM:
+        // The loader in the internal flash takes both requests before it starts the firmware
+        // (src/loader/main.c). Only a firmware started some other way, e.g. by a debugger, gets here.
+        persistentObjectWrite(PERSISTENT_OBJECT_RESET_REASON, RESET_NONE);
+        break;
+#else
+    case RESET_BOOTLOADER_REQUEST_FLASH:
+    case RESET_BOOTLOADER_REQUEST_ROM:
+#endif
         persistentObjectWrite(PERSISTENT_OBJECT_RESET_REASON, RESET_BOOTLOADER_POST);
         systemJumpToBootloader();
         break;

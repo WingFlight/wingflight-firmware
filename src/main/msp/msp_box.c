@@ -36,6 +36,8 @@
 #include "flight/mixer.h"
 #include "flight/pid.h"
 
+#include "io/gps.h"
+
 #include "sensors/sensors.h"
 
 #include "telemetry/telemetry.h"
@@ -217,7 +219,7 @@ void initActiveBoxIds(void)
     }
 
 #ifdef USE_GPS
-    if (featureIsEnabled(FEATURE_GPS)) {
+    if (gpsIsEnabled()) {
 #ifdef USE_GPS_NAV
         BME(BOXLOITER);
         BME(BOXRTH);

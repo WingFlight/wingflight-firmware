@@ -1057,11 +1057,7 @@ static float pidThrottleAttenuation(void)
     // optional curve from the same shared pool further shapes it by
     // throttle (0..1) instead of |stick deflection|. Applied (with GPS speed) to P, D,
     // F and B through pidSurfaceAttenuation(); not to I or MANUAL.
-    const float curveMult = pid.fwTpaCurveIndex > 0
-        ? pidEvaluateGainCurve(gainCurves(pid.fwTpaCurveIndex - 1), getThrottle())
-        : 1.0f;
-
-    return pid.fwTpaGain * curveMult;
+    return pid.fwTpaGain * pidGetGainCurveScaleAt(pid.fwTpaCurveIndex, getThrottle());
 }
 
 // Throttle and GPS speed attenuation together, as applied to the surface terms.

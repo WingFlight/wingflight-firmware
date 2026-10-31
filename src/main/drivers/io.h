@@ -119,6 +119,10 @@ void IOInitGlobal(void);
 typedef void (*IOTraverseFuncPtr_t)(IO_t io);
 
 void IOTraversePins(IOTraverseFuncPtr_t func);
+#if defined(USE_XIP)
+void IOSaveBootLoaderPins(void);
+void IOReserveBootLoaderPins(void);
+#endif
 
 GPIO_TypeDef* IO_GPIO(IO_t io);
 uint16_t IO_Pin(IO_t io);

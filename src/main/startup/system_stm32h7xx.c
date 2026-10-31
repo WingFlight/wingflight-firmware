@@ -69,6 +69,7 @@
 
 #include "build/debug.h"
 
+#include "drivers/io.h"
 #include "drivers/memprot.h"
 #include "drivers/system.h"
 #include "drivers/persistent.h"
@@ -660,14 +661,14 @@ void OverclockRebootIfNecessary(uint32_t clockLevel) { UNUSED(clockLevel); }
 
 pllConfig_t pll1Config73x = {
     .clockMhz = 520,
-    .m = 2,
+    .m = HSE_VALUE / 4000000, // 4MHz PLL input
     .n = 130,
     .p = 1,
     .q = 4,
     .r = 2,
     .vco = RCC_PLL1VCOWIDE,
     .vos = PWR_REGULATOR_VOLTAGE_SCALE0,
-    .rge = RCC_PLL1VCIRANGE_1,
+    .rge = RCC_PLL1VCIRANGE_2,
 };
 
 #ifdef USE_OVERCLOCK
@@ -843,7 +844,7 @@ static void SystemClockHSE_Config(void)
     }
 }
 
-void SystemClock_Config(void)
+static void SystemClockPLL_Config(void)
 {
     // Configure power supply
 
@@ -880,6 +881,66 @@ void SystemClock_Config(void)
     }
 
     SystemClockHSE_Config();
+}
+
+#if defined(USE_XIP)
+// The boot loader may run PLL1 from HSI, which is only accurate to about 1%.
+// Move PLL1 over to the HSE crystal, if one is fitted and starts.
+static void SystemClockSwitchToHSE(void)
+{
+    if (__HAL_RCC_GET_PLL_OSCSOURCE() == RCC_PLLSOURCE_HSE) {
+        return;
+    }
+
+    __HAL_RCC_HSE_CONFIG(RCC_HSE_ON);
+
+    const uint32_t start = HAL_GetTick();
+    while (!__HAL_RCC_GET_FLAG(RCC_FLAG_HSERDY)) {
+        if (HAL_GetTick() - start > HSE_STARTUP_TIMEOUT) {
+            __HAL_RCC_HSE_CONFIG(RCC_HSE_OFF);
+            return;
+        }
+    }
+
+    // PLL1 can only be changed while it is not in use, and its source only while all PLLs are off.
+    // Run from HSI meanwhile. HCLK, and with it the OCTOSPI flash we execute from, keeps running, only slower.
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {
+        .ClockType = RCC_CLOCKTYPE_SYSCLK,
+        .SYSCLKSource = RCC_SYSCLKSOURCE_HSI,
+    };
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, MCU_FLASH_LATENCY) != HAL_OK) {
+        return;
+    }
+
+    __HAL_RCC_PLL2_DISABLE();
+    __HAL_RCC_PLL3_DISABLE();
+    while (__HAL_RCC_GET_FLAG(RCC_FLAG_PLL2RDY) || __HAL_RCC_GET_FLAG(RCC_FLAG_PLL3RDY)) {
+        // Empty
+    }
+
+    // Back to PLL1 at the same frequency and bus clocks, now from HSE
+    SystemClockHSE_Config();
+}
+#endif
+
+void SystemClock_Config(void)
+{
+#if defined(USE_XIP)
+    // SystemInit() leaves the clocks alone when executing in place, turn on the HSI48 for USB here
+    __HAL_RCC_HSI48_ENABLE();
+    while (!__HAL_RCC_GET_FLAG(RCC_FLAG_HSI48RDY)) {
+        // Empty
+    }
+
+    if (__HAL_RCC_GET_SYSCLK_SOURCE() == RCC_SYSCLKSOURCE_STATUS_PLLCLK) {
+        // A boot loader already runs the system from PLL1 and clocks the OCTOSPI flash we execute from.
+        // Keep its power supply and bus clock configuration.
+        SystemClockSwitchToHSE();
+    } else
+#endif
+    {
+        SystemClockPLL_Config();
+    }
 
     /*activate CSI clock mondatory for I/O Compensation Cell*/
 
@@ -1102,8 +1163,200 @@ void CRS_IRQHandler(void)
 }
 #endif
 
+#if defined(USE_XIP)
+// The boot loader hands over with interrupts masked, its interrupts still enabled in the NVIC,
+// its peripherals (timers, USB OTG core) configured and the caches off.
+// Bring this back to the reset state the code below expects.
+static void xipBootLoaderHandover(void)
+{
+    __disable_irq();
+
+    SysTick->CTRL = 0;
+
+    for (unsigned i = 0; i < ARRAYLEN(NVIC->ICER); i++) {
+        NVIC->ICER[i] = 0xFFFFFFFF;
+        NVIC->ICPR[i] = 0xFFFFFFFF;
+    }
+
+    // Reset the peripherals on AHB1 (DMA, ADC, USB), APB1 and APB2 (timers, UARTs, SPI, I2C).
+    // AHB3 (OCTOSPI, MDMA) and AHB4 (GPIO) carry the flash we execute from and are left alone.
+    RCC->AHB1RSTR = 0xFFFFFFFF;
+    RCC->AHB1RSTR = 0;
+    RCC->APB1LRSTR = 0xFFFFFFFF;
+    RCC->APB1LRSTR = 0;
+    RCC->APB1HRSTR = 0xFFFFFFFF;
+    RCC->APB1HRSTR = 0;
+    RCC->APB2RSTR = 0xFFFFFFFF;
+    RCC->APB2RSTR = 0;
+
+    // Remember the pins the boot loader uses for the external flash, before any are reconfigured
+    IOSaveBootLoaderPins();
+
+    __set_BASEPRI(0);
+    __enable_irq();
+}
+
+// How the firmware reads the external flash it executes from, see xipFlashSpeedUp()
+xipFlashMode_t xipFlashMode;
+
+#define XIP_FLASH_BASE          0x90000000
+#define XIP_FLASH_CMD_READ_SFDP 0x5A    // Read Serial Flash Discoverable Parameters (JESD216)
+#define XIP_FLASH_CMD_READ_DTR  0xED    // DTR Fast Read Quad I/O
+#define XIP_FLASH_SFDP_SIGNATURE 0x50444653 // "SFDP"
+#define XIP_FLASH_SFDP_DTR      (1 << 19)   // Basic Flash Parameter Table, 1st DWORD: DTR clocking supported
+#define XIP_FLASH_VERIFY_PASSES 4
+
+static FAST_CODE FAST_CODE_NOINLINE void xipFlashMemoryMapped(uint32_t ccr, uint32_t tcr, uint32_t ir, uint32_t abr, uint32_t prescaler)
+{
+    OCTOSPI_TypeDef *ospi = OCTOSPI1;
+
+    ospi->CR |= OCTOSPI_CR_ABORT;
+    while (ospi->CR & OCTOSPI_CR_ABORT);
+    while (ospi->SR & OCTOSPI_SR_BUSY);
+
+    ospi->CR &= ~OCTOSPI_CR_EN;
+    ospi->DCR2 = (ospi->DCR2 & ~OCTOSPI_DCR2_PRESCALER) | ((prescaler - 1) << OCTOSPI_DCR2_PRESCALER_Pos);
+    ospi->TCR = tcr;
+    ospi->CCR = ccr;
+    ospi->ABR = abr;
+    ospi->IR = ir;
+    ospi->CR = (ospi->CR & ~OCTOSPI_CR_FMODE) | (3 << OCTOSPI_CR_FMODE_Pos) | OCTOSPI_CR_EN;
+
+    SCB_InvalidateICache();
+}
+
+// One DWORD of the SFDP tables, read in indirect mode. Leaves the flash unmapped.
+static FAST_CODE FAST_CODE_NOINLINE uint32_t xipFlashReadSfdp(uint32_t address)
+{
+    OCTOSPI_TypeDef *ospi = OCTOSPI1;
+
+    ospi->CR |= OCTOSPI_CR_ABORT;
+    while (ospi->CR & OCTOSPI_CR_ABORT);
+    while (ospi->SR & OCTOSPI_SR_BUSY);
+
+    ospi->CR &= ~(OCTOSPI_CR_EN | OCTOSPI_CR_FMODE);
+    ospi->CR |= 1 << OCTOSPI_CR_FMODE_Pos; // indirect read
+    ospi->DLR = 3;
+    ospi->TCR = OCTOSPI_TCR_SSHIFT | (8 << OCTOSPI_TCR_DCYC_Pos);
+    ospi->CCR = (1 << OCTOSPI_CCR_IMODE_Pos) | (1 << OCTOSPI_CCR_ADMODE_Pos) | (2 << OCTOSPI_CCR_ADSIZE_Pos) | (1 << OCTOSPI_CCR_DMODE_Pos);
+    ospi->IR = XIP_FLASH_CMD_READ_SFDP;
+    ospi->CR |= OCTOSPI_CR_EN;
+    ospi->AR = address;
+
+    while (!(ospi->SR & OCTOSPI_SR_TCF));
+    const uint32_t value = ospi->DR;
+    ospi->FCR = OCTOSPI_FCR_CTCF;
+
+    return value;
+}
+
+static FAST_CODE FAST_CODE_NOINLINE uint32_t xipFlashChecksum(uint32_t words)
+{
+    const volatile uint32_t *data = (const volatile uint32_t *)XIP_FLASH_BASE;
+    uint32_t sum = 0;
+
+    // Read the flash, not what the data cache kept from before
+    SCB_CleanInvalidateDCache();
+    while (words--) {
+        sum = ((sum << 5) | (sum >> 27)) ^ *data++;
+    }
+    return sum;
+}
+
+static FAST_CODE FAST_CODE_NOINLINE bool xipFlashVerify(uint32_t words, uint32_t expected, unsigned passes)
+{
+    while (passes--) {
+        if (xipFlashChecksum(words) != expected) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The loader maps the external flash with an SDR Fast Read Quad I/O at a conservative 87 MHz
+// (HCLK3 260 MHz / 3). Every instruction cache miss of the firmware waits for that flash, so read it
+// faster once the clocks are set up. Each setting is only kept when the whole image reads back with
+// the checksum it had at the loader's setting, several times:
+// - when the flash declares DTR in its SFDP tables, DTR Quad I/O at 65 MHz, trying the dummy cycle
+//   counts in use by quad flashes, then at 87 MHz with the dummy cycles found,
+// - else SDR at 130 MHz (the FrSky Aegis Lite's GD25Q128E has no DTR, and reads at up to 133 MHz),
+// - else the loader's setting.
+// Runs from ITCM with interrupts off: the flash cannot be read while it is reconfigured.
+static FAST_CODE FAST_CODE_NOINLINE void xipFlashSpeedUp(void)
+{
+    // A local copy: constant data would be read from the flash while it is being switched
+    volatile uint8_t dummyCycles[] = { 6, 8, 7, 4, 5, 10 };
+    extern uint8_t _sidata;
+    const uint32_t words = ((uint32_t)&_sidata - XIP_FLASH_BASE) / 4;
+
+    OCTOSPI_TypeDef *ospi = OCTOSPI1;
+
+    __disable_irq();
+
+    const uint32_t sdrCcr = ospi->CCR;
+    const uint32_t sdrTcr = ospi->TCR;
+    const uint32_t sdrIr = ospi->IR;
+    const uint32_t sdrAbr = ospi->ABR;
+    const uint32_t sdrPrescaler = ((ospi->DCR2 & OCTOSPI_DCR2_PRESCALER) >> OCTOSPI_DCR2_PRESCALER_Pos) + 1;
+
+    bool dtrSupported = false;
+    if (xipFlashReadSfdp(0) == XIP_FLASH_SFDP_SIGNATURE) {
+        const uint32_t basicTable = xipFlashReadSfdp(0x0C) & 0xFFFFFF;
+        dtrSupported = xipFlashReadSfdp(basicTable) & XIP_FLASH_SFDP_DTR;
+    }
+    xipFlashMemoryMapped(sdrCcr, sdrTcr, sdrIr, sdrAbr, sdrPrescaler);
+
+    const uint32_t expected = xipFlashChecksum(words);
+
+    // Instruction on one line; address, mode byte and data on four lines in DTR.
+    // Mode byte 0xFF: no continuous read, every access sends the instruction.
+    const uint32_t dtrCcr =
+        (1 << OCTOSPI_CCR_IMODE_Pos) |
+        (3 << OCTOSPI_CCR_ADMODE_Pos) | OCTOSPI_CCR_ADDTR | (2 << OCTOSPI_CCR_ADSIZE_Pos) |
+        (3 << OCTOSPI_CCR_ABMODE_Pos) | OCTOSPI_CCR_ABDTR |
+        (3 << OCTOSPI_CCR_DMODE_Pos) | OCTOSPI_CCR_DDTR;
+
+    xipFlashMode = (xipFlashMode_t){ .dtr = false, .prescaler = sdrPrescaler, .dummyCycles = (sdrTcr & OCTOSPI_TCR_DCYC) >> OCTOSPI_TCR_DCYC_Pos };
+
+    for (unsigned i = 0; dtrSupported && i < ARRAYLEN(dummyCycles); i++) {
+        // Sample shifting is not allowed in DTR, the data hold quarter cycle is recommended
+        const uint32_t dtrTcr = OCTOSPI_TCR_DHQC | (dummyCycles[i] << OCTOSPI_TCR_DCYC_Pos);
+
+        xipFlashMemoryMapped(dtrCcr, dtrTcr, XIP_FLASH_CMD_READ_DTR, 0xFF, 4);
+        if (xipFlashVerify(words, expected, 2)) {
+            xipFlashMode = (xipFlashMode_t){ .dtr = true, .prescaler = 4, .dummyCycles = dummyCycles[i] };
+
+            xipFlashMemoryMapped(dtrCcr, dtrTcr, XIP_FLASH_CMD_READ_DTR, 0xFF, 3);
+            if (xipFlashVerify(words, expected, XIP_FLASH_VERIFY_PASSES)) {
+                xipFlashMode.prescaler = 3;
+            } else {
+                xipFlashMemoryMapped(dtrCcr, dtrTcr, XIP_FLASH_CMD_READ_DTR, 0xFF, 4);
+            }
+            break;
+        }
+    }
+
+    if (!xipFlashMode.dtr) {
+        // The loader's command at a higher clock
+        xipFlashMemoryMapped(sdrCcr, sdrTcr, sdrIr, sdrAbr, 2);
+        if (xipFlashVerify(words, expected, XIP_FLASH_VERIFY_PASSES)) {
+            xipFlashMode.prescaler = 2;
+        } else {
+            xipFlashMemoryMapped(sdrCcr, sdrTcr, sdrIr, sdrAbr, sdrPrescaler);
+        }
+    }
+
+    SCB_CleanInvalidateDCache();
+    __enable_irq();
+}
+#endif
+
 void SystemInit (void)
 {
+#if defined(USE_XIP)
+    xipBootLoaderHandover();
+#endif
+
     memProtReset();
 
     initialiseMemorySections();
@@ -1118,6 +1371,11 @@ void SystemInit (void)
 #if (__FPU_PRESENT == 1) && (__FPU_USED == 1)
     SCB->CPACR |= ((3UL << 10*2)|(3UL << 11*2));  // Set CP10 and CP11 Full Access
 #endif
+
+#if !defined(USE_XIP)
+    // When executing in place from the OCTOSPI flash, the boot loader has set up the clocks feeding it.
+    // Resetting the clock tree here would stop the code we are running from, so SystemClock_Config()
+    // keeps the boot loader's configuration instead.
 
     // Reset the RCC clock configuration to the default reset state
     // Set HSION bit
@@ -1184,6 +1442,7 @@ void SystemInit (void)
 
     /* Disable all interrupts */
     RCC->CIER = 0x00000000;
+#endif // !USE_XIP
 
     /* Change  the switch matrix read issuing capability to 1 for the AXI SRAM target (Target 7) */
   *((__IO uint32_t*)0x51008108) = 0x00000001;
@@ -1201,7 +1460,7 @@ void SystemInit (void)
   #else
   #error Unknown MCU type
   #endif
-#elif defined(USE_EXST)
+#elif defined(USE_EXST) || defined(USE_XIP)
     extern uint8_t isr_vector_table_base;
 
     SCB->VTOR = (uint32_t)&isr_vector_table_base;
@@ -1239,6 +1498,10 @@ void SystemInit (void)
     // Enable CPU L1-Cache
     SCB_EnableICache();
     SCB_EnableDCache();
+
+#if defined(USE_XIP)
+    xipFlashSpeedUp();
+#endif
 }
 
 /**

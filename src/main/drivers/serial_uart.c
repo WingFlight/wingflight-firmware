@@ -412,7 +412,19 @@ UART_IRQHandler(UART, 8, 8)  // UART8 Rx/Tx IRQ Handler
 #endif
 
 #ifdef USE_UART9
-UART_IRQHandler(LPUART, 1, 9) // UART9 (implemented with LPUART1) Rx/Tx IRQ Handler
+UART_IRQHandler(UART, 9, 9)     // UART9 Rx/Tx IRQ Handler
+#endif
+
+#ifdef USE_UART10
+UART_IRQHandler(USART, 10, 10)  // USART10 Rx/Tx IRQ Handler
+#endif
+
+#ifdef USE_LPUART1
+FAST_IRQ_HANDLER void LPUART1_IRQHandler(void) // LPUART1 Rx/Tx IRQ Handler
+{
+    uartPort_t *uartPort = &(uartDevmap[LPUARTDEV_1]->port);
+    uartIrqHandler(uartPort);
+}
 #endif
 
 #endif // USE_UART

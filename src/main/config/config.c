@@ -227,6 +227,11 @@ static void validateAndFixPositionConfig(void)
 
 static void validateAndFixConfig(void)
 {
+    // Bit 7 was FEATURE_GPS, now retired: GPS follows the port/provider setup
+    // (gpsIsConfigured()). Configurators still set it for older firmware, so drop
+    // it here to keep it out of the stored config and MSP_FEATURE_CONFIG.
+    featureDisableImmediate(FEATURE_UNUSED_7);
+
 #ifdef SIMULATOR_BUILD
     // The Configurator offers every feature, but SITL compiles many of them out
     // and the checks below silently clear those - which on SITL looks exactly
@@ -239,40 +244,12 @@ static void validateAndFixConfig(void)
     }
 
 #if defined(USE_GPS)
+    // MSP, FBUS and CRSF providers don't read a GPS serial port; free it.
     const serialPortConfig_t *gpsSerial = findSerialPortConfig(FUNCTION_GPS);
-    const bool gpsUsesFbus = gpsUsesFbusTransport();
-    const bool gpsUsesCrsf = gpsUsesCrsfTransport();
-    // A FBUS/SPORT or CRSF sensors port assigned but not yet matched by gps_provider is still
-    // accepted as a valid transport (like a bare FUNCTION_GPS port is). Otherwise the feature
-    // gets disabled before the user can ever reach the GPS tab (which requires the feature to
-    // already be enabled) to pick the matching provider.
-    const bool gpsHasFbusPort =
-        findSerialPortConfig(FUNCTION_FBUS_MASTER) != NULL ||
-        findSerialPortConfig(FUNCTION_SPORT_MASTER) != NULL;
-    const bool gpsHasCrsfPort = findSerialPortConfig(FUNCTION_CRSF_SENSORS) != NULL;
-    const bool gpsHasValidTransport =
-        gpsConfig()->provider == GPS_MSP ||
-        gpsSerial != NULL ||
-        gpsUsesFbus ||
-        gpsUsesCrsf ||
-        gpsHasFbusPort ||
-        gpsHasCrsfPort;
-
-    if (gpsConfig()->provider == GPS_MSP && gpsSerial) {
-        serialRemovePort(gpsSerial->identifier);
-    }
-    if ((gpsUsesFbus || gpsUsesCrsf) && gpsSerial) {
+    if (gpsSerial && (gpsConfig()->provider == GPS_MSP || gpsUsesFbusTransport() || gpsUsesCrsfTransport())) {
         serialRemovePort(gpsSerial->identifier);
     }
 #endif
-    if (
-#if defined(USE_GPS)
-        !gpsHasValidTransport
-        &&
-#endif
-        true) {
-        featureDisableImmediate(FEATURE_GPS);
-    }
 
     if (motorConfig()->dev.motorPwmProtocol == PWM_TYPE_STANDARD ||
             motorConfig()->dev.motorPwmProtocol == PWM_TYPE_CASTLE_LINK) {
@@ -348,7 +325,7 @@ static void validateAndFixConfig(void)
         }
     }
 
-    if (!featureIsConfigured(FEATURE_GPS)
+    if (!gpsIsConfigured()
 #if !defined(USE_GPS) || !defined(USE_GPS_RESCUE)
         || true
 #endif
@@ -774,6 +751,10 @@ bool readEEPROM(void)
     featureInit();
 
     validateAndFixConfig();
+
+    // Latch whether GPS is in use before activateConfig() builds the mode box list.
+    // Only the first (boot) load counts; port changes need a reboot, like features.
+    gpsLatchEnabled();
 
     activateConfig();
 

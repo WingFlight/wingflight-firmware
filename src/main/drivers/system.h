@@ -88,6 +88,17 @@ void initialiseD2MemorySections(void);
 void systemResetWithoutDisablingCaches(void);
 #endif
 
+#if defined(USE_XIP)
+// How the external flash the firmware executes from is read
+typedef struct xipFlashMode_s {
+    bool dtr;
+    uint8_t prescaler;      // of HCLK3
+    uint8_t dummyCycles;
+} xipFlashMode_t;
+
+extern xipFlashMode_t xipFlashMode;
+#endif
+
 void enableGPIOPowerUsageAndNoiseReductions(void);
 // current crystal frequency - 8 or 12MHz
 

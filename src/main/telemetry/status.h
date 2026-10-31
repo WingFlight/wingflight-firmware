@@ -69,7 +69,7 @@
 
 // Bits 29-30 spare, bit 31 reserved.
 
-/** TELEM_SYSTEM_CONFIG: slow-changing configuration and hardware state **/
+/** TELEM_SYSTEM_CONFIG: slow-changing configuration, hardware and trim state **/
 
 #define TELEM_CONFIG_PID_PROFILE_SHIFT      0           // 1-based profile number
 #define TELEM_CONFIG_RATES_PROFILE_SHIFT    3
@@ -89,7 +89,14 @@
 #define TELEM_CONFIG_BLACKBOX_FULL          (1u << 21)
 #define TELEM_CONFIG_RPM_SOURCE_ACTIVE      (1u << 22)  // motor RPM telemetry is arriving
 
-// Bits 23-30 spare, bit 31 reserved.
+// Out of trim, per axis: trimMonitorState_e (0 = in trim, 1 = trim right / nose up,
+// 2 = trim left / nose down). Changes over seconds, so it rides in this word.
+#define TELEM_CONFIG_TRIM_ROLL_SHIFT        23
+#define TELEM_CONFIG_TRIM_PITCH_SHIFT       25
+#define TELEM_CONFIG_TRIM_YAW_SHIFT         27
+#define TELEM_CONFIG_TRIM_MASK              0x3u
+
+// Bits 29-30 spare, bit 31 reserved.
 
 typedef enum {
     TELEM_GPS_FIX_NONE = 0,

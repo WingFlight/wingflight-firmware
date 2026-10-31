@@ -1,3 +1,15 @@
+# 0.0.38
+
+The MSP API moves to 22.15 for the GPS feature removal. Updating keeps your settings. Use the 0.0.38 Configurator and Lua suites with this firmware.
+Add the FrSky Aegis Lite (STM32H730 firmware). A Wingflight loader replaces FrSky's ArduPilot boot loader and runs the firmware from the external flash; flash it from the Configurator. Erase chip wipes the whole external flash, config and blackbox included, so nothing of ArduPilot is left.
+Run the Aegis Lite from its crystal (its PWM outputs were 0.35% off), and read its external flash faster, lowering the CPU load from about 15% to 11%.
+Remove the GPS feature: GPS runs whenever the GPS source matches its port (NMEA or UBLOX on a GPS port, FBUS on an FBUS or S.Port master port, CRSF on a CRSF sensors port, or MSP). "feature GPS" is gone from the CLI.
+Find u-blox GPS modules set to 230400 or 460800 baud, as ArduPilot leaves them.
+Fix the board locking up when a port on UART9, USART10 or LPUART1 is used, such as the Aegis Lite's GPS on USART10.
+Add the serialdebug CLI command: every port with its pins, functions, open state and baud, details per port, a raw byte monitor and a baud scan for GPS and receivers. The Configurator reads the same data over MSP (MSP2_WING_SERIAL_STATUS).
+Report decoded FBUS/S.Port sensor readings (GPS, current, cells, ESC/RPM, XACT servos) over MSP for the Configurator's FBUS Sensors tab.
+Add fbus_master_baud_fast (CLI, default on): off runs the F.Bus master port at 115200 instead of 460800, with the frame rate capped at 150 Hz.
+
 # 0.0.37
 
 The MSP API stays at 22.14. Updating keeps your settings, except the Thrust Vector profiles, which reset to the new defaults. Use the 0.0.37 Configurator and Lua suites with this firmware.

@@ -146,6 +146,16 @@ static const gpsInitData_t gpsInitData[] = {
 #define DEFAULT_BAUD_RATE_INDEX 0
 
 #ifdef USE_GPS_UBLOX
+// Rates the u-blox init sends the "switch to the configured rate" command at.
+// Wider than gpsInitData: ArduPilot leaves u-blox modules at 230400 and saves
+// it in the module (the FrSky Aegis Lite's stock firmware does this), so a
+// module coming from it only hears the command at that rate.
+static const baudRate_e ubloxInitBaudRates[] = {
+    BAUD_460800, BAUD_230400, BAUD_115200, BAUD_57600, BAUD_38400, BAUD_19200, BAUD_9600,
+};
+#endif
+
+#ifdef USE_GPS_UBLOX
 enum {
     PREAMBLE1 = 0xB5,
     PREAMBLE2 = 0x62,
@@ -352,6 +362,89 @@ bool gpsUsesCrsfTransport(void)
 #else
     return false;
 #endif
+}
+
+// GPS is in use only when the port and gps_provider match:
+//  - provider NMEA or UBLOX and a serial port assigned FUNCTION_GPS, or
+//  - provider FBUS and an FBUS master or S.Port master port, or
+//  - provider CRSF and a CRSF sensors port, or
+//  - provider MSP (fed by MSP_SET_RAW_GPS, no port needed).
+// A port whose provider doesn't match (e.g. a GPS port with provider FBUS) doesn't count.
+bool gpsIsConfigured(void)
+{
+    switch (gpsConfig()->provider) {
+    case GPS_NMEA:
+    case GPS_UBLOX:
+        return findSerialPortConfig(FUNCTION_GPS) != NULL;
+    case GPS_MSP:
+        return true;
+    case GPS_FBUS:
+        return gpsUsesFbusTransport();
+    case GPS_CRSF:
+        return gpsUsesCrsfTransport();
+    default:
+        return false;
+    }
+}
+
+// Port and provider changes take effect after a reboot, like features. Latch the result
+// once, on the first config load at boot, so hot paths (blackbox, telemetry) read a
+// cached flag and the answer stays consistent with the tasks started at boot.
+static bool gpsEnabled;
+static bool gpsEnabledLatched;
+
+void gpsLatchEnabled(void)
+{
+    if (!gpsEnabledLatched) {
+        gpsEnabled = gpsIsConfigured();
+        gpsEnabledLatched = true;
+    }
+}
+
+bool gpsIsEnabled(void)
+{
+    return gpsEnabled;
+}
+
+// Last bytes read from the GPS port, for diagnostics (MSP2_WING_SERIAL_STATUS)
+#define GPS_RECENT_BYTES 64     // power of two, so the index wraps cleanly
+static uint8_t gpsRecentBytes[GPS_RECENT_BYTES];
+static uint32_t gpsRxByteCount;
+
+static void gpsRecordRxByte(uint8_t c)
+{
+    gpsRecentBytes[gpsRxByteCount % GPS_RECENT_BYTES] = c;
+    gpsRxByteCount++;
+}
+
+uint32_t gpsGetRxByteCount(void)
+{
+    return gpsRxByteCount;
+}
+
+// Copies up to max of the most recent bytes, oldest first
+uint8_t gpsGetRecentBytes(uint8_t *buf, uint8_t max)
+{
+    const uint32_t count = MIN(MIN(gpsRxByteCount, (uint32_t)GPS_RECENT_BYTES), (uint32_t)max);
+    for (uint32_t i = 0; i < count; i++) {
+        buf[i] = gpsRecentBytes[(gpsRxByteCount - count + i) % GPS_RECENT_BYTES];
+    }
+    return count;
+}
+
+// For CLI diagnostics: the serial port GPS opened (NULL for MSP/FBUS/CRSF or if it failed to open)
+const serialPort_t *gpsGetPort(void)
+{
+    return gpsPort;
+}
+
+const char *gpsGetStateName(void)
+{
+    static const char * const names[GPS_STATE_COUNT] = {
+        "UNKNOWN", "INITIALIZING", "INITIALIZED", "CHANGE_BAUD",
+        "CONFIGURE", "RECEIVING_DATA", "LOST_COMMUNICATION",
+    };
+    return gpsData.state < GPS_STATE_COUNT ? names[gpsData.state] : "?";
 }
 
 void gpsInit(void)
@@ -616,9 +709,9 @@ void gpsInitUblox(void)
             if (now - gpsData.state_ts < GPS_BAUDRATE_CHANGE_DELAY)
                 return;
 
-            if (gpsData.state_position < GPS_INIT_ENTRIES) {
+            if (gpsData.state_position < ARRAYLEN(ubloxInitBaudRates)) {
                 // try different speed to INIT
-                baudRate_e newBaudRateIndex = gpsInitData[gpsData.state_position].baudrateIndex;
+                baudRate_e newBaudRateIndex = ubloxInitBaudRates[gpsData.state_position];
 
                 gpsData.state_ts = now;
 
@@ -813,7 +906,9 @@ void gpsUpdate(timeUs_t currentTimeUs)
                 rescheduleTask(TASK_SELF, TASK_PERIOD_HZ(TASK_GPS_RATE_FAST));
                 return;
             }
-            gpsNewData(serialRead(gpsPort));
+            const uint8_t c = serialRead(gpsPort);
+            gpsRecordRxByte(c);
+            gpsNewData(c);
         }
         // Restore default task rate
         rescheduleTask(TASK_SELF, TASK_PERIOD_HZ(TASK_GPS_RATE));

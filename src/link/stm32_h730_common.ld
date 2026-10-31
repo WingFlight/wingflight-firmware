@@ -26,7 +26,7 @@ SECTIONS
     KEEP(*(.isr_vector)) /* Startup code */
     . = ALIGN(4);
     PROVIDE (isr_vector_table_end = .);
-  } >VECTAB AT> MAIN
+  } >VECTAB AT> VECTAB
 
   _ram_isr_vector_table_base = LOADADDR(.ram_isr_vector);
   PROVIDE (ram_isr_vector_table_base = _ram_isr_vector_table_base);

@@ -494,7 +494,7 @@ void tasksInit(void)
 #endif
 
 #ifdef USE_GPS
-    setTaskEnabled(TASK_GPS, featureIsEnabled(FEATURE_GPS));
+    setTaskEnabled(TASK_GPS, gpsIsEnabled());
 #endif
 
 #ifdef USE_MAG
@@ -570,7 +570,7 @@ void tasksInit(void)
 #endif
 
 #ifdef USE_FBUS_MASTER
-    rescheduleTask(TASK_FBUS_MASTER, TASK_PERIOD_HZ(fbusMasterConfig()->frameRate));
+    rescheduleTask(TASK_FBUS_MASTER, TASK_PERIOD_HZ(fbusMasterFrameRateHz()));
     setTaskEnabled(TASK_FBUS_MASTER, fbusMasterIsEnabled());
 #endif
 

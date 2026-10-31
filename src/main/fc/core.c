@@ -81,6 +81,7 @@
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
+#include "flight/trim_monitor.h"
 #include "flight/tune_advisor.h"
 
 #include "io/beeper.h"
@@ -607,7 +608,7 @@ void tryArm(void)
         GPS_reset_home_position();
 
         //beep to indicate arming
-        if (featureIsEnabled(FEATURE_GPS)) {
+        if (gpsIsEnabled()) {
             if (STATE(GPS_FIX) && gpsSol.numSat >= 5) {
                 beeper(BEEPER_ARMING_GPS_FIX);
             } else {
@@ -1003,6 +1004,9 @@ static void subTaskPidController(timeUs_t currentTimeUs)
 
 #ifdef USE_TUNE_ADVISOR
     tuneAdvisorUpdate(pidGetDT());
+#endif
+#ifdef USE_SERVOS
+    trimMonitorUpdate(pidGetDT());
 #endif
 }
 

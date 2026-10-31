@@ -122,6 +122,7 @@ COMMON_SRC = \
             flight/atthold.c \
             flight/tv_hold.c \
             flight/autotrim.c \
+            flight/trim_monitor.c \
             flight/setpoint.c \
             flight/wiggle.c \
             flight/airborne.c \
@@ -205,6 +206,10 @@ endif
 
 ifeq ($(RAM_BASED),yes)
 TARGET_FLAGS := -DUSE_EXST -DCONFIG_IN_RAM -DRAMBASED $(TARGET_FLAGS)
+endif
+
+ifeq ($(XIP),yes)
+TARGET_FLAGS := -DUSE_XIP $(TARGET_FLAGS)
 endif
 
 ifeq ($(SIMULATOR_BUILD),yes)

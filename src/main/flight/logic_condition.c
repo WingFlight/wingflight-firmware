@@ -40,6 +40,8 @@
 #include "flight/motors.h"
 #include "flight/position.h"
 
+#include "msp/msp_box.h"
+
 #include "sensors/battery.h"
 
 // Runtime-only state for the stateful operators (STICKY/DELAY/EDGE) - not
@@ -68,8 +70,13 @@ static float logicConditionGetOperandValue(uint8_t type, int16_t value)
             return 0;
 
         case LOGIC_CONDITION_OPERAND_TYPE_FLIGHT_MODE:
-            if (value >= 0 && value < CHECKBOX_ITEM_COUNT) {
-                return IS_RC_MODE_ACTIVE((boxId_e)value) ? 1 : 0;
+            // value is the mode's permanent ID (as in MSP_BOXIDS and the CLI
+            // "aux" command), not its boxId_e, which is internal and may change.
+            if (value >= 0 && value <= UINT8_MAX) {
+                const box_t *box = findBoxByPermanentId(value);
+                if (box) {
+                    return IS_RC_MODE_ACTIVE((boxId_e)box->boxId) ? 1 : 0;
+                }
             }
             return 0;
 
@@ -84,9 +91,9 @@ static float logicConditionGetOperandValue(uint8_t type, int16_t value)
                 case LOGIC_SENSOR_ALTITUDE:
                     return getAltitude() * 10.0f;
                 case LOGIC_SENSOR_VOLTAGE:
-                    return getBatteryVoltage();
+                    return getBatteryVoltage() / 10.0f;   // 0.01V -> 0.1V
                 case LOGIC_SENSOR_CURRENT:
-                    return getBatteryCurrent();
+                    return getBatteryCurrent() / 10.0f;   // 0.01A -> 0.1A
                 case LOGIC_SENSOR_RPM:
                     return getMotorRPMf(0);
                 case LOGIC_SENSOR_RSSI:
@@ -96,7 +103,7 @@ static float logicConditionGetOperandValue(uint8_t type, int16_t value)
                 case LOGIC_SENSOR_MAH_DRAWN:
                     return getBatteryCapacityUsed();
                 case LOGIC_SENSOR_GPS_SPEED:
-                    return STATE(GPS_FIX) ? gpsSol.groundSpeed : 0;
+                    return STATE(GPS_FIX) ? gpsSol.groundSpeed / 10.0f : 0;   // cm/s -> 0.1m/s
                 default:
                     return 0;
             }

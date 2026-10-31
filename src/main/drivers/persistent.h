@@ -25,6 +25,11 @@
 // F7: 32 words
 // H7: 32 words
 
+// Set by the Wingflight loader (src/loader/main.c) when the host erases the chip over DFU
+#define PERSISTENT_ERASE_CONFIG_REQUEST 0x45524346  // "ERCF"
+// Left by the firmware after it erased the config, for the boot after the reset that follows
+#define PERSISTENT_ERASE_FLASHFS_REQUEST 0x45524653 // "ERFS"
+
 typedef enum {
     PERSISTENT_OBJECT_MAGIC = 0,
     PERSISTENT_OBJECT_HSE_VALUE,
@@ -38,6 +43,7 @@ typedef enum {
     PERSISTENT_OBJECT_RTC_HIGH,           // high 32 bits of rtcTime_t
     PERSISTENT_OBJECT_RTC_LOW,            // low 32 bits of rtcTime_t
     PERSISTENT_OBJECT_SERIALRX_BAUD,      // serial rx baudrate
+    PERSISTENT_OBJECT_ERASE_CONFIG,       // PERSISTENT_ERASE_CONFIG_REQUEST / PERSISTENT_ERASE_FLASHFS_REQUEST: erase at the next boot
     PERSISTENT_OBJECT_COUNT,
 #ifdef USE_SPRACING_PERSISTENT_RTC_WORKAROUND
     // On SPRACING H7 firmware use this alternate location for all reset reasons interpreted by this firmware
