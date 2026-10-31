@@ -98,16 +98,20 @@ int32_t fbusGpsConvertLatLon(uint32_t fbusData)
 {
     bool isNegative = (fbusData & FBUS_GPS_LAT_LON_BIT30) != 0;
     uint32_t minutesTimes10000 = fbusData & FBUS_GPS_LAT_LON_DATA_MASK;
-    
-    float minutes = (float)minutesTimes10000 / 10000.0f;
-    float degrees = minutes / 60.0f;
-    
-    int32_t result = (int32_t)(degrees * 1e7f);
-    
+
+    // minutes/10000 -> degrees * 1e7 is * 1e7 / 600000 = * 50 / 3. Integer
+    // maths: float loses up to about 3 m at large longitudes.
+    uint64_t degreesE7 = ((uint64_t)minutesTimes10000 * 50U + 1U) / 3U;
+    if (degreesE7 > 1800000000U) {
+        degreesE7 = 1800000000U;
+    }
+
+    int32_t result = (int32_t)degreesE7;
+
     if (isNegative) {
         result = -result;
     }
-    
+
     return result;
 }
 
@@ -116,13 +120,12 @@ int32_t fbusGpsConvertAltitude(uint32_t fbusData)
     return (int32_t)fbusData;
 }
 
+// knots/1000 -> cm/s (gpsSol.groundSpeed): 1 kn = 51.4444 cm/s
 uint16_t fbusGpsConvertSpeed(uint32_t fbusData)
 {
-    // FrSky GPS_SPEED is knots * 1000; gpsSol.groundSpeed is cm/s.
-    // 1 knot = 51.4444 cm/s.
-    const float cmPerSec = (float)fbusData * (51.4444f / 1000.0f);
+    uint64_t cmPerSec = ((uint64_t)fbusData * 514444U + 5000000U) / 10000000U;
 
-    return (uint16_t)MIN(cmPerSec, (float)UINT16_MAX);
+    return (uint16_t)MIN(cmPerSec, (uint64_t)UINT16_MAX);
 }
 
 uint16_t fbusGpsConvertCourse(uint32_t fbusData)
@@ -318,11 +321,13 @@ static fbusObservedSensor_t* trackObservedSensor(uint8_t physicalId, uint16_t ap
             sensor->appIds[sensor->appIdCount++] = appId;
         }
 
-        if (sensor->detectedType == FBUS_DETECTED_SENSOR_UNKNOWN) {
-            const fbusDetectedSensorType_e detected = classifySensorTypeByAppId(appId);
-            if (detected != FBUS_DETECTED_SENSOR_UNKNOWN) {
-                sensor->detectedType = detected;
-            }
+        // The first classifiable App ID decides the type, except that a GPS
+        // App ID always wins: a GPS can also send the shared temperature IDs
+        // 0x0400/0x0410 (T1/T2), which alone would classify it as RPM.
+        const fbusDetectedSensorType_e detected = classifySensorTypeByAppId(appId);
+        if (detected != FBUS_DETECTED_SENSOR_UNKNOWN &&
+            (sensor->detectedType == FBUS_DETECTED_SENSOR_UNKNOWN || detected == FBUS_DETECTED_SENSOR_GPS)) {
+            sensor->detectedType = detected;
         }
     }
 
@@ -472,10 +477,14 @@ bool fbusSensorProcessDataWithSource(uint8_t physicalId, uint16_t appId, uint32_
         if (appId >= FBUS_GPS_LATITUDE_BASE && appId <= (FBUS_GPS_LATITUDE_BASE + 0x0F)) {
             if (data & FBUS_GPS_LAT_LON_BIT31) {
                 fbusGps.longitude = fbusGpsConvertLatLon(data);
+                fbusGps.hasLongitude = true;
             } else {
                 fbusGps.latitude = fbusGpsConvertLatLon(data);
+                fbusGps.hasLatitude = true;
             }
-            fbusGps.hasPosition = true;
+            // Latitude and longitude come in separate frames: after a timeout,
+            // wait for both so a fresh one is never paired with a stale one.
+            fbusGps.hasPosition = fbusGps.hasLatitude && fbusGps.hasLongitude;
             fbusGps.lastUpdateUs = currentTimeUs;  
 
         } else if (appId >= FBUS_GPS_ALTITUDE_BASE && appId <= (FBUS_GPS_ALTITUDE_BASE + 0x0F)) {
@@ -663,9 +672,30 @@ void fbusSensorObservePhysicalId(uint8_t physicalId)
     fbusSensorObservePhysicalIdWithSource(physicalId, FBUS_SENSOR_SOURCE_FBUS);
 }
 
+// FrSky GPS sensors (GPS ADV and others) keep sending latitude/longitude as 0
+// while they have no fix, so a position frame alone does not mean a fix. When
+// the sensor reports its satellite count (0x0860), that decides; otherwise a
+// non-zero position counts as a fix. Latitude and longitude come in separate
+// frames, so one of them already 0 means the fix is being lost (a real 0 is
+// only within about 10 cm of the equator or the prime meridian).
+bool fbusGpsHasFix(const fbusGpsData_t *gps)
+{
+    if (!gps->hasPosition || gps->latitude == 0 || gps->longitude == 0) {
+        return false;
+    }
+
+    if (gps->hasSatellites) {
+        return gps->satellites >= FBUS_GPS_MIN_SATS_FOR_FIX;
+    }
+
+    return true;
+}
+
 void fbusSensorUpdate(timeUs_t currentTimeUs)
 {
     if (fbusGps.lastUpdateUs > 0 && (currentTimeUs - fbusGps.lastUpdateUs) > 1000000) {
+        fbusGps.hasLatitude = false;
+        fbusGps.hasLongitude = false;
         fbusGps.hasPosition = false;
         fbusGps.hasAltitude = false;
         fbusGps.hasSpeed = false;
@@ -702,20 +732,26 @@ void fbusSensorUpdate(timeUs_t currentTimeUs)
 #ifdef USE_GPS
     if (gpsUsesFbusTransport()) {
         if (fbusGps.hasPosition) {
-            gpsSol.llh.lat = fbusGps.latitude;
-            gpsSol.llh.lon = fbusGps.longitude;
+            const bool hasFix = fbusGpsHasFix(&fbusGps);
 
-            if (fbusGps.hasAltitude) {
-                gpsSol.llh.altCm = fbusGps.altitudeCm;
-            }
+            // Without a fix the position is the sensor's 0/0 placeholder:
+            // keep the last real solution instead.
+            if (hasFix) {
+                gpsSol.llh.lat = fbusGps.latitude;
+                gpsSol.llh.lon = fbusGps.longitude;
 
-            if (fbusGps.hasSpeed) {
-                gpsSol.groundSpeed = fbusGpsConvertSpeed(fbusGps.speedMilliKnots);
-                gpsSol.speed3d = gpsSol.groundSpeed;
-            }
+                if (fbusGps.hasAltitude) {
+                    gpsSol.llh.altCm = fbusGps.altitudeCm;
+                }
 
-            if (fbusGps.hasCourse) {
-                gpsSol.groundCourse = fbusGps.courseDeg;
+                if (fbusGps.hasSpeed) {
+                    gpsSol.groundSpeed = fbusGpsConvertSpeed(fbusGps.speedMilliKnots);
+                    gpsSol.speed3d = gpsSol.groundSpeed;
+                }
+
+                if (fbusGps.hasCourse) {
+                    gpsSol.groundCourse = fbusGps.courseDeg;
+                }
             }
 
             // Older FBUS GPS sensors do not report satellite count. Leave it
@@ -726,7 +762,7 @@ void fbusSensorUpdate(timeUs_t currentTimeUs)
             gpsSol.numSat = fbusGps.hasSatellites ? fbusGps.satellites : gpsConfig()->fbus_assumed_sats;
             gpsSol.hdop = 100;
             gpsData.lastMessage = millis();
-            gpsSetFixState(true);
+            gpsSetFixState(hasFix);
             GPS_update |= GPS_MSP_UPDATE;
         } else {
             sensorsClear(SENSOR_GPS);
