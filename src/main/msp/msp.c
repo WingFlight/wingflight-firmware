@@ -4118,16 +4118,29 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (i >= MIXER_RULE_COUNT) {
             return MSP_RESULT_ERROR;
         }
-        mixerRulesMutable(i)->oper = sbufReadU8(src);
-        mixerRulesMutable(i)->input = sbufReadU8(src);
-        mixerRulesMutable(i)->output = sbufReadU8(src);
-        mixerRulesMutable(i)->offset = sbufReadU16(src);
-        mixerRulesMutable(i)->weight = sbufReadU16(src);
-        mixerRulesMutable(i)->weightNeg = sbufReadU16(src);
-        mixerRulesMutable(i)->speed = sbufReadU16(src);
-        mixerRulesMutable(i)->curve = sbufReadU8(src);
-        mixerRulesMutable(i)->condition = sbufReadU8(src);
-        mixerRulesMutable(i)->role = sbufReadU8(src);
+        {
+            // mixerUpdateRules() indexes mixer.input[] / mixer.output[] with
+            // these on every loop, and validateAndFixMixerConfig() only runs
+            // at boot, so reject anything out of range here (as the CLI does).
+            mixerRule_t rule;
+            rule.oper = sbufReadU8(src);
+            rule.input = sbufReadU8(src);
+            rule.output = sbufReadU8(src);
+            rule.offset = sbufReadU16(src);
+            rule.weight = sbufReadU16(src);
+            rule.weightNeg = sbufReadU16(src);
+            rule.speed = sbufReadU16(src);
+            rule.curve = sbufReadU8(src);
+            rule.condition = sbufReadU8(src);
+            rule.role = sbufReadU8(src);
+            if (rule.oper >= MIXER_OP_COUNT ||
+                rule.input >= MIXER_INPUT_COUNT ||
+                rule.output >= MIXER_OUTPUT_COUNT ||
+                rule.role >= MIXER_RULE_ROLE_COUNT) {
+                return MSP_RESULT_ERROR;
+            }
+            *mixerRulesMutable(i) = rule;
+        }
         mixerCaptureRuleSign(i);
         break;
 
