@@ -190,7 +190,7 @@ void currentSensorESCRefresh(void)
         const uint32_t current = escData->current + escSensorConfig()->current_offset;
         state->sample = current;
         state->current = filterApply(&state->filter, current);
-        state->capacity = escData->consumption + (escSensorConfig()->current_offset * millis() / 3600000u);
+        state->capacity = escData->consumption + ((uint64_t)escSensorConfig()->current_offset * millis() / 3600000u);
         state->enabled = true;
     }
     else {
@@ -244,7 +244,7 @@ void currentSensorFBUSRefresh(timeUs_t currentTimeUs)
 
         state->sample = current;
         state->current = filterApply(&state->filter, current);
-        state->capacity += current * updateDelta;
+        state->capacity += (uint64_t)current * (uint32_t)updateDelta;
         state->enabled = true;
     } else {
         state->sample = 0;
