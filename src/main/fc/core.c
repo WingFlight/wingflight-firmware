@@ -780,8 +780,11 @@ void processRxModes(timeUs_t currentTimeUs)
             static bool wasRthActive = false;
             static bool wasLoiterActive = false;
 
+            // Start nav on the switch's off->on edge, and also whenever the mode is
+            // on but nav is not running: failsafe recovery calls navStop() while the
+            // switch is still held, and nothing else would restart it.
             if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXRTH)) {
-                if (!wasRthActive) {
+                if (!wasRthActive || !navIsActive()) {
                     navRthStart();
                 }
                 ENABLE_FLIGHT_MODE(RTH_MODE);
@@ -806,7 +809,7 @@ void processRxModes(timeUs_t currentTimeUs)
             }
 
             if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXLOITER) && !FLIGHT_MODE(RTH_MODE)) {
-                if (!wasLoiterActive) {
+                if (!wasLoiterActive || !navIsActive()) {
                     navLoiterStart();
                 }
                 ENABLE_FLIGHT_MODE(LOITER_MODE);

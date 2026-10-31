@@ -301,6 +301,11 @@ void navRthStart(void)
     navBegin(NAV_TARGET_HOME);
 }
 
+bool navIsActive(void)
+{
+    return nav.active;
+}
+
 void navStop(void)
 {
     nav.active = false;
