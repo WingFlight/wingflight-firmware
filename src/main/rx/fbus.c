@@ -765,7 +765,12 @@ static bool processFrame(const rxRuntimeState_t *rxRuntimeConfig)
             // If no forwarded sensor, handle FC telemetry or other sensors
             if (!forwardedSensor) {
                 if ((downlinkPhyID == FBUS_FC_COMMON_ID) || (downlinkPhyID == FBUS_FC_MSP_ID)) {
-                    if ((downlinkPhyID == FBUS_FC_MSP_ID) && !mspPayload) {
+                    // An MSP reply goes out one chunk per poll, so a data poll of the
+                    // MSP ID (0x0D) carries the next chunk too, not only a poll that
+                    // brought a request. Replies are written under the common ID
+                    // (0x1B) whichever ID was polled, which is what the radio
+                    // listens for. Sensor data stays on 0x1B.
+                    if ((downlinkPhyID == FBUS_FC_MSP_ID) && !mspPayload && !smartPortMspReplyIsPending()) {
                         // Send null frame
                     } else if (!sendNullFrame) {
                         DEBUG_SET(DEBUG_FBUS, DEBUG_FBUS_RESPONSE_DELAY, cmpTimeUs(micros(), lastTelemetryFrameReceivedUs));
