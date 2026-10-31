@@ -3714,8 +3714,8 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         }
         /* Fixed-wing throttle-based gain attenuation (gain + curve index) */
         if (sbufBytesRemaining(src) >= 2) {
-            currentPidProfile->fw_tpa_gain = sbufReadU8(src);
-            currentPidProfile->fw_tpa_curve = sbufReadU8(src);
+            currentPidProfile->fw_tpa_gain = constrain(sbufReadU8(src), 25, 200);
+            currentPidProfile->fw_tpa_curve = MIN(sbufReadU8(src), GAIN_CURVE_COUNT);
         }
         /* Master gain (per axis) */
         if (sbufBytesRemaining(src) >= 6) {
