@@ -202,6 +202,9 @@ typedef struct cliLimits_s {
     int32_t servoFlagsAll;
     int32_t busServoOffset;
     int32_t busServoFunctionMask;   // serial functions that make S9.. bus servos
+    int32_t busServoSignalMin;      // the signal range of S9.., which servoTravelMin/Max() keep to
+    int32_t busServoSignalMax;
+    int32_t servoTrimLimitPercent;  // `servo trim`: share of the larger scale a saved trim may reach
     // rxfail
     int32_t rxfailPulseMin;
     int32_t rxfailPulseMax;
@@ -250,6 +253,9 @@ const cliLimits_t cliLimits = {
     .servoFlagsAll       = SERVO_FLAGS_ALL,
     .busServoOffset      = BUS_SERVO_OFFSET,
     .busServoFunctionMask = FUNCTION_SBUS_OUT | FUNCTION_FBUS_MASTER,
+    .busServoSignalMin   = BUS_SERVO_MIN_SIGNAL,
+    .busServoSignalMax   = BUS_SERVO_MAX_SIGNAL,
+    .servoTrimLimitPercent = SERVO_TRIM_LIMIT_PERCENT,
     .rxfailPulseMin      = RXFAIL_PULSE_MIN,
     .rxfailPulseMax      = RXFAIL_PULSE_MAX,
     .rxfailRangeMax      = RXFAIL_RANGE_MAX,
