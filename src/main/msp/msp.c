@@ -435,6 +435,8 @@ void writeReadEeprom(dispatchEntry_t* self)
 #if defined(USE_FBUS_MASTER) || defined(USE_SPORT_MASTER)
     fbusSensorInitForwarding();
 #endif
+    // MSP_SET_MIXER_RULE rebuilds the saturation map after each rule write.
+    mixerUpdateMapping();
 }
 
 dispatchEntry_t writeReadEepromEntry =
