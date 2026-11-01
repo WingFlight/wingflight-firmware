@@ -2,7 +2,7 @@
 
 Every opcode `msp/msp.c` handles, sorted by what step 5 of
 [parameter-addressing-design.md](parameter-addressing-design.md) does to it, and which of
-Wingflight's own clients send it today. Generated from the source on 2026-09-26: firmware
+Wingflight's own clients send it today. Generated from the source on 2026-09-26, with the opcodes master added since classified by hand (2026-11-01): firmware
 dispatch functions, `MSPCodes` references in the configurator (by opcode number; reply
 handlers excluded), and the `*_COMMAND` constants in the Lua suite. The addressed
 `MSP2_WING_*` opcodes in `msp_param.c` / `msp_runtime.c` are not listed; they stay.
@@ -15,9 +15,9 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | class | opcodes | C | L | neither | codec |
 | --- | --- | --- | --- | --- | --- |
 | frozen | 16 | 14 | 8 | 2 | 0 |
-| keep | 34 | 29 | 14 | 3 | 0 |
-| runtime | 29 | 26 | 20 | 1 | 0 |
-| live | 27 | 24 | 4 | 3 | 0 |
+| keep | 38 | 32 | 17 | 3 | 0 |
+| runtime | 32 | 29 | 20 | 1 | 0 |
+| live | 33 | 28 | 6 | 3 | 0 |
 | config | 97 | 86 | 60 | 7 | 94 |
 
 ## What this means for step 5
@@ -103,6 +103,10 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | `0x5F10` | `MSP2_WING_SELECT_TV_PROFILE` | C | L |  |
 | `0x5F12` | `MSP2_WING_RX_SERIAL_TRIAL` | C |  |  |
 | `0x5F13` | `MSP2_WING_RX_INPUT_BACKUP_TRIAL` | C |  |  |
+| `0x5F19` | `MSP2_WING_TUNE_ADVISOR_CLEAR` |  | L |  |
+| `0x5F1B` | `MSP2_WING_SET_MODE_OVERRIDE` | C | L |  |
+| `0x5F1C` | `MSP2_WING_SET_SERVO_PROBE` | C | L |  |
+| `0x5F24` | `MSP2_WING_SET_FBUS_MUX_OVERRIDE` | C |  |  |
 
 ## Runtime — stored config, but runtime state decides the bytes; profile actions
 
@@ -137,6 +141,9 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | 233 | `MSP_SERVO_TRIM` | C |  |  |
 | 238 | `MSP_MODE_RANGES_EXTRA` | C | L |  |
 | `0x5F11` | `MSP2_WING_COPY_TV_PID_PROFILE` | C | L |  |
+| `0x5F1D` | `MSP2_WING_SET_SERVO_TRIM` | C |  |  |
+| `0x5F22` | `MSP2_WING_FBUS_MUX_CONFIG` | C |  |  |
+| `0x5F23` | `MSP2_WING_SET_FBUS_MUX_CONFIG` | C |  |  |
 
 ## Live — reports state, not settings (§11.1)
 
@@ -169,6 +176,12 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | `0x5F07` | `MSP2_WING_FBUS_SENSORS` | C |  |  |
 | `0x5F0D` | `MSP2_WING_RX_INPUT_BACKUP_STATUS` | C | L |  |
 | `0x5F15` | `MSP2_WING_CRSF_SENSORS_STATUS` | C |  |  |
+| `0x5F18` | `MSP2_WING_TUNE_ADVISOR` |  | L |  |
+| `0x5F1A` | `MSP2_WING_MODE_OVERRIDE` |  | L |  |
+| `0x5F26` | `MSP2_WING_TV_EFFECTIVE_PID_GAINS` | C |  |  |
+| `0x5F27` | `MSP2_WING_SERVO_TIMING` | C |  |  |
+| `0x5F33` | `MSP2_WING_FBUS_SENSORS_STATUS` | C |  |  |
+| `0x5F34` | `MSP2_WING_SERIAL_STATUS` | C |  |  |
 
 ## Config — the catalogue step 5 deletes
 
