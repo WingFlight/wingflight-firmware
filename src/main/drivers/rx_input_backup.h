@@ -118,7 +118,10 @@ void rxInputBackupPoll(void);
 // as disabled/inactive.
 
 // True once a serial port has been assigned this backup's function and a
-// provider other than NONE is selected for it.
+// provider other than NONE is selected for it. A configured port whose UART
+// or provider failed to initialise is still enabled (and never active), so
+// the arming check and telemetry report it as a backup that is not linked
+// rather than ignoring it.
 bool rxInputBackupPortIsEnabled(uint8_t index);
 
 // True when enabled AND a valid frame has been decoded within the freshness

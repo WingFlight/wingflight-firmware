@@ -1587,8 +1587,10 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         // Payload version 4: there are now RX_INPUT_BACKUP_COUNT backup ports. The
         // fields above keep describing backup port 0 (the one every older client
         // knew as "the backup"), except `activeSource`, which becomes the 1-based
-        // index of the backup port in control (0 = main RX) - older clients only
-        // test it for non-zero, so that still reads as "a backup is in control".
+        // index of the backup port in control (0 = no backup in control: the main
+        // RX is flying, or every link is down - `mainLinkUp` tells which) - older
+        // clients only test it for non-zero, so that still reads as "a backup is
+        // in control".
         // Appended after the port-0 channels: `portCount`, then for each further
         // port: enabled, provider, linkUp, channelCount, channelCount x U16.
         const bool mainLinkUp = rxIsReceivingSignal();
@@ -1611,7 +1613,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             sbufWriteU8(dst, enabled ? rxInputBackupPortGetProvider(port) : 0);
             sbufWriteU8(dst, linkUp ? 1 : 0);
             if (port == 0) {
-                sbufWriteU8(dst, activeSource); // 0 = main RX active, n = backup n active
+                sbufWriteU8(dst, activeSource); // 0 = no backup in control, n = backup n active
             }
             sbufWriteU8(dst, channelCount);
             for (uint8_t i = 0; i < channelCount; i++) {

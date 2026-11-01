@@ -70,7 +70,14 @@
 
 // Everything one backup port owns. One per slot, in priority order.
 typedef struct rxInputBackupPort_s {
-    serialPort_t *port;                 // NULL while not opened (= disabled)
+    // A serial port carries this backup's function and a provider other than
+    // NONE is selected. This is what "enabled" means to the rest of the
+    // firmware: a configured port whose provider failed to initialise or whose
+    // UART failed to open stays enabled but never active, so it still blocks
+    // the first arm and the telemetry link-up bit instead of silently
+    // dropping out of the checks.
+    bool configured;
+    serialPort_t *port;                 // NULL while not opened
     rxInputBackupOps_t ops;
 
     float channel[RX_INPUT_BACKUP_MAX_CHANNEL];
@@ -196,7 +203,7 @@ void rxInputBackupPoll(void)
 
 bool rxInputBackupPortIsEnabled(uint8_t index)
 {
-    return index < RX_INPUT_BACKUP_COUNT && rxInputBackupPorts[index].port != NULL;
+    return index < RX_INPUT_BACKUP_COUNT && rxInputBackupPorts[index].configured;
 }
 
 bool rxInputBackupPortIsActive(uint8_t index)
@@ -228,7 +235,7 @@ float rxInputBackupPortGetChannel(uint8_t index, uint8_t channel)
 bool rxInputBackupIsEnabled(void)
 {
     for (int i = 0; i < RX_INPUT_BACKUP_COUNT; i++) {
-        if (rxInputBackupPorts[i].port) {
+        if (rxInputBackupPorts[i].configured) {
             return true;
         }
     }
@@ -255,10 +262,11 @@ bool rxInputBackupAllLinked(void)
     bool anyEnabled = false;
     for (int i = 0; i < RX_INPUT_BACKUP_COUNT; i++) {
         const rxInputBackupPort_t *bp = &rxInputBackupPorts[i];
-        if (!bp->port) {
+        if (!bp->configured) {
             continue;
         }
         anyEnabled = true;
+        // A configured port that never opened has no port and is never active
         if (!portIsActive(bp)) {
             return false;
         }
@@ -275,7 +283,7 @@ static const rxInputBackupPort_t *sourcePort(void)
         return &rxInputBackupPorts[active];
     }
     for (int i = 0; i < RX_INPUT_BACKUP_COUNT; i++) {
-        if (rxInputBackupPorts[i].port) {
+        if (rxInputBackupPorts[i].configured) {
             return &rxInputBackupPorts[i];
         }
     }
@@ -298,13 +306,19 @@ static void rxInputBackupPortInit(uint8_t index)
     const rxInputBackupPortConfig_t *config = &rxInputBackupConfig()->port[index];
 
     bp->port = NULL;
+    bp->configured = false;
+    bp->ops = (rxInputBackupOps_t){ 0 };
+    bp->frameChannelCount = 0;
+    bp->hasValidFrame = false;
 
     const serialPortConfig_t *portConfig = findSerialPortConfig(rxInputBackupFunctions[index]);
     if (!portConfig) {
         return;
     }
 
-    bp->ops = (rxInputBackupOps_t){ 0 };
+    // Provider NONE means "port reserved, nothing chosen yet" and takes no
+    // part in the arming check - see pg/rx_input_backup.h.
+    bp->configured = config->provider != RX_INPUT_BACKUP_NONE;
     bool providerReady = false;
 
     switch (config->provider) {
