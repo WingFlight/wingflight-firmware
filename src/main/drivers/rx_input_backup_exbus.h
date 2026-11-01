@@ -44,4 +44,4 @@
 // rather than optional. Bench-test before trusting this in the air, same as
 // every other provider added without direct hardware access this pass.
 
-bool rxInputBackupExbusInit(rxInputBackupOps_t *ops);
+bool rxInputBackupExbusInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index);

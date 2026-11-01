@@ -62,6 +62,7 @@ bool isRpmSourceActive(void) { return fc.rpm; }
 bool rxIsReceivingSignal(void) { return fc.rxLink; }
 bool rxInputBackupIsEnabled(void) { return fc.backupEnabled; }
 bool rxInputBackupIsActive(void) { return fc.backupActive; }
+bool rxInputBackupAllLinked(void) { return fc.backupActive; }
 failsafePhase_e failsafePhase(void) { return fc.failsafe; }
 bool gpsIsHealthy(void) { return fc.gpsHealthy; }
 bool navCanRTH(void) { return fc.canRth; }

@@ -36,8 +36,8 @@
 #define TELEM_STATUS_AIRBORNE               (1u << 1)   // isAirborne()
 #define TELEM_STATUS_MOTORS_RUNNING         (1u << 2)   // areMotorsRunning()
 #define TELEM_STATUS_RX_LINK_UP             (1u << 3)   // main RX receiving
-#define TELEM_STATUS_RX_BACKUP_LINK_UP      (1u << 4)   // backup RX has fresh frames
-#define TELEM_STATUS_RX_BACKUP_IN_CONTROL   (1u << 5)   // main RX down, backup RX flying the model
+#define TELEM_STATUS_RX_BACKUP_LINK_UP      (1u << 4)   // every configured backup RX has fresh frames
+#define TELEM_STATUS_RX_BACKUP_IN_CONTROL   (1u << 5)   // main RX down, a backup RX flying the model
 
 #define TELEM_STATUS_FAILSAFE_PHASE_SHIFT   6           // failsafePhase_e, 0 = idle
 #define TELEM_STATUS_FAILSAFE_PHASE_MASK    0x7u
@@ -85,7 +85,7 @@
 #define TELEM_CONFIG_BARO_PRESENT           (1u << 17)
 #define TELEM_CONFIG_MAG_PRESENT            (1u << 18)
 #define TELEM_CONFIG_GPS_PRESENT            (1u << 19)
-#define TELEM_CONFIG_RX_BACKUP_CONFIGURED   (1u << 20)
+#define TELEM_CONFIG_RX_BACKUP_CONFIGURED   (1u << 20)  // at least one backup RX port configured
 #define TELEM_CONFIG_BLACKBOX_FULL          (1u << 21)
 #define TELEM_CONFIG_RPM_SOURCE_ACTIVE      (1u << 22)  // motor RPM telemetry is arriving
 

@@ -895,10 +895,15 @@ void detectAndApplySignalLossBehaviour(void)
     // aux/mode switches) from it, exactly as a physical backup satellite receiver would,
     // and tell failsafe this is a valid link so its staged hold/land behaviour does not
     // engage on top of it. A BOXFAILSAFE aux switch still invalidates channels here too,
-    // same as the main-RX path below. If the backup link is also down (or not
+    // same as the main-RX path below. If every backup link is also down (or none is
     // configured), rxInputBackupIsActive() is false and this falls through unmodified to
     // the existing staged failsafe logic below - that stays the single backstop for
-    // "both links down".
+    // "all links down".
+    //
+    // With two backup ports the first active one in priority order (backup 1, then
+    // backup 2) is used - rxInputBackupGetChannel() reads that port - and control
+    // moves between them on the same ~50ms staleness rule, returning to the higher
+    // priority port as soon as it has fresh frames again.
     //
     // Bypasses the *staged* failsafe machinery (hold/land/cut) entirely, but is bounded
     // by rxSignalReceived's own existing detection window, not per-missed-frame: per

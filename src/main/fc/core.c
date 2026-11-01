@@ -396,19 +396,21 @@ void updateArmingStatus(void)
 #endif
 
 #ifdef USE_RX_INPUT_BACKUP
-        // A configured backup RX must prove itself linked before the first arm of this
-        // power cycle - same "don't trust it until it's shown you a signal" reasoning as
-        // the GPS-rescue fix check above, and the same exception once WAS_EVER_ARMED: a
-        // backup that blips stale between flights (satellite hiccup, momentary
-        // interference) must not lock out rearming for the rest of the session, only the
-        // very first arm while the backup's health is still completely unknown. Held off
+        // Every configured backup RX must prove itself linked before the first arm of
+        // this power cycle - same "don't trust it until it's shown you a signal"
+        // reasoning as the GPS-rescue fix check above, and the same exception once
+        // WAS_EVER_ARMED: a backup that blips stale between flights (satellite hiccup,
+        // momentary interference) must not lock out rearming for the rest of the
+        // session, only the very first arm while the backup's health is still
+        // completely unknown. With two backups both have to link: a dead second
+        // backup is just as much a wiring fault as a dead first one. Held off
         // until the shared boot arming-grace window (armingConfig()->power_on_arming_grace_time,
         // handled above) has elapsed, so slow-binding backup protocols (SRXL2/EXBUS-style
         // handshakes) get the same settle time real receivers need - see
         // the settleMs discussion at https://doc.wingflight.org/contributing/tech/rx-wiring-autodetect/ for typical link-up
         // timing per protocol.
         if (rxInputBackupIsEnabled() && !(getArmingDisableFlags() & ARMING_DISABLED_BOOT_GRACE_TIME)) {
-            if (rxInputBackupIsActive() || ARMING_FLAG(WAS_EVER_ARMED)) {
+            if (rxInputBackupAllLinked() || ARMING_FLAG(WAS_EVER_ARMED)) {
                 unsetArmingDisabled(ARMING_DISABLED_RX_INPUT_BACKUP);
             } else {
                 setArmingDisabled(ARMING_DISABLED_RX_INPUT_BACKUP);

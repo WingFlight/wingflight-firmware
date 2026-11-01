@@ -161,9 +161,12 @@ uint32_t telemetrySystemStatus(void)
     if (mainLinkUp)
         status |= TELEM_STATUS_RX_LINK_UP;
 #ifdef USE_RX_INPUT_BACKUP
-    if (rxInputBackupIsEnabled() && rxInputBackupIsActive()) {
-        status |= TELEM_STATUS_RX_BACKUP_LINK_UP;
-        if (!mainLinkUp)
+    if (rxInputBackupIsEnabled()) {
+        // LINK_UP means every configured backup is receiving, so a dead second
+        // backup raises the radio's "backup lost" alert just like a dead first one.
+        if (rxInputBackupAllLinked())
+            status |= TELEM_STATUS_RX_BACKUP_LINK_UP;
+        if (!mainLinkUp && rxInputBackupIsActive())
             status |= TELEM_STATUS_RX_BACKUP_IN_CONTROL;
     }
 #endif

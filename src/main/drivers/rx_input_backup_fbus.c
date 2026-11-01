@@ -60,8 +60,8 @@
 // fbusRxInit(rxConfig, rxRuntimeState, isFPORT2) confirms isFPORT2 only ever
 // changes which baud constant gets passed to openSerialPort(), nothing else -
 // so both rxInputBackupFbusInit() and rxInputBackupFport2Init() below share
-// this file's one static parser/decoder, differing only in which speed they
-// start at. Each reports the other speed as ops->altBaudRate, and the generic
+// this file's parser/decoder (one state per backup port), differing only in
+// which speed they start at. Each reports the other speed as ops->altBaudRate, and the generic
 // layer switches to it if the receiver is set to that one.
 
 // Frame layout, no byte-stuffing: [length][type=0xFF][channels][rssi][checksum],
@@ -113,49 +113,53 @@ typedef struct fbusInputFrameData_s {
     volatile uint8_t position;
 } fbusInputFrameData_t;
 
-static fbusInputFrameData_t fbusInputFrameData;
-static uint8_t fbusInputPendingFrame[FBUS_INPUT_FRAME_SIZE_MAX];
-static volatile uint8_t fbusInputPendingFrameSize = 0;
-static volatile bool fbusInputPendingFrameReady = false;
+typedef struct fbusInputState_s {
+    fbusInputFrameData_t frameData;
+    uint8_t pendingFrame[FBUS_INPUT_FRAME_SIZE_MAX];
+    volatile uint8_t pendingFrameSize;
+    volatile bool pendingFrameReady;
+    uint16_t channelData[RX_INPUT_BACKUP_MAX_CHANNEL];
+    rxRuntimeState_t rxRuntimeState;
+} fbusInputState_t;
 
-static uint16_t fbusInputChannelData[RX_INPUT_BACKUP_MAX_CHANNEL];
-static rxRuntimeState_t fbusInputRxRuntimeState;
+// One parser per backup port, so two ports can both run FBUS/F.Port2.
+static fbusInputState_t fbusInputStates[RX_INPUT_BACKUP_COUNT];
 
-static void fbusInputResetParser(void)
+static void fbusInputResetParser(fbusInputState_t *s)
 {
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        fbusInputFrameData.startAtUs = 0;
-        fbusInputFrameData.lastByteAtUs = 0;
-        fbusInputFrameData.position = 0;
-        fbusInputPendingFrameReady = false;
+        s->frameData.startAtUs = 0;
+        s->frameData.lastByteAtUs = 0;
+        s->frameData.position = 0;
+        s->pendingFrameReady = false;
     }
 }
 
 static FAST_CODE void fbusInputDataReceive(uint16_t c, void *data)
 {
-    UNUSED(data);
+    fbusInputState_t *s = data;
 
     const timeUs_t nowUs = microsISR();
-    const timeDelta_t byteGap = fbusInputFrameData.lastByteAtUs == 0
+    const timeDelta_t byteGap = s->frameData.lastByteAtUs == 0
         ? (timeDelta_t)FBUS_INPUT_INTERBYTE_TIMEOUT_US + 1
-        : cmpTimeUs(nowUs, fbusInputFrameData.lastByteAtUs);
-    const timeDelta_t frameTime = cmpTimeUs(nowUs, fbusInputFrameData.startAtUs);
-    fbusInputFrameData.lastByteAtUs = nowUs;
+        : cmpTimeUs(nowUs, s->frameData.lastByteAtUs);
+    const timeDelta_t frameTime = cmpTimeUs(nowUs, s->frameData.startAtUs);
+    s->frameData.lastByteAtUs = nowUs;
 
     // Per-byte gap watchdog while mid-frame, matching rx/fbus.c's own stuck-frame
     // recovery (FBUS_RX_TIMEOUT) - a real gap this large can only mean the frame
     // in progress is stale (sender reset, byte lost, electrical glitch), not a
     // legitimate continuation.
-    if (fbusInputFrameData.position > 0 && byteGap > FBUS_INPUT_INTERBYTE_TIMEOUT_US) {
-        fbusInputFrameData.position = 0;
+    if (s->frameData.position > 0 && byteGap > FBUS_INPUT_INTERBYTE_TIMEOUT_US) {
+        s->frameData.position = 0;
     }
 
     // Total-duration ceiling, belt-and-braces alongside the per-byte watchdog above.
-    if (fbusInputFrameData.position > 0 && frameTime > FBUS_INPUT_TIME_NEEDED_PER_FRAME_US) {
-        fbusInputFrameData.position = 0;
+    if (s->frameData.position > 0 && frameTime > FBUS_INPUT_TIME_NEEDED_PER_FRAME_US) {
+        s->frameData.position = 0;
     }
 
-    if (fbusInputFrameData.position == 0) {
+    if (s->frameData.position == 0) {
         // Matches rx/fbus.c's own FS_CONTROL_FRAME_START exactly: accept purely
         // on value match, no silence requirement - the type-byte check just
         // below plus the checksum in update() reject false positives instead.
@@ -170,45 +174,46 @@ static FAST_CODE void fbusInputDataReceive(uint16_t c, void *data)
             c != FBUS_INPUT_CONTROL_FRAME_LENGTH_24CH) {
             return;
         }
-        fbusInputFrameData.startAtUs = nowUs;
-        fbusInputFrameData.size = FBUS_INPUT_FRAME_SIZE(c);
+        s->frameData.startAtUs = nowUs;
+        s->frameData.size = FBUS_INPUT_FRAME_SIZE(c);
     }
 
-    fbusInputFrameData.bytes[fbusInputFrameData.position++] = (uint8_t)c;
+    s->frameData.bytes[s->frameData.position++] = (uint8_t)c;
 
-    if (fbusInputFrameData.position == 2 && fbusInputFrameData.bytes[1] != FBUS_INPUT_FRAME_TYPE_RC) {
+    if (s->frameData.position == 2 && s->frameData.bytes[1] != FBUS_INPUT_FRAME_TYPE_RC) {
         // Wrong type (OTA, or garbage) - abort immediately rather than collecting
         // the rest of a frame we're not going to accept anyway, same as
         // rx/fbus.c's own FS_CONTROL_FRAME_TYPE state does.
-        fbusInputFrameData.position = 0;
+        s->frameData.position = 0;
         return;
     }
 
-    if (fbusInputFrameData.position >= fbusInputFrameData.size) {
+    if (s->frameData.position >= s->frameData.size) {
         // Snapshot into a separate holding buffer right here, rather than leaving
         // the completed frame sitting in fbusInputFrameData for the consumer to
         // read later - the next frame's first byte (landing back at position 0)
         // could otherwise start overwriting the same buffer being decoded,
         // tearing adjacent 11-bit channel fields across two frames.
-        memcpy(fbusInputPendingFrame, fbusInputFrameData.bytes, fbusInputFrameData.size);
-        fbusInputPendingFrameSize = fbusInputFrameData.size;
-        fbusInputPendingFrameReady = true;
-        fbusInputFrameData.position = 0;
+        memcpy(s->pendingFrame, s->frameData.bytes, s->frameData.size);
+        s->pendingFrameSize = s->frameData.size;
+        s->pendingFrameReady = true;
+        s->frameData.position = 0;
     }
 }
 
 // Called from the RX task (rx/rx.c, via rx_input_backup.c's poll loop), not an
 // ISR - safe to do the heavier decode/convert work here.
-static uint8_t fbusInputUpdate(float *channels, uint8_t channelCount)
+static uint8_t fbusInputUpdate(void *state, float *channels, uint8_t channelCount)
 {
+    fbusInputState_t *s = state;
     uint8_t frame[FBUS_INPUT_FRAME_SIZE_MAX];
     uint8_t frameSize = 0;
 
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        if (fbusInputPendingFrameReady) {
-            frameSize = fbusInputPendingFrameSize;
-            memcpy(frame, fbusInputPendingFrame, frameSize);
-            fbusInputPendingFrameReady = false;
+        if (s->pendingFrameReady) {
+            frameSize = s->pendingFrameSize;
+            memcpy(frame, s->pendingFrame, frameSize);
+            s->pendingFrameReady = false;
         }
     }
 
@@ -222,7 +227,7 @@ static uint8_t fbusInputUpdate(float *channels, uint8_t channelCount)
     // internal envelope-type tag byte plus the on-wire length byte; this buffer
     // has no such envelope byte, so only the length byte itself is skipped.
     if (!frskyCheckSumIsGood(&frame[1], frameSize - 1)) {
-        fbusInputResetParser();
+        fbusInputResetParser(s);
         return 0;
     }
 
@@ -240,21 +245,21 @@ static uint8_t fbusInputUpdate(float *channels, uint8_t channelCount)
     case FBUS_INPUT_CONTROL_FRAME_LENGTH_8CH: {
         sbusChannels8ch_t wireChannels;
         memcpy(&wireChannels, &frame[2], sizeof(wireChannels));
-        frameStatus = sbusChannelsDecode8ch(&fbusInputRxRuntimeState, &wireChannels);
+        frameStatus = sbusChannelsDecode8ch(&s->rxRuntimeState, &wireChannels);
         frameChannels = 8 + 2;
         break;
     }
     case FBUS_INPUT_CONTROL_FRAME_LENGTH_24CH: {
         sbusChannels24ch_t wireChannels;
         memcpy(&wireChannels, &frame[2], sizeof(wireChannels));
-        frameStatus = sbusChannelsDecode24ch(&fbusInputRxRuntimeState, &wireChannels);
+        frameStatus = sbusChannelsDecode24ch(&s->rxRuntimeState, &wireChannels);
         frameChannels = 24 + 2;
         break;
     }
     default: {
         sbusChannels_t wireChannels;
         memcpy(&wireChannels, &frame[2], sizeof(wireChannels));
-        frameStatus = sbusChannelsDecode(&fbusInputRxRuntimeState, &wireChannels);
+        frameStatus = sbusChannelsDecode(&s->rxRuntimeState, &wireChannels);
         frameChannels = 16 + 2;
         break;
     }
@@ -263,22 +268,24 @@ static uint8_t fbusInputUpdate(float *channels, uint8_t channelCount)
     if (frameStatus & (RX_FRAME_DROPPED | RX_FRAME_FAILSAFE)) {
         // Same rationale as the SBUS provider: a dropped/failsafe frame from the
         // satellite itself must not count as a fresh valid frame.
-        fbusInputResetParser();
+        fbusInputResetParser(s);
         return 0;
     }
 
     frameChannels = MIN(frameChannels, channelCount);
     for (uint8_t i = 0; i < frameChannels; i++) {
-        channels[i] = (5.0f * (float)fbusInputChannelData[i] / 8.0f) + 880.0f;
+        channels[i] = (5.0f * (float)s->channelData[i] / 8.0f) + 880.0f;
     }
 
     return frameChannels;
 }
 
-static bool fbusInputInitCommon(rxInputBackupOps_t *ops, uint32_t baudRate, uint32_t altBaudRate)
+static bool fbusInputInitCommon(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index,
+                                uint32_t baudRate, uint32_t altBaudRate)
 {
-    fbusInputRxRuntimeState.channelData = fbusInputChannelData;
-    fbusInputResetParser();
+    fbusInputState_t *s = &fbusInputStates[index];
+    s->rxRuntimeState.channelData = s->channelData;
+    fbusInputResetParser(s);
 
     // Matches rx/fbus.c's own direction/variant exactly (identical for FBUS and
     // FPort2 - isFPORT2 only changes baud, confirmed above): FBUS/FPort2's
@@ -290,9 +297,10 @@ static bool fbusInputInitCommon(rxInputBackupOps_t *ops, uint32_t baudRate, uint
     ops->baudRate = baudRate;
     ops->altBaudRate = altBaudRate;
     ops->portOptions = FBUS_INPUT_PORT_OPTIONS
-        | (rxInputBackupConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
-        | (rxInputBackupConfig()->halfDuplex ? (SERIAL_BIDIR | SERIAL_BIDIR_PP) : SERIAL_UNIDIR);
+        | (config->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
+        | (config->halfDuplex ? (SERIAL_BIDIR | SERIAL_BIDIR_PP) : SERIAL_UNIDIR);
     ops->isrFn = fbusInputDataReceive;
+    ops->state = s;
     ops->channelCount = RX_INPUT_BACKUP_MAX_CHANNEL;
     ops->update = fbusInputUpdate;
 
@@ -300,14 +308,14 @@ static bool fbusInputInitCommon(rxInputBackupOps_t *ops, uint32_t baudRate, uint
 }
 
 // Both start at their own speed and find the other one if the receiver uses it
-bool rxInputBackupFbusInit(rxInputBackupOps_t *ops)
+bool rxInputBackupFbusInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index)
 {
-    return fbusInputInitCommon(ops, 460800, 115200);
+    return fbusInputInitCommon(ops, config, index, 460800, 115200);
 }
 
-bool rxInputBackupFport2Init(rxInputBackupOps_t *ops)
+bool rxInputBackupFport2Init(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index)
 {
-    return fbusInputInitCommon(ops, 115200, 460800);
+    return fbusInputInitCommon(ops, config, index, 115200, 460800);
 }
 
 #endif // USE_RX_INPUT_BACKUP_FBUS

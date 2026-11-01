@@ -3,6 +3,34 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Second Backup Receiver
+
+Up to two backup receivers can now be configured. A new serial port function
+`FUNCTION_RX_INPUT_BACKUP2` (bit 24, CLI name `RX_BACKUP2`, `io/serial.h`)
+carries the second one; the existing `FUNCTION_RX_INPUT_BACKUP` (`RX_BACKUP`)
+is the first. Failover is a fixed priority chain: main RX, then backup 1, then
+backup 2 (`drivers/rx_input_backup.c`, `rx/rx.c`). Telemetry stays on the
+primary receiver only; the backup links remain receive-only.
+
+Each backup has its own protocol and wiring settings. The first keeps
+`rx_input_backup_*`; the second gets `rx_input_backup2_provider`,
+`rx_input_backup2_inverted`, `rx_input_backup2_halfduplex` and
+`rx_input_backup2_pinswap`. The `rxInputBackupConfig` parameter group became
+an array of two port records (PG version 2), so stored backup settings reset to
+defaults on upgrade. Every backup provider now keeps one parser state per port,
+so both ports may run the same protocol.
+
+MSP: `MSP2_WING_RX_INPUT_BACKUP_STATUS` payload version 4 appends a port count
+and a per-port block (enabled, provider, link up, channels) after the first
+backup's fields, and `activeSource` is now 0 = main, n = backup n.
+`MSP2_WING_RX_INPUT_BACKUP_CONFIG` version 2 and its SET variant append a port
+count and the second port's four bytes; a version 1 SET still writes port 1
+only. `MSP2_WING_RX_INPUT_BACKUP_TRIAL` takes an optional backup index after
+the action byte and reports it as a trailing status byte. Telemetry status
+bit 4 (`TELEM_STATUS_RX_BACKUP_LINK_UP`) now means every configured backup is
+linked; the `BACKUPRX` arming check likewise waits for all of them before the
+first arm.
+
 ## No I-Term Build-Up Before Takeoff
 
 The rate loop's I-term no longer accumulates until the aircraft is airborne

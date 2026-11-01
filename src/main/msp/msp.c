@@ -1583,24 +1583,43 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         // lets the configurator show a genuine main-link status badge, not just a
         // backup one - unconditional, not gated on `enabled`, since it's meaningful
         // whether or not a backup port is even configured.
-        const bool enabled = rxInputBackupIsEnabled();
+        //
+        // Payload version 4: there are now RX_INPUT_BACKUP_COUNT backup ports. The
+        // fields above keep describing backup port 0 (the one every older client
+        // knew as "the backup"), except `activeSource`, which becomes the 1-based
+        // index of the backup port in control (0 = main RX) - older clients only
+        // test it for non-zero, so that still reads as "a backup is in control".
+        // Appended after the port-0 channels: `portCount`, then for each further
+        // port: enabled, provider, linkUp, channelCount, channelCount x U16.
         const bool mainLinkUp = rxIsReceivingSignal();
-        const bool linkUp = enabled && rxInputBackupIsActive();
-        const bool rxInputBackupIsSource = linkUp && !mainLinkUp;
-        // Every main RX channel gets a backup value; channels the backup's
-        // latest frame doesn't carry report stick center, the value a takeover
-        // would apply (rxInputBackupGetChannel()).
-        const uint8_t channelCount = enabled ? MAX(rxInputBackupGetChannelCount(), activeRcChannelCount) : 0;
+        const int8_t activeIndex = rxInputBackupGetActiveIndex();
+        const uint8_t activeSource = (!mainLinkUp && activeIndex >= 0) ? (uint8_t)(activeIndex + 1) : 0;
 
-        sbufWriteU8(dst, 3); // payload version
-        sbufWriteU8(dst, enabled ? 1 : 0);
-        sbufWriteU8(dst, mainLinkUp ? 1 : 0);
-        sbufWriteU8(dst, enabled ? rxInputBackupGetProvider() : 0); // 0 = SBUS
-        sbufWriteU8(dst, linkUp ? 1 : 0);
-        sbufWriteU8(dst, rxInputBackupIsSource ? 1 : 0); // 0 = main RX active, 1 = backup active
-        sbufWriteU8(dst, channelCount);
-        for (uint8_t i = 0; i < channelCount; i++) {
-            sbufWriteU16(dst, (uint16_t)lrintf(rxInputBackupGetChannel(i)));
+        sbufWriteU8(dst, 4); // payload version
+        for (uint8_t port = 0; port < RX_INPUT_BACKUP_COUNT; port++) {
+            const bool enabled = rxInputBackupPortIsEnabled(port);
+            const bool linkUp = enabled && rxInputBackupPortIsActive(port);
+            // Every main RX channel gets a backup value; channels the backup's
+            // latest frame doesn't carry report stick center, the value a takeover
+            // would apply (rxInputBackupPortGetChannel()).
+            const uint8_t channelCount = enabled ? MAX(rxInputBackupPortGetChannelCount(port), activeRcChannelCount) : 0;
+
+            sbufWriteU8(dst, enabled ? 1 : 0);
+            if (port == 0) {
+                sbufWriteU8(dst, mainLinkUp ? 1 : 0);
+            }
+            sbufWriteU8(dst, enabled ? rxInputBackupPortGetProvider(port) : 0);
+            sbufWriteU8(dst, linkUp ? 1 : 0);
+            if (port == 0) {
+                sbufWriteU8(dst, activeSource); // 0 = main RX active, n = backup n active
+            }
+            sbufWriteU8(dst, channelCount);
+            for (uint8_t i = 0; i < channelCount; i++) {
+                sbufWriteU16(dst, (uint16_t)lrintf(rxInputBackupPortGetChannel(port, i)));
+            }
+            if (port == 0) {
+                sbufWriteU8(dst, RX_INPUT_BACKUP_COUNT); // ports that follow, including this one
+            }
         }
         break;
     }
@@ -1611,11 +1630,20 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         // halfDuplex/pinSwap to take effect (rxInputBackupInit() only
         // (re-)opens the port at boot), same as any other serial-port
         // function/config change.
-        sbufWriteU8(dst, 1); // payload version
-        sbufWriteU8(dst, rxInputBackupConfig()->provider);
-        sbufWriteU8(dst, rxInputBackupConfig()->inverted);
-        sbufWriteU8(dst, rxInputBackupConfig()->halfDuplex);
-        sbufWriteU8(dst, rxInputBackupConfig()->pinSwap);
+        //
+        // Payload version 2: port 0's four fields stay where version 1 had them,
+        // followed by `portCount` and the same four fields for each further port.
+        sbufWriteU8(dst, 2); // payload version
+        for (uint8_t port = 0; port < RX_INPUT_BACKUP_COUNT; port++) {
+            const rxInputBackupPortConfig_t *cfg = &rxInputBackupConfig()->port[port];
+            sbufWriteU8(dst, cfg->provider);
+            sbufWriteU8(dst, cfg->inverted);
+            sbufWriteU8(dst, cfg->halfDuplex);
+            sbufWriteU8(dst, cfg->pinSwap);
+            if (port == 0) {
+                sbufWriteU8(dst, RX_INPUT_BACKUP_COUNT);
+            }
+        }
         break;
     }
 #endif
@@ -2624,11 +2652,15 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
 #ifdef USE_RX_INPUT_BACKUP
     case MSP2_WING_RX_INPUT_BACKUP_TRIAL:
         // Same action/status shape as MSP2_WING_RX_SERIAL_TRIAL above, applied
-        // to the backup RX port's own inverted/halfDuplex/pinSwap instead.
+        // to one backup RX port's own inverted/halfDuplex/pinSwap instead. An
+        // optional second request byte names the backup port (0 = backup 1,
+        // the default, 1 = backup 2); the status gains that index as a trailing
+        // byte, after the fields older clients read.
         if (sbufBytesRemaining(src) >= 1) {
             const uint8_t action = sbufReadU8(src);
+            const uint8_t index = sbufBytesRemaining(src) >= 1 ? sbufReadU8(src) : 0;
             if (action == 1) {
-                rxInputBackupTrialStart();
+                rxInputBackupTrialStart(index);
             } else if (action == 2) {
                 rxInputBackupTrialStop();
             }
@@ -2642,6 +2674,7 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             sbufWriteU8(dst, status.halfDuplex);
             sbufWriteU8(dst, status.pinSwap);
             sbufWriteU16(dst, status.elapsedMs);
+            sbufWriteU8(dst, status.index);
         }
         break;
 #endif
@@ -4843,14 +4876,32 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
 
 #ifdef USE_RX_INPUT_BACKUP
     case MSP2_WING_SET_RX_INPUT_BACKUP_CONFIG:
+        // Version 1 payload (5 bytes) sets backup port 0 only and leaves the
+        // others alone. Version 2 appends `portCount` and four bytes per further
+        // port, mirroring MSP2_WING_RX_INPUT_BACKUP_CONFIG.
         if (dataSize < 5) {
             return MSP_RESULT_ERROR;
         }
-        sbufReadU8(src); // payload version, unused for now
-        rxInputBackupConfigMutable()->provider = sbufReadU8(src);
-        rxInputBackupConfigMutable()->inverted = sbufReadU8(src);
-        rxInputBackupConfigMutable()->halfDuplex = sbufReadU8(src);
-        rxInputBackupConfigMutable()->pinSwap = sbufReadU8(src);
+        sbufReadU8(src); // payload version - the shape below is length-driven
+        for (uint8_t port = 0; port < RX_INPUT_BACKUP_COUNT; port++) {
+            if (port > 0 && sbufBytesRemaining(src) < 4) {
+                break;
+            }
+            rxInputBackupPortConfig_t *cfg = &rxInputBackupConfigMutable()->port[port];
+            cfg->provider = sbufReadU8(src);
+            cfg->inverted = sbufReadU8(src);
+            cfg->halfDuplex = sbufReadU8(src);
+            cfg->pinSwap = sbufReadU8(src);
+            if (port == 0) {
+                if (sbufBytesRemaining(src) < 1) {
+                    break;
+                }
+                const uint8_t portCount = sbufReadU8(src);
+                if (portCount < 2) {
+                    break;
+                }
+            }
+        }
         // Unlike MSP2_WING_SET_FBUS_MASTER_CONFIG above, there's no live-reload
         // here - rxInputBackupInit() only (re-)opens the port at boot, so this
         // needs the same save-and-reboot flow every other serial-port function/

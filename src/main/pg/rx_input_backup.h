@@ -20,11 +20,17 @@
 #include "common/utils.h"
 #include "pg/pg.h"
 
-// Electrical/protocol settings for the backup RX port (drivers/rx_input_backup.c).
+// Number of independent backup RX ports. Slot 0 is the first backup
+// (FUNCTION_RX_INPUT_BACKUP, "Backup 1"), slot 1 the second
+// (FUNCTION_RX_INPUT_BACKUP2, "Backup 2"). Failover runs in this order:
+// main RX, then slot 0, then slot 1 (drivers/rx_input_backup.c).
+#define RX_INPUT_BACKUP_COUNT 2
+
+// Electrical/protocol settings for one backup RX port (drivers/rx_input_backup.c).
 // Inversion/pin-swap are deliberately independent from the main RX's
-// serialrx_inverted/serialrx_pinswap (pg/rx.h) - the backup port is a different
+// serialrx_inverted/serialrx_pinswap (pg/rx.h) - each backup port is a different
 // physical UART and may need different wiring/inversion than the main receiver's.
-typedef struct rxInputBackupConfig_s {
+typedef struct rxInputBackupPortConfig_s {
     // Which protocol to decode on this port. Plain uint8_t (not the
     // rxInputBackupProvider_e enum from drivers/rx_input_backup.h) matching how
     // pg/rx.h's serialrx_provider is stored - see cli/settings.c's
@@ -62,6 +68,10 @@ typedef struct rxInputBackupConfig_s {
     // so this one is still applied generically by rx_input_backup.c rather
     // than by each provider.
     uint8_t pinSwap;
+} rxInputBackupPortConfig_t;
+
+typedef struct rxInputBackupConfig_s {
+    rxInputBackupPortConfig_t port[RX_INPUT_BACKUP_COUNT];
 } rxInputBackupConfig_t;
 
 PG_DECLARE(rxInputBackupConfig_t, rxInputBackupConfig);

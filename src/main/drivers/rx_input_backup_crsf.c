@@ -123,17 +123,21 @@ typedef struct crsfInputFrameData_s {
     volatile uint8_t position;
 } crsfInputFrameData_t;
 
-static crsfInputFrameData_t crsfInputFrameData;
-static crsfInputFrameBuf_t crsfInputPendingFrame;
-static volatile bool crsfInputPendingFrameReady = false;
+typedef struct crsfInputState_s {
+    crsfInputFrameData_t frameData;
+    crsfInputFrameBuf_t pendingFrame;
+    volatile bool pendingFrameReady;
+    uint32_t channelData[RX_INPUT_BACKUP_MAX_CHANNEL];
+} crsfInputState_t;
 
-static uint32_t crsfInputChannelData[RX_INPUT_BACKUP_MAX_CHANNEL];
+// One parser per backup port, so two ports can both run CRSF.
+static crsfInputState_t crsfInputStates[RX_INPUT_BACKUP_COUNT];
 
-static void crsfInputResetParser(void)
+static void crsfInputResetParser(crsfInputState_t *s)
 {
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        crsfInputFrameData.position = 0;
-        crsfInputPendingFrameReady = false;
+        s->frameData.position = 0;
+        s->pendingFrameReady = false;
     }
 }
 
@@ -144,17 +148,17 @@ static void crsfInputResetParser(void)
 // outside the ISR.
 static FAST_CODE void crsfInputDataReceive(uint16_t c, void *data)
 {
-    UNUSED(data);
+    crsfInputState_t *s = data;
 
     const timeUs_t nowUs = microsISR();
 
-    if (crsfInputFrameData.position > 0
-        && cmpTimeUs(nowUs, crsfInputFrameData.startAtUs) > CRSF_INPUT_TIME_NEEDED_PER_FRAME_US) {
-        crsfInputFrameData.position = 0;
+    if (s->frameData.position > 0
+        && cmpTimeUs(nowUs, s->frameData.startAtUs) > CRSF_INPUT_TIME_NEEDED_PER_FRAME_US) {
+        s->frameData.position = 0;
     }
 
-    if (crsfInputFrameData.position == 0) {
-        crsfInputFrameData.startAtUs = nowUs;
+    if (s->frameData.position == 0) {
+        s->frameData.startAtUs = nowUs;
     }
 
     // Assume a 5-byte frame until enough bytes have arrived to trust the
@@ -163,20 +167,20 @@ static FAST_CODE void crsfInputDataReceive(uint16_t c, void *data)
     // switchover to position 3 (rather than 2, right when the length byte
     // itself becomes available) is harmless since 5 is smaller than any
     // frame this provider ever needs to fully accumulate.
-    const uint8_t fullFrameLength = crsfInputFrameData.position < 3
+    const uint8_t fullFrameLength = s->frameData.position < 3
         ? 5
-        : MIN((uint16_t)crsfInputFrameData.frame.frame.frameLength + CRSF_INPUT_FRAME_LENGTH_ADDRESS + CRSF_INPUT_FRAME_LENGTH_FRAMELENGTH, CRSF_INPUT_FRAME_SIZE_MAX);
+        : MIN((uint16_t)s->frameData.frame.frame.frameLength + CRSF_INPUT_FRAME_LENGTH_ADDRESS + CRSF_INPUT_FRAME_LENGTH_FRAMELENGTH, CRSF_INPUT_FRAME_SIZE_MAX);
 
-    if (crsfInputFrameData.position < fullFrameLength) {
-        crsfInputFrameData.frame.bytes[crsfInputFrameData.position++] = (uint8_t)c;
-        if (crsfInputFrameData.position >= fullFrameLength) {
+    if (s->frameData.position < fullFrameLength) {
+        s->frameData.frame.bytes[s->frameData.position++] = (uint8_t)c;
+        if (s->frameData.position >= fullFrameLength) {
             // Snapshot into a separate holding buffer right here, rather than
             // leaving the completed frame sitting in crsfInputFrameData for
             // the consumer to read later - see the SBUS/FBUS/FPort providers'
             // own identical comment for why.
-            memcpy(&crsfInputPendingFrame, &crsfInputFrameData.frame, fullFrameLength);
-            crsfInputPendingFrameReady = true;
-            crsfInputFrameData.position = 0;
+            memcpy(&s->pendingFrame, &s->frameData.frame, fullFrameLength);
+            s->pendingFrameReady = true;
+            s->frameData.position = 0;
         }
     }
 }
@@ -204,15 +208,16 @@ static uint8_t crsfInputFrameCRC(const crsfInputFrameBuf_t *frame, uint8_t paylo
 
 // Called from the RX task (rx/rx.c, via rx_input_backup.c's poll loop), not an
 // ISR - safe to do the heavier decode/convert work here.
-static uint8_t crsfInputUpdate(float *channels, uint8_t channelCount)
+static uint8_t crsfInputUpdate(void *state, float *channels, uint8_t channelCount)
 {
+    crsfInputState_t *s = state;
     crsfInputFrameBuf_t frame;
     bool haveFrame = false;
 
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        if (crsfInputPendingFrameReady) {
-            memcpy(&frame, &crsfInputPendingFrame, sizeof(frame));
-            crsfInputPendingFrameReady = false;
+        if (s->pendingFrameReady) {
+            memcpy(&frame, &s->pendingFrame, sizeof(frame));
+            s->pendingFrameReady = false;
             haveFrame = true;
         }
     }
@@ -227,7 +232,7 @@ static uint8_t crsfInputUpdate(float *channels, uint8_t channelCount)
     // uint8_t before the cap could apply. Capping here too keeps this in
     // sync with how many bytes the ISR actually captured into the buffer
     // being read below (it applied the same cap before ever setting
-    // crsfInputPendingFrameReady).
+    // s->pendingFrameReady).
     const uint16_t fullFrameLength = MIN((uint16_t)frame.frame.frameLength + CRSF_INPUT_FRAME_LENGTH_ADDRESS + CRSF_INPUT_FRAME_LENGTH_FRAMELENGTH, CRSF_INPUT_FRAME_SIZE_MAX);
     if (fullFrameLength < CRSF_INPUT_FRAME_LENGTH_ADDRESS + CRSF_INPUT_FRAME_LENGTH_FRAMELENGTH + CRSF_INPUT_FRAME_LENGTH_TYPE_CRC) {
         return 0;
@@ -259,34 +264,35 @@ static uint8_t crsfInputUpdate(float *channels, uint8_t channelCount)
     // identical fix for why (C11 effective-type rules).
     crsfInputPayloadRcChannelsPacked_t rcChannels;
     memcpy(&rcChannels, frame.frame.payload, sizeof(rcChannels));
-    crsfInputChannelData[0] = rcChannels.chan0;
-    crsfInputChannelData[1] = rcChannels.chan1;
-    crsfInputChannelData[2] = rcChannels.chan2;
-    crsfInputChannelData[3] = rcChannels.chan3;
-    crsfInputChannelData[4] = rcChannels.chan4;
-    crsfInputChannelData[5] = rcChannels.chan5;
-    crsfInputChannelData[6] = rcChannels.chan6;
-    crsfInputChannelData[7] = rcChannels.chan7;
-    crsfInputChannelData[8] = rcChannels.chan8;
-    crsfInputChannelData[9] = rcChannels.chan9;
-    crsfInputChannelData[10] = rcChannels.chan10;
-    crsfInputChannelData[11] = rcChannels.chan11;
-    crsfInputChannelData[12] = rcChannels.chan12;
-    crsfInputChannelData[13] = rcChannels.chan13;
-    crsfInputChannelData[14] = rcChannels.chan14;
-    crsfInputChannelData[15] = rcChannels.chan15;
+    s->channelData[0] = rcChannels.chan0;
+    s->channelData[1] = rcChannels.chan1;
+    s->channelData[2] = rcChannels.chan2;
+    s->channelData[3] = rcChannels.chan3;
+    s->channelData[4] = rcChannels.chan4;
+    s->channelData[5] = rcChannels.chan5;
+    s->channelData[6] = rcChannels.chan6;
+    s->channelData[7] = rcChannels.chan7;
+    s->channelData[8] = rcChannels.chan8;
+    s->channelData[9] = rcChannels.chan9;
+    s->channelData[10] = rcChannels.chan10;
+    s->channelData[11] = rcChannels.chan11;
+    s->channelData[12] = rcChannels.chan12;
+    s->channelData[13] = rcChannels.chan13;
+    s->channelData[14] = rcChannels.chan14;
+    s->channelData[15] = rcChannels.chan15;
 
     for (uint8_t i = 0; i < channelCount; i++) {
-        channels[i] = CRSF_INPUT_RC_CHANNEL_SCALE * (float)crsfInputChannelData[i] + CRSF_INPUT_RC_CHANNEL_OFFSET;
+        channels[i] = CRSF_INPUT_RC_CHANNEL_SCALE * (float)s->channelData[i] + CRSF_INPUT_RC_CHANNEL_OFFSET;
     }
 
     return channelCount;
 }
 
-bool rxInputBackupCrsfInit(rxInputBackupOps_t *ops)
+bool rxInputBackupCrsfInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index)
 {
-    memset(&crsfInputFrameData, 0, sizeof(crsfInputFrameData));
-    crsfInputResetParser();
+    crsfInputState_t *s = &crsfInputStates[index];
+    memset(&s->frameData, 0, sizeof(s->frameData));
+    crsfInputResetParser(s);
 
     // rx/crsf.c's own driver doesn't expose inverted/half-duplex as
     // configurable at all (CRSF_PORT_OPTIONS has neither, and CRSF_PORT_MODE
@@ -302,9 +308,10 @@ bool rxInputBackupCrsfInit(rxInputBackupOps_t *ops)
     // encode as a portOptions bit to copy.
     ops->baudRate = CRSF_INPUT_BAUDRATE;
     ops->portOptions = CRSF_INPUT_PORT_OPTIONS
-        | (rxInputBackupConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
-        | (rxInputBackupConfig()->halfDuplex ? SERIAL_BIDIR : SERIAL_UNIDIR);
+        | (config->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
+        | (config->halfDuplex ? SERIAL_BIDIR : SERIAL_UNIDIR);
     ops->isrFn = crsfInputDataReceive;
+    ops->state = s;
     ops->channelCount = 16;
     ops->update = crsfInputUpdate;
 

@@ -74,18 +74,22 @@ typedef struct exbusInputFrameData_s {
     volatile uint8_t position;
 } exbusInputFrameData_t;
 
-static exbusInputFrameData_t exbusInputFrameData;
-static uint8_t exbusInputPendingFrame[EXBUS_INPUT_FRAME_SIZE];
-static volatile bool exbusInputPendingFrameReady = false;
+typedef struct exbusInputState_s {
+    exbusInputFrameData_t frameData;
+    uint8_t pendingFrame[EXBUS_INPUT_FRAME_SIZE];
+    volatile bool pendingFrameReady;
+    uint16_t channelData[EXBUS_INPUT_CHANNEL_COUNT];
+} exbusInputState_t;
 
-static uint16_t exbusInputChannelData[EXBUS_INPUT_CHANNEL_COUNT];
+// One parser per backup port, so two ports can both run EX Bus.
+static exbusInputState_t exbusInputStates[RX_INPUT_BACKUP_COUNT];
 
-static void exbusInputResetParser(void)
+static void exbusInputResetParser(exbusInputState_t *s)
 {
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        exbusInputFrameData.lastByteAtUs = 0;
-        exbusInputFrameData.position = 0;
-        exbusInputPendingFrameReady = false;
+        s->frameData.lastByteAtUs = 0;
+        s->frameData.position = 0;
+        s->pendingFrameReady = false;
     }
 }
 
@@ -108,19 +112,19 @@ static uint16_t exbusInputCalcCRC16(const uint8_t *frame, uint8_t length)
 
 static FAST_CODE void exbusInputDataReceive(uint16_t c, void *data)
 {
-    UNUSED(data);
+    exbusInputState_t *s = data;
 
     const timeUs_t nowUs = microsISR();
-    const timeDelta_t byteGap = exbusInputFrameData.lastByteAtUs == 0
+    const timeDelta_t byteGap = s->frameData.lastByteAtUs == 0
         ? (timeDelta_t)EXBUS_INPUT_MIN_FRAME_GAP_US + 1
-        : cmpTimeUs(nowUs, exbusInputFrameData.lastByteAtUs);
-    exbusInputFrameData.lastByteAtUs = nowUs;
+        : cmpTimeUs(nowUs, s->frameData.lastByteAtUs);
+    s->frameData.lastByteAtUs = nowUs;
 
     if (byteGap > EXBUS_INPUT_MIN_FRAME_GAP_US) {
-        exbusInputFrameData.position = 0;
+        s->frameData.position = 0;
     }
 
-    if (exbusInputFrameData.position == 0) {
+    if (s->frameData.position == 0) {
         // Only the channel-data frame start byte is ever recognized - the
         // other EX Bus frame start (0x3D, a request addressed to the FC) is
         // never something this receive-only link needs to answer, so it's
@@ -131,51 +135,50 @@ static FAST_CODE void exbusInputDataReceive(uint16_t c, void *data)
         }
     }
 
-    if (exbusInputFrameData.position >= EXBUS_INPUT_FRAME_SIZE) {
-        exbusInputFrameData.position = 0;
+    if (s->frameData.position >= EXBUS_INPUT_FRAME_SIZE) {
+        s->frameData.position = 0;
         return;
     }
 
-    exbusInputFrameData.bytes[exbusInputFrameData.position++] = (uint8_t)c;
+    s->frameData.bytes[s->frameData.position++] = (uint8_t)c;
 
-    if (exbusInputFrameData.position == EXBUS_INPUT_HEADER_LEN) {
+    if (s->frameData.position == EXBUS_INPUT_HEADER_LEN) {
         // Reject early rather than continuing to fill a buffer sized only
-        // for the one frame shape this provider supports - matches this
-        // framework's established pattern (e.g. rx_input_backup_fbus.c's
-        // 16-channel-only scope) of not decoding frame-length variants a
-        // real receiver could send but this backup link doesn't handle.
-        if (exbusInputFrameData.bytes[EXBUS_INPUT_HEADER_MSG_LEN] != EXBUS_INPUT_FRAME_SIZE
-            || exbusInputFrameData.bytes[EXBUS_INPUT_HEADER_DATA_ID] != EXBUS_INPUT_DATA_ID_CHANNEL
-            || (exbusInputFrameData.bytes[EXBUS_INPUT_HEADER_REQ] != EXBUS_INPUT_REQ_WITH_TELEMETRY
-                && exbusInputFrameData.bytes[EXBUS_INPUT_HEADER_REQ] != EXBUS_INPUT_REQ_NO_TELEMETRY)) {
-            exbusInputFrameData.position = 0;
+        // for the one frame shape this provider supports (the fixed
+        // 16-channel channel-data frame).
+        if (s->frameData.bytes[EXBUS_INPUT_HEADER_MSG_LEN] != EXBUS_INPUT_FRAME_SIZE
+            || s->frameData.bytes[EXBUS_INPUT_HEADER_DATA_ID] != EXBUS_INPUT_DATA_ID_CHANNEL
+            || (s->frameData.bytes[EXBUS_INPUT_HEADER_REQ] != EXBUS_INPUT_REQ_WITH_TELEMETRY
+                && s->frameData.bytes[EXBUS_INPUT_HEADER_REQ] != EXBUS_INPUT_REQ_NO_TELEMETRY)) {
+            s->frameData.position = 0;
             return;
         }
     }
 
-    if (exbusInputFrameData.position == EXBUS_INPUT_FRAME_SIZE) {
+    if (s->frameData.position == EXBUS_INPUT_FRAME_SIZE) {
         // Snapshot into a separate holding buffer right here, rather than
         // leaving the completed frame sitting in exbusInputFrameData for the
         // consumer to read later - see the SBUS/FBUS/FPort providers' own
         // identical comment for why (torn-frame race with the next frame's
         // first byte landing back at position 0).
-        memcpy(exbusInputPendingFrame, exbusInputFrameData.bytes, EXBUS_INPUT_FRAME_SIZE);
-        exbusInputPendingFrameReady = true;
-        exbusInputFrameData.position = 0;
+        memcpy(s->pendingFrame, s->frameData.bytes, EXBUS_INPUT_FRAME_SIZE);
+        s->pendingFrameReady = true;
+        s->frameData.position = 0;
     }
 }
 
 // Called from the RX task (rx/rx.c, via rx_input_backup.c's poll loop), not an
 // ISR - safe to do the heavier decode/convert work here.
-static uint8_t exbusInputUpdate(float *channels, uint8_t channelCount)
+static uint8_t exbusInputUpdate(void *state, float *channels, uint8_t channelCount)
 {
+    exbusInputState_t *s = state;
     uint8_t frame[EXBUS_INPUT_FRAME_SIZE];
     bool haveFrame = false;
 
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        if (exbusInputPendingFrameReady) {
-            memcpy(frame, exbusInputPendingFrame, EXBUS_INPUT_FRAME_SIZE);
-            exbusInputPendingFrameReady = false;
+        if (s->pendingFrameReady) {
+            memcpy(frame, s->pendingFrame, EXBUS_INPUT_FRAME_SIZE);
+            s->pendingFrameReady = false;
             haveFrame = true;
         }
     }
@@ -197,20 +200,21 @@ static uint8_t exbusInputUpdate(float *channels, uint8_t channelCount)
     for (uint8_t i = 0; i < EXBUS_INPUT_CHANNEL_COUNT; i++) {
         const uint8_t frameAddr = EXBUS_INPUT_HEADER_LEN + i * 2;
         const uint16_t value = frame[frameAddr] | ((uint16_t)frame[frameAddr + 1] << 8);
-        exbusInputChannelData[i] = value >> 3;
+        s->channelData[i] = value >> 3;
     }
 
     for (uint8_t i = 0; i < channelCount; i++) {
-        channels[i] = (float)exbusInputChannelData[i];
+        channels[i] = (float)s->channelData[i];
     }
 
     return channelCount;
 }
 
-bool rxInputBackupExbusInit(rxInputBackupOps_t *ops)
+bool rxInputBackupExbusInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index)
 {
-    memset(&exbusInputFrameData, 0, sizeof(exbusInputFrameData));
-    exbusInputResetParser();
+    exbusInputState_t *s = &exbusInputStates[index];
+    memset(&s->frameData, 0, sizeof(s->frameData));
+    exbusInputResetParser(s);
 
     // Matches rx/jetiexbus.c's own direction: EX Bus's signal is natively
     // non-inverted (like FBUS/FPort/FPort2). Half-duplex is left
@@ -222,9 +226,10 @@ bool rxInputBackupExbusInit(rxInputBackupOps_t *ops)
     // disconnected) is equally valid here.
     ops->baudRate = EXBUS_INPUT_BAUDRATE;
     ops->portOptions = EXBUS_INPUT_PORT_OPTIONS
-        | (rxInputBackupConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
-        | (rxInputBackupConfig()->halfDuplex ? SERIAL_BIDIR : SERIAL_UNIDIR);
+        | (config->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
+        | (config->halfDuplex ? SERIAL_BIDIR : SERIAL_UNIDIR);
     ops->isrFn = exbusInputDataReceive;
+    ops->state = s;
     ops->channelCount = EXBUS_INPUT_CHANNEL_COUNT;
     ops->update = exbusInputUpdate;
 
