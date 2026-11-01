@@ -1207,7 +1207,7 @@ static void INIT_CODE crsfInitSensors(const crsfSensorDefinition_t *definitions,
                             sensor->slow_interval = sensor->fast_interval;
                     }
                     if (!native && sensor->slow_interval > 1000)
-                        sensor->slow_interval += rand() % 100;
+                        sensor->slow_interval += randomU32() % 100;
                     telemetryScheduleAdd(sensor);
                 }
             }

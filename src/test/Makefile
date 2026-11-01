@@ -517,6 +517,7 @@ telemetry_sensors_unittest_SRC := \
         $(USER_DIR)/telemetry/crsf.c \
         $(USER_DIR)/common/streambuf.c \
         $(USER_DIR)/common/crc.c \
+        $(USER_DIR)/common/maths.c \
         $(USER_DIR)/telemetry/telemetry.c \
         $(USER_DIR)/rx/frsky_crc.c
 
