@@ -895,10 +895,16 @@ void detectAndApplySignalLossBehaviour(void)
     // aux/mode switches) from it, exactly as a physical backup satellite receiver would,
     // and tell failsafe this is a valid link so its staged hold/land behaviour does not
     // engage on top of it. A BOXFAILSAFE aux switch still invalidates channels here too,
-    // same as the main-RX path below. If the backup link is also down (or not
+    // same as the main-RX path below. If every backup link is also down (or none is
     // configured), rxInputBackupIsActive() is false and this falls through unmodified to
     // the existing staged failsafe logic below - that stays the single backstop for
-    // "both links down".
+    // "all links down".
+    //
+    // With two backup ports the first active one in priority order (backup 1, then
+    // backup 2) is used, and control moves between them on the same ~50ms staleness
+    // rule, returning to the higher priority port as soon as it has fresh frames
+    // again. The port is chosen once per cycle so every channel below comes from
+    // the same receiver, even if backup 1 goes stale part-way through the loop.
     //
     // Bypasses the *staged* failsafe machinery (hold/land/cut) entirely, but is bounded
     // by rxSignalReceived's own existing detection window, not per-missed-frame: per
@@ -910,7 +916,8 @@ void detectAndApplySignalLossBehaviour(void)
     // protocol's normal frame spacing. Still far faster than doing nothing here at all -
     // rxFlightChannelsValid's own stage-1 hold otherwise runs for MAX_INVALID_PULSE_TIME_MS
     // (300ms) before a channel is even declared failed.
-    if (!rxSignalReceived && rxInputBackupIsActive()) {
+    const int8_t backupIndex = !rxSignalReceived ? rxInputBackupGetActiveIndex() : -1;
+    if (backupIndex >= 0) {
         for (int channel = 0; channel < activeRcChannelCount; channel++) {
             // Same logical-to-raw rcmap lookup readRxChannels() applies to the main RX -
             // without it, a non-default channel map would land backup channels on the
@@ -918,8 +925,8 @@ void detectAndApplySignalLossBehaviour(void)
             const uint8_t rawChannel = channel < RX_MAPPABLE_CHANNEL_COUNT ? rxConfig()->rcmap[channel] : channel;
             // Channels the backup's latest frame doesn't carry (e.g. CH19-24 from
             // a 16-channel frame) come back as stick center - see
-            // rxInputBackupGetChannel().
-            rcInput[channel] = constrainf(rxInputBackupGetChannel(rawChannel), PWM_PULSE_MIN, PWM_PULSE_MAX);
+            // rxInputBackupPortGetChannel().
+            rcInput[channel] = constrainf(rxInputBackupPortGetChannel(backupIndex, rawChannel), PWM_PULSE_MIN, PWM_PULSE_MAX);
         }
 
         rxFlightChannelsValid = !failsafeAuxSwitch;

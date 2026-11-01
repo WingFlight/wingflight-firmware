@@ -34,4 +34,4 @@
 // check passes, keeping frame sync intact across frame types this backup
 // link has no use for.
 
-bool rxInputBackupCrsfInit(rxInputBackupOps_t *ops);
+bool rxInputBackupCrsfInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index);

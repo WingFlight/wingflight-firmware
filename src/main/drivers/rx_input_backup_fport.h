@@ -25,4 +25,4 @@
 // Genuinely different framing from FBUS/FPort2 (see rx_input_backup_fbus.h) -
 // FPort uses HDLC-style byte-stuffing (0x7E/0x7D), not simple length-prefixing.
 
-bool rxInputBackupFportInit(rxInputBackupOps_t *ops);
+bool rxInputBackupFportInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index);

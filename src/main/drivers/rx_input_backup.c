@@ -56,27 +56,11 @@
 #include "drivers/rx_input_backup_crsf.h"
 #endif
 
-// How long without a decoded frame before the backup link is considered down.
+// How long without a decoded frame before a backup link is considered down.
 // ~3 missed frames at a typical ~6-14ms/frame rate - same margin the original
 // SBUS-only driver used, kept here since it's a property of "how stale is too
 // stale to trust", not of any one protocol's framing.
 #define RX_INPUT_BACKUP_STALE_MS 50
-
-static serialPort_t *rxInputBackupPort = NULL;
-static rxInputBackupOps_t rxInputBackupOps;
-
-static float rxInputBackupChannel[RX_INPUT_BACKUP_MAX_CHANNEL];
-// Channels carried by the latest valid frame, 0 before the first one
-static uint8_t rxInputBackupFrameChannelCount = 0;
-static timeMs_t rxInputBackupLastValidFrameMs = 0;
-
-// False until the first genuinely valid frame has been decoded. Without this,
-// rxInputBackupIsActive() would read as "active" for up to RX_INPUT_BACKUP_STALE_MS
-// right after boot/config-change purely because rxInputBackupLastValidFrameMs's
-// zero-init happens to be within that window of millis()'s own startup value -
-// reporting the backup available (and, if the main link were already down at that
-// moment, feeding zeroed channels) before any real frame has ever been seen.
-static bool rxInputBackupHasValidFrame = false;
 
 // Speed search for providers with a second speed (ops.altBaudRate), same
 // rules as rx/fbus.c: switch until valid frames arrive, then keep the speed.
@@ -84,53 +68,107 @@ static bool rxInputBackupHasValidFrame = false;
 #define RX_INPUT_BACKUP_BAUD_LOCK_FRAMES 3
 #define RX_INPUT_BACKUP_BAUD_RELOCK_MS 1000
 
-static uint32_t rxInputBackupBaudRate;
-static bool rxInputBackupBaudLocked;
-static uint8_t rxInputBackupBaudGoodFrames;
-static timeMs_t rxInputBackupBaudLastEventMs;   // last speed switch or last valid frame
+// Everything one backup port owns. One per slot, in priority order.
+typedef struct rxInputBackupPort_s {
+    // A serial port carries this backup's function and a provider other than
+    // NONE is selected. This is what "enabled" means to the rest of the
+    // firmware: a configured port whose provider failed to initialise or whose
+    // UART failed to open stays enabled but never active, so it still blocks
+    // the first arm and the telemetry link-up bit instead of silently
+    // dropping out of the checks.
+    bool configured;
+    serialPort_t *port;                 // NULL while not opened
+    rxInputBackupOps_t ops;
 
-static void rxInputBackupBaudService(bool validFrame)
+    float channel[RX_INPUT_BACKUP_MAX_CHANNEL];
+    uint8_t frameChannelCount;          // channels in the latest valid frame, 0 before the first
+    timeMs_t lastValidFrameMs;
+    // False until the first genuinely valid frame has been decoded. Without this,
+    // IsActive would read as "active" for up to RX_INPUT_BACKUP_STALE_MS right
+    // after boot/config-change purely because lastValidFrameMs's zero-init
+    // happens to be within that window of millis()'s own startup value -
+    // reporting the backup available (and, if the main link were already down at
+    // that moment, feeding zeroed channels) before any real frame has been seen.
+    bool hasValidFrame;
+
+    uint32_t baudRate;
+    bool baudLocked;
+    uint8_t baudGoodFrames;
+    timeMs_t baudLastEventMs;           // last speed switch or last valid frame
+} rxInputBackupPort_t;
+
+static rxInputBackupPort_t rxInputBackupPorts[RX_INPUT_BACKUP_COUNT];
+
+static const serialPortFunction_e rxInputBackupFunctions[RX_INPUT_BACKUP_COUNT] = {
+    FUNCTION_RX_INPUT_BACKUP,
+    FUNCTION_RX_INPUT_BACKUP2,
+};
+
+serialPortFunction_e rxInputBackupPortFunction(uint8_t index)
+{
+    return index < RX_INPUT_BACKUP_COUNT ? rxInputBackupFunctions[index] : FUNCTION_NONE;
+}
+
+static void rxInputBackupBaudService(rxInputBackupPort_t *bp, bool validFrame)
 {
     const timeMs_t now = millis();
 
-    if (!rxInputBackupOps.altBaudRate || !rxInputBackupPort->vTable->serialSetBaudRate) {
+    if (!bp->ops.altBaudRate || !bp->port->vTable->serialSetBaudRate) {
         return;
     }
 
     if (validFrame) {
-        rxInputBackupBaudLastEventMs = now;
-        if (!rxInputBackupBaudLocked && ++rxInputBackupBaudGoodFrames >= RX_INPUT_BACKUP_BAUD_LOCK_FRAMES) {
-            rxInputBackupBaudLocked = true;
+        bp->baudLastEventMs = now;
+        if (!bp->baudLocked && ++bp->baudGoodFrames >= RX_INPUT_BACKUP_BAUD_LOCK_FRAMES) {
+            bp->baudLocked = true;
         }
         return;
     }
 
-    const int32_t idleMs = cmp32(now, rxInputBackupBaudLastEventMs);
-    if (rxInputBackupBaudLocked) {
+    const int32_t idleMs = cmp32(now, bp->baudLastEventMs);
+    if (bp->baudLocked) {
         // A lost link while armed is the radio, not a changed receiver setting
         if (ARMING_FLAG(ARMED) || idleMs < RX_INPUT_BACKUP_BAUD_RELOCK_MS) {
             return;
         }
-        rxInputBackupBaudLocked = false;
+        bp->baudLocked = false;
     } else if (idleMs < RX_INPUT_BACKUP_BAUD_HUNT_WINDOW_MS) {
         return;
     }
 
-    rxInputBackupBaudRate = (rxInputBackupBaudRate == rxInputBackupOps.baudRate)
-        ? rxInputBackupOps.altBaudRate : rxInputBackupOps.baudRate;
-    serialSetBaudRate(rxInputBackupPort, rxInputBackupBaudRate);
-    rxInputBackupBaudGoodFrames = 0;
-    rxInputBackupBaudLastEventMs = now;
+    bp->baudRate = (bp->baudRate == bp->ops.baudRate) ? bp->ops.altBaudRate : bp->ops.baudRate;
+    serialSetBaudRate(bp->port, bp->baudRate);
+    bp->baudGoodFrames = 0;
+    bp->baudLastEventMs = now;
 }
 
-bool rxInputBackupIsEnabled(void)
+static bool portIsActive(const rxInputBackupPort_t *bp)
 {
-    return rxInputBackupPort != NULL;
+    if (!bp->port || !bp->hasValidFrame) {
+        return false;
+    }
+
+    return (timeMs_t)(millis() - bp->lastValidFrameMs) < RX_INPUT_BACKUP_STALE_MS;
+}
+
+static uint8_t portChannelCount(const rxInputBackupPort_t *bp)
+{
+    return bp->frameChannelCount ? bp->frameChannelCount : bp->ops.channelCount;
+}
+
+static float portChannel(const rxInputBackupPort_t *bp, uint8_t channel)
+{
+    // Channels the latest frame doesn't carry (e.g. CH19-24 from a 16-channel
+    // F.Bus frame) read as stick center, so a takeover centers them.
+    if (channel >= portChannelCount(bp)) {
+        return rcControlsConfig()->rc_center;
+    }
+    return bp->channel[channel];
 }
 
 // Decodes any newly-completed frame (via the selected provider's update()) and
 // refreshes freshness state. Must be called every cycle regardless of whether the
-// main RX link is up or the backup is currently "needed" - it used to be called
+// main RX link is up or a backup is currently "needed" - it used to be called
 // only as a side effect of rxInputBackupIsActive(), which rx.c only evaluates once
 // the main link is already down (short-circuiting `!rxSignalReceived && ...`).
 // That starved this of any real-time decoding whenever the main link was healthy,
@@ -139,97 +177,177 @@ bool rxInputBackupIsEnabled(void)
 // the instant of a real failover could already be stale.
 void rxInputBackupPoll(void)
 {
-    if (!rxInputBackupIsEnabled()) {
-        return;
-    }
+    for (int i = 0; i < RX_INPUT_BACKUP_COUNT; i++) {
+        rxInputBackupPort_t *bp = &rxInputBackupPorts[i];
+        if (!bp->port) {
+            continue;
+        }
 
-    const uint8_t frameChannels = rxInputBackupOps.update(rxInputBackupChannel, rxInputBackupOps.channelCount);
-    if (frameChannels) {
-        rxInputBackupFrameChannelCount = frameChannels;
-        rxInputBackupHasValidFrame = true;
-        rxInputBackupLastValidFrameMs = millis();
-    }
+        const uint8_t frameChannels = bp->ops.update(bp->ops.state, bp->channel, bp->ops.channelCount);
+        if (frameChannels) {
+            bp->frameChannelCount = frameChannels;
+            bp->hasValidFrame = true;
+            bp->lastValidFrameMs = millis();
+        }
 
-    rxInputBackupBaudService(frameChannels != 0);
+        rxInputBackupBaudService(bp, frameChannels != 0);
 
-    if (rxInputBackupHasValidFrame && (timeMs_t)(millis() - rxInputBackupLastValidFrameMs) >= RX_INPUT_BACKUP_STALE_MS) {
-        // No explicit parser reset here (unlike the pre-refactor SBUS-only driver) -
-        // each provider's own frame-timing logic already self-heals from a stale gap
-        // the moment bytes resume (see e.g. rx_input_backup_sbus.c's frameTime check),
-        // so an external reset call was never load-bearing for correctness, only an
-        // (unnecessary) hygiene step this generic layer would otherwise have to poke
-        // back into provider-private state to perform.
-        rxInputBackupHasValidFrame = false;
+        if (bp->hasValidFrame && (timeMs_t)(millis() - bp->lastValidFrameMs) >= RX_INPUT_BACKUP_STALE_MS) {
+            // No explicit parser reset here - each provider's own frame-timing
+            // logic already self-heals from a stale gap the moment bytes resume
+            // (see e.g. rx_input_backup_sbus.c's frameTime check).
+            bp->hasValidFrame = false;
+        }
     }
+}
+
+bool rxInputBackupPortIsEnabled(uint8_t index)
+{
+    return index < RX_INPUT_BACKUP_COUNT && rxInputBackupPorts[index].configured;
+}
+
+bool rxInputBackupPortIsActive(uint8_t index)
+{
+    return index < RX_INPUT_BACKUP_COUNT && portIsActive(&rxInputBackupPorts[index]);
+}
+
+uint8_t rxInputBackupPortGetChannelCount(uint8_t index)
+{
+    return index < RX_INPUT_BACKUP_COUNT ? portChannelCount(&rxInputBackupPorts[index]) : 0;
+}
+
+rxInputBackupProvider_e rxInputBackupPortGetProvider(uint8_t index)
+{
+    if (!rxInputBackupPortIsEnabled(index)) {
+        return RX_INPUT_BACKUP_NONE;
+    }
+    return rxInputBackupConfig()->port[index].provider;
+}
+
+float rxInputBackupPortGetChannel(uint8_t index, uint8_t channel)
+{
+    if (index >= RX_INPUT_BACKUP_COUNT) {
+        return rcControlsConfig()->rc_center;
+    }
+    return portChannel(&rxInputBackupPorts[index], channel);
+}
+
+bool rxInputBackupIsEnabled(void)
+{
+    for (int i = 0; i < RX_INPUT_BACKUP_COUNT; i++) {
+        if (rxInputBackupPorts[i].configured) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int8_t rxInputBackupGetActiveIndex(void)
+{
+    for (int i = 0; i < RX_INPUT_BACKUP_COUNT; i++) {
+        if (portIsActive(&rxInputBackupPorts[i])) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 bool rxInputBackupIsActive(void)
 {
-    if (!rxInputBackupIsEnabled() || !rxInputBackupHasValidFrame) {
-        return false;
-    }
+    return rxInputBackupGetActiveIndex() >= 0;
+}
 
-    return (timeMs_t)(millis() - rxInputBackupLastValidFrameMs) < RX_INPUT_BACKUP_STALE_MS;
+bool rxInputBackupAllLinked(void)
+{
+    bool anyEnabled = false;
+    for (int i = 0; i < RX_INPUT_BACKUP_COUNT; i++) {
+        const rxInputBackupPort_t *bp = &rxInputBackupPorts[i];
+        if (!bp->configured) {
+            continue;
+        }
+        anyEnabled = true;
+        // A configured port that never opened has no port and is never active
+        if (!portIsActive(bp)) {
+            return false;
+        }
+    }
+    return anyEnabled;
+}
+
+// The port a takeover reads: the active one, else the first enabled one (so
+// diagnostics still show something sensible while no backup link is up).
+static const rxInputBackupPort_t *sourcePort(void)
+{
+    const int8_t active = rxInputBackupGetActiveIndex();
+    if (active >= 0) {
+        return &rxInputBackupPorts[active];
+    }
+    for (int i = 0; i < RX_INPUT_BACKUP_COUNT; i++) {
+        if (rxInputBackupPorts[i].configured) {
+            return &rxInputBackupPorts[i];
+        }
+    }
+    return &rxInputBackupPorts[0];
 }
 
 uint8_t rxInputBackupGetChannelCount(void)
 {
-    return rxInputBackupFrameChannelCount ? rxInputBackupFrameChannelCount : rxInputBackupOps.channelCount;
-}
-
-rxInputBackupProvider_e rxInputBackupGetProvider(void)
-{
-    return rxInputBackupConfig()->provider;
+    return portChannelCount(sourcePort());
 }
 
 float rxInputBackupGetChannel(uint8_t channel)
 {
-    // Channels the latest frame doesn't carry (e.g. CH19-24 from a 16-channel
-    // F.Bus frame) read as stick center, so a takeover centers them.
-    if (channel >= rxInputBackupGetChannelCount()) {
-        return rcControlsConfig()->rc_center;
-    }
-    return rxInputBackupChannel[channel];
+    return portChannel(sourcePort(), channel);
 }
 
-void rxInputBackupInit(void)
+static void rxInputBackupPortInit(uint8_t index)
 {
-    const serialPortConfig_t *portConfig = findSerialPortConfig(FUNCTION_RX_INPUT_BACKUP);
+    rxInputBackupPort_t *bp = &rxInputBackupPorts[index];
+    const rxInputBackupPortConfig_t *config = &rxInputBackupConfig()->port[index];
+
+    bp->port = NULL;
+    bp->configured = false;
+    bp->ops = (rxInputBackupOps_t){ 0 };
+    bp->frameChannelCount = 0;
+    bp->hasValidFrame = false;
+
+    const serialPortConfig_t *portConfig = findSerialPortConfig(rxInputBackupFunctions[index]);
     if (!portConfig) {
-        rxInputBackupPort = NULL;
         return;
     }
 
-    rxInputBackupOps = (rxInputBackupOps_t){ 0 };
+    // Provider NONE means "port reserved, nothing chosen yet" and takes no
+    // part in the arming check - see pg/rx_input_backup.h.
+    bp->configured = config->provider != RX_INPUT_BACKUP_NONE;
     bool providerReady = false;
 
-    switch (rxInputBackupConfig()->provider) {
+    switch (config->provider) {
 #ifdef USE_RX_INPUT_BACKUP_SBUS
     case RX_INPUT_BACKUP_SBUS:
-        providerReady = rxInputBackupSbusInit(&rxInputBackupOps);
+        providerReady = rxInputBackupSbusInit(&bp->ops, config, index);
         break;
 #endif
 #ifdef USE_RX_INPUT_BACKUP_FBUS
     case RX_INPUT_BACKUP_FBUS:
-        providerReady = rxInputBackupFbusInit(&rxInputBackupOps);
+        providerReady = rxInputBackupFbusInit(&bp->ops, config, index);
         break;
     case RX_INPUT_BACKUP_FPORT2:
-        providerReady = rxInputBackupFport2Init(&rxInputBackupOps);
+        providerReady = rxInputBackupFport2Init(&bp->ops, config, index);
         break;
 #endif
 #ifdef USE_RX_INPUT_BACKUP_FPORT
     case RX_INPUT_BACKUP_FPORT:
-        providerReady = rxInputBackupFportInit(&rxInputBackupOps);
+        providerReady = rxInputBackupFportInit(&bp->ops, config, index);
         break;
 #endif
 #ifdef USE_RX_INPUT_BACKUP_EXBUS
     case RX_INPUT_BACKUP_EXBUS:
-        providerReady = rxInputBackupExbusInit(&rxInputBackupOps);
+        providerReady = rxInputBackupExbusInit(&bp->ops, config, index);
         break;
 #endif
 #ifdef USE_RX_INPUT_BACKUP_CRSF
     case RX_INPUT_BACKUP_CRSF:
-        providerReady = rxInputBackupCrsfInit(&rxInputBackupOps);
+        providerReady = rxInputBackupCrsfInit(&bp->ops, config, index);
         break;
 #endif
     case RX_INPUT_BACKUP_NONE:
@@ -238,34 +356,42 @@ void rxInputBackupInit(void)
     }
 
     if (!providerReady) {
-        rxInputBackupPort = NULL;
         return;
     }
 
-    rxInputBackupLastValidFrameMs = 0;
-    rxInputBackupHasValidFrame = false;
-    rxInputBackupFrameChannelCount = 0;
+    bp->lastValidFrameMs = 0;
+    bp->hasValidFrame = false;
+    bp->frameChannelCount = 0;
 
-    rxInputBackupBaudRate = rxInputBackupOps.baudRate;
-    rxInputBackupBaudLocked = false;
-    rxInputBackupBaudGoodFrames = 0;
-    rxInputBackupBaudLastEventMs = millis();
+    bp->baudRate = bp->ops.baudRate;
+    bp->baudLocked = false;
+    bp->baudGoodFrames = 0;
+    bp->baudLastEventMs = millis();
 
     // Only pinSwap is applied generically here - inverted/halfDuplex are
     // protocol-specific (see rxInputBackupOps_t's own comment) and already
-    // baked into rxInputBackupOps.portOptions by the provider's Init function.
-    rxInputBackupPort = openSerialPort(portConfig->identifier,
-        FUNCTION_RX_INPUT_BACKUP,
-        rxInputBackupOps.isrFn,
-        NULL,
-        rxInputBackupOps.baudRate,
+    // baked into ops.portOptions by the provider's Init function. The
+    // provider's state pointer rides along as the ISR's data argument so one
+    // ISR can serve every port running that provider.
+    bp->port = openSerialPort(portConfig->identifier,
+        rxInputBackupFunctions[index],
+        bp->ops.isrFn,
+        bp->ops.state,
+        bp->ops.baudRate,
         MODE_RX,
-        rxInputBackupOps.portOptions |
-            (rxInputBackupConfig()->pinSwap ? SERIAL_PINSWAP : SERIAL_NOSWAP));
+        bp->ops.portOptions |
+            (config->pinSwap ? SERIAL_PINSWAP : SERIAL_NOSWAP));
+}
+
+void rxInputBackupInit(void)
+{
+    for (int i = 0; i < RX_INPUT_BACKUP_COUNT; i++) {
+        rxInputBackupPortInit(i);
+    }
 }
 
 // Backup-port wiring auto-detect - mirrors rx/rx.c's rxSerialTrial* mechanism
-// (see https://doc.wingflight.org/contributing/tech/rx-wiring-autodetect/) applied to this port instead:
+// (see https://doc.wingflight.org/contributing/tech/rx-wiring-autodetect/) applied to one backup port instead:
 // cycle inverted/halfDuplex/pinSwap live and report which combo (if any)
 // produces a valid frame. No persistence here either - the caller (MSP)
 // only ever reads the winning combo back out of a SUCCESS status and applies
@@ -278,6 +404,7 @@ void rxInputBackupInit(void)
 
 typedef struct rxInputBackupTrialRuntime_s {
     rxInputBackupTrialState_e state;
+    uint8_t index;              // backup port under trial
     uint8_t comboIndex;
     uint8_t comboOrder[RX_INPUT_BACKUP_TRIAL_COMBO_COUNT];
     timeMs_t comboStartedAt;
@@ -290,9 +417,14 @@ typedef struct rxInputBackupTrialRuntime_s {
 
 static rxInputBackupTrialRuntime_t rxInputBackupTrial = { .state = RX_INPUT_BACKUP_TRIAL_IDLE };
 
+static rxInputBackupPortConfig_t *trialConfig(void)
+{
+    return &rxInputBackupConfigMutable()->port[rxInputBackupTrial.index];
+}
+
 static timeMs_t rxInputBackupTrialSettleMs(void)
 {
-    switch (rxInputBackupConfig()->provider) {
+    switch (trialConfig()->provider) {
     case RX_INPUT_BACKUP_EXBUS:
         return RX_INPUT_BACKUP_TRIAL_HANDSHAKE_SETTLE_MS;
     default:
@@ -301,13 +433,13 @@ static timeMs_t rxInputBackupTrialSettleMs(void)
 }
 
 // Closing the old port explicitly (rather than just calling
-// rxInputBackupInit() again) matters here: openSerialPort() refuses to
+// rxInputBackupPortInit() again) matters here: openSerialPort() refuses to
 // reopen an identifier that's still marked in-use by a previous open, so
-// calling Init() a second time without this first would leave
-// rxInputBackupPort NULL (backup silently disabled) instead of reconfigured.
+// calling Init a second time without this first would leave the port NULL
+// (backup silently disabled) instead of reconfigured.
 static void rxInputBackupTrialReinit(void)
 {
-    const serialPortConfig_t *portConfig = findSerialPortConfig(FUNCTION_RX_INPUT_BACKUP);
+    const serialPortConfig_t *portConfig = findSerialPortConfig(rxInputBackupFunctions[rxInputBackupTrial.index]);
     if (portConfig) {
         serialPortUsage_t *usage = findSerialPortUsageByIdentifier(portConfig->identifier);
         if (usage && usage->serialPort) {
@@ -315,14 +447,14 @@ static void rxInputBackupTrialReinit(void)
         }
     }
 
-    rxInputBackupInit();
+    rxInputBackupPortInit(rxInputBackupTrial.index);
 }
 
 static void rxInputBackupTrialApplyCombo(uint8_t combo)
 {
-    rxInputBackupConfigMutable()->inverted   = (combo & (1 << 0)) ? 1 : 0;
-    rxInputBackupConfigMutable()->halfDuplex = (combo & (1 << 1)) ? 1 : 0;
-    rxInputBackupConfigMutable()->pinSwap    = (combo & (1 << 2)) ? 1 : 0;
+    trialConfig()->inverted   = (combo & (1 << 0)) ? 1 : 0;
+    trialConfig()->halfDuplex = (combo & (1 << 1)) ? 1 : 0;
+    trialConfig()->pinSwap    = (combo & (1 << 2)) ? 1 : 0;
 
     rxInputBackupTrialReinit();
 
@@ -332,32 +464,34 @@ static void rxInputBackupTrialApplyCombo(uint8_t combo)
 
 static void rxInputBackupTrialRestore(void)
 {
-    rxInputBackupConfigMutable()->inverted   = rxInputBackupTrial.savedInverted;
-    rxInputBackupConfigMutable()->halfDuplex = rxInputBackupTrial.savedHalfDuplex;
-    rxInputBackupConfigMutable()->pinSwap    = rxInputBackupTrial.savedPinSwap;
+    trialConfig()->inverted   = rxInputBackupTrial.savedInverted;
+    trialConfig()->halfDuplex = rxInputBackupTrial.savedHalfDuplex;
+    trialConfig()->pinSwap    = rxInputBackupTrial.savedPinSwap;
 
     rxInputBackupTrialReinit();
 }
 
-bool rxInputBackupTrialStart(void)
+bool rxInputBackupTrialStart(uint8_t index)
 {
     if (rxInputBackupTrial.state == RX_INPUT_BACKUP_TRIAL_RUNNING) {
         return false;
     }
 
-    if (ARMING_FLAG(ARMED)) {
+    if (ARMING_FLAG(ARMED) || index >= RX_INPUT_BACKUP_COUNT) {
         rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_REJECTED;
         return false;
     }
 
-    if (rxInputBackupConfig()->provider == RX_INPUT_BACKUP_NONE || !findSerialPortConfig(FUNCTION_RX_INPUT_BACKUP)) {
+    rxInputBackupTrial.index = index;
+
+    if (trialConfig()->provider == RX_INPUT_BACKUP_NONE || !findSerialPortConfig(rxInputBackupFunctions[index])) {
         rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_REJECTED;
         return false;
     }
 
-    rxInputBackupTrial.savedInverted   = rxInputBackupConfig()->inverted;
-    rxInputBackupTrial.savedHalfDuplex = rxInputBackupConfig()->halfDuplex;
-    rxInputBackupTrial.savedPinSwap    = rxInputBackupConfig()->pinSwap;
+    rxInputBackupTrial.savedInverted   = trialConfig()->inverted;
+    rxInputBackupTrial.savedHalfDuplex = trialConfig()->halfDuplex;
+    rxInputBackupTrial.savedPinSwap    = trialConfig()->pinSwap;
 
     const uint8_t current = (rxInputBackupTrial.savedInverted ? (1 << 0) : 0)
         | (rxInputBackupTrial.savedHalfDuplex ? (1 << 1) : 0)
@@ -385,7 +519,10 @@ void rxInputBackupTrialStop(void)
         return;
     }
 
-    rxInputBackupTrialRestore();
+    // REJECTED never touched the config or the port - nothing to restore.
+    if (rxInputBackupTrial.state != RX_INPUT_BACKUP_TRIAL_REJECTED) {
+        rxInputBackupTrialRestore();
+    }
     rxInputBackupTrial.state = RX_INPUT_BACKUP_TRIAL_IDLE;
 }
 
@@ -403,7 +540,7 @@ void rxInputBackupTrialTick(void)
         return;
     }
 
-    if (rxInputBackupIsActive()) {
+    if (rxInputBackupPortIsActive(rxInputBackupTrial.index)) {
         if (rxInputBackupTrial.signalSince == 0) {
             rxInputBackupTrial.signalSince = now;
         } else if (cmp32(now, rxInputBackupTrial.signalSince) >= RX_INPUT_BACKUP_TRIAL_DEBOUNCE_MS) {
@@ -431,14 +568,16 @@ void rxInputBackupTrialTick(void)
 rxInputBackupTrialStatus_t rxInputBackupTrialGetStatus(void)
 {
     const int32_t elapsedMs = cmp32(millis(), rxInputBackupTrial.comboStartedAt);
+    const rxInputBackupPortConfig_t *config = &rxInputBackupConfig()->port[rxInputBackupTrial.index];
 
     const rxInputBackupTrialStatus_t status = {
         .state = rxInputBackupTrial.state,
         .comboIndex = rxInputBackupTrial.comboIndex,
-        .inverted = rxInputBackupConfig()->inverted,
-        .halfDuplex = rxInputBackupConfig()->halfDuplex,
-        .pinSwap = rxInputBackupConfig()->pinSwap,
+        .inverted = config->inverted,
+        .halfDuplex = config->halfDuplex,
+        .pinSwap = config->pinSwap,
         .elapsedMs = (uint16_t)constrain(elapsedMs, 0, 0xFFFF),
+        .index = rxInputBackupTrial.index,
     };
 
     rxInputBackupTrial.lastPollAt = millis();

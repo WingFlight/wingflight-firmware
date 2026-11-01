@@ -26,10 +26,8 @@
 // rx/fbus.c's own fbusRxInit(rxConfig, rxRuntimeState, isFPORT2) confirms
 // isFPORT2 only ever changes the baud rate passed to openSerialPort(), not
 // the framing/checksum/dispatch logic - so one shared parser covers both,
-// parameterized only by baud. Scoped to 16-channel frames only (the common
-// case for modern D16/ACCESS receivers in FBUS mode); FBUS's 8ch/24ch
-// frame-length variants are not decoded here (see rx_input_backup_fbus.c's
-// top-of-file comment for why, and how to add them later).
+// parameterized only by baud. Decodes the 8-, 16- and 24-channel frame
+// lengths, like rx/fbus.c.
 
-bool rxInputBackupFbusInit(rxInputBackupOps_t *ops);
-bool rxInputBackupFport2Init(rxInputBackupOps_t *ops);
+bool rxInputBackupFbusInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index);
+bool rxInputBackupFport2Init(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index);

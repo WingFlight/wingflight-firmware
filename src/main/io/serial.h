@@ -56,7 +56,8 @@ typedef enum {
     FUNCTION_SPORT_MASTER        = (1 << 20), // 1048576
     FUNCTION_SRXL2_ESC           = (1 << 21), // 2097152
     FUNCTION_CRSF_SENSORS        = (1 << 22), // 4194304
-    FUNCTION_RX_INPUT_BACKUP     = (1 << 23), // 8388608
+    FUNCTION_RX_INPUT_BACKUP     = (1 << 23), // 8388608  backup RX 1
+    FUNCTION_RX_INPUT_BACKUP2    = (1 << 24), // 16777216 backup RX 2
 
 } serialPortFunction_e;
 

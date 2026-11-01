@@ -34,14 +34,10 @@
 // requiring an active bus master (the FC) present on the wire, and
 // rx/jetiexbus.c itself always opens MODE_RXTX + unconditional SERIAL_BIDIR
 // for exactly that reason. This backup link never transmits at all
-// (MODE_RX only, imposed generically by rx_input_backup.c) - verified from
-// the protocol documentation that a Jeti EX Bus receiver broadcasts its
-// channel-data frames on its own fixed schedule regardless of whether
-// anything ever replies (the FC's reply only matters for telemetry), same
-// assumption already relied on for every other provider's optional
-// telemetry-response frame, but flagged here explicitly since this is the
-// one protocol whose own reference driver treats transmit as mandatory
-// rather than optional. Bench-test before trusting this in the air, same as
-// every other provider added without direct hardware access this pass.
+// (MODE_RX only, imposed generically by rx_input_backup.c). A Jeti EX Bus
+// receiver broadcasts its channel-data frames on its own fixed schedule
+// regardless of whether anything ever replies (the FC's reply only matters
+// for telemetry); confirmed on hardware, the receive-only backup links and
+// fails over as expected.
 
-bool rxInputBackupExbusInit(rxInputBackupOps_t *ops);
+bool rxInputBackupExbusInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index);

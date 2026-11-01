@@ -27,7 +27,8 @@
 // would follow: same *Init(rxInputBackupOps_t *ops) shape, own private frame
 // struct/ISR/decode, no telemetry.
 
-// Fills *ops and returns true. (Always succeeds today - only fails to compile
-// in when USE_RX_INPUT_BACKUP_SBUS isn't built, same as the dispatch switch in
-// rx_input_backup.c guards each case.)
-bool rxInputBackupSbusInit(rxInputBackupOps_t *ops);
+// Fills *ops for backup port `index` (its own parser state, and port options
+// derived from `config`) and returns true. (Always succeeds today - only fails
+// to compile in when USE_RX_INPUT_BACKUP_SBUS isn't built, same as the dispatch
+// switch in rx_input_backup.c guards each case.)
+bool rxInputBackupSbusInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index);

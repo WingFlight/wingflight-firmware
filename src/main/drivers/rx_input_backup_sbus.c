@@ -85,15 +85,19 @@ typedef struct sbusInputFrameData_s {
     volatile bool done;
 } sbusInputFrameData_t;
 
-static sbusInputFrameData_t sbusInputFrameData;
-static sbusChannels_t sbusInputPendingChannels;
-static volatile bool sbusInputPendingFrame = false;
+typedef struct sbusInputState_s {
+    sbusInputFrameData_t frameData;
+    sbusChannels_t pendingChannels;
+    volatile bool pendingFrame;
+    uint16_t channelData[RX_INPUT_BACKUP_MAX_CHANNEL];
+    // Minimal rxRuntimeState_t used only to satisfy sbusChannelsDecode()'s interface -
+    // only its channelData pointer is touched by that function.
+    rxRuntimeState_t rxRuntimeState;
+} sbusInputState_t;
 
-static uint16_t sbusInputChannelData[RX_INPUT_BACKUP_MAX_CHANNEL];
-
-// Minimal rxRuntimeState_t used only to satisfy sbusChannelsDecode()'s interface -
-// only its channelData pointer is touched by that function.
-static rxRuntimeState_t sbusInputRxRuntimeState;
+// One parser per backup port, so two ports can both run SBUS. The port's
+// state rides along as the ISR's data argument and update()'s state argument.
+static sbusInputState_t sbusInputStates[RX_INPUT_BACKUP_COUNT];
 
 // Note: deliberately does not validate the frame's trailing endByte against known
 // SBUS1/SBUS2 markers, and does not sanity-range-check decoded channel values beyond
@@ -103,56 +107,56 @@ static rxRuntimeState_t sbusInputRxRuntimeState;
 // decoder risks discarding real, valid frames from otherwise-fine hardware for no
 // actual gain: the corruption this file was originally hardened against turned out to
 // be on the sender side, not a receive-side decoding gap.
-static void sbusInputResetParser(void)
+static void sbusInputResetParser(sbusInputState_t *s)
 {
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        sbusInputFrameData.startAtUs = 0;
-        sbusInputFrameData.lastByteAtUs = 0;
-        sbusInputFrameData.position = 0;
-        sbusInputFrameData.done = false;
-        sbusInputPendingFrame = false;
+        s->frameData.startAtUs = 0;
+        s->frameData.lastByteAtUs = 0;
+        s->frameData.position = 0;
+        s->frameData.done = false;
+        s->pendingFrame = false;
     }
 }
 
 static FAST_CODE void sbusInputDataReceive(uint16_t c, void *data)
 {
-    UNUSED(data);
+    sbusInputState_t *s = data;
 
     const timeUs_t nowUs = microsISR();
-    const timeDelta_t frameTime = cmpTimeUs(nowUs, sbusInputFrameData.startAtUs);
+    const timeDelta_t frameTime = cmpTimeUs(nowUs, s->frameData.startAtUs);
     // No prior byte to compare against yet (right after init/reset) - treat that as
     // "definitely enough silence" rather than "definitely not enough", so the very
     // next real sync byte isn't unconditionally thrown away.
-    const timeDelta_t byteGap = sbusInputFrameData.lastByteAtUs == 0
+    const timeDelta_t byteGap = s->frameData.lastByteAtUs == 0
         ? (timeDelta_t)SBUS_INPUT_INTERFRAME_GAP_US
-        : cmpTimeUs(nowUs, sbusInputFrameData.lastByteAtUs);
-    sbusInputFrameData.lastByteAtUs = nowUs;
+        : cmpTimeUs(nowUs, s->frameData.lastByteAtUs);
+    s->frameData.lastByteAtUs = nowUs;
 
     if (frameTime > (long)(SBUS_INPUT_TIME_NEEDED_PER_FRAME_US + 500)) {
-        sbusInputFrameData.position = 0;
+        s->frameData.position = 0;
     }
 
-    if (sbusInputFrameData.position == 0) {
+    if (s->frameData.position == 0) {
         if (c != SBUS_INPUT_FRAME_BEGIN_BYTE || byteGap < SBUS_INPUT_INTERFRAME_GAP_US) {
             return;
         }
-        sbusInputFrameData.startAtUs = nowUs;
+        s->frameData.startAtUs = nowUs;
     }
 
-    if (sbusInputFrameData.position < SBUS_INPUT_FRAME_SIZE) {
-        sbusInputFrameData.frame.bytes[sbusInputFrameData.position++] = (uint8_t)c;
-        if (sbusInputFrameData.position >= SBUS_INPUT_FRAME_SIZE) {
+    if (s->frameData.position < SBUS_INPUT_FRAME_SIZE) {
+        s->frameData.frame.bytes[s->frameData.position++] = (uint8_t)c;
+        if (s->frameData.position >= SBUS_INPUT_FRAME_SIZE) {
             // Snapshot into a separate holding buffer right here, rather than leaving
             // the completed frame sitting in sbusInputFrameData for the consumer to
             // read later - that used to leave a window for the next frame's first byte
             // (landing back at position 0) to start overwriting the same buffer being
             // decoded, tearing adjacent 11-bit channel fields across two frames.
-            memcpy(&sbusInputPendingChannels, &sbusInputFrameData.frame.frame.channels, sizeof(sbusInputPendingChannels));
-            sbusInputPendingFrame = true;
-            sbusInputFrameData.position = 0;
-            sbusInputFrameData.done = true;
+            memcpy(&s->pendingChannels, &s->frameData.frame.frame.channels, sizeof(s->pendingChannels));
+            s->pendingFrame = true;
+            s->frameData.position = 0;
+            s->frameData.done = true;
         } else {
-            sbusInputFrameData.done = false;
+            s->frameData.done = false;
         }
     }
 }
@@ -161,8 +165,9 @@ static FAST_CODE void sbusInputDataReceive(uint16_t c, void *data)
 // safe to do the heavier decode/convert work here. Returns true and fills channels[]
 // only when a fresh, valid frame was decoded this call; the generic layer in
 // rx_input_backup.c owns all freshness/staleness bookkeeping from here on.
-static uint8_t sbusInputUpdate(float *channels, uint8_t channelCount)
+static uint8_t sbusInputUpdate(void *state, float *channels, uint8_t channelCount)
 {
+    sbusInputState_t *s = state;
     // Snapshot the completed frame into a local copy under a brief interrupt mask,
     // rather than decoding directly out of sbusInputFrameData - which the receive
     // ISR owns and can start overwriting (a new frame's first byte landing at
@@ -174,9 +179,9 @@ static uint8_t sbusInputUpdate(float *channels, uint8_t channelCount)
     bool haveFrame = false;
 
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        if (sbusInputPendingFrame) {
-            memcpy(&frame, &sbusInputPendingChannels, sizeof(frame));
-            sbusInputPendingFrame = false;
+        if (s->pendingFrame) {
+            memcpy(&frame, &s->pendingChannels, sizeof(frame));
+            s->pendingFrame = false;
             haveFrame = true;
         }
     }
@@ -185,7 +190,7 @@ static uint8_t sbusInputUpdate(float *channels, uint8_t channelCount)
         return 0;
     }
 
-    const uint8_t frameStatus = sbusChannelsDecode(&sbusInputRxRuntimeState, &frame);
+    const uint8_t frameStatus = sbusChannelsDecode(&s->rxRuntimeState, &frame);
     if (frameStatus & (RX_FRAME_DROPPED | RX_FRAME_FAILSAFE)) {
         // RX_FRAME_DROPPED: repeated/stale data from the satellite itself.
         // RX_FRAME_FAILSAFE: the satellite's own internal failsafe is active - it may
@@ -196,34 +201,32 @@ static uint8_t sbusInputUpdate(float *channels, uint8_t channelCount)
         // keep reporting the fallback as active and calling failsafeOnValidDataReceived()
         // (rx.c) - suppressing real failsafe in exactly the scenario, both links
         // actually down, that it exists to catch.
-        sbusInputResetParser();
+        sbusInputResetParser(s);
         return 0;
     }
 
     for (uint8_t i = 0; i < channelCount; i++) {
-        channels[i] = (5.0f * (float)sbusInputChannelData[i] / 8.0f) + 880.0f;
+        channels[i] = (5.0f * (float)s->channelData[i] / 8.0f) + 880.0f;
     }
 
     return channelCount;
 }
 
-bool rxInputBackupSbusInit(rxInputBackupOps_t *ops)
+bool rxInputBackupSbusInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index)
 {
-    sbusInputRxRuntimeState.channelData = sbusInputChannelData;
-    sbusInputFrameData.startAtUs = 0;
-    sbusInputFrameData.lastByteAtUs = 0;
-    sbusInputFrameData.position = 0;
-    sbusInputFrameData.done = false;
-    sbusInputPendingFrame = false;
+    sbusInputState_t *s = &sbusInputStates[index];
+    s->rxRuntimeState.channelData = s->channelData;
+    sbusInputResetParser(s);
 
     // Matches rx/sbus.c's own direction/variant exactly: SBUS's signal is
     // natively inverted, so inverted=OFF (normal SBUS wiring) applies hardware
     // inversion by default, and half-duplex uses plain SERIAL_BIDIR (no _PP).
     ops->baudRate = SBUS_INPUT_BAUDRATE;
     ops->portOptions = SBUS_INPUT_PORT_OPTIONS
-        | (rxInputBackupConfig()->inverted ? SERIAL_NOT_INVERTED : SERIAL_INVERTED)
-        | (rxInputBackupConfig()->halfDuplex ? SERIAL_BIDIR : SERIAL_UNIDIR);
+        | (config->inverted ? SERIAL_NOT_INVERTED : SERIAL_INVERTED)
+        | (config->halfDuplex ? SERIAL_BIDIR : SERIAL_UNIDIR);
     ops->isrFn = sbusInputDataReceive;
+    ops->state = s;
     ops->channelCount = SBUS_MAX_CHANNEL;   // 16 + 2 digital
     ops->update = sbusInputUpdate;
 

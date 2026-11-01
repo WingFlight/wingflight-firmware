@@ -87,27 +87,31 @@ typedef struct fportInputFrameData_s {
     volatile bool escapePending;
 } fportInputFrameData_t;
 
-static fportInputFrameData_t fportInputFrameData;
-static uint8_t fportInputPendingFrame[FPORT_INPUT_FRAME_SIZE];
-static volatile uint8_t fportInputPendingLength = 0;
-static volatile bool fportInputPendingFrameReady = false;
+typedef struct fportInputState_s {
+    fportInputFrameData_t frameData;
+    uint8_t pendingFrame[FPORT_INPUT_FRAME_SIZE];
+    volatile uint8_t pendingLength;
+    volatile bool pendingFrameReady;
+    uint16_t channelData[RX_INPUT_BACKUP_MAX_CHANNEL];
+    rxRuntimeState_t rxRuntimeState;
+} fportInputState_t;
 
-static uint16_t fportInputChannelData[RX_INPUT_BACKUP_MAX_CHANNEL];
-static rxRuntimeState_t fportInputRxRuntimeState;
+// One parser per backup port, so two ports can both run F.Port.
+static fportInputState_t fportInputStates[RX_INPUT_BACKUP_COUNT];
 
-static void fportInputResetParser(void)
+static void fportInputResetParser(fportInputState_t *s)
 {
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        fportInputFrameData.startAtUs = 0;
-        fportInputFrameData.position = 0;
-        fportInputFrameData.escapePending = false;
-        fportInputPendingFrameReady = false;
+        s->frameData.startAtUs = 0;
+        s->frameData.position = 0;
+        s->frameData.escapePending = false;
+        s->pendingFrameReady = false;
     }
 }
 
 static FAST_CODE void fportInputDataReceive(uint16_t c, void *data)
 {
-    UNUSED(data);
+    fportInputState_t *s = data;
 
     const timeUs_t nowUs = microsISR();
 
@@ -115,64 +119,65 @@ static FAST_CODE void fportInputDataReceive(uint16_t c, void *data)
     // rx/fport.c's own framePosition>1 (1-based: "at least one byte already
     // stored") check, which is position>0 here since this position is 0-based
     // (position IS the count of bytes already stored, not offset-by-one).
-    if (fportInputFrameData.position > 0
-        && cmpTimeUs(nowUs, fportInputFrameData.startAtUs) > FPORT_INPUT_TIME_NEEDED_PER_FRAME_US + 500) {
-        fportInputFrameData.position = 0;
+    if (s->frameData.position > 0
+        && cmpTimeUs(nowUs, s->frameData.startAtUs) > FPORT_INPUT_TIME_NEEDED_PER_FRAME_US + 500) {
+        s->frameData.position = 0;
     }
 
     const uint8_t val = (uint8_t)c;
 
     if (val == FPORT_INPUT_FRAME_MARKER) {
-        if (fportInputFrameData.position > 0) {
+        if (s->frameData.position > 0) {
             ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-                memcpy(fportInputPendingFrame, fportInputFrameData.bytes, fportInputFrameData.position);
-                fportInputPendingLength = fportInputFrameData.position;
-                fportInputPendingFrameReady = true;
+                memcpy(s->pendingFrame, s->frameData.bytes, s->frameData.position);
+                s->pendingLength = s->frameData.position;
+                s->pendingFrameReady = true;
             }
         }
-        fportInputFrameData.position = 0;
-        fportInputFrameData.startAtUs = nowUs;
+        s->frameData.position = 0;
+        s->frameData.startAtUs = nowUs;
         // Unconditional reset (rx/fport.c only clears this inside the
         // "position>1" branch, which can leak a stale escape flag into the next
         // frame after a malformed 0x7D immediately followed by 0x7E) - a
         // deliberate, safe divergence, not a fidelity gap.
-        fportInputFrameData.escapePending = false;
+        s->frameData.escapePending = false;
         return;
     }
 
     if (val == FPORT_INPUT_ESCAPE_CHAR) {
-        fportInputFrameData.escapePending = true;
+        s->frameData.escapePending = true;
         return;
     }
 
-    if (fportInputFrameData.position >= FPORT_INPUT_FRAME_SIZE) {
+    if (s->frameData.position >= FPORT_INPUT_FRAME_SIZE) {
         // Overflow (e.g. a telemetry-request or otherwise-oversized frame we
         // have no interest in) - stop storing until the next marker resets us.
         return;
     }
 
     uint8_t byteValue = val;
-    if (fportInputFrameData.escapePending) {
+    if (s->frameData.escapePending) {
         byteValue ^= FPORT_INPUT_ESCAPE_MASK;
-        fportInputFrameData.escapePending = false;
+        s->frameData.escapePending = false;
     }
 
-    fportInputFrameData.bytes[fportInputFrameData.position++] = byteValue;
+    s->frameData.bytes[s->frameData.position++] = byteValue;
 }
 
 // Called from the RX task (rx/rx.c, via rx_input_backup.c's poll loop), not an
 // ISR - safe to do the heavier decode/convert work here.
-static uint8_t fportInputUpdate(float *channels, uint8_t channelCount)
+static uint8_t fportInputUpdate(void *state, float *channels, uint8_t channelCount)
 {
+    fportInputState_t *s = state;
     uint8_t frame[FPORT_INPUT_FRAME_SIZE];
     uint8_t length = 0;
     bool haveFrame = false;
 
     ATOMIC_BLOCK(NVIC_PRIO_MAX) {
-        if (fportInputPendingFrameReady) {
-            length = fportInputPendingLength;
-            memcpy(frame, fportInputPendingFrame, length);
-            fportInputPendingFrameReady = false;
+        if (s->pendingFrameReady) {
+            length = s->pendingLength;
+            memcpy(frame, s->pendingFrame, length);
+            s->pendingFrameReady = false;
             haveFrame = true;
         }
     }
@@ -199,7 +204,7 @@ static uint8_t fportInputUpdate(float *channels, uint8_t channelCount)
     // rx/fport.c's own frskyCheckSumIsGood(&data[0], bufferLength) does the
     // same full-span check.
     if (!frskyCheckSumIsGood(frame, length)) {
-        fportInputResetParser();
+        fportInputResetParser(s);
         return 0;
     }
 
@@ -209,32 +214,34 @@ static uint8_t fportInputUpdate(float *channels, uint8_t channelCount)
     // provider's own union-based approach).
     sbusChannels_t wireChannels;
     memcpy(&wireChannels, &frame[2], sizeof(wireChannels));
-    const uint8_t frameStatus = sbusChannelsDecode(&fportInputRxRuntimeState, &wireChannels);
+    const uint8_t frameStatus = sbusChannelsDecode(&s->rxRuntimeState, &wireChannels);
     if (frameStatus & (RX_FRAME_DROPPED | RX_FRAME_FAILSAFE)) {
-        fportInputResetParser();
+        fportInputResetParser(s);
         return 0;
     }
 
     for (uint8_t i = 0; i < channelCount; i++) {
-        channels[i] = (5.0f * (float)fportInputChannelData[i] / 8.0f) + 880.0f;
+        channels[i] = (5.0f * (float)s->channelData[i] / 8.0f) + 880.0f;
     }
 
     return channelCount;
 }
 
-bool rxInputBackupFportInit(rxInputBackupOps_t *ops)
+bool rxInputBackupFportInit(rxInputBackupOps_t *ops, const rxInputBackupPortConfig_t *config, uint8_t index)
 {
-    fportInputRxRuntimeState.channelData = fportInputChannelData;
-    fportInputResetParser();
+    fportInputState_t *s = &fportInputStates[index];
+    s->rxRuntimeState.channelData = s->channelData;
+    fportInputResetParser(s);
 
     // Matches rx/fport.c's own direction/variant exactly - identical to FBUS's
     // (rx_input_backup_fbus.c): natively non-inverted, SERIAL_BIDIR|SERIAL_BIDIR_PP
     // for half-duplex.
     ops->baudRate = FPORT_INPUT_BAUDRATE;
     ops->portOptions = FPORT_INPUT_PORT_OPTIONS
-        | (rxInputBackupConfig()->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
-        | (rxInputBackupConfig()->halfDuplex ? (SERIAL_BIDIR | SERIAL_BIDIR_PP) : SERIAL_UNIDIR);
+        | (config->inverted ? SERIAL_INVERTED : SERIAL_NOT_INVERTED)
+        | (config->halfDuplex ? (SERIAL_BIDIR | SERIAL_BIDIR_PP) : SERIAL_UNIDIR);
     ops->isrFn = fportInputDataReceive;
+    ops->state = s;
     ops->channelCount = SBUS_MAX_CHANNEL;   // 16 + 2 digital
     ops->update = fportInputUpdate;
 

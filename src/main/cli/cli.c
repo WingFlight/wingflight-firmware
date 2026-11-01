@@ -1557,6 +1557,7 @@ static const struct {
     { FUNCTION_SRXL2_ESC,           "SRXL2_ESC" },
     { FUNCTION_CRSF_SENSORS,        "CRSF_SENSORS" },
     { FUNCTION_RX_INPUT_BACKUP,     "RX_BACKUP" },
+    { FUNCTION_RX_INPUT_BACKUP2,    "RX_BACKUP2" },
 };
 
 static void serialDebugPortName(char *buf, size_t len, int id)

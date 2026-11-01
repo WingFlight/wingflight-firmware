@@ -1486,10 +1486,16 @@ const clivalue_t valueTable[] = {
 #endif
 
 #ifdef USE_RX_INPUT_BACKUP
-    { "rx_input_backup_provider",      VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_RX_INPUT_BACKUP_PROVIDER}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, provider) },
-    { "rx_input_backup_pinswap",       VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, pinSwap) },
-    { "rx_input_backup_inverted",      VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, inverted) },
-    { "rx_input_backup_halfduplex",    VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, halfDuplex) },
+    // Backup RX 1 (FUNCTION_RX_INPUT_BACKUP, port[0]) keeps the original names.
+    { "rx_input_backup_provider",      VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_RX_INPUT_BACKUP_PROVIDER}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, port[0].provider) },
+    { "rx_input_backup_pinswap",       VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, port[0].pinSwap) },
+    { "rx_input_backup_inverted",      VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, port[0].inverted) },
+    { "rx_input_backup_halfduplex",    VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, port[0].halfDuplex) },
+    // Backup RX 2 (FUNCTION_RX_INPUT_BACKUP2, port[1]).
+    { "rx_input_backup2_provider",     VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_RX_INPUT_BACKUP_PROVIDER}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, port[1].provider) },
+    { "rx_input_backup2_pinswap",      VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, port[1].pinSwap) },
+    { "rx_input_backup2_inverted",     VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, port[1].inverted) },
+    { "rx_input_backup2_halfduplex",   VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_DRIVER_RX_INPUT_BACKUP_CONFIG, offsetof(rxInputBackupConfig_t, port[1].halfDuplex) },
 #endif
 
 };
