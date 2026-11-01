@@ -1,3 +1,28 @@
+# 0.0.39
+
+Use the 0.0.39 Configurator and Lua suites with this firmware (MSP API 22.15). Updating keeps your settings except motor, backup receiver and logic condition settings, which reset to defaults: check the motor protocol and throttle range, and set the backup receiver protocol again.
+Add a second backup receiver: assign a port the RX_BACKUP2 function (Receiver: Backup 2 in the Configurator) and set its protocol with rx_input_backup2_provider. Failover runs primary, then backup 1, then backup 2, and both backups may use the same protocol. Every configured backup must link before the first arm, and the radio's backup-lost alert fires when either is down. The backup status, config and wiring-detect MSP messages gain a second port (payload versions 4 and 2, and a port index).
+Default motor PWM to 50 Hz instead of 250 Hz.
+Hold the I-term at zero until the aircraft is airborne, so a plane armed nose-up on the ground no longer takes off with the elevator wound in.
+Scale roll D like pitch and yaw: a non-zero roll_d_gain or tv_roll_d_gain now gives ten times the damping it did, so divide it by 10 to keep the old feel. The default of 0 is unchanged.
+Block arming while the governor switch is on (GOVERNOR arming flag), and ease the governor down to the stick at handover instead of stepping.
+Report which way to trim roll, pitch and rudder in System Config telemetry, read from the I-term in hands-off level rate flight, for the radio's trim callouts.
+Pack the Tune Advisor reply into one CRSF frame (payload version 2); the 0.0.39 Lua suites read it.
+Add a compact MSP-over-telemetry framing (version 3) for the FrSky Lua suites, one frame fewer on most requests; older scripts keep working. Answer MSP reply chunks on FBUS data polls as well, and add debug_mode FBUS.
+Pass radio device settings (Ethos Device config, XACT and RB scripts) through to devices on the FBUS master port, forward each sensor value in its own slot so an RB's battery value reaches the radio, and repeat a slow value so Ethos does not report the sensor lost.
+Fix FBUS GPS: no fix on a 0/0 position and at least 4 satellites, ground speed ten times too low, position precision, a GPS mistaken for an RPM sensor, and stale coordinates after a timeout.
+Disengage ATTHOLD and TV hold while PASSTHROUGH or MANUAL bypasses the mixer, and hold the thrust-vector I-term in PASSTHROUGH, so leaving them no longer jumps toward a stale attitude.
+Keep the airborne state and failsafe mode through a failsafe disarm so the glide stays levelled, and keep the post-flight config write from faking a link recovery or running while armed.
+GPS navigation: take home from the first fix after arming when none was set and keep it across a quick re-arm, restart RTH and LOITER after a failsafe recovery, scale longitude for a LOITER engaged before home, dead-reckon through a GPS gap instead of freezing, and accept baro altitude from -1000 m to +10000 m so a climb past 150 m no longer pins the altitude.
+Grant the re-arm grace window only when the flight was still in progress at disarm.
+Make logic conditions match flight modes by their permanent ID and report voltage, current and GPS speed in 0.1 V, 0.1 A and 0.1 m/s as documented.
+Rebuild the mixer anti-windup map after a live rule write, and reject out-of-range mixer rules, gain curve points, fw_tpa_curve values and short payloads over MSP.
+Apply servo balance curves to SBUS and FBUS bus servos, count only PWM servos so a ninth servo pin no longer breaks blackbox logs, and log the ESC BEC temperature.
+Run the stabilized PID loop for any pid_mode other than 0, floor the attitude hold max rate at 10 deg/s, and move the arming wiggle to the elevator.
+Fix battery capacity counting above 215 A on FBUS and the ESC current offset after 71 minutes, the SBUS2 Kontronik slot's capacity and currents, and mount trim and other decidegree conversions truncating to whole degrees.
+Fix CRSF telemetry stopping with a zero link rate or ratio, MSP_MULTIPLE_MSP replies over 255 bytes, oversized MSPv2 frames, a corrupt Kontronik frame reading past memory, and servos freezing for 2 s after 71 minutes of flight.
+Reduce flash use on the 512 KB targets and keep the failsafe code out of ITCM.
+
 # 0.0.38
 
 The MSP API moves to 22.15 for the GPS feature removal. Updating keeps your settings. Use the 0.0.38 Configurator and Lua suites with this firmware.
