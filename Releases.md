@@ -1,3 +1,8 @@
+# 0.0.40
+
+Use the 0.0.40 Configurator and Lua suites with this firmware (MSP API 22.15). Updating keeps your settings.
+Measure the FBUS debug mode's poll intervals from when each frame arrives, and skip the first poll, so queued frames and the time since boot no longer skew them.
+
 # 0.0.39
 
 Use the 0.0.39 Configurator and Lua suites with this firmware (MSP API 22.15). Updating keeps your settings except motor, backup receiver and logic condition settings, which reset to defaults: check the motor protocol and throttle range, and set the backup receiver protocol again.
