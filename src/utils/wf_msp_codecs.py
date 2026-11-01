@@ -88,10 +88,69 @@ GETTER_SOURCES = {
 }
 
 # MIN() expands to a GCC statement expression pycparser cannot read; the
-# preprocessed text is rewritten to a plain call first.
-MIN_EXPANSION = re.compile(
-    r'__extension__\s*\(\{\s*__typeof__\s*\((?P<a>[^()]*)\)\s*_a\s*=\s*\((?P=a)\)\s*;\s*'
-    r'__typeof__\s*\((?P<b>[^()]*)\)\s*_b\s*=\s*\((?P=b)\)\s*;\s*_a\s*<\s*_b\s*\?\s*_a\s*:\s*_b\s*;\s*\}\)')
+# preprocessed text is rewritten to a plain call first. An operand may hold
+# calls of its own (MIN(sbufReadU16(src), 1000)), so operands are matched by
+# balancing parentheses rather than by a pattern.
+MIN_HEAD = re.compile(r'__extension__\s*\(\{\s*__typeof__\s*\(')
+MIN_STEP = {'_a': re.compile(r'\s*_a\s*=\s*\('), '_b': re.compile(r'\s*_b\s*=\s*\(')}
+MIN_NEXT = re.compile(r'\s*;\s*__typeof__\s*\(')
+MIN_TAIL = re.compile(r'\s*;\s*_a\s*<\s*_b\s*\?\s*_a\s*:\s*_b\s*;\s*\}\)')
+
+
+def _closing(text, i):
+    """Index just past the ')' that closes a '(' ending right before i."""
+    depth = 1
+    while i < len(text):
+        depth += {'(': 1, ')': -1}.get(text[i], 0)
+        i += 1
+        if depth == 0:
+            return i
+    return None
+
+
+def _min_at(text, m):
+    """(a, b, end) for the MIN() expansion MIN_HEAD matched, or None."""
+    operands, i = [], m.end()
+    for name in ('_a', '_b'):
+        end = _closing(text, i)                  # __typeof__ (x)
+        if end is None:
+            return None
+        operand = text[i:end - 1]
+        assign = MIN_STEP[name].match(text, end)  # _x = (x)
+        if not assign:
+            return None
+        end = _closing(text, assign.end())
+        if end is None or text[assign.end():end - 1] != operand:
+            return None
+        operands.append(operand.strip())
+        if name == '_a':
+            nxt = MIN_NEXT.match(text, end)
+            if not nxt:
+                return None
+            i = nxt.end()
+        else:
+            tail = MIN_TAIL.match(text, end)
+            if not tail:
+                return None
+            return operands[0], operands[1], tail.end()
+    return None
+
+
+def rewrite_min(text):
+    """Every MIN() expansion -> MIN_(a, b); anything else is left as it is."""
+    out, pos = [], 0
+    for m in MIN_HEAD.finditer(text):
+        if m.start() < pos:
+            continue
+        found = _min_at(text, m)
+        if found is None:
+            continue
+        a, b, end = found
+        out.append(text[pos:m.start()])
+        out.append('MIN_(%s, %s)' % (rewrite_min(a), rewrite_min(b)))
+        pos = end
+    out.append(text[pos:])
+    return ''.join(out)
 
 # sizeof() of the types msp.c sizes requests by.
 SIZEOF = {'uint8_t': 1, 'int8_t': 1, 'bool': 1, 'char': 1, 'uint16_t': 2, 'int16_t': 2,
@@ -245,6 +304,25 @@ class Ref(object):
 INDEX = 'INDEX'  # the value of a leading index byte, in an indexed setter
 REMAINING = 'REMAINING'  # sbufBytesRemaining(src) in a reply body
 
+# A wire read is ('read', width, wire_signed) and, when the firmware clamps it
+# on the way into the field (constrain(), MIN()), ('read', ..., {'min', 'max'}).
+
+
+def _is_plain_read(v):
+    return isinstance(v, tuple) and v[0] == 'read' and len(v) == 3
+
+
+def _clamp_of(v):
+    return v[3] if isinstance(v, tuple) and v[0] == 'read' and len(v) > 3 else None
+
+
+class StructLocal(object):
+    """`T rule; rule.a = read; ...; *group(i) = rule;`: a local struct filled
+    from the wire, checked, then stored whole. members: {name: op index}."""
+
+    def __init__(self, name):
+        self.name, self.members = name, {}
+
 
 class ConstArray(object):
     """A `const` integer table in the image, with the build's values."""
@@ -382,7 +460,23 @@ class Executor(object):
                     for x in args)
             if 'dataSize' in (a, b) and isinstance(a if b == 'dataSize' else b, int):
                 return ('min_datasize', a if b == 'dataSize' else b)
+            # MIN(sbufReadU16(src), 1000): the wire value, stored clamped from above
+            read, bound = (a, b) if isinstance(b, int) else (b, a)
+            if _is_plain_read(read) and isinstance(bound, int):
+                return read + ({'max': bound},)
             raise Manual('MIN of computed values')
+        if want_value and name == 'constrain' and len(args) == 3:
+            # constrain(sbufReadU8(src), lo, hi): the wire value, stored clamped
+            read, low, high = (self.value(x) for x in args)
+            if _is_plain_read(read) and isinstance(low, int) and isinstance(high, int):
+                return read + ({'min': low, 'max': high},)
+            raise Manual('value from constrain()')
+        if name == 'sbufAdvance' and len(args) == 2 and self.direction == 'in' and not want_value:
+            # bytes the firmware steps over unread: a skip of that width
+            width = self.value(args[1])
+            if not isinstance(width, int) or width <= 0:
+                raise Manual('sbufAdvance by a computed length')
+            return ('read', width, False)
         if name == 'memset' and len(args) == 3:
             ref, fill = self.value(args[0]), self.value(args[1])
             if isinstance(ref, Ref) and fill == 0:
@@ -512,8 +606,59 @@ class Executor(object):
                      'size': s_size}
         return op
 
+    def struct_member(self, node):
+        """(StructLocal, member) for `local.member`, else None."""
+        if (isinstance(node, c_ast.StructRef) and node.type == '.' and isinstance(node.name, c_ast.ID)
+                and isinstance(self.env.get(node.name.name), StructLocal)):
+            return self.env[node.name.name], node.field.name
+        return None
+
+    def store_struct(self, lhs, local):
+        """`*group(i) = local`: every member parked so far lands in its field."""
+        ref = self.value(lhs)
+        if not isinstance(ref, Ref) or ref.path:
+            raise Manual('struct local stored into a non-element')
+        elem = ref.pg['fields']
+        if len(elem) == 1 and elem[0]['name'] == '' and elem[0]['kind'] == 'repeat':
+            elem = elem[0]['fields']
+        names = {f['name'].split('.')[0] for f in elem}
+        if set(local.members) != names:
+            # the firmware copies the whole struct: members never read are garbage
+            raise Manual('struct local with members never read')
+        for name, idx in local.members.items():
+            op = self.ops[idx]
+            target = ref.member(name)
+            off, size, signed, count = self.place(target)
+            if count is not None:
+                raise Manual('array member of a struct local')
+            placed = self.field_op({'kind': 'field', 'w': op['w'], 'wire_signed': op['wire_signed'],
+                                    'size': size, 'signed': signed}, target, off)
+            placed.pop('optional', None)
+            if op.get('optional'):
+                placed['optional'] = True
+            if 'check' in op:
+                placed['check'] = op['check']
+            self.ops[idx] = placed
+        local.members = {}
+
     def assign(self, lhs, rhs):
+        member = self.struct_member(lhs)
+        if member is not None:
+            # local.member = sbufReadU8(src): park the wire value until the store
+            local, name = member
+            v = self.value(rhs)
+            if not _is_plain_read(v) or name in local.members:
+                raise Manual('struct local member that is not one wire read')
+            self.ops.append({'kind': 'skip', 'w': v[1], 'wire_signed': v[2], 'local': local.name,
+                             **({'optional': True} if self.optional else {})})
+            local.members[name] = len(self.ops) - 1
+            return
+        if isinstance(rhs, c_ast.ID) and isinstance(self.env.get(rhs.name), StructLocal):
+            self.store_struct(lhs, self.env[rhs.name])
+            return
         v = self.value(rhs)
+        if _clamp_of(v) is not None and not isinstance(self.value(lhs), Ref):
+            raise Manual('clamped value not stored straight into a field')
         if isinstance(lhs, c_ast.ID) and lhs.name not in self.env and isinstance(v, tuple) and v[0] == 'read':
             # i = sbufReadU8(src): the element index of an indexed setter
             if self.ops or self.index is not None:
@@ -550,8 +695,11 @@ class Executor(object):
             off, size, signed, count = self.place(ref)
             if count is not None:
                 raise Manual('read into a whole array')
-            self.ops.append(self.field_op({'kind': 'field', 'w': v[1], 'wire_signed': v[2],
-                                           'size': size, 'signed': signed}, ref, off))
+            op = self.field_op({'kind': 'field', 'w': v[1], 'wire_signed': v[2],
+                                'size': size, 'signed': signed}, ref, off)
+            if _clamp_of(v) is not None:
+                op['clamp'] = _clamp_of(v)
+            self.ops.append(op)
             return
         raise Manual('assignment that is not a wire read')
 
@@ -583,9 +731,16 @@ class Executor(object):
             return
         if isinstance(node, c_ast.Decl):
             if node.init is None:
-                self.env[node.name] = None
+                names = getattr(getattr(node.type, 'type', None), 'names', None)
+                if (isinstance(node.type, c_ast.TypeDecl) and names and len(names) == 1
+                        and names[0].endswith('_t') and names[0] not in SIZEOF):
+                    self.env[node.name] = StructLocal(node.name)
+                else:
+                    self.env[node.name] = None
                 return
             v = self.value(node.init)
+            if _clamp_of(v) is not None:
+                raise Manual('clamped value parked in a local')
             if isinstance(v, tuple) and v[0] == 'read':
                 if self.ops or self.index is not None:
                     # A wire value parked in a local, stored into a field
@@ -650,6 +805,12 @@ class Executor(object):
             self.index['max'] = bound if self.index['max'] is None else min(bound, self.index['max'])
             return
         v = self.env.get(left.name) if isinstance(left, c_ast.ID) else None
+        member = self.struct_member(left)
+        if member is not None:
+            local, name = member
+            if name not in local.members:
+                raise Manual('guard on a struct member never read')
+            v = ('local', local.members[name])
         if isinstance(v, tuple) and v[0] == 'local':
             op = self.ops[v[1]]
             check = op.setdefault('check', {})
@@ -770,8 +931,27 @@ class Executor(object):
         self.ops.append(self.field_op({'kind': 'string_in', 'len': bound[1], 'field_len': count}, self.zeroed, off))
         self.zeroed = None
 
+    def constant_condition(self, c):
+        """True / False for a comparison of build constants (an unrolled loop's
+        variable against a number, `if (port == 0)`), else None."""
+        ops = {'==': lambda a, b: a == b, '!=': lambda a, b: a != b, '<': lambda a, b: a < b,
+               '>': lambda a, b: a > b, '<=': lambda a, b: a <= b, '>=': lambda a, b: a >= b}
+        if not (isinstance(c, c_ast.BinaryOp) and c.op in ops):
+            return None
+        try:
+            a, b = self.value(c.left), self.value(c.right)
+        except Manual:
+            return None
+        if isinstance(a, int) and isinstance(b, int) and not isinstance(a, bool):
+            return ops[c.op](a, b)
+        return None
+
     def run_if(self, node):
         c = node.cond
+        taken = self.constant_condition(c)
+        if taken is not None:
+            self.run(node.iftrue if taken else node.iffalse)
+            return
         # if (sbufBytesRemaining(src) >= k) { optional tail }
         if (isinstance(c, c_ast.BinaryOp) and c.op == '>=' and isinstance(c.left, c_ast.FuncCall)
                 and isinstance(c.left.name, c_ast.ID) and c.left.name.name == 'sbufBytesRemaining'):
@@ -838,7 +1018,9 @@ class Executor(object):
 #   P R T  off is within the selected pid / rate / tv profile's element
 #   s  the group field is signed          w  the wire value is signed (in)
 # and a range check, when the firmware refused values outside it, follows as
-# a seventh element {"min": a, "max": b} on "f" ops.
+# a seventh element {"min": a, "max": b} on "f" ops. When the firmware stores
+# the wire value clamped instead (constrain(), MIN()), that element carries
+# "clamp": [low, high], either bound null when there is none.
 #
 # Beside "ops", a codec has "dir" ("out" reply, "in" setter), and may have:
 #   len / min_len   the request length the firmware requires
@@ -862,8 +1044,11 @@ def compact(codec):
         kind = op['kind']
         if kind == 'field':
             item = ['f', op['w'], op['pgn'], op['off'], op['size'], _flags(op)]
-            if 'check' in op:
-                item.append(op['check'])
+            if 'check' in op or 'clamp' in op:
+                extra = dict(op.get('check', {}))
+                if 'clamp' in op:
+                    extra['clamp'] = [op['clamp'].get('min'), op['clamp'].get('max')]
+                item.append(extra)
         elif kind == 'const':
             item = ['c', op['w'], op['value'], _flags(op)]
         elif kind == 'skip':
@@ -911,7 +1096,7 @@ def extract(preprocessed_path, pgs, wanted=None, constants=None, arrays=None):
             types = set(re.findall(r'\b(\w+_t|\w+_e)\b', text)) | {'uint8_t', 'uint16_t', 'uint32_t',
                                                                    'int8_t', 'int16_t', 'int32_t', 'uint', 'bool'}
             stub = ''.join('typedef int %s;\n' % t for t in sorted(types))
-            text = MIN_EXPANSION.sub(lambda m: 'MIN_(%s, %s)' % (m.group('a'), m.group('b')), text)
+            text = rewrite_min(text)
             code = stub + 'void f(void) {\n' + re.sub(r'\bconst\b', '', text) + '\n}\n'
             try:
                 ast = parser.parse(code)

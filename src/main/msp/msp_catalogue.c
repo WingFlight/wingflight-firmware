@@ -1943,24 +1943,26 @@ mspResult_e mspCatalogueProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP
         if (dataSize < 5) {
             return MSP_RESULT_ERROR;
         }
+        // The request's length says how many ports it carries: `portCount`
+        // is read past, and each further port is taken when its four bytes
+        // are there, so every request shape maps to bytes stored the same
+        // way (and addressed access can describe it).
         sbufReadU8(src); // payload version - the shape below is length-driven
         for (uint8_t port = 0; port < RX_INPUT_BACKUP_COUNT; port++) {
-            if (port > 0 && sbufBytesRemaining(src) < 4) {
-                break;
-            }
             rxInputBackupPortConfig_t *cfg = &rxInputBackupConfigMutable()->port[port];
-            cfg->provider = sbufReadU8(src);
-            cfg->inverted = sbufReadU8(src);
-            cfg->halfDuplex = sbufReadU8(src);
-            cfg->pinSwap = sbufReadU8(src);
             if (port == 0) {
-                if (sbufBytesRemaining(src) < 1) {
-                    break;
+                cfg->provider = sbufReadU8(src);
+                cfg->inverted = sbufReadU8(src);
+                cfg->halfDuplex = sbufReadU8(src);
+                cfg->pinSwap = sbufReadU8(src);
+                if (sbufBytesRemaining(src) >= 1) {
+                    sbufReadU8(src); // portCount
                 }
-                const uint8_t portCount = sbufReadU8(src);
-                if (portCount < 2) {
-                    break;
-                }
+            } else if (sbufBytesRemaining(src) >= 4) {
+                cfg->provider = sbufReadU8(src);
+                cfg->inverted = sbufReadU8(src);
+                cfg->halfDuplex = sbufReadU8(src);
+                cfg->pinSwap = sbufReadU8(src);
             }
         }
         // Unlike MSP2_WING_SET_FBUS_MASTER_CONFIG above, there's no live-reload

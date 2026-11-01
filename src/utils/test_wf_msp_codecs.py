@@ -395,6 +395,110 @@ class Refusals(unittest.TestCase):
                           'computed')
 
 
+class Shapes(unittest.TestCase):
+
+    def assertManual(self, codecs, manual, op, fragment):
+        self.assertNotIn(op, codecs)
+        self.assertIn(fragment, manual[op])
+
+    # clamped stores, skipped bytes, constant conditions, struct locals
+
+    MIN = ('__extension__ ({ __typeof__ (%s) _a = (%s); __typeof__ (%s) _b = (%s); _a < _b ? _a : _b; })')
+
+    def test_min_with_a_call_inside_is_rewritten(self):
+        text = 'x = ' + self.MIN % ('sbufReadU16(src)', 'sbufReadU16(src)', '1000', '1000') + ';'
+        self.assertEqual(w.rewrite_min(text), 'x = MIN_(sbufReadU16(src), 1000);')
+        plain = 'n = ' + self.MIN % ('a', 'a', 'dataSize', 'dataSize') + ';'
+        self.assertEqual(w.rewrite_min(plain), 'n = MIN_(a, dataSize);')
+        self.assertEqual(w.rewrite_min('no expansion here'), 'no expansion here')
+
+    def test_clamped_reads(self):
+        codecs, manual = extract(in_cases=case(40, '''
+        demoConfigMutable()->a = constrain(sbufReadU8(src), 5, 45);
+        demoConfigMutable()->b = ''' + self.MIN % ('sbufReadU16(src)', 'sbufReadU16(src)', '500', '500') + ';'))
+        self.assertEqual(manual, {})
+        ops = codecs[40]['ops']
+        self.assertEqual(ops[0]['clamp'], {'min': 5, 'max': 45})
+        self.assertEqual(ops[1]['clamp'], {'max': 500})
+        compact = w.compact(codecs[40])['ops']
+        self.assertEqual(compact[0][6], {'clamp': [5, 45]})
+        self.assertEqual(compact[1][6], {'clamp': [None, 500]})
+
+    def test_clamped_value_parked_in_a_local(self):
+        self.assertManual(*extract(in_cases=case(41, '''
+        demoConfigMutable()->a = sbufReadU8(src);
+        uint8_t v = constrain(sbufReadU8(src), 1, 9);
+        demoConfigMutable()->c = v;''')), 41, 'clamped value parked')
+
+    def test_constrain_of_a_computed_value(self):
+        self.assertManual(*extract(in_cases=case(42, '''
+        demoConfigMutable()->a = constrain(demoConfig()->a, 1, 9);''')), 42, 'constrain')
+
+    def test_advance_is_a_skip(self):
+        codecs, manual = extract(in_cases=case(43, '''
+        demoConfigMutable()->a = sbufReadU8(src);
+        if (sbufBytesRemaining(src) >= 4) {
+            sbufAdvance(src, 4);
+        }
+        if (sbufBytesRemaining(src) >= 2) {
+            demoConfigMutable()->b = sbufReadU16(src);
+        }'''))
+        self.assertEqual(manual, {})
+        self.assertEqual(codecs[43]['ops'][1], {'kind': 'skip', 'w': 4, 'optional': True})
+
+    def test_advance_by_a_computed_length(self):
+        self.assertManual(*extract(in_cases=case(44, '''
+        demoConfigMutable()->a = sbufReadU8(src);
+        sbufAdvance(src, demoConfig()->a);''')), 44, 'sbufAdvance')
+
+    def test_constant_condition_in_an_unrolled_loop(self):
+        codecs, manual = extract(case(45, '''
+        sbufWriteU8(dst, 2);
+        for (int i = 0; i < 2; i++) {
+            sbufWriteU8(dst, rows(i)->q);
+            if (i == 0) {
+                sbufWriteU8(dst, 2);
+            }
+        }'''))
+        self.assertEqual(manual, {})
+        self.assertEqual([o['kind'] for o in codecs[45]['ops']], ['const', 'field', 'const', 'field'])
+
+    def test_struct_local_stored_whole(self):
+        codecs, manual = extract(in_cases=case(46, '''
+        i = sbufReadU8(src);
+        if (i >= 4) {
+            return MSP_RESULT_ERROR;
+        }
+        {
+            rows_t row;
+            row.q = sbufReadU8(src);
+            row.p = sbufReadU16(src);
+            if (row.q >= 3) {
+                return MSP_RESULT_ERROR;
+            }
+            *rowsMutable(i) = row;
+        }
+        rowsCapture(i);'''))
+        self.assertEqual(manual, {})
+        ops = codecs[46]['ops']
+        self.assertEqual([(o['off'], o['w']) for o in ops], [(2, 1), (0, 2)], 'wire order, element offsets')
+        self.assertEqual(ops[0]['check'], {'max': 2})
+        self.assertTrue(all(o['indexed'] for o in ops))
+        self.assertEqual(codecs[46]['side_effects'], ['rowsCapture'])
+
+    def test_struct_local_with_a_member_never_read(self):
+        self.assertManual(*extract(in_cases=case(47, '''
+        i = sbufReadU8(src);
+        if (i >= 4) {
+            return MSP_RESULT_ERROR;
+        }
+        {
+            rows_t row;
+            row.p = sbufReadU16(src);
+            *rowsMutable(i) = row;
+        }''')), 47, 'never read')
+
+
 class Getters(unittest.TestCase):
     """GETTERS transcribe firmware functions; they must match the source."""
 

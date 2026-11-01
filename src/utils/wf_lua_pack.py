@@ -11,7 +11,7 @@ release bundles the packs of the releases it supports, keyed by build ID.
 The pack is a Lua module returning:
 
     {
-      format = 2,                                             -- this encoding
+      format = 3,                                             -- this encoding
       build = "<16 hex digits>", target = "STM32F7X2", git = "<revision>",
       selection = { pid = <off>, rate = <off>, tv = <off> },  -- in systemConfig
       groups = { [pgn] = { <size>, <length> }, ... },         -- groups codecs use
@@ -44,6 +44,13 @@ little-endian:
       6 str out len u16, pgn u16, off u16, flags u8 -- bytes up to the NUL
       7 str in  max u16, field_len u16, pgn u16, off u16, flags u8 -- the
                 field cleared, then up to max request bytes copied in
+      8 clamped a field (as 1) the firmware stores clamped (constrain(),
+                MIN()): w u8, pgn u16, off u16, size u8, flags u8,
+                low s32, high s32 [+ the check of 1 if flags & 0x80]; an
+                absent bound as -2^31 / 2^31-1
+
+    Format 3 adds op 8; a format 2 reader cannot skip it, so it refuses the
+    pack rather than store unclamped values.
 
     An index, a reply's too, is the request's first bytes. A reply codec with
     an index answers a request of exactly its index (len, if given).
@@ -62,7 +69,7 @@ FLAG_BITS = {'o': 0x01, 'i': 0x02, 's': 0x04, 'w': 0x08, 'P': 0x10, 'R': 0x20, '
 SYSTEM_CONFIG_PGN = 18
 SELECTION_FIELDS = {'pid': 'pidProfileIndex', 'rate': 'activeRateProfile', 'tv': 'tvProfileIndex'}
 S32_MIN, S32_MAX = -2 ** 31, 2 ** 31 - 1
-FORMAT = 2
+FORMAT = 3
 
 
 def flag_byte(letters):
@@ -92,9 +99,14 @@ def encode_codec(codec):
         kind = op[0]
         if kind == 'f':
             _, w, pgn, off, size, flags = op[:6]
-            check = op[6] if len(op) > 6 else None
+            extra = dict(op[6]) if len(op) > 6 else {}
+            clamp = extra.pop('clamp', None)
+            check = extra or None
             fb = flag_byte(flags) | (0x80 if check else 0)
-            out += struct.pack('<BBHHBB', 1, w, pgn, off, size, fb)
+            out += struct.pack('<BBHHBB', 8 if clamp else 1, w, pgn, off, size, fb)
+            if clamp:
+                low, high = clamp
+                out += struct.pack('<ii', S32_MIN if low is None else low, S32_MAX if high is None else high)
             if check:
                 out += struct.pack('<ii', check.get('min', S32_MIN), check.get('max', S32_MAX))
         elif kind == 'c':
