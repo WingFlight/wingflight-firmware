@@ -283,12 +283,13 @@ MSPv2 is already supported in both framings — native and v2-over-v1
 is needed or wanted; `msp_serial.c`, passthrough, and the telemetry gateway stay
 untouched. What changes is the *catalogue*, not the transport.
 
-The fork already has a contiguous Wingflight block: `MSP2_WING_*` occupies
-`0x5F00`–`0x5F14` in [msp_protocol.h:308-331](../src/main/msp/msp_protocol.h#L308-L331)
-and is still growing one opcode at a time. The addressing opcodes go in the
-same block, far enough up to leave room for that growth: `0x5F20`–`0x5F25`
-([msp_protocol.h:341-346](../src/main/msp/msp_protocol.h#L341-L346)). New
-opcodes that replace CLI commands (§8.2) continue the `MSP2_WING_*` block.
+The fork already has a contiguous Wingflight block: `MSP2_WING_*`, growing one
+opcode at a time in [msp_protocol.h](../src/main/msp/msp_protocol.h). The
+addressing opcodes are one contiguous group in it, in the first six-opcode run
+no command or open branch claims: `0x5F35`–`0x5F3A` (`0x5F1E`–`0x5F24` are
+FBUS OTA and the FBUS mux, `0x5F28`–`0x5F32` open branches, `0x5F33`–`0x5F34`
+sensor and serial status). New opcodes that replace CLI commands (§8.2)
+continue the `MSP2_WING_*` block.
 
 | opcode | purpose |
 | --- | --- |
@@ -473,7 +474,7 @@ window with no working CLI at all. Revised:
    anything relies on it. Still to do: publish the manifest as a release asset,
    and the LTO-consistency gate below.
 2. **Addressed opcodes, additive.** *(done.)* `MSP2_WING_BUILD_ID` …
-   `MSP2_WING_MANIFEST_READ` at `0x5F20`–`0x5F25`. MSP catalogue untouched.
+   `MSP2_WING_MANIFEST_READ` at `0x5F35`–`0x5F3A`. MSP catalogue untouched.
 3. **Configurator on the manifest.** *(in progress.)* Client-side CLI in
    `src/js/param/cli.js`: `get`/`set`/`dump`/`diff`/`save`/`defaults`/
    `resource`/`timer`/`dma`/`tasks`/`gyroregisters`/`setpoint_info`/

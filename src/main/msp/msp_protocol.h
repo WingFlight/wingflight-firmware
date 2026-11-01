@@ -358,7 +358,6 @@
 #define MSP2_WING_SET_FBUS_MUX_OVERRIDE       0x5F24
 // Live thrust-vector loop gains (flight/tv_pid.c), laid out like MSP2_WING_EFFECTIVE_PID_GAINS'
 // axes but without its throttle/speed attenuation, which the TV loop never applies.
-// 0x5F26, not 0x5F25: that one is taken by parameter work on an open branch.
 #define MSP2_WING_TV_EFFECTIVE_PID_GAINS      0x5F26
 // Per PWM servo: the rate (Hz) it really runs at and the first servo on its hardware
 // timer. Servos on one timer run at the lowest rate set among them (flight/servos.c).
