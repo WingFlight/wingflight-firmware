@@ -172,7 +172,7 @@ The `BUILD_ID` reply carries, alongside the hash:
 | manifest hash (8 B) | the key, and the verifier |
 | target name | human-readable, and the release-asset lookup |
 | firmware version + git sha | human-readable, release lookup |
-| capability flags | notably: is a manifest embedded? |
+| capability flags | `MSP_PARAM_CAP_*` in `msp_param.h`: a manifest is embedded; the build ID is valid; the build has **no config catalogue**, so clients answer config opcodes from their codecs at once, without verifying them against the firmware first (set by itself once step 5 deletes `msp_catalogue.[ch]`) |
 | embedded manifest size | so `MANIFEST_READ` can be paged |
 
 ### 6.2 Resolution order

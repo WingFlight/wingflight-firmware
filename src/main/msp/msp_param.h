@@ -33,6 +33,11 @@
 // Clear while the build ID is still the placeholder, so a client can tell an
 // unbound build from one whose manifest it should go and fetch.
 #define MSP_PARAM_CAP_BUILD_ID_VALID    (1 << 1)
+// Set when the build has no MSP config catalogue (after step 5, or a firmware
+// that never had one). Clients then answer every config opcode their codecs
+// cover from PARAM_READ / PARAM_WRITE at once, instead of first sending it to
+// the firmware to verify the codec, which would get no answer.
+#define MSP_PARAM_CAP_NO_CONFIG_CATALOGUE (1 << 2)
 
 // Scratch space for materialising a parameter group's defaults. Parameter
 // groups reset as a unit -- pgResetInstance() writes the whole struct -- so a

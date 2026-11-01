@@ -50,6 +50,7 @@
 #include "fc/runtime_config.h"
 
 #include "msp/msp.h"
+#include "msp/msp_catalogue.h"      // MSP_HAS_CONFIG_CATALOGUE; goes with the catalogue in step 5
 #include "msp/msp_param.h"
 #include "msp/msp_protocol.h"
 
@@ -203,6 +204,9 @@ static mspResult_e mspParamBuildId(sbuf_t *dst)
     if (wfBuildIdIsValid()) {
         capabilities |= MSP_PARAM_CAP_BUILD_ID_VALID;
     }
+#ifndef MSP_HAS_CONFIG_CATALOGUE
+    capabilities |= MSP_PARAM_CAP_NO_CONFIG_CATALOGUE;
+#endif
 
     sbufWriteU8(dst, MSP_PARAM_PROTOCOL_VERSION);
     sbufWriteData(dst, wfBuildId, WF_BUILD_ID_LENGTH);
