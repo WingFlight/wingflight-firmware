@@ -131,6 +131,9 @@
 #include "pg/rx_input_backup.h"
 #include "pg/bus_servo.h"
 #include "pg/logic_condition.h"
+#ifdef USE_SRXL2_ESC
+#include "pg/srxl2_esc.h"
+#endif
 
 #include "rx/rx.h"
 #include "rx/rx_bind.h"
@@ -1532,6 +1535,18 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         }
         break;
     }
+#endif
+
+#ifdef USE_SRXL2_ESC
+    case MSP2_WING_SRXL2_ESC_CONFIG:
+        // Payload version 1: the SRXL2 ESC bus settings (pg/srxl2_esc.h). The
+        // driver reads them at init, so a change takes effect after the save
+        // and reboot the Motors tab already does.
+        sbufWriteU8(dst, 1); // payload version
+        sbufWriteU16(dst, srxl2escConfig()->throttle_rate_hz);
+        sbufWriteU8(dst, srxl2escConfig()->telem_interval_frames);
+        sbufWriteU8(dst, srxl2escConfig()->motor2_channel); // 0 = off, 1..31
+        break;
 #endif
 
 #ifdef USE_FBUS_MUX_FPGA
@@ -4832,6 +4847,20 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         // Forwarding buffers are only loaded from config at boot -- reload
         // them now so the change is live immediately, without a reboot.
         fbusSensorInitForwarding();
+        break;
+#endif
+
+#ifdef USE_SRXL2_ESC
+    case MSP2_WING_SET_SRXL2_ESC_CONFIG:
+        // Same fields as MSP2_WING_SRXL2_ESC_CONFIG without the version byte.
+        // Out-of-range values are repaired by validateAndFixSrxl2escConfig()
+        // and the driver (an invalid motor 2 channel reads as off).
+        if (dataSize < 4) {
+            return MSP_RESULT_ERROR;
+        }
+        srxl2escConfigMutable()->throttle_rate_hz = sbufReadU16(src);
+        srxl2escConfigMutable()->telem_interval_frames = sbufReadU8(src);
+        srxl2escConfigMutable()->motor2_channel = sbufReadU8(src);
         break;
 #endif
 
