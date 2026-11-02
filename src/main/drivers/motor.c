@@ -232,41 +232,46 @@ void motorDevInit(const motorDevConfig_t *motorDevConfig, uint8_t motorCount)
     motorProtocolEnabled = checkMotorProtocolEnabled(motorDevConfig);
     motorProtocolDshot   = checkMotorProtocolDshot(motorDevConfig);
 
-    // The SRXL2 ESC takes its throttle over the serial port and reads the
-    // mixer output directly, so it needs no MOTOR pin. Only set up the PWM
-    // outputs when one is assigned; without a pin there is nothing to drive
-    // and nothing that could have failed.
-    bool needsOutputs = motorProtocolEnabled;
+    // How many of the motors get a PWM output. Normally all of them, as the
+    // motor count comes from the assigned pins.
+    uint8_t outputCount = motorCount;
+
 #ifdef USE_SRXL2_ESC
-    if (motorDevConfig->motorPwmProtocol == PWM_TYPE_SRXL2 && motorDevConfig->ioTags[0] == IO_TAG_NONE) {
-        needsOutputs = false;
+    // The SRXL2 ESC takes its throttle over the serial port and reads the
+    // mixer output directly, so its motor count does not come from the pins.
+    // Drive whatever MOTOR pins are assigned (none, say, or MOTOR 1 only);
+    // a missing pin is not a failed init, the ESC runs anyway.
+    if (motorDevConfig->motorPwmProtocol == PWM_TYPE_SRXL2) {
+        for (outputCount = 0;
+             outputCount < motorCount && motorDevConfig->ioTags[outputCount] != IO_TAG_NONE;
+             outputCount++);
     }
 #endif
 
-    if (needsOutputs) {
+    if (motorProtocolEnabled) {
 #ifdef USE_DSHOT
         if (motorProtocolDshot) {
 #ifdef USE_DSHOT_BITBANG
             if (isDshotBitbangActive(motorDevConfig)) {
-                motorDevice = dshotBitbangDevInit(motorDevConfig, motorCount);
+                motorDevice = dshotBitbangDevInit(motorDevConfig, outputCount);
             } else
 #endif
             {
-                motorDevice = dshotPwmDevInit(motorDevConfig, motorCount);
+                motorDevice = dshotPwmDevInit(motorDevConfig, outputCount);
             }
         } else
 #endif
         {
-            motorDevice = motorPwmDevInit(motorDevConfig, motorCount);
+            motorDevice = motorPwmDevInit(motorDevConfig, outputCount);
         }
     }
 
     if (motorDevice) {
-        motorDevice->count = motorCount;
+        motorDevice->count = outputCount;
         motorDevice->initialized = true;
         motorDevice->enabled = false;
         motorDevice->motorEnableTimeMs = 0;
-        for (int motorIndex = 0; motorIndex < motorCount; motorIndex++)
+        for (int motorIndex = 0; motorIndex < outputCount; motorIndex++)
             motorDevice->motorControlMode[motorIndex] = motorDevConfig->motorControlMode[motorIndex];
     }
     else {
