@@ -46,14 +46,25 @@ jobs:
 
   # The unit test suite has been in the tree without anything running it, so
   # nothing noticed when a test stopped building. It runs under clang, which is
-  # what src/test/Makefile defaults to.
+  # what src/test/Makefile defaults to, and that accepts clang 7 to 18:
+  # ubuntu-24.04 has 18, while ubuntu-latest is moving to an image with 21.
+  # The top-level Makefile checks for the ARM compiler before it gets to
+  # src/test, so the tests need it installed too.
   unit-tests:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
 
     steps:
     - name: Check out repository
       uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - name: Install ARM tools
+      run: make arm_sdk_install
 
     - name: Run the unit test suite
       run: make test
@@ -67,15 +78,20 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+
     steps:
     - name: Check out repository
       uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Install ARM tools
       run: make arm_sdk_install
 
     - name: Install manifest tooling
-      run: pip install pyelftools pycparser
+      run: pip install pyelftools==0.31 pycparser==2.22
 
     - name: Test the MSP codec extractor
       run: python src/utils/test_wf_msp_codecs.py
