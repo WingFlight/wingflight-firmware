@@ -369,4 +369,8 @@
 // Serial port and GPS diagnostics (like CLI serialdebug): per port pins, functions, open
 // state and baud, then GPS status and the last bytes received on the GPS port.
 #define MSP2_WING_SERIAL_STATUS               0x5F34
+// SRXL2 ESC bus settings (pg/srxl2_esc.h): throttle rate, telemetry poll interval and
+// the channel carrying motor 2 (0 = single motor). CLI srxl2esc_* settings.
+#define MSP2_WING_SRXL2_ESC_CONFIG            0x5F35
+#define MSP2_WING_SET_SRXL2_ESC_CONFIG        0x5F36
 #define MSP_V2_FRAME                         255
