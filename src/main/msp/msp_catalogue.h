@@ -26,6 +26,11 @@
 // The MSP config catalogue (msp_catalogue.c), which step 5 of
 // docs/parameter-addressing-design.md deletes. msp.c's dispatchers hand
 // each opcode they do not handle to the matching one of these.
+
+// Present while the catalogue is compiled in. MSP2_WING_BUILD_ID reports its
+// absence (MSP_PARAM_CAP_NO_CONFIG_CATALOGUE), so deleting this file and its
+// include in msp_param.c in step 5 switches the clients over by itself.
+#define MSP_HAS_CONFIG_CATALOGUE
 bool mspCatalogueProcessOutCommand(int16_t cmdMSP, sbuf_t *dst);
 mspResult_e mspCatalogueProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_t cmdMSP, sbuf_t *src, sbuf_t *dst);
 mspResult_e mspCatalogueProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, sbuf_t *src);
