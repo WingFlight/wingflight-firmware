@@ -66,6 +66,10 @@ jobs:
     - name: Install ARM tools
       run: make arm_sdk_install
 
+    # src/test/Makefile compiles with clang -fblocks and links BlocksRuntime.
+    - name: Install the blocks runtime
+      run: sudo apt-get update && sudo apt-get install -y libblocksruntime-dev
+
     - name: Run the unit test suite
       run: make test
 
