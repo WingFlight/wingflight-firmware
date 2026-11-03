@@ -54,9 +54,14 @@ extern "C" {
         uint8_t bytes[8];
     } testBytes_t;
 
+    // PG_DECLARE defines every accessor; clang reports the ones a test does
+    // not call.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
     PG_DECLARE(testConfig_t, testConfig);
     PG_DECLARE_ARRAY(testProfile_t, 4, testProfiles);
     PG_DECLARE(testBytes_t, testBytes);
+#pragma GCC diagnostic pop
 
     PG_REGISTER_WITH_RESET_TEMPLATE(testConfig_t, testConfig, PG_RESERVED_FOR_TESTING_1, 0);
     PG_RESET_TEMPLATE(testConfig_t, testConfig,
