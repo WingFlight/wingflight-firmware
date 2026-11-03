@@ -133,6 +133,7 @@
 #include "pg/bus_spi.h"
 #include "pg/pin_pull_up_down.h"
 #include "pg/serial_uart.h"
+#include "pg/timerup.h"
 
 
 #if defined(USE_RESOURCE_MGMT)
