@@ -1,3 +1,12 @@
+# 0.0.41
+
+Use the 0.0.41 Configurator and Lua suites with this firmware (MSP API 22.15). Updating keeps your settings except the SRXL2 ESC settings (throttle rate and telemetry interval), which reset to defaults.
+Add dual-motor SRXL2 Smart ESC support: set srxl2esc_motor2_channel (SRXL2 Motor 2 Channel in the Configurator; 0 = off, 1 to 31) to the SRXL2 channel carrying motor 2, and mixer output M2 goes out on that channel. Takes effect after a reboot. New MSP messages carry the SRXL2 ESC settings for the Configurator and Lua suites.
+Ignore MOTOR pins for an SRXL2 ESC: the throttle goes over the serial port, so a setup without a MOTOR 1 pin boots and arms, and assigned motor pins stay free for other uses.
+Make an SRXL2 throttle rate set over MSP take effect: it now sets the motor PWM rate, which the ESC driver follows.
+Fix the FBUS master relay: a request the radio repeats is not sent to the device twice, a write for an App ID shared by several devices is not forwarded, a sensor silent for a second is no longer reported as current, a device with many App IDs stays reachable, and a forwarded slot set to the FC's own IDs cannot take over its telemetry or MSP replies.
+Fix ledstrip_flicker_rate = 100 dividing by zero, vary the telemetry interval jitter between boards and boots, and keep the CRSF and IBUS telemetry handlers speed-optimised.
+
 # 0.0.40
 
 Use the 0.0.40 Configurator and Lua suites with this firmware (MSP API 22.15). Updating keeps your settings.
