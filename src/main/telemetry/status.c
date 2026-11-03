@@ -40,6 +40,7 @@
 #include "flight/autotrim.h"
 #include "flight/failsafe.h"
 #include "flight/gps_nav.h"
+#include "flight/gps_rescue.h"
 #include "flight/logic_condition.h"
 #include "flight/mixer.h"
 #include "flight/motors.h"
@@ -90,6 +91,26 @@ static telemetryNavBlocked_e navBlocked(void)
     }
 #endif
     return TELEM_NAV_BLOCKED_NONE;
+}
+
+// GPS nav is set up but can't run on this GPS provider. Checked from the settings so it shows
+// indoors with no fix.
+static bool gpsNavUnsupported(void)
+{
+#ifdef USE_GPS_NAV
+    if (!gpsIsEnabled() || gpsProviderSupportsNav()) {
+        return false;
+    }
+    if (isModeActivationConditionPresent(BOXRTH) || isModeActivationConditionPresent(BOXLOITER)) {
+        return true;
+    }
+#ifdef USE_GPS_RESCUE
+    if (gpsRescueIsConfigured()) {
+        return true;
+    }
+#endif
+#endif
+    return false;
 }
 
 static bool controlSaturated(void)
@@ -249,6 +270,8 @@ uint32_t telemetrySystemConfig(void)
 #endif
     if (isRpmSourceActive())
         config |= TELEM_CONFIG_RPM_SOURCE_ACTIVE;
+    if (gpsNavUnsupported())
+        config |= TELEM_CONFIG_GPS_NAV_UNSUPPORTED;
 
 #ifdef USE_SERVOS
     config |= field(trimMonitorGetState(FD_ROLL), TELEM_CONFIG_TRIM_MASK, TELEM_CONFIG_TRIM_ROLL_SHIFT);

@@ -37,6 +37,8 @@ gpsSolutionData_t gpsSol;
 int32_t GPS_home[2];
 attitudeEulerAngles_t attitude;
 bool gpsIsHealthy(void) { return true; }
+bool stubNavProvider = true;  // u-blox
+bool gpsProviderSupportsNav(void) { return stubNavProvider; }
 // STATE(GPS_FIX_HOME) (navCanRTH()) reads this global directly, same as the real firmware.
 uint8_t stateFlags = 0;
 // Settable by tests directly, same pattern as gpsSol.llh.lat/lon below.
@@ -604,3 +606,20 @@ TEST_F(GpsNavDeadReckoningTest, UnchangedFixIsDeadReckonedNotRestamped)
 }
 
 } // namespace
+
+TEST_F(GpsNavHealthTest, NonUbloxProviderNeverNavigates)
+{
+    // NMEA, FBUS or CRSF with a good fix and plenty of satellites.
+    stubNavProvider = false;
+    EXPECT_FALSE(navCanLoiter());
+    stateFlags = GPS_FIX | GPS_FIX_HOME;
+    EXPECT_FALSE(navCanRTH());
+
+    navLoiterStart();
+    placeAircraftForNonzeroRoll();
+    updateGpsNav();
+    EXPECT_EQ(0, navAngle[AI_ROLL]);
+
+    stubNavProvider = true;
+    EXPECT_TRUE(navCanLoiter());
+}
