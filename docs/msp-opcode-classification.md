@@ -16,7 +16,7 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | --- | --- | --- | --- | --- | --- |
 | frozen | 16 | 14 | 8 | 2 | 0 |
 | keep | 38 | 32 | 17 | 3 | 0 |
-| runtime | 32 | 29 | 20 | 1 | 0 |
+| runtime | 34 | 29 | 22 | 1 | 0 |
 | live | 33 | 28 | 6 | 3 | 0 |
 | config | 97 | 86 | 60 | 7 | 94 |
 
@@ -39,6 +39,9 @@ the extractor left it to be hand-written; **not built** = not compiled into that
   shapes and range checks are `setModeColor()` in `io/ledstrip.c`. The profile actions
   (`MSP_COPY_PROFILE`, `MSP_SET_BATTERY_PROFILE`,
   `MSP2_WING_COPY_TV_PID_PROFILE`) and `MSP_EXPERIMENTAL` are commands, not a byte layout.
+  The SRXL2 ESC config (`MSP2_WING_SRXL2_ESC_CONFIG` and its setter, added by master on
+  2026-11-03) is runtime too: the setter also moves the motor PWM rate, and only while an
+  SRXL2 ESC is the motor protocol.
 - *Config* is `msp/msp_catalogue.c`, which step 5 deletes; *frozen*, *keep* and *runtime* stay in
   `msp/msp.c`. *Keep* is longer than §8.2 listed: the configurator's connect flow alone needs
   `MSP_SET_ARMING_DISABLED` and `MSP_SET_RTC`, and calibration, overrides and the
@@ -144,6 +147,8 @@ the extractor left it to be hand-written; **not built** = not compiled into that
 | `0x5F1D` | `MSP2_WING_SET_SERVO_TRIM` | C |  |  |
 | `0x5F22` | `MSP2_WING_FBUS_MUX_CONFIG` | C |  |  |
 | `0x5F23` | `MSP2_WING_SET_FBUS_MUX_CONFIG` | C |  |  |
+| `0x5F35` | `MSP2_WING_SRXL2_ESC_CONFIG` |  | L |  |
+| `0x5F36` | `MSP2_WING_SET_SRXL2_ESC_CONFIG` |  | L |  |
 
 ## Live — reports state, not settings (§11.1)
 

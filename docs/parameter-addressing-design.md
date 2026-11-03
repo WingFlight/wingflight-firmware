@@ -1,11 +1,10 @@
 # Parameter addressing: moving firmware self-description off the board
 
-Status: partially implemented — manifest, addressed opcodes and CLI removal
-are done; the configurator CLI emulator is in progress. See §11.
-
-Supersedes the earlier draft of this file, which was truncated on disk and is
-not recoverable. `wf_manifest.py` in this directory is truncated the same way
-and has to be rewritten as part of step 1.
+Status: implemented up to step 5. The manifest and its extractor
+(`src/utils/wf_manifest.py`), the addressed opcodes, the CLI's removal (with
+custom defaults compiled instead) and the clients' CLI and virtual MSP layers
+exist; step 5, deleting the config catalogue, is still to come. §11 has the
+state of each step.
 
 ---
 
@@ -285,10 +284,12 @@ untouched. What changes is the *catalogue*, not the transport.
 
 The fork already has a contiguous Wingflight block: `MSP2_WING_*`, growing one
 opcode at a time in [msp_protocol.h](../src/main/msp/msp_protocol.h). The
-addressing opcodes are one contiguous group in it, in the first six-opcode run
-no command or open branch claims: `0x5F35`–`0x5F3A` (`0x5F1E`–`0x5F24` are
-FBUS OTA and the FBUS mux, `0x5F28`–`0x5F32` open branches, `0x5F33`–`0x5F34`
-sensor and serial status). New opcodes that replace CLI commands (§8.2)
+addressing opcodes are one contiguous group in it: `0x5F2A`–`0x5F2F`, in the
+run master reserves for open branches (`0x5F28`–`0x5F32`), right below the
+runtime diagnostics at `0x5F30`–`0x5F32`. `0x5F1E`–`0x5F24` are FBUS OTA and
+the FBUS mux, `0x5F28`–`0x5F29` the motor endpoints, and master's own opcodes
+continue upwards from `0x5F33` (`0x5F35`–`0x5F36`, which this group held
+before, are now the SRXL2 ESC config). New opcodes that replace CLI commands (§8.2)
 continue the `MSP2_WING_*` block.
 
 | opcode | purpose |
@@ -474,7 +475,7 @@ window with no working CLI at all. Revised:
    anything relies on it. Still to do: publish the manifest as a release asset,
    and the LTO-consistency gate below.
 2. **Addressed opcodes, additive.** *(done.)* `MSP2_WING_BUILD_ID` …
-   `MSP2_WING_MANIFEST_READ` at `0x5F35`–`0x5F3A`. MSP catalogue untouched.
+   `MSP2_WING_MANIFEST_READ` at `0x5F2A`–`0x5F2F`. MSP catalogue untouched.
 3. **Configurator on the manifest.** *(in progress.)* Client-side CLI in
    `src/js/param/cli.js`: `get`/`set`/`dump`/`diff`/`save`/`defaults`/
    `resource`/`timer`/`dma`/`tasks`/`gyroregisters`/`setpoint_info`/

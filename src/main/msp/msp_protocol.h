@@ -379,15 +379,16 @@
 // config catalogue stop being linked into flash. See
 // parameter-addressing-design.md.
 //
-// One contiguous group in the first block no other command or open branch
-// claims (0x5F1E-0x5F24 are FBUS OTA and the FBUS mux, 0x5F28-0x5F32 open
-// branches, 0x5F33-0x5F34 above).
-#define MSP2_WING_BUILD_ID                    0x5F35
-#define MSP2_WING_PG_LIST                     0x5F36
-#define MSP2_WING_PARAM_READ                  0x5F37
-#define MSP2_WING_PARAM_WRITE                 0x5F38
-#define MSP2_WING_PG_DEFAULT                  0x5F39
-#define MSP2_WING_MANIFEST_READ               0x5F3A
+// One contiguous group in the run reserved for open branches (0x5F28-0x5F32),
+// right below the runtime diagnostics that go with it. 0x5F1E-0x5F24 are FBUS
+// OTA and the FBUS mux, 0x5F28-0x5F29 the motor endpoints, and master's new
+// opcodes continue upwards from 0x5F33.
+#define MSP2_WING_BUILD_ID                    0x5F2A
+#define MSP2_WING_PG_LIST                     0x5F2B
+#define MSP2_WING_PARAM_READ                  0x5F2C
+#define MSP2_WING_PARAM_WRITE                 0x5F2D
+#define MSP2_WING_PG_DEFAULT                  0x5F2E
+#define MSP2_WING_MANIFEST_READ               0x5F2F
 
 // Runtime diagnostics the on-device CLI used to print (`tasks`,
 // `gyroregisters`, `setpoint_info`). The firmware reports raw values and the
