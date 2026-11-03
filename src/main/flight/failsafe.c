@@ -27,7 +27,6 @@
 
 #include "common/axis.h"
 #include "common/maths.h"
-#include "common/utils.h"
 
 #include "pg/failsafe.h"
 #include "pg/rx.h"

@@ -197,6 +197,36 @@ TEST_F(FbusSensorForwardTest, PeekShowsLatestWithoutTakingIt)
     EXPECT_FALSE(next(RB).valid);
 }
 
+TEST_F(FbusSensorForwardTest, PeekStopsWithASilentSensor)
+{
+    fbusSensorProcessData(RB, RB_BATT, 74);
+
+    fbusSensorFrame_t frame;
+    ASSERT_TRUE(fbusSensorPeekForwardedFrame(RB, &frame));
+    EXPECT_TRUE(frame.valid);
+
+    // the sensor is gone: its last value is not reported as current
+    testTimeUs += FBUS_FORWARDED_STALE_US + 1;
+    ASSERT_TRUE(fbusSensorPeekForwardedFrame(RB, &frame));
+    EXPECT_FALSE(frame.valid);
+
+    // back again, with an empty frame: the kept value is current again
+    fbusSensorProcessData(RB, 0, 0);
+    ASSERT_TRUE(fbusSensorPeekForwardedFrame(RB, &frame));
+    EXPECT_TRUE(frame.valid);
+    EXPECT_EQ(74u, frame.data);
+}
+
+TEST_F(FbusSensorForwardTest, FrameAtTimeZeroCounts)
+{
+    testTimeUs = 0;
+    fbusSensorProcessData(RB, RB_BATT, 74);
+
+    const fbusSensorFrame_t frame = next(RB);
+    EXPECT_TRUE(frame.valid);
+    EXPECT_EQ(RB_BATT, frame.appId);
+}
+
 TEST_F(FbusSensorForwardTest, FullTableReusesSentValues)
 {
     for (uint16_t i = 0; i < FBUS_FORWARDED_VALUES; i++) {
@@ -239,4 +269,34 @@ TEST_F(FbusSensorForwardTest, SportSensorIsNotOnTheFbusLine)
 
     EXPECT_FALSE(fbusSensorIsObservedOnFbus(0x05));
     EXPECT_EQ(-1, fbusSensorFindFbusPhysicalId(0x0210));
+}
+
+TEST_F(FbusSensorForwardTest, DeviceWithManyAppIdsStaysRoutable)
+{
+    // a device sending more App IDs than remembered: each is found within one round
+    const int count = FBUS_OBSERVED_APP_IDS + 3;
+    for (int round = 0; round < 2; round++) {
+        for (int i = 0; i < count; i++) {
+            fbusSensorProcessData(0x0C, 0x0F00 + i, i);
+            EXPECT_EQ(0x0C, fbusSensorFindFbusPhysicalId(0x0F00 + i));
+        }
+    }
+    // the ones sent last are all known
+    for (int i = count - FBUS_OBSERVED_APP_IDS; i < count; i++) {
+        EXPECT_EQ(0x0C, fbusSensorFindFbusPhysicalId(0x0F00 + i));
+    }
+}
+
+TEST_F(FbusSensorForwardTest, CountsDevicesSendingAnAppId)
+{
+    // two servos on their default App ID, a third on its own
+    fbusSensorProcessData(0x0C, 0x6800, 1);
+    fbusSensorProcessData(0x0E, 0x6800, 2);
+    fbusSensorProcessData(0x0F, 0x6803, 3);
+    fbusSensorProcessDataWithSource(0x05, 0x6800, 4, FBUS_SENSOR_SOURCE_SPORT);
+
+    EXPECT_EQ(2, fbusSensorCountFbusAppId(0x6800));
+    EXPECT_EQ(1, fbusSensorCountFbusAppId(0x6803));
+    EXPECT_EQ(0, fbusSensorCountFbusAppId(0x6807));
+    EXPECT_EQ(0, fbusSensorCountFbusAppId(0));
 }
