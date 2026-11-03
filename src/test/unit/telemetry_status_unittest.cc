@@ -39,6 +39,7 @@ static struct {
     bool airborne, motorsRunning, rxLink, backupEnabled, backupActive;
     failsafePhase_e failsafe;
     bool gpsHealthy, canRth, canLoiter, rthSwitch, loiterSwitch;
+    bool gpsEnabled, gpsNavProvider, rthMapped, loiterMapped;
     uint32_t sensorMask;
     batteryState_e battery;
     bool saturationLatch;
@@ -67,6 +68,12 @@ failsafePhase_e failsafePhase(void) { return fc.failsafe; }
 bool gpsIsHealthy(void) { return fc.gpsHealthy; }
 bool navCanRTH(void) { return fc.canRth; }
 bool navCanLoiter(void) { return fc.canLoiter; }
+bool gpsIsEnabled(void) { return fc.gpsEnabled; }
+bool gpsProviderSupportsNav(void) { return fc.gpsNavProvider; }
+bool isModeActivationConditionPresent(boxId_e box)
+{
+    return (box == BOXRTH && fc.rthMapped) || (box == BOXLOITER && fc.loiterMapped);
+}
 bool IS_RC_MODE_ACTIVE(boxId_e box)
 {
     return (box == BOXRTH && fc.rthSwitch) || (box == BOXLOITER && fc.loiterSwitch);
@@ -266,14 +273,32 @@ TEST_F(TelemetryStatusTest, ConfigLayoutIsFixed)
     fc.backupEnabled = true;
     fc.blackboxFull = true;
     fc.rpm = true;
+    fc.gpsEnabled = fc.rthMapped = true;              // GPS can't navigate, RTH on a switch
 
     const uint32_t expected =
         (6u << 0) | (1u << 3) | (3u << 6) | (4u << 9) |
         (1u << 12) | (1u << 13) | (1u << 14) | (1u << 15) |
         (1u << 16) | (1u << 17) | (1u << 18) | (1u << 19) |
-        (1u << 20) | (1u << 21) | (1u << 22);
+        (1u << 20) | (1u << 21) | (1u << 22) |
+        (1u << 29);
 
     EXPECT_EQ(expected, telemetrySystemConfig());
+}
+
+// Only when GPS nav is set up, and from the settings: no fix is needed.
+TEST_F(TelemetryStatusTest, GpsNavUnsupportedOnlyWhenNavIsSetUp)
+{
+    auto unsupported = [] { return (telemetrySystemConfig() & TELEM_CONFIG_GPS_NAV_UNSUPPORTED) != 0; };
+
+    fc.gpsEnabled = true;                             // e.g. CRSF GPS
+    EXPECT_FALSE(unsupported());                      // no nav mode on a switch
+    fc.loiterMapped = true;
+    EXPECT_TRUE(unsupported());
+    fc.gpsNavProvider = true;                         // u-blox
+    EXPECT_FALSE(unsupported());
+    fc.gpsNavProvider = false;
+    fc.gpsEnabled = false;                            // no GPS at all
+    EXPECT_FALSE(unsupported());
 }
 
 // The radio decodes these per axis: 0 in trim, 1 right / nose up, 2 left / nose down.
@@ -293,6 +318,7 @@ TEST_F(TelemetryStatusTest, SignBitIsNeverSet)
 {
     for (bool *flag : {&fc.airborne, &fc.motorsRunning, &fc.rxLink, &fc.backupEnabled, &fc.backupActive,
             &fc.gpsHealthy, &fc.canRth, &fc.canLoiter, &fc.rthSwitch, &fc.loiterSwitch, &fc.saturationLatch,
+            &fc.gpsEnabled, &fc.rthMapped, &fc.loiterMapped,
             &fc.gyroOverflow, &fc.servoOverride, &fc.mixerOverride, &fc.motorOverride, &fc.modeOverride, &fc.attHold,
             &fc.tvHold, &fc.trainer, &fc.blackboxLogging, &fc.blackboxFull,
             &fc.dirty, &fc.saving, &fc.reboot, &fc.beeper, &fc.rpm}) {

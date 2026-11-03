@@ -125,6 +125,12 @@ static serialPort_t *gpsPort;
 // gpsUpdate().
 static uint32_t mspGpsLastUpdateMs;
 
+#ifdef USE_GPS_UBLOX
+// The module refused the 10 Hz navigation rate (some can't run all their enabled constellations
+// that fast), so configure 5 Hz instead.
+static bool ubloxNavRateFallback;
+#endif
+
 typedef struct gpsInitData_s {
     uint8_t index;
     uint8_t baudrateIndex; // see baudRate_e
@@ -350,6 +356,11 @@ bool gpsUsesFbusTransport(void)
 #else
     return false;
 #endif
+}
+
+bool gpsProviderSupportsNav(void)
+{
+    return gpsConfig()->provider == GPS_UBLOX || gpsConfig()->provider == GPS_MSP;
 }
 
 bool gpsUsesCrsfTransport(void)
@@ -755,6 +766,7 @@ void gpsInitUblox(void)
                     case 0:
                         gpsData.ubloxUsePVT = true;
                         gpsData.ubloxUseSAT = true;
+                        ubloxNavRateFallback = false;
                         ubloxSendNAV5Message(gpsConfig()->gps_ublox_mode == UBLOX_AIRBORNE);
                         break;
                     case 1: //Disable NMEA Messages
@@ -811,7 +823,9 @@ void gpsInitUblox(void)
                         }
                         break;
                     case 12:
-                        ubloxSetNavRate(0xC8, 1, 1); // set rate to 5Hz (measurement period: 200ms, navigation rate: 1 cycle)
+                        // 10 Hz (measurement period 100 ms, one measurement per solution), the rate
+                        // GPS navigation needs; 5 Hz if the module refused that.
+                        ubloxSetNavRate(ubloxNavRateFallback ? 200 : 100, 1, 1);
                         break;
                     case 13:
                         ubloxSetSbas();
@@ -852,6 +866,9 @@ void gpsInitUblox(void)
                     } else {
                         if (gpsData.state_position == 11) { // If we were asking for NAV-SAT...
                             gpsData.ubloxUseSAT = false;   // ...retry asking for NAV-SVINFO
+                            gpsData.ackState = UBLOX_ACK_IDLE;
+                        } else if (gpsData.state_position == 12 && !ubloxNavRateFallback) {
+                            ubloxNavRateFallback = true;   // 10 Hz refused: retry at 5 Hz
                             gpsData.ackState = UBLOX_ACK_IDLE;
                         } else {
                             gpsSetState(GPS_STATE_CONFIGURE);

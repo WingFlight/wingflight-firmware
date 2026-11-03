@@ -96,7 +96,12 @@
 #define TELEM_CONFIG_TRIM_YAW_SHIFT         27
 #define TELEM_CONFIG_TRIM_MASK              0x3u
 
-// Bits 29-30 spare, bit 31 reserved.
+// LOITER/RTH is on a switch, or the failsafe is GPS rescue, but the GPS provider can't navigate
+// (NMEA, FBUS or CRSF; see gpsProviderSupportsNav()). From the settings, not the live fix, so it
+// shows on the bench too.
+#define TELEM_CONFIG_GPS_NAV_UNSUPPORTED    (1u << 29)
+
+// Bit 30 spare, bit 31 reserved.
 
 typedef enum {
     TELEM_GPS_FIX_NONE = 0,

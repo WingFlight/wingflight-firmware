@@ -152,8 +152,14 @@ static bool navEstimateFresh(timeMs_t nowMs)
 // UBLOX PVT in particular sets gpsSol.numSat from _buffer.pvt.numSV unconditionally, independent
 // of fixType/NAV_STATUS_FIX_VALID (see gps.c's UBLOX_parse_gps()), so a receiver can report a
 // healthy satellite count with no valid fix at all.
+//
+// Only u-blox (or the MSP simulator feed) is navigated on at all: see gpsProviderSupportsNav().
 static bool navGpsSampleGood(timeMs_t nowMs)
 {
+    if (!gpsProviderSupportsNav()) {
+        return false;
+    }
+
     int minSats = gpsNavConfig()->minSats;
     if (navEstimateFresh(nowMs)) {
         minSats = MAX(minSats - NAV_MIN_SATS_HYSTERESIS, NAV_MIN_SATS_FLOOR);
