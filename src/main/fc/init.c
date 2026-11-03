@@ -38,6 +38,7 @@
 
 #include "config/config.h"
 #include "config/config_eeprom.h"
+#include "config/custom_defaults.h"
 #include "config/feature.h"
 
 

@@ -561,9 +561,39 @@ window with no working CLI at all. Revised:
    - **wingflight-lua-ethos-suite** sends 60 of them. It moves the same way
      as the configurator (§14): same codecs, shipped as per-build packs.
 
-Custom defaults did not survive step 5: they were CLI text replayed through
-the parser. Board configs are applied over the wire by the configurator
-instead, which is how `wingflight-targets` configs are written anyway.
+Custom defaults survive the CLI's removal, in another form. They were CLI
+text replayed through the on-board parser on every reset to defaults, which
+needs the name table the CLI took with it. They are now compiled field
+writes (`config/custom_defaults.[ch]`):
+
+- **The configurator compiles them when it flashes.** It runs the board's
+  config text (a `wingflight-targets` config, or the hardware config read off
+  a DIY board) through its client-side CLI against the manifest of the hex
+  being flashed, and stores the bytes each line writes as records
+  `(pgn, offset, data[, mask])`. A masked record changes only some bits:
+  `feature X` sets one bit of a word whose other bits keep the reset value.
+- **The firmware applies them after its own reset**, with the same bounds
+  check as `PARAM_WRITE` (`pgFindSpan()`). The area carries the build ID and
+  a CRC, and is checked as a whole first: records for another layout, a bad
+  CRC or one record out of range leave the plain defaults, never a partial
+  set.
+- **The hex says which format it takes.** After the start and end addresses
+  the flasher has always read at the fixed custom defaults address comes a
+  locator: `"WFCD"`, a format version and the build ID. A hex without it
+  takes text, so a new configurator still flashes an old firmware correctly.
+
+The compiler cannot see the board's reset values, so it runs each line twice,
+over images where everything it cannot know is 0x00 in one and 0xFF in the
+other. Bits that come out the same are what the line sets; bits that differ
+keep the reset value, which is the mask. A line whose writes differ between
+the two runs depends on the board and is refused. Lines the CLI itself
+refuses (settings, resources and features from other firmware, which the
+target configs are full of) are left out, as the on-board CLI left them out.
+
+All 151 STM32F7X2 target configs compile, at most 590 bytes against a
+6120-byte area. The format is pinned by a vector shared between
+`custom_defaults_unittest.cc` and the configurator's
+`custom_defaults.selftest.mjs`.
 
 Steps 1–3 are additive. The catalogue deletion is irreversible and happens
 after the configurator has been running on the new path for a release.

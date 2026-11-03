@@ -229,6 +229,12 @@ msp_shared_unittest_DEFINES := \
 #		USE_CRSF_LINK_STATISTICS= \
 #		USE_RX_LINK_QUALITY_INFO=
 
+custom_defaults_unittest_SRC := \
+		$(USER_DIR)/common/crc.c \
+		$(USER_DIR)/common/streambuf.c \
+		$(USER_DIR)/config/custom_defaults.c \
+		$(USER_DIR)/pg/pg.c
+
 msp_param_unittest_SRC := \
 		$(USER_DIR)/common/crc.c \
 		$(USER_DIR)/common/streambuf.c \
