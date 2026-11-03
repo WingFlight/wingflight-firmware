@@ -44,3 +44,75 @@ jobs:
         name: wingflight-${{ env.GIT_VER }}
         path: wingflight*.hex
 
+  # The unit test suite has been in the tree without anything running it, so
+  # nothing noticed when a test stopped building. It runs under clang, which is
+  # what src/test/Makefile defaults to, and that accepts clang 7 to 18:
+  # ubuntu-24.04 has 18, while ubuntu-latest is moving to an image with 21.
+  # The top-level Makefile checks for the ARM compiler before it gets to
+  # src/test, so the tests need it installed too.
+  unit-tests:
+
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - name: Install ARM tools
+      run: make arm_sdk_install
+
+    # src/test/Makefile compiles with clang -fblocks and links BlocksRuntime.
+    - name: Install the blocks runtime
+      run: sudo apt-get update && sudo apt-get install -y libblocksruntime-dev
+
+    # The whole suite does not pass on master yet, so this runs the tests that
+    # cover what this branch changes: its own tests and the ones that compile
+    # the sources it touches. Switch to `make test` once master is green.
+    - name: Run the unit tests for the changed code
+      run: >-
+        make
+        test_custom_defaults_unittest
+        test_msp_param_unittest
+        test_msp_runtime_unittest
+        test_msp_shared_unittest
+        test_pg_unittest
+        test_io_serial_unittest
+        test_pid_unittest
+        test_sensor_gyro_unittest
+        test_trainer_unittest
+
+  # The manifest is what the configurator uses to turn a setting name into a
+  # (pgn, offset), so it has to keep agreeing both with the CLI's own table and
+  # with the binary that ships. One target is enough to catch a change to the
+  # extractor or to a shared struct; a target-specific divergence would show up
+  # at release, where every target is built anyway.
+  manifest-check:
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - name: Install ARM tools
+      run: make arm_sdk_install
+
+    - name: Install manifest tooling
+      run: pip install pyelftools==0.31 pycparser==2.22
+
+    - name: Test the MSP codec extractor
+      run: python src/utils/test_wf_msp_codecs.py
+
+    - name: Check the manifest against the CLI table and the shipping build
+      run: make manifest_check TARGET=STM32F411
+

@@ -26,6 +26,8 @@
 
 #define USE_UNIFIED_TARGET
 
+// Custom defaults are compiled field writes (config/custom_defaults.c), not
+// CLI text: the configurator compiles a board's config when it flashes it.
 #define USE_CUSTOM_DEFAULTS
 
 #define USE_BEEPER

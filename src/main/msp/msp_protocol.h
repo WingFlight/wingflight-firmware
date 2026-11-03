@@ -358,7 +358,6 @@
 #define MSP2_WING_SET_FBUS_MUX_OVERRIDE       0x5F24
 // Live thrust-vector loop gains (flight/tv_pid.c), laid out like MSP2_WING_EFFECTIVE_PID_GAINS'
 // axes but without its throttle/speed attenuation, which the TV loop never applies.
-// 0x5F26, not 0x5F25: that one is taken by parameter work on an open branch.
 #define MSP2_WING_TV_EFFECTIVE_PID_GAINS      0x5F26
 // Per PWM servo: the rate (Hz) it really runs at and the first servo on its hardware
 // timer. Servos on one timer run at the lowest rate set among them (flight/servos.c).
@@ -373,4 +372,30 @@
 // the channel carrying motor 2 (0 = single motor). CLI srxl2esc_* settings.
 #define MSP2_WING_SRXL2_ESC_CONFIG            0x5F35
 #define MSP2_WING_SET_SRXL2_ESC_CONFIG        0x5F36
+
+// Generic parameter addressing. These address configuration by
+// (pgn, offset, length) against the parameter group registry instead of by a
+// hand-written opcode per field, which is what lets cli/settings.c and the MSP
+// config catalogue stop being linked into flash. See
+// parameter-addressing-design.md.
+//
+// One contiguous group in the run reserved for open branches (0x5F28-0x5F32),
+// right below the runtime diagnostics that go with it. 0x5F1E-0x5F24 are FBUS
+// OTA and the FBUS mux, 0x5F28-0x5F29 the motor endpoints, and master's new
+// opcodes continue upwards from 0x5F33.
+#define MSP2_WING_BUILD_ID                    0x5F2A
+#define MSP2_WING_PG_LIST                     0x5F2B
+#define MSP2_WING_PARAM_READ                  0x5F2C
+#define MSP2_WING_PARAM_WRITE                 0x5F2D
+#define MSP2_WING_PG_DEFAULT                  0x5F2E
+#define MSP2_WING_MANIFEST_READ               0x5F2F
+
+// Runtime diagnostics the on-device CLI used to print (`tasks`,
+// `gyroregisters`, `setpoint_info`). The firmware reports raw values and the
+// configurator's CLI formats them. See msp/msp_runtime.c and §8.2/§11.2 of
+// parameter-addressing-design.md.
+#define MSP2_WING_TASK_INFO                   0x5F30
+#define MSP2_WING_GYRO_REGISTERS              0x5F31
+#define MSP2_WING_SETPOINT_INFO               0x5F32
+
 #define MSP_V2_FRAME                         255

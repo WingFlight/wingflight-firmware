@@ -30,11 +30,11 @@
 
 #include "build/debug.h"
 
-#include "cli/cli.h"
 
 #include "common/sensor_alignment.h"
 
 #include "config/config_eeprom.h"
+#include "config/custom_defaults.h"
 #include "config/feature.h"
 
 #include "drivers/castle_telemetry_decode.h"

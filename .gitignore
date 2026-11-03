@@ -51,3 +51,6 @@ ubuntu*.log
 
 # EEPROM image file (created by SITL)
 eeprom.bin
+
+# Python bytecode from the manifest tooling
+__pycache__/

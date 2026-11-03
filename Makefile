@@ -225,6 +225,12 @@ INCLUDE_DIRS    := $(INCLUDE_DIRS) \
 INCLUDE_DIRS    := $(INCLUDE_DIRS) \
                    $(TARGET_DIR)
 
+# Where 'make manifest' drops the generated wf_build_id.h. Listed last and
+# allowed to be absent: a build without a manifest still compiles, it just has
+# no build ID to report. See docs/parameter-addressing-design.md.
+INCLUDE_DIRS    := $(INCLUDE_DIRS) \
+                   $(OBJECT_DIR)/$(TARGET)
+
 VPATH           := $(VPATH):$(TARGET_DIR)
 
 include $(ROOT)/make/source.mk
@@ -607,6 +613,65 @@ binary:
 hex:
 	$(V0) $(MAKE) $(JFLAG) $(TARGET_HEX)
 
+# The manifest is extracted from DWARF, and LTO collapses the per-compilation-
+# unit debug info that the extraction depends on -- on an LTO build not one
+# parameter group resolves. So it gets its own non-LTO build, in its own object
+# directory so it cannot contaminate the shipping one. -Wno-error because
+# warnings that LTO hides (stringop-truncation in pg/board.c) surface without
+# it, and this build is never flashed.
+#
+# Struct layout does not depend on optimisation, but the two builds must be
+# proven to agree rather than assumed to: see 'manifest_check'.
+MANIFEST_OBJECT_DIR := $(ROOT)/obj/manifest
+MANIFEST_ELF        := $(MANIFEST_OBJECT_DIR)/$(FORKNAME)_$(TARGET).elf
+MANIFEST_JSON       := $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET)_manifest.json
+BUILD_ID_HEADER     := $(OBJECT_DIR)/$(TARGET)/wf_build_id.h
+WF_MANIFEST_TOOL    := $(ROOT)/src/utils/wf_manifest.py
+# The MSP config catalogue (msp_catalogue.c) preprocessed for this target,
+# for the MSP codec extractor (src/utils/wf_msp_codecs.py): every #if
+# resolved, every opcode a number.
+MANIFEST_MSP_SOURCE := $(MANIFEST_OBJECT_DIR)/$(TARGET)/msp/msp_catalogue.i
+# The manifest's MSP codecs as a Lua module, for wingflight-lua-ethos-suite,
+# which bundles one per supported release (src/utils/wf_lua_pack.py).
+MANIFEST_LUA_PACK   := $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET)_codecs.lua
+
+# Without this, `make manifest` matches the src/main/manifest *directory* and
+# does nothing. The Makefile declares no other phony targets, but these three
+# are the ones that collide with a real path.
+.PHONY: manifest manifests manifest_check
+
+## manifest          : generate the parameter manifest and build ID for $(TARGET)
+manifest:
+	$(V0) $(MAKE) $(JFLAG) DEBUG=INFO EXTRA_FLAGS="$(EXTRA_FLAGS) -Wno-error" \
+	      OPTIMISATION_BASE="-ffast-math -fmerge-all-constants" \
+	      OBJECT_DIR="$(MANIFEST_OBJECT_DIR)" MANIFEST_BUILD=yes $(MANIFEST_ELF) $(MANIFEST_MSP_SOURCE)
+	$(V1) $(PYTHON) $(WF_MANIFEST_TOOL) $(MANIFEST_ELF) $(MANIFEST_JSON) \
+	      --build-id-header $(BUILD_ID_HEADER) --msp-source $(MANIFEST_MSP_SOURCE)
+	$(V1) $(PYTHON) $(ROOT)/src/utils/wf_lua_pack.py $(MANIFEST_JSON) $(MANIFEST_LUA_PACK)
+
+# Same flags as the object, minus dependency generation, which -E would
+# otherwise point at the object's .d file.
+$(OBJECT_DIR)/$(TARGET)/msp/%.i: src/main/msp/%.c
+	$(V1) mkdir -p $(dir $@)
+	$(V1) $(CROSS_CC) -E -P -o $@ $(filter-out -MMD -MP,$(CFLAGS)) $<
+
+# Checks the manifest two ways: against valueTable, which is the firmware's
+# other description of the same settings, and against the shipping LTO build,
+# which is the binary the manifest actually has to describe. Builds both, so
+# this is the slow one -- it is a CI gate, not something to run per edit.
+## manifests         : generate manifests for all Unified Targets
+manifests:
+	$(V0) for target in $(UNIFIED_TARGETS); do \
+	    echo "Generating manifest for $$target" && \
+	    $(MAKE) manifest TARGET=$$target || exit 1; \
+	done
+
+## manifest_check    : check the generated manifest against the CLI table and the shipping build
+manifest_check: manifest
+	$(V0) $(MAKE) $(JFLAG) $(TARGET_ELF)
+	$(V1) $(PYTHON) $(ROOT)/src/utils/wf_manifest_check.py \
+	      $(MANIFEST_ELF) $(MANIFEST_JSON) --shipping-elf $(TARGET_ELF)
+
 unbrick_$(TARGET): $(TARGET_HEX)
 	$(V0) stty -F $(SERIAL_DEVICE) raw speed 115200 -crtscts cs8 -parenb -cstopb -ixon
 	$(V0) stm32flash -w $(TARGET_HEX) -v -g 0x0 -b 115200 $(SERIAL_DEVICE)
@@ -726,6 +791,12 @@ test_%:
 
 # rebuild everything when makefile changes
 $(TARGET_OBJS): Makefile $(TARGET_DIR)/target.mk $(wildcard make/*)
+
+# The objects that compile the build ID out of wf_build_id.h. The header only
+# appears once `make manifest` has run, and -MMD records nothing for a header
+# __has_include did not find, so without this an incremental build after
+# `make manifest` keeps objects that carry no build ID.
+$(OBJECT_DIR)/$(TARGET)/config/build_id.o $(OBJECT_DIR)/$(TARGET)/config/custom_defaults.o: $(wildcard $(BUILD_ID_HEADER))
 
 # include auto-generated dependencies
 -include $(TARGET_DEPS)

@@ -106,21 +106,6 @@ blackbox_encoding_unittest_SRC :=  \
 		$(USER_DIR)/common/typeconversion.c
 
 # This test is disabled due to build errors.
-#cli_unittest_SRC := \
-#		$(USER_DIR)/cli/cli.c \
-#		$(USER_DIR)/common/crc.c \
-#		$(USER_DIR)/common/printf.c \
-#		$(USER_DIR)/common/streambuf.c \
-#		$(USER_DIR)/config/feature.c \
-#		$(USER_DIR)/pg/pg.c \
-#		$(USER_DIR)/common/typeconversion.c
-
-#cli_unittest_DEFINES := \
-#		USE_OSD= \
-#		USE_CLI= \
-#		SystemCoreClock=1000000
-
-# This test is disabled due to build errors.
 #common_filter_unittest_SRC := \
 #		$(USER_DIR)/common/filter.c \
 #		$(USER_DIR)/common/maths.c
@@ -243,6 +228,23 @@ msp_shared_unittest_DEFINES := \
 #		USE_OSD= \
 #		USE_CRSF_LINK_STATISTICS= \
 #		USE_RX_LINK_QUALITY_INFO=
+
+custom_defaults_unittest_SRC := \
+		$(USER_DIR)/common/crc.c \
+		$(USER_DIR)/common/streambuf.c \
+		$(USER_DIR)/config/custom_defaults.c \
+		$(USER_DIR)/pg/pg.c
+
+msp_param_unittest_SRC := \
+		$(USER_DIR)/common/crc.c \
+		$(USER_DIR)/common/streambuf.c \
+		$(USER_DIR)/config/build_id.c \
+		$(USER_DIR)/msp/msp_param.c \
+		$(USER_DIR)/pg/pg.c
+
+msp_runtime_unittest_SRC := \
+		$(USER_DIR)/common/streambuf.c \
+		$(USER_DIR)/msp/msp_runtime.c
 
 pg_unittest_SRC := \
 		$(USER_DIR)/common/crc.c \
@@ -564,10 +566,6 @@ CXX := clang++
 #CC  := gcc
 #CXX := g++
 
-# These flags are needed for clang 10 (linux / MacOS) to make test work:
-# -Wno-c99-extensions
-# -Wno-reorder
-
 COMMON_FLAGS = \
 	-g \
 	-Wall \
@@ -593,6 +591,14 @@ CC_VERSION = $(shell $(CC) -dumpversion)
 CXX_VERSION = $(shell $(CXX) -dumpversion)
 
 ifeq ($(shell $(CC) -v 2>&1 | grep -q "clang version" && echo "clang"),clang)
+
+# Needed for clang 10 (linux / MacOS) to make test work. These two are clang
+# spellings -- gcc has no -Wunused-command-line-argument and no
+# -Wc99-extensions -- so keeping them out of COMMON_FLAGS is what lets the gcc
+# option above actually build.
+COMMON_FLAGS += \
+	-Wno-error=unused-command-line-argument \
+	-Wno-c99-extensions
 
 # Please revisit versions when new clang version arrive. Supported versions: { Linux / OSX: 7 - 13 }
 # Travis reports CC_VERSION of 4.2.1
@@ -641,7 +647,12 @@ C_FLAGS = $(COMMON_FLAGS) \
 	-std=gnu17
 
 # Flags passed to the C++ compiler.
+#
+# -Wno-reorder is C++-only, not compiler-specific: PG_REGISTER() initialises
+# .fnv_hash before .copy, which C++ -- unlike C -- warns about as designator
+# order. It used to sit in COMMON_FLAGS, where gcc rejected it for C.
 CXX_FLAGS = $(COMMON_FLAGS) \
+	-Wno-reorder \
 	-std=c++17
 
 # Compiler flags for coverage instrumentation

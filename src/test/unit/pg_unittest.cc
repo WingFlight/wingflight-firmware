@@ -34,11 +34,14 @@ extern "C" {
 
 PG_REGISTER_WITH_RESET_TEMPLATE(motorConfig_t, motorConfig, PG_MOTOR_CONFIG, 1);
 
+// Declaration order: .dev comes first in motorConfig_t. C does not mind, but
+// this file is compiled as C++, where designated initialisers must follow
+// declaration order.
 PG_RESET_TEMPLATE(motorConfig_t, motorConfig,
+    .dev = {.motorPwmRate = 400},
     .minthrottle = 1150,
     .maxthrottle = 1850,
-    .mincommand = 1000,
-    .dev = {.motorPwmRate = 400}
+    .mincommand = 1000
 );
 }
 
@@ -82,6 +85,26 @@ TEST(ParameterGroupsfTest, Test_pgFind)
     EXPECT_EQ(1850, motorConfig3.maxthrottle);
     EXPECT_EQ(1000, motorConfig3.mincommand);
     EXPECT_EQ(400, motorConfig3.dev.motorPwmRate);
+}
+
+TEST(ParameterGroupsfTest, Test_pgFindSpan)
+{
+    const pgRegistry_t *reg = pgFind(PG_MOTOR_CONFIG);
+    ASSERT_NE(nullptr, reg);
+    const uint32_t size = pgSize(reg);
+
+    EXPECT_EQ(reg, pgFindSpan(PG_MOTOR_CONFIG, 0, size));
+    EXPECT_EQ(reg, pgFindSpan(PG_MOTOR_CONFIG, size - 1, 1));
+    EXPECT_EQ(reg, pgFindSpan(PG_MOTOR_CONFIG, size, 0));
+
+    EXPECT_EQ(nullptr, pgFindSpan(PG_MOTOR_CONFIG, 0, size + 1));
+    EXPECT_EQ(nullptr, pgFindSpan(PG_MOTOR_CONFIG, size, 1));
+    EXPECT_EQ(nullptr, pgFindSpan(PG_MOTOR_CONFIG, size + 1, 0));
+    EXPECT_EQ(nullptr, pgFindSpan(PG_RESERVED_FOR_TESTING_1, 0, 1));
+
+    // Spans whose end wraps a uint32_t back into the group.
+    EXPECT_EQ(nullptr, pgFindSpan(PG_MOTOR_CONFIG, UINT32_MAX, 1));
+    EXPECT_EQ(nullptr, pgFindSpan(PG_MOTOR_CONFIG, 1, UINT32_MAX));
 }
 
 // STUBS
