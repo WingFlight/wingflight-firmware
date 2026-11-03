@@ -17,8 +17,10 @@ from Rotorflight PR #537.
 MSP: new `MSP2_WING_SRXL2_ESC_CONFIG` (0x5F35) returns payload version 1, then
 `throttle_rate_hz` (U16), `telem_interval_frames` (U8) and `motor2_channel`
 (U8). `MSP2_WING_SET_SRXL2_ESC_CONFIG` (0x5F36) takes the same three fields
-without the version byte. The settings are read at driver init, so a change
-needs a save and reboot.
+without the version byte. The throttle rate is applied through `motor_pwm_rate`,
+which the driver follows and adopts at runtime (capped at 250 Hz while the ESC is
+active), so GET returns the rate in effect. The telemetry interval and motor 2
+channel are read at driver init, so a change to them needs a save and reboot.
 
 ## Second Backup Receiver
 
