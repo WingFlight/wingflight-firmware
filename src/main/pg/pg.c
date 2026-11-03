@@ -46,8 +46,9 @@ const pgRegistry_t* pgFind(pgn_t pgn)
  *
  * pgSize() is the whole group, arrays included, which is what makes element N
  * of a repeated struct addressable as (index * stride + field offset) without
- * the firmware needing to know anything about the struct. Arithmetic is in
- * uint32_t so that offset + length cannot wrap a uint16_t back into range.
+ * the firmware needing to know anything about the struct. The length is
+ * compared with what is left after the offset, so no offset or length a caller
+ * passes can wrap the sum back into range.
  */
 const pgRegistry_t *pgFindSpan(pgn_t pgn, uint32_t offset, uint32_t length)
 {
@@ -55,7 +56,8 @@ const pgRegistry_t *pgFindSpan(pgn_t pgn, uint32_t offset, uint32_t length)
     if (!reg) {
         return NULL;
     }
-    if (offset + length > pgSize(reg)) {
+    const uint32_t size = pgSize(reg);
+    if (offset > size || length > size - offset) {
         return NULL;
     }
     return reg;

@@ -225,7 +225,9 @@ static mspResult_e mspParamManifestRead(sbuf_t *src, sbuf_t *dst)
     const uint16_t length = sbufReadU16(src);
     const uint32_t size = embeddedManifestSize();
 
-    if (offset + length > size) {
+    // offset comes from the client and is 32 bits wide, so offset + length can
+    // wrap back into range; compare against what is left instead.
+    if (offset > size || length > size - offset) {
         return MSP_RESULT_ERROR;
     }
     if (length > (uint32_t)sbufBytesRemaining(dst)) {
