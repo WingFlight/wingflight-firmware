@@ -792,5 +792,11 @@ test_%:
 # rebuild everything when makefile changes
 $(TARGET_OBJS): Makefile $(TARGET_DIR)/target.mk $(wildcard make/*)
 
+# The objects that compile the build ID out of wf_build_id.h. The header only
+# appears once `make manifest` has run, and -MMD records nothing for a header
+# __has_include did not find, so without this an incremental build after
+# `make manifest` keeps objects that carry no build ID.
+$(OBJECT_DIR)/$(TARGET)/config/build_id.o $(OBJECT_DIR)/$(TARGET)/config/custom_defaults.o: $(wildcard $(BUILD_ID_HEADER))
+
 # include auto-generated dependencies
 -include $(TARGET_DEPS)

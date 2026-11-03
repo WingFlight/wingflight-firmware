@@ -15,8 +15,13 @@ jobs:
       contents: write
 
     steps:
+    # Nothing below pushes with the checkout's credential: the release is made
+    # with GITHUB_TOKEN and the artifacts repo with its own App token. Not
+    # persisting it keeps it away from the packages pip installs.
     - name: Check out repository
       uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Install ARM tools
       run: make arm_sdk_install
@@ -39,17 +44,22 @@ jobs:
         echo "GH_TYPE=${GH_TYPE}" >> ${GITHUB_ENV}
         cat ${GITHUB_ENV}
 
-    - name: Build HEX files for unified targets
-      run: make unified FC_VER_SUFFIX="${{ env.GIT_PRE }}" FLASH_CONFIG_ERASE=yes
-
     # The configurator needs one of these per firmware build to know what the
     # settings in it are called and where they live; a hex published without
     # its manifest is a board the configurator cannot configure. See
     # docs/parameter-addressing-design.md.
+    #
+    # Before the hex files: each manifest drops wf_build_id.h into its target's
+    # object directory, and the shipping build compiles the build ID (and the
+    # custom defaults locator) from it. Built the other way round, every hex
+    # would report no build ID and match no manifest.
     - name: Generate parameter manifests
       run: |
-        pip install pyelftools pycparser
+        pip install pyelftools==0.31 pycparser==2.22
         make manifests FC_VER_SUFFIX="${{ env.GIT_PRE }}"
+
+    - name: Build HEX files for unified targets
+      run: make unified FC_VER_SUFFIX="${{ env.GIT_PRE }}" FLASH_CONFIG_ERASE=yes
 
     - name: Create Release
       run: |
