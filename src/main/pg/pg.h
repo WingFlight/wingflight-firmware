@@ -199,6 +199,7 @@ extern const uint8_t __pg_resetdata_end[];
     /**/
 
 const pgRegistry_t* pgFind(pgn_t pgn);
+const pgRegistry_t *pgFindSpan(pgn_t pgn, uint32_t offset, uint32_t length);
 
 bool pgLoad(const pgRegistry_t* reg, const void *from, int size, int version);
 int pgStore(const pgRegistry_t* reg, void *to, int size);

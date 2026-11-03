@@ -39,6 +39,28 @@ const pgRegistry_t* pgFind(pgn_t pgn)
     return NULL;
 }
 
+/*
+ * The group a byte span lives in, or NULL if the span is not inside one. This
+ * is the bounds check for everything that writes config by address: addressed
+ * MSP access and custom defaults.
+ *
+ * pgSize() is the whole group, arrays included, which is what makes element N
+ * of a repeated struct addressable as (index * stride + field offset) without
+ * the firmware needing to know anything about the struct. Arithmetic is in
+ * uint32_t so that offset + length cannot wrap a uint16_t back into range.
+ */
+const pgRegistry_t *pgFindSpan(pgn_t pgn, uint32_t offset, uint32_t length)
+{
+    const pgRegistry_t *reg = pgFind(pgn);
+    if (!reg) {
+        return NULL;
+    }
+    if (offset + length > pgSize(reg)) {
+        return NULL;
+    }
+    return reg;
+}
+
 static uint8_t *pgOffset(const pgRegistry_t* reg)
 {
     return reg->address;

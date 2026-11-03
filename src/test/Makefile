@@ -232,6 +232,7 @@ msp_shared_unittest_DEFINES := \
 msp_param_unittest_SRC := \
 		$(USER_DIR)/common/crc.c \
 		$(USER_DIR)/common/streambuf.c \
+		$(USER_DIR)/config/build_id.c \
 		$(USER_DIR)/msp/msp_param.c \
 		$(USER_DIR)/pg/pg.c
 

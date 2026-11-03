@@ -45,6 +45,8 @@
 #include "common/streambuf.h"
 #include "common/utils.h"
 
+#include "config/build_id.h"
+
 #include "fc/runtime_config.h"
 
 #include "msp/msp.h"
@@ -52,34 +54,6 @@
 #include "msp/msp_protocol.h"
 
 #include "pg/pg.h"
-
-#define WF_BUILD_ID_LENGTH 8
-
-/*
- * Hash of the parameter manifest describing this build's config layout, which
- * the client uses to pick the manifest that matches the board in front of it.
- *
- * `make TARGET=<t> manifest` generates the manifest and drops wf_build_id.h
- * into the target's object directory; an ordinary build then picks it up. A
- * build made without that step has no ID, reports MSP_PARAM_CAP_BUILD_ID_VALID
- * clear, and a client can tell "not bound to a manifest" from "bound to one I
- * should go and find" rather than chasing a hash of eight zero bytes.
- *
- * Plain `make` therefore still works with no extra step, which matters: the
- * manifest build is a second, non-LTO compile of the whole tree and making
- * every developer pay for it on every build would be a poor trade.
- */
-#if defined(__has_include)
-#  if __has_include("wf_build_id.h")
-#    include "wf_build_id.h"
-#  endif
-#endif
-
-#ifndef WF_BUILD_ID_BYTES
-#define WF_BUILD_ID_BYTES 0, 0, 0, 0, 0, 0, 0, 0
-#endif
-
-static const uint8_t wfBuildId[WF_BUILD_ID_LENGTH] = { WF_BUILD_ID_BYTES };
 
 #ifdef USE_EMBEDDED_MANIFEST
 extern const uint8_t __wf_manifest_start[];
@@ -90,16 +64,6 @@ extern const uint8_t __wf_manifest_end[];
 // duration of a dump/diff.
 static uint8_t pgDefaultStaging[MSP_PARAM_STAGING_SIZE];
 
-static bool buildIdIsValid(void)
-{
-    for (unsigned i = 0; i < WF_BUILD_ID_LENGTH; i++) {
-        if (wfBuildId[i]) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static uint32_t embeddedManifestSize(void)
 {
 #ifdef USE_EMBEDDED_MANIFEST
@@ -107,26 +71,6 @@ static uint32_t embeddedManifestSize(void)
 #else
     return 0;
 #endif
-}
-
-/*
- * Common bounds check for every addressed access.
- *
- * pgSize() is the whole group, arrays included, which is what makes element N
- * of a repeated struct addressable as (index * stride + field offset) without
- * the firmware needing to know anything about the struct. Arithmetic is in
- * uint32_t so that offset + length cannot wrap a uint16_t back into range.
- */
-static const pgRegistry_t *pgFindChecked(uint16_t pgn, uint32_t offset, uint32_t length)
-{
-    const pgRegistry_t *reg = pgFind(pgn);
-    if (!reg) {
-        return NULL;
-    }
-    if (offset + length > pgSize(reg)) {
-        return NULL;
-    }
-    return reg;
 }
 
 static mspResult_e mspParamRead(sbuf_t *src, sbuf_t *dst)
@@ -138,7 +82,7 @@ static mspResult_e mspParamRead(sbuf_t *src, sbuf_t *dst)
     const uint16_t offset = sbufReadU16(src);
     const uint16_t length = sbufReadU16(src);
 
-    const pgRegistry_t *reg = pgFindChecked(pgn, offset, length);
+    const pgRegistry_t *reg = pgFindSpan(pgn, offset, length);
     if (!reg) {
         return MSP_RESULT_ERROR;
     }
@@ -166,7 +110,7 @@ static mspResult_e mspParamWrite(sbuf_t *src)
         return MSP_RESULT_ERROR;
     }
 
-    const pgRegistry_t *reg = pgFindChecked(pgn, offset, length);
+    const pgRegistry_t *reg = pgFindSpan(pgn, offset, length);
     if (!reg) {
         return MSP_RESULT_ERROR;
     }
@@ -185,7 +129,7 @@ static mspResult_e mspParamDefault(sbuf_t *src, sbuf_t *dst)
     const uint16_t offset = sbufReadU16(src);
     const uint16_t length = sbufReadU16(src);
 
-    const pgRegistry_t *reg = pgFindChecked(pgn, offset, length);
+    const pgRegistry_t *reg = pgFindSpan(pgn, offset, length);
     if (!reg) {
         return MSP_RESULT_ERROR;
     }
@@ -256,7 +200,7 @@ static mspResult_e mspParamBuildId(sbuf_t *dst)
     if (embeddedManifestSize()) {
         capabilities |= MSP_PARAM_CAP_EMBEDDED_MANIFEST;
     }
-    if (buildIdIsValid()) {
+    if (wfBuildIdIsValid()) {
         capabilities |= MSP_PARAM_CAP_BUILD_ID_VALID;
     }
 
