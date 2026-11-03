@@ -1078,7 +1078,7 @@ def extract(preprocessed_path, pgs, wanted=None, constants=None, arrays=None):
     maps enumerators to values; `arrays(name)` gives a const integer table's
     values from the image, or None."""
     if c_parser is None:
-        return {}, {op: 'pycparser not installed' for op in wanted}
+        return {}, {op: 'pycparser not installed' for op in (wanted or ())}
 
     with open(preprocessed_path, encoding='utf-8', errors='ignore') as f:
         src = f.read()

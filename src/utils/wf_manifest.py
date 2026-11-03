@@ -504,6 +504,21 @@ def read_lookup_tables(elf, dwarf):
     return tables
 
 
+# A table read off the image that no record terminates, at most.
+UNBOUNDED_TABLE_RECORDS = 256
+
+
+def table_length(elf, symbol, record_size):
+    """How many records a const array holds: its ELF symbol size, which is the
+    array's own extent. resourceTable and dmaoptEntryTable are not
+    terminated, so reading on to the first zero record would decode whatever
+    the linker placed after them as more entries."""
+    size = elf.symbol_sizes.get(symbol)
+    if size and record_size:
+        return size // record_size
+    return UNBOUNDED_TABLE_RECORDS
+
+
 def read_resource_table(elf, dwarf):
     """Which parameter group holds which pin assignment.
 
@@ -528,8 +543,7 @@ def read_resource_table(elf, dwarf):
         return elf.read_cstring(pointer) if pointer else None
 
     entries = []
-    index = 0
-    while True:
+    for index in range(table_length(elf, 'resourceTable', record_size)):
         record = elf.read_at(table + index * record_size, record_size)
         if record is None or len(record) < record_size:
             break
@@ -540,8 +554,8 @@ def read_resource_table(elf, dwarf):
 
         owner = field('owner')
         pgn = field('pgn')
-        # The array is not length-prefixed. A zero pgn is not a real group, so
-        # it marks the end as reliably as anything available.
+        # Not a real group: a table some build terminates, or one whose symbol
+        # size is unknown, ends here.
         if pgn == 0:
             break
 
@@ -555,7 +569,6 @@ def read_resource_table(elf, dwarf):
             # RESOURCE_VALUE_MAX_INDEX() encoded in the firmware.
             'count': field('maxIndex') or 1,
         })
-        index += 1
     return entries
 
 
@@ -580,8 +593,7 @@ def read_dmaopt_table(elf, dwarf):
     scalar = {1: 'B', 2: 'H', 4: 'I', 8: 'Q'}
 
     entries = []
-    index = 0
-    while True:
+    for index in range(table_length(elf, 'dmaoptEntryTable', record_size)):
         record = elf.read_at(table + index * record_size, record_size)
         if record is None or len(record) < record_size:
             break
@@ -603,7 +615,6 @@ def read_dmaopt_table(elf, dwarf):
             'off': field('offset'),
             'count': field('maxIndex') or 1,
         })
-        index += 1
     return entries
 
 
