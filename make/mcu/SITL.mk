@@ -1,5 +1,8 @@
 
-INCLUDE_DIRS    := $(INCLUDE_DIRS)
+# src/main/common holds time.h, which shadows the C library's <time.h> when
+# the directory is on the -I path (glibc's pthread.h then cannot see
+# clockid_t). Search it for #include "..." only.
+INCLUDE_DIRS    := $(filter-out $(SRC_DIR)/common,$(INCLUDE_DIRS))
 
 # build/atomic.c provides the emulated atomic_BASEPRI storage used by
 # ATOMIC_BLOCK() under UNIT_TEST/SIMULATOR_BUILD; it's not part of the
@@ -13,7 +16,7 @@ DEVICE_FLAGS    =
 LD_SCRIPT       = src/main/target/SITL/pg.ld
 STARTUP_SRC     =
 
-TARGET_FLAGS    = -D$(TARGET)
+TARGET_FLAGS    = -D$(TARGET) -iquote $(SRC_DIR)/common
 MCU_FLASH_SIZE  := 2048
 
 # On MinGW/MSYS (native Windows) toolchains, GCC defaults to MS-style bitfield
@@ -62,6 +65,12 @@ MCU_EXCLUDES = \
             telemetry/ghst.c \
             telemetry/srxl.c \
             io/displayport_oled.c
+
+# common/string_light.c redefines the C library's ctype functions, which
+# glibc also provides as macros: leave it to the C library on Linux/macOS.
+ifneq ($(OSFAMILY),windows)
+MCU_EXCLUDES += common/string_light.c
+endif
 
 TARGET_MAP  = $(OBJECT_DIR)/$(FORKNAME)_$(TARGET).map
 
