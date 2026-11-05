@@ -25,6 +25,7 @@
 #include <string.h>
 
 #include <errno.h>
+#include <sched.h>
 #include <time.h>
 #if defined(_WIN32) || defined(__MINGW32__)
 #include <pthread_time.h>
@@ -387,6 +388,54 @@ static void* udpThread(void* data) {
 }
 
 // system
+// The main loop's pause between scheduler passes. 50 us where a short sleep
+// takes about that long; where it overshoots (0.7 ms on WSL1, ~107 us on some CI
+// runners, a timer tick on Windows) only yield, or the gyro boundary is missed
+// and the gyro/PID loop starves. SITL_LOOP_SLEEP_US overrides.
+#define SIM_LOOP_SLEEP_DEFAULT_US   50
+static uint32_t simLoopSleepUs = SIM_LOOP_SLEEP_DEFAULT_US;
+
+static void simChooseLoopIdle(void)
+{
+    const char *loopSleep = getenv("SITL_LOOP_SLEEP_US");
+    if (loopSleep && *loopSleep) {
+        simLoopSleepUs = (uint32_t)strtoul(loopSleep, NULL, 10);
+        printf("[system]main loop idle: %u us (SITL_LOOP_SLEEP_US)\n", (unsigned)simLoopSleepUs);
+        return;
+    }
+#if defined(_WIN32) || defined(__MINGW32__)
+    simLoopSleepUs = 0;
+    printf("[system]main loop idle: 0 us (Windows)\n");
+#else
+    // How long does a short sleep really take here? Median of 9.
+    uint64_t took[9];
+    for (unsigned i = 0; i < ARRAYLEN(took); i++) {
+        const uint64_t t0 = nanos64_real();
+        const struct timespec ts = { 0, SIM_LOOP_SLEEP_DEFAULT_US * 1000 };
+        nanosleep(&ts, NULL);
+        took[i] = nanos64_real() - t0;
+    }
+    for (unsigned i = 1; i < ARRAYLEN(took); i++) {     // insertion sort
+        for (unsigned j = i; j > 0 && took[j - 1] > took[j]; j--) {
+            const uint64_t t = took[j]; took[j] = took[j - 1]; took[j - 1] = t;
+        }
+    }
+    const unsigned medianUs = (unsigned)(took[ARRAYLEN(took) / 2] / 1000);
+    simLoopSleepUs = (medianUs * 2 <= 3 * SIM_LOOP_SLEEP_DEFAULT_US) ? SIM_LOOP_SLEEP_DEFAULT_US : 0;
+    printf("[system]main loop idle: %u us (a %u us sleep takes %u us here)\n",
+           (unsigned)simLoopSleepUs, SIM_LOOP_SLEEP_DEFAULT_US, medianUs);
+#endif
+}
+
+void simLoopIdle(void)
+{
+    if (simLoopSleepUs) {
+        delayMicroseconds_real(simLoopSleepUs);
+    } else {
+        sched_yield();
+    }
+}
+
 void systemInit(void) {
     int ret;
 
@@ -394,6 +443,7 @@ void systemInit(void) {
     printf("[system]Init...\n");
 
     SystemCoreClock = 500 * 1e6; // fake 500MHz
+    simChooseLoopIdle();
 
     if (pthread_mutex_init(&updateLock, NULL) != 0) {
         printf("Create updateLock error!\n");
