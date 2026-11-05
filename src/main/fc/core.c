@@ -444,9 +444,10 @@ void updateArmingStatus(void)
         }
 
         // Bidirectional (4D) throttle can't be armed with the sticks (fc/rc_controls.c), so
-        // it needs an ARM switch. Arming itself still requires the throttle in the deadband
-        // at mid stick (isThrottleOff(), ARMING_DISABLED_THROTTLE above).
-        if (isThrottleBidirectional() && isUsingSticksForArming()) {
+        // it needs an ARM switch, whether or not stick arming is enabled: without one there
+        // is no way to arm and nothing else would say why. Arming itself still requires the
+        // throttle in the deadband at mid stick (isThrottleOff(), ARMING_DISABLED_THROTTLE).
+        if (isThrottleBidirectional() && !isModeActivationConditionPresent(BOXARM)) {
             setArmingDisabled(ARMING_DISABLED_NO_ARM_SWITCH);
         } else {
             unsetArmingDisabled(ARMING_DISABLED_NO_ARM_SWITCH);

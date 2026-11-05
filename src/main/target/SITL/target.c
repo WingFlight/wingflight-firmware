@@ -636,6 +636,13 @@ static bool pwmEnableMotors(void)
 
 static void pwmWriteMotor(uint8_t index, uint8_t mode, float value)
 {
+    // The simulator gets 0..1, or -1..1 for a bidirectional (3D) motor (see
+    // refreshPwmPacket()). A bidirectional motor's pulse width would put zero
+    // thrust at the middle of the range, so send the command itself.
+    if (mode == MOTOR_CONTROL_BIDIR) {
+        motorsPwm[index] = lrintf(constrainf(value, -1, 1) * 1000);
+        return;
+    }
     motorsPwm[index] = pwmConvertToInternal(mode, value) - motorConfig()->mincommand;
 }
 

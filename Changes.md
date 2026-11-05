@@ -34,8 +34,9 @@ existing setup unchanged.
 - **Arming.** Throttle off for arming means inside the deadband at mid stick.
   The sticks never arm or disarm in this mode (full rudder at any throttle is
   an ordinary 4D manoeuvre, so a stick disarm could happen in flight): an ARM
-  switch is required, and without one arming is refused with the new flag
-  `NO_ARM_SWITCH` (bit 14, formerly the never-set `CMS_MENU`). `rcCommand[THROTTLE]`
+  switch is required: while no ARM mode range is set up, arming is refused with
+  the new flag `NO_ARM_SWITCH` (bit 14, formerly the never-set `CMS_MENU`),
+  whether or not `enable_stick_arming` is on. `rcCommand[THROTTLE]`
   (the raw throttle channel mixer input `RT`, stick commands) is the stick
   centred on the neutral point, so its low end is full reverse, not "off".
 - **Safety.** The RX
@@ -54,6 +55,9 @@ existing setup unchanged.
 - Debug mode `REVERSE_FLIGHT`: stick thrust, motor command, thrust estimate,
   speed estimate, gimbal factor, surface factor (x1000), direction, state.
   Blackbox header line `reverse_flight` lists the settings.
+
+**SITL:** a bidirectional motor's `motor_speed` in the `servo_packet` is the
+signed command -1..1, as `target.h` documents, instead of a pulse width offset.
 
 **Bidirectional PWM motor output:** zero now outputs the middle of
 `min_throttle`..`max_throttle` instead of `min_command` (`drivers/pwm_output.c`,
