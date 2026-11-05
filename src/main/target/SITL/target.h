@@ -278,11 +278,30 @@ typedef struct {
     double imu_orientation_quat[4];     //w, x, y, z
     double velocity_xyz[3];             // m/s, earth frame
     double position_xyz[3];             // meters, NED from origin
+    // Optional tail, shared with Rotorflight's SITL and told apart by the datagram
+    // length: each longer layout is the shorter one plus fields at the end, and fields
+    // a packet does not carry read as 0. A simulator written for either firmware's
+    // SITL works with both.
+    double motor_erpm[4];               // 168 bytes: electrical rpm per motor (not used here yet)
+    double pressure;                    // 176: static pressure, Pa (as baro_packet; temperature from ISA)
+    double mcu_vref;                    // 192: MCU supply rail, V (not used here yet)
+    double mcu_temp;                    //      MCU die temperature, degC
+    double vbec;                        // 208: BEC rail, V (not used here yet)
+    double vbus;                        //      bus rail, V
+    double vbat;                        // 224: pack voltage, V (not used here yet)
+    double ibat;                        //      pack current, A
 } fdm_packet;
+
+#define FDM_PACKET_SIZE_BASE    136
+#define FDM_PACKET_SIZE_ERPM    168
+#define FDM_PACKET_SIZE_BARO    176
+#define FDM_PACKET_SIZE_MCU     192
+#define FDM_PACKET_SIZE_RAILS   208
+#define FDM_PACKET_SIZE_PACK    224
 // Barometer reading from the simulator, sent on the same UDP port as
 // fdm_packet and told apart from it by its size alone. That keeps both
 // directions compatible: firmware without this struct drops the short
-// datagram (udpThread() only accepts sizeof(fdm_packet)), and a simulator
+// datagram (udpThread() only accepts the fdm_packet sizes), and a simulator
 // that never sends it leaves target.c on its ISA-from-position fallback.
 typedef struct {
     double timestamp;                   // in seconds, same clock as fdm_packet
