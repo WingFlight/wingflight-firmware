@@ -37,6 +37,7 @@
 #include "fc/rc_adjustments.h"
 
 #include "flight/mixer.h"
+#include "flight/reverse_flight.h"
 #include "flight/servos.h"
 
 #include "pg/servos.h"
@@ -123,7 +124,12 @@ void autoTrimUpdate(void)
                 break;
             }
 
-            for (int s = 0; s < MAX_SUPPORTED_SERVOS; s++) {
+            // With bidirectional (4D) throttle the surfaces work the other way round in
+            // reverse and are faded out while the aircraft stops, so only forward flight
+            // tells anything about trim. Always true with normal throttle.
+            const bool sample = !reverseFlightIsEnabled() || reverseFlightSurfacesForward();
+
+            for (int s = 0; s < MAX_SUPPORTED_SERVOS && sample; s++) {
                 if (isTrimmableServo(s)) {
                     autoTrim.accum[s] += getServoOutput(s);
                     autoTrim.accumCount[s]++;

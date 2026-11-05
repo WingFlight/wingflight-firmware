@@ -3,6 +3,77 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## 4D Shockflyers: Bidirectional Throttle and Reverse Flight
+
+`throttle_mode = BIDIRECTIONAL` puts zero thrust at mid stick, forward above
+and reverse below, for airframes with a reversible motor on a pitch/yaw gimbal
+(`fc/rc.c`, `flight/reverse_flight.c`). `NORMAL`, the default, leaves every
+existing setup unchanged.
+
+- **Throttle.** `throttle_deadband` (40 us each side) stops the motor around the
+  middle of the throttle range. The direction only flips once the stick passes
+  the deadband by `throttle_reverse_hysteresis` (50 % of the deadband), so a
+  stick parked near an edge can't chatter. Thrust starts from zero at the
+  deadband edge. `throttle_reverse_limit` caps reverse. `getThrottle()` stays the
+  magnitude 0..1 (TPA, in-flight latch, LEDs); the motor and the throttle mixer
+  inputs get the signed value, and their input minimum mirrors the maximum.
+- **Gimbal.** The thrust vector loop's output follows the sign of the estimated
+  real thrust (the command through a `reverse_motor_time` lag, 80 ms, for the
+  ESC braking and reversing the prop) and fades out as it passes zero.
+- **Surfaces.** The main loop's output follows the estimated direction of
+  motion (the command through a `reverse_time_constant` lag, 400 ms). While the
+  thrust is reversed but the aircraft still moves the old way the surfaces get
+  zero gain, and they come back reversed once it moves backwards, scaled by
+  `reverse_surface_gain`. `reverse_fade` sets how much speed or thrust a factor
+  needs to fade in fully.
+- **I-term.** Both loops hold I while their factor is below 0.5 and clear it on
+  every reversal, as the motor torque reverses with the prop.
+- **MANUAL** applies the same factors without the gyro, and drives the gimbal
+  from the sticks through the TV feedforward (with THRUST VECTOR on). PASSTHROUGH
+  is unchanged and never flips.
+- **Arming.** Throttle off for arming means inside the deadband at mid stick.
+  The sticks never arm or disarm in this mode (full rudder at any throttle is
+  an ordinary 4D manoeuvre, so a stick disarm could happen in flight): an ARM
+  switch is required, and without one arming is refused with the new flag
+  `NO_ARM_SWITCH` (bit 14, formerly the never-set `CMS_MENU`). `rcCommand[THROTTLE]`
+  (the raw throttle channel mixer input `RT`, stick commands) is the stick
+  centred on the neutral point, so its low end is full reverse, not "off".
+- **Safety.** The RX
+  failsafe and startup throttle value is the neutral point, failsafe gives zero
+  thrust, and the GPS rescue procedure falls back to landing; LOITER and RTH
+  don't engage. Once airborne there is no auto-disarm or armed beeping in the
+  deadband. Arming is refused (`MOTOR_PROTOCOL`) while a motor is not
+  `motor_control_mode = BIDIR`. Autotrim only samples in forward flight.
+- **Coupled axes.** Where one servo moves both a surface and a gimbal axis (the
+  rudder linked to the gimbal's yaw tilt), set that axis in
+  `reverse_coupled_axes` (bit 0 roll, 1 pitch, 2 yaw) and drive the servo from
+  the surface's stabilized input only. The main loop then blends the factors:
+  the gimbal's while there is thrust, the surface's as the thrust fades out.
+- `reverse_motor_dwell` (0 ms) optionally holds the motor at zero before it may
+  reverse, for ESCs that don't like an instant reversal.
+- Debug mode `REVERSE_FLIGHT`: stick thrust, motor command, thrust estimate,
+  speed estimate, gimbal factor, surface factor (x1000), direction, state.
+  Blackbox header line `reverse_flight` lists the settings.
+
+**Bidirectional PWM motor output:** zero now outputs the middle of
+`min_throttle`..`max_throttle` instead of `min_command` (`drivers/pwm_output.c`,
+SITL). A 3D ESC reads `min_command` (1000 us by default) as full reverse, so a
+disarmed or stopped bidirectional PWM motor was commanded to full reverse.
+
+New parameter group `PG_REVERSE_FLIGHT_CONFIG` (1026). MSP:
+`MSP2_WING_REVERSE_FLIGHT_CONFIG` (0x5F37) returns payload version 1, the ten
+settings in struct order (U8 mode, U8 deadband, U8 hysteresis, U8 reverse
+limit, U16 motor time, U16 time constant, U16 surface gain, U8 fade, U8 dwell,
+U8 coupled axes),
+U16 throttle neutral (read only), U8 bidirectional motor mask (bit n = motor
+n+1 `motor_control_mode` BIDIR) and U8 motor count.
+`MSP2_WING_SET_REVERSE_FLIGHT_CONFIG` (0x5F38) takes the ten settings and the
+motor mask (14 bytes), refused while armed; the motor modes apply after a
+reboot. `MSP2_WING_REVERSE_FLIGHT_STATUS` (0x5F39) returns payload version 1,
+U8 enabled, U8 state, S8 direction, U8 stick in deadband, U16 throttle channel
+(us), then S16 x1000 stick thrust, motor command, thrust estimate, speed
+estimate, gimbal factor and surface factor.
+
 ## SRXL2 Dual Motor
 
 An SRXL2 ESC can drive a second motor (Spektrum "Smart" dual ESCs such as the

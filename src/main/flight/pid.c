@@ -58,6 +58,7 @@
 #include "flight/atthold.h"
 #include "flight/hold_engine.h"
 #include "flight/position.h"
+#include "flight/reverse_flight.h"
 #include "flight/rpm_filter.h"
 #include "flight/speed_atten.h"
 
@@ -976,8 +977,8 @@ static void pidApplyMode0(uint8_t axis)
 
   //// PID Sum
 
-    // Calculate PID sum
-    pid.data[axis].pidSum = pid.data[axis].F;
+    // Calculate PID sum, flipped and faded for reverse flight (factor 1 otherwise)
+    pid.data[axis].pidSum = pid.data[axis].F * reverseFlightGetAxisFactor(axis);
 }
 
 
@@ -1177,8 +1178,19 @@ static void pidApplyMode1(uint8_t axis)
     // wound in. Hold the accumulation until airborne; decay below runs at the normal rate.
     const bool onGround = !isAirborne();
 
+    // Reverse flight (4D): while the surfaces have little or no authority (stopping, or
+    // gliding slowly with the motor stopped) the error says nothing about the trim the
+    // surfaces need, so hold the accumulation. The factor is 1 with normal throttle.
+    const bool reverseHold = fabsf(reverseFlightGetAxisFactor(axis)) < REVERSE_FLIGHT_ITERM_HOLD;
+
+    // When the motor reverses, so does its torque, and the aircraft flies the other way:
+    // the I that trimmed out the old direction would push the wrong way. Start again.
+    if (reverseFlightJustReversed()) {
+        pid.data[axis].axisError = 0;
+    }
+
     // I-term change
-    const float itermDelta = (saturation || bypassed || onGround) ? 0 : itermErrorRate * pid.dT;
+    const float itermDelta = (saturation || bypassed || onGround || reverseHold) ? 0 : itermErrorRate * pid.dT;
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
@@ -1271,6 +1283,13 @@ static void pidApplyMode1(uint8_t axis)
     // Calculate sum of all terms (no Offset/HSI term -- heli-only)
     pid.data[axis].pidSum = pid.data[axis].P + pid.data[axis].I + pid.data[axis].D +
                             pid.data[axis].F + pid.data[axis].B;
+
+    // Reverse flight (4D): the surfaces work the other way round once the aircraft flies
+    // backwards, and are faded out while it stops (flight/reverse_flight.c). Applied to the
+    // sum, so the terms (and I in particular) stay in the aircraft's frame: a rotation
+    // demand, not a surface position. An axis whose servo also tilts the gimbal gets the
+    // coupled factor (reverse_coupled_axes). The factor is 1 with normal throttle.
+    pid.data[axis].pidSum *= reverseFlightGetAxisFactor(axis);
 }
 
 

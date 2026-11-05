@@ -120,6 +120,7 @@ typedef enum {
     TABLE_SMARTFUEL_MODE,
 #endif
     TABLE_GOVERNOR_MODE,
+    TABLE_THROTTLE_MODE,
 #ifdef USE_FBUS_MUX_FPGA
     TABLE_FBUS_MUX_MODE,
 #endif

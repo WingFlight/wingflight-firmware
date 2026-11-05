@@ -119,4 +119,5 @@ const char * const debugModeNames[DEBUG_COUNT] = {
     DEBUG_NAME(SNAP_RELAX),
     DEBUG_NAME(PROP_HANG),
     DEBUG_NAME(FBUS),
+    DEBUG_NAME(REVERSE_FLIGHT),
 };

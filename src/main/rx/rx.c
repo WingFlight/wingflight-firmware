@@ -558,7 +558,9 @@ void rxInit(void)
         validRxSignalTimeout[i] = millis() + MAX_INVALID_PULSE_TIME_MS;
     }
 
-    rcInput[THROTTLE] = RX_PWM_PULSE_MIN;
+    // Zero thrust until the receiver sends something: the low end normally, mid stick
+    // with bidirectional (4D) throttle, where the low end is full reverse.
+    rcInput[THROTTLE] = isThrottleBidirectional() ? getThrottleNeutral() : RX_PWM_PULSE_MIN;
 
     // Initialize ARM switch to OFF position when arming via switch is defined
     // TODO - move to rc_mode.c

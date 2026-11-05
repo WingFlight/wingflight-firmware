@@ -130,8 +130,9 @@ static float pwmConvertToInternal(uint8_t index, uint8_t mode, float throttle)
     float value = motorConfig()->mincommand;
 
     if (mode == MOTOR_CONTROL_BIDIR) {
-        if (throttle != 0)
-            value = scaleRangef(throttle, -1, 1, motorConfig()->minthrottle, motorConfig()->maxthrottle);
+        // Zero is the middle of the range, not mincommand: a 3D ESC reads the low end
+        // (mincommand defaults to 1000us) as full reverse.
+        value = scaleRangef(throttle, -1, 1, motorConfig()->minthrottle, motorConfig()->maxthrottle);
     }
     else {
         if (throttle > 0)

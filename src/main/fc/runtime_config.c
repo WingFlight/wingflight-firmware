@@ -48,7 +48,7 @@ const char *armingDisableFlagNames[]= {
     "LOAD",
     "CALIB",
     "CLI",
-    "CMS",
+    "NO_ARM_SWITCH",
     "BST",
     "MSP",
     "PARALYZE",

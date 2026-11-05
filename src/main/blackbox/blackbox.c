@@ -75,6 +75,7 @@
 #include "pg/blackbox.h"
 #include "pg/gps_nav.h"
 #include "pg/motor.h"
+#include "pg/reverse_flight.h"
 #include "pg/rx.h"
 
 #include "rx/rx.h"
@@ -1728,6 +1729,18 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE("prop_hang", "%d,%d,%d",                propHangConfigs(getCurrentPidProfileIndex())->strength,
                                                                             propHangConfigs(getCurrentPidProfileIndex())->angle,
                                                                             propHangConfigs(getCurrentPidProfileIndex())->fade);
+        // mode, deadband, hysteresis, reverse limit, motor time, time constant, surface gain, fade, dwell, coupled axes
+        BLACKBOX_PRINT_HEADER_LINE("reverse_flight", "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+                                                                            reverseFlightConfig()->throttle_mode,
+                                                                            reverseFlightConfig()->throttle_deadband,
+                                                                            reverseFlightConfig()->throttle_reverse_hysteresis,
+                                                                            reverseFlightConfig()->throttle_reverse_limit,
+                                                                            reverseFlightConfig()->reverse_motor_time,
+                                                                            reverseFlightConfig()->reverse_time_constant,
+                                                                            reverseFlightConfig()->reverse_surface_gain,
+                                                                            reverseFlightConfig()->reverse_fade,
+                                                                            reverseFlightConfig()->reverse_motor_dwell,
+                                                                            reverseFlightConfig()->reverse_coupled_axes);
         BLACKBOX_PRINT_HEADER_LINE("rollBW", "%d,%d,%d",                    currentPidProfile->gyro_cutoff[PID_ROLL],
                                                                             currentPidProfile->dterm_cutoff[PID_ROLL],
                                                                             currentPidProfile->bterm_cutoff[PID_ROLL]);
