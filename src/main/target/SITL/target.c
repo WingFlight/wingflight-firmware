@@ -132,7 +132,10 @@ STATIC_ASSERT(USABLE_TIMER_CHANNEL_COUNT == ARRAYLEN(timerHardware),
 static struct timespec start_time;
 static double simRate = 1.0;
 static pthread_t udpWorker;
-static bool workerRunning = true;
+// Cleared by systemResetHard() on the main thread, polled by the UDP thread.
+// Without volatile, LTO may keep it in a register in that loop: the thread never
+// sees the reset, the join hangs, and a save never ends the process.
+static volatile bool workerRunning = true;
 static udpLink_t stateLink, pwmLink;
 static pthread_mutex_t updateLock;
 static pthread_mutex_t mainLoopLock;
@@ -259,6 +262,15 @@ void updateState(const fdm_packet* pkt) {
         return;
     }
 
+    // The UDP thread starts before the sensors are initialised: a simulator
+    // that is already sending (a bridge left running while SITL restarts after
+    // a save) would write through a NULL device and crash the process. Drop
+    // sensor data until both fake devices exist. Ported from Rotorflight's SITL
+    // (rotorflight-firmware#596).
+    if (!fakeAccDev || !fakeGyroDev) {
+        return;
+    }
+
     int16_t x,y,z;
     x = constrain(-pkt->imu_linear_acceleration_xyz[0] * ACC_SCALE, -32767, 32767);
     y = constrain(-pkt->imu_linear_acceleration_xyz[1] * ACC_SCALE, -32767, 32767);
@@ -377,6 +389,15 @@ static void* udpThread(void* data) {
 // system
 void systemInit(void) {
     int ret;
+
+    // A log redirected to a file should be complete up to the moment the
+    // process is killed. The Windows CRT takes _IOLBF as full buffering (a
+    // 4 KiB block), so unbuffered there. Ported from Rotorflight's SITL.
+#if defined(_WIN32) || defined(__MINGW32__)
+    setvbuf(stdout, NULL, _IONBF, 0);
+#else
+    setvbuf(stdout, NULL, _IOLBF, 0);
+#endif
 
     clock_gettime(CLOCK_MONOTONIC, &start_time);
     printf("[system]Init...\n");
@@ -728,6 +749,43 @@ char _Min_Stack_Size;
 // fake EEPROM
 static FILE *eepromFd = NULL;
 
+#if defined(_WIN32) || defined(__MINGW32__)
+// From <windows.h>, which this file does not include (its macros collide with
+// the firmware's).
+__declspec(dllimport) int __stdcall MoveFileExA(const char *existing, const char *replacement, unsigned long flags);
+#define SIM_MOVEFILE_REPLACE_EXISTING 0x1
+#endif
+
+// Writes the whole store through a temporary file renamed over eeprom.bin, so a
+// process killed in the middle of a save leaves the previous store intact
+// instead of a torn one, which the next start would reject and replace with
+// defaults. Ported from Rotorflight's SITL (rotorflight-firmware#596).
+static bool eepromWriteFile(void)
+{
+    static const char tmpName[] = EEPROM_FILENAME ".tmp";
+    FILE *f = fopen(tmpName, "wb");
+    if (f == NULL) {
+        fprintf(stderr, "[FLASH] cannot create '%s': %s\n", tmpName, strerror(errno));
+        return false;
+    }
+    const bool written = fwrite(eepromData, sizeof(eepromData), 1, f) == 1 && fflush(f) == 0;
+    fclose(f);
+    if (!written) {
+        fprintf(stderr, "[FLASH] write to '%s' failed: %s\n", tmpName, strerror(errno));
+        remove(tmpName);
+        return false;
+    }
+#if defined(_WIN32) || defined(__MINGW32__)
+    if (!MoveFileExA(tmpName, EEPROM_FILENAME, SIM_MOVEFILE_REPLACE_EXISTING)) {
+#else
+    if (rename(tmpName, EEPROM_FILENAME) != 0) {
+#endif
+        fprintf(stderr, "[FLASH] cannot replace '%s'\n", EEPROM_FILENAME);
+        return false;
+    }
+    return true;
+}
+
 void FLASH_Unlock(void) {
     if (eepromFd != NULL) {
         fprintf(stderr, "[FLASH_Unlock] eepromFd != NULL\n");
@@ -771,17 +829,11 @@ void FLASH_Unlock(void) {
 void FLASH_Lock(void) {
     // flush & close
     if (eepromFd != NULL) {
-        // Reopen truncating, so an oversized file from elsewhere shrinks to EEPROM_SIZE.
+        // Written whole at EEPROM_SIZE, so an oversized file from elsewhere shrinks.
         fclose(eepromFd);
         eepromFd = NULL;
-        FILE *out = fopen(EEPROM_FILENAME, "wb");
-        if (out == NULL || fwrite(eepromData, sizeof(eepromData), 1, out) != 1) {
-            fprintf(stderr, "[FLASH_Lock] failed to save '%s': %s\n", EEPROM_FILENAME, strerror(errno));
-        } else {
+        if (eepromWriteFile()) {
             printf("[FLASH_Lock] saved '%s'\n", EEPROM_FILENAME);
-        }
-        if (out != NULL) {
-            fclose(out);
         }
     } else {
         fprintf(stderr, "[FLASH_Lock] eeprom is not unlocked\n");
