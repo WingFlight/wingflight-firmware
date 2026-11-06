@@ -91,6 +91,21 @@ U8 enabled, U8 state, S8 direction, U8 stick in deadband, U16 throttle channel
 (us), then S16 x1000 stick thrust, motor command, thrust estimate, speed
 estimate, gimbal factor and surface factor.
 
+## ATT HOLD Gives Up a Lost Target
+
+The quaternion hold (`flight/hold_engine.c`, shared by ATT HOLD and the thrust
+vector hold) used to keep its target however far the aircraft turned away. In a
+continuous rotation it can't stop, such as torque roll in a reverse-thrust hang
+where the ailerons get no airflow, the error grew to 180 degrees. There the
+shortest way back flips to the other side, and the correction jumped from full
+one way to full the other way in one loop: a full-throw surface snap once per
+turn. Now, once the target is more than 90 degrees away, the frozen axes go back
+to tracking (rate mode). The correction they were commanding fades out over
+0.3 s. They stay in tracking until the aircraft has actually stopped turning,
+without the usual 0.4 s settle cap, and then hold the attitude it stopped at.
+The stall re-capture count also counts these. Debug ATTHOLD value 6 has bit 3
+set while an axis's target is lost.
+
 ## SRXL2 Dual Motor
 
 An SRXL2 ESC can drive a second motor (Spektrum "Smart" dual ESCs such as the

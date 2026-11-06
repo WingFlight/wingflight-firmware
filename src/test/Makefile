@@ -433,6 +433,10 @@ airborne_unittest_SRC := \
         $(USER_DIR)/common/maths.c \
         $(USER_DIR)/flight/airborne.c
 
+hold_engine_unittest_SRC := \
+        $(USER_DIR)/common/maths.c \
+        $(USER_DIR)/flight/hold_engine.c
+
 reverse_flight_unittest_SRC := \
         $(USER_DIR)/build/debug.c \
         $(USER_DIR)/common/maths.c \
