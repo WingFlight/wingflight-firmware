@@ -429,20 +429,19 @@ static void mixerUpdateInputs(void)
         // stabilized flight, no stabilization. getManualDeflection() already matches the stabilized
         // sign convention (yaw included), so no extra reversal is needed here.
         // With bidirectional (4D) throttle MANUAL is exactly the stabilised mode without the
-        // gyro: the surfaces and the gimbal get the same reverse-flight factors as the PID
-        // outputs (flight/reverse_flight.c), including the gimbal, which the TV loop would
-        // otherwise keep stabilising. Both factors are 1 with normal throttle.
+        // gyro: the stick moves the surfaces and the gimbal the same way in both directions
+        // there too (reverse flight only reverses the gyro's correction), and the gimbal
+        // follows the stick here rather than the TV loop.
         else {
-            mixerSetBypassInput(MIXER_IN_STABILIZED_ROLL, getManualDeflection(FD_ROLL) * reverseFlightGetAxisFactor(FD_ROLL));
-            mixerSetBypassInput(MIXER_IN_STABILIZED_PITCH, getManualDeflection(FD_PITCH) * reverseFlightGetAxisFactor(FD_PITCH));
-            mixerSetBypassInput(MIXER_IN_STABILIZED_YAW, getManualDeflection(FD_YAW) * reverseFlightGetAxisFactor(FD_YAW));
+            mixerSetBypassInput(MIXER_IN_STABILIZED_ROLL, getManualDeflection(FD_ROLL));
+            mixerSetBypassInput(MIXER_IN_STABILIZED_PITCH, getManualDeflection(FD_PITCH));
+            mixerSetBypassInput(MIXER_IN_STABILIZED_YAW, getManualDeflection(FD_YAW));
 
             // Only with the THRUST VECTOR switch on, as for the TV loop
             if (reverseFlightIsEnabled() && IS_RC_MODE_ACTIVE(BOXTHRUSTVECTOR)) {
-                const float vector = reverseFlightGetVectorFactor();
-                mixerSetBypassInput(MIXER_IN_STABILIZED_TV_ROLL, getTvManualDeflection(FD_ROLL) * vector);
-                mixerSetBypassInput(MIXER_IN_STABILIZED_TV_PITCH, getTvManualDeflection(FD_PITCH) * vector);
-                mixerSetBypassInput(MIXER_IN_STABILIZED_TV_YAW, getTvManualDeflection(FD_YAW) * vector);
+                mixerSetBypassInput(MIXER_IN_STABILIZED_TV_ROLL, getTvManualDeflection(FD_ROLL));
+                mixerSetBypassInput(MIXER_IN_STABILIZED_TV_PITCH, getTvManualDeflection(FD_PITCH));
+                mixerSetBypassInput(MIXER_IN_STABILIZED_TV_YAW, getTvManualDeflection(FD_YAW));
             }
         }
     }

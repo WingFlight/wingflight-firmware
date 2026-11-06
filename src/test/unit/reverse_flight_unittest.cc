@@ -303,3 +303,46 @@ TEST_F(ReverseFlightTest, AxisFactorIsOneWhenOff)
     EXPECT_FLOAT_EQ(reverseFlightGetAxisFactor(0), 1.0f);
     EXPECT_FLOAT_EQ(reverseFlightGetAxisFactor(2), 1.0f);
 }
+
+TEST_F(ReverseFlightTest, SignsFollowTheFactors)
+{
+    EXPECT_EQ(reverseFlightGetAxisSign(0), 1);
+    EXPECT_EQ(reverseFlightGetVectorSign(), 1);
+
+    fly(300, 2.0f);
+    EXPECT_EQ(reverseFlightGetAxisSign(0), 1);
+    EXPECT_EQ(reverseFlightGetVectorSign(), 1);
+
+    fly(-300, 3.0f);
+    EXPECT_EQ(reverseFlightGetAxisSign(0), -1);
+    EXPECT_EQ(reverseFlightGetVectorSign(), -1);
+}
+
+TEST_F(ReverseFlightTest, SignHeldThroughZeroFactor)
+{
+    fly(362, 2.0f);
+    fly(-362, 0.002f);
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_HANDOVER);
+    ASSERT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), 0.0f);
+    EXPECT_EQ(reverseFlightGetAxisSign(0), 1);     // last non-zero: forward
+}
+
+TEST_F(ReverseFlightTest, GroundSignFollowsLatch)
+{
+    fly(-75, 0.1f, false);
+    EXPECT_EQ(reverseFlightGetState(), REVERSE_STATE_GROUND);
+    EXPECT_EQ(reverseFlightGetAxisSign(0), -1);
+    EXPECT_EQ(reverseFlightGetVectorSign(), -1);
+
+    reverseFlightUpdate(0, false, false, DT);     // disarm
+    EXPECT_EQ(reverseFlightGetAxisSign(0), 1);
+}
+
+TEST_F(ReverseFlightTest, SignsAreOneWhenOff)
+{
+    config.throttle_mode = THROTTLE_MODE_NORMAL;
+    reverseFlightInit(&config);
+    fly(-300, 1.0f);
+    EXPECT_EQ(reverseFlightGetAxisSign(0), 1);
+    EXPECT_EQ(reverseFlightGetVectorSign(), 1);
+}

@@ -17,20 +17,32 @@ existing setup unchanged.
   deadband edge. `throttle_reverse_limit` caps reverse. `getThrottle()` stays the
   magnitude 0..1 (TPA, in-flight latch, LEDs); the motor and the throttle mixer
   inputs get the signed value, and their input minimum mirrors the maximum.
-- **Gimbal.** The thrust vector loop's output follows the sign of the estimated
-  real thrust (the command through a `reverse_motor_time` lag, 80 ms, for the
-  ESC braking and reversing the prop) and fades out as it passes zero.
-- **Surfaces.** The main loop's output follows the estimated direction of
-  motion (the command through a `reverse_time_constant` lag, 400 ms). While the
-  thrust is reversed but the aircraft still moves the old way the surfaces get
-  zero gain, and they come back reversed once it moves backwards, scaled by
-  `reverse_surface_gain`. `reverse_fade` sets how much speed or thrust a factor
-  needs to fade in fully.
+- **Sticks never reverse.** The sticks move every surface and the gimbal the
+  same way in both directions, as without a gyro; only the gyro's correction
+  reverses. Both PID loops turn the stick's rate command into the aircraft's
+  frame with the sign of their factor and scale the whole loop by the factor,
+  so the stick part cancels; while a factor fades, the stick's feedforward is
+  put back, so the stick keeps its full throw and only the gyro fades
+  (`pidGetStickSetpoint()`, `pidGetLevelingSetpoint()`). ANGLE and the modes
+  leveling with it take the stick as an angle, so there the setpoint stays in
+  the aircraft's frame.
+- **Gimbal.** The thrust vector loop's gyro correction follows the sign of the
+  estimated real thrust (the command through a `reverse_motor_time` lag, 80 ms,
+  for the ESC braking and reversing the prop) and fades out as it passes zero.
+- **Surfaces.** The main loop's gyro correction follows the estimated direction
+  of motion (the command through a `reverse_time_constant` lag, 400 ms). While
+  the thrust is reversed but the aircraft still moves the old way it is off
+  (the stick still moves the surfaces), and it comes back reversed once the
+  aircraft moves backwards, scaled by `reverse_surface_gain`. `reverse_fade` sets
+  how much speed or thrust a factor needs to fade in fully.
+- **On the ground** (armed, not yet airborne) both factors are the latched
+  direction at full strength, so the reversed gyro can be checked on the bench
+  with the throttle below neutral.
 - **I-term.** Both loops hold I while their factor is below 0.5 and clear it on
   every reversal, as the motor torque reverses with the prop.
-- **MANUAL** applies the same factors without the gyro, and drives the gimbal
-  from the sticks through the TV feedforward (with THRUST VECTOR on). PASSTHROUGH
-  is unchanged and never flips.
+- **MANUAL** has no gyro, so nothing reverses: the surfaces and (with THRUST
+  VECTOR on) the gimbal follow the sticks through the feedforward, the same in
+  both directions. PASSTHROUGH is unchanged.
 - **Arming.** Throttle off for arming means inside the deadband at mid stick.
   The sticks never arm or disarm in this mode (full rudder at any throttle is
   an ordinary 4D manoeuvre, so a stick disarm could happen in flight): an ARM
@@ -48,8 +60,9 @@ existing setup unchanged.
 - **Coupled axes.** Where one servo moves both a surface and a gimbal axis (the
   rudder linked to the gimbal's yaw tilt), set that axis in
   `reverse_coupled_axes` (bit 0 roll, 1 pitch, 2 yaw) and drive the servo from
-  the surface's stabilized input only. The main loop then blends the factors:
-  the gimbal's while there is thrust, the surface's as the thrust fades out.
+  the surface's stabilized input only. The main loop then blends the factors for
+  the gyro correction: the gimbal's while there is thrust, the surface's as the
+  thrust fades out.
 - `reverse_motor_dwell` (0 ms) optionally holds the motor at zero before it may
   reverse, for ESCs that don't like an instant reversal.
 - Debug mode `REVERSE_FLIGHT`: stick thrust, motor command, thrust estimate,

@@ -505,7 +505,11 @@ static void tvPidApplyAxis(uint8_t axis)
     // Reuse this tick's final main-loop setpoint (post rates-curve, post any
     // leveling-mode shaping). Only correct because tvPidController() is called
     // after pidController() within the same TASK_PID tick -- see fc/core.c.
-    float setpoint = pidGetSetpoint(axis);
+    // Reverse flight (4D): rebuilt from its parts with the gimbal's own stick sign,
+    // which follows the thrust rather than the motion (see the PID sum below).
+    // The same as pidGetSetpoint() with normal throttle.
+    const float stick = pidGetStickSetpoint(axis);
+    float setpoint = pidGetLevelingSetpoint(axis) + stick * reverseFlightGetVectorSign();
 
     // Independent attitude/heading hold for this loop only (BOXTVHOLD) -- see
     // tv_hold.c. Skipped while a safety mode is driving the main loop's setpoint
@@ -588,8 +592,13 @@ static void tvPidApplyAxis(uint8_t axis)
                                tvPid.data[axis].F + tvPid.data[axis].B;
 
     // Reverse flight (4D): the gimbal's push reverses with the thrust and fades out as the
-    // thrust passes through zero (flight/reverse_flight.c). 1 with normal throttle.
-    tvPid.data[axis].pidSum *= reverseFlightGetVectorFactor();
+    // thrust passes through zero (flight/reverse_flight.c). The stick part of the setpoint
+    // was turned with the same sign, so the stick tilts the gimbal as forward and only the
+    // gyro's correction reverses; while the factor fades, put back the stick's feedforward
+    // it took away (as pid.c does). Factor 1 and no stick feed with normal throttle.
+    const float vector = reverseFlightGetVectorFactor();
+    tvPid.data[axis].pidSum = tvPid.data[axis].pidSum * vector +
+                              (1.0f - fabsf(vector)) * tvPid.coef[axis].Kf * masterGain * stick;
 }
 
 void tvPidController(timeUs_t currentTimeUs)

@@ -35,17 +35,23 @@
 // - The gimbal pushes the nose with the thrust, so its effect flips when the
 //   thrust flips. That is not when the stick crosses: the ESC first brakes the
 //   prop, then spins it up the other way. The thrust is estimated with a first
-//   order lag of the motor command (reverse_motor_time), and the gimbal output
+//   order lag of the motor command (reverse_motor_time), and the gimbal factor
 //   follows the sign of that estimate and fades with its size.
 // - The surfaces work with the air flowing over them, so they flip when the
 //   aircraft's motion reverses, after it has stopped. The speed is estimated
 //   with a first order lag of the motor command (reverse_time_constant),
 //   normalised so that steady-state speed equals the thrust command.
 //
+// The stick is not reversed: it moves every surface and the gimbal the same way in
+// both directions, as without a gyro, and the pilot flies the reversed effect as he
+// would without one. The factors here reverse and fade the *gyro correction* only
+// (pid.c and tv_pid.c turn that into "stick unchanged, gyro times factor").
+//
 // While thrust and motion disagree (the handover, after a reversal until the
-// aircraft has stopped) the surfaces get zero gain. A surface with the wrong
-// sign is positive feedback; zero is safe, and at that speed the surfaces have
-// little authority anyway. The gimbal carries the aircraft through the stop.
+// aircraft has stopped) the surface factor is zero: the gyro doesn't know which way
+// the surfaces work then, and a correction with the wrong sign is positive feedback.
+// The stick still moves the surfaces; the gimbal's gyro carries the aircraft through
+// the stop.
 //
 // On some airframes one servo moves both a surface and one gimbal axis (the rudder
 // linked to the gimbal's yaw tilt). Its two effects reverse at different moments,
@@ -88,6 +94,9 @@ typedef struct {
     float   surfaceFactor;
     float   vectorFactor;
     float   coupledFactor;
+    int8_t  surfaceSign;    // sign of each factor, holding the last non-zero one
+    int8_t  vectorSign;
+    int8_t  coupledSign;
     bool    reversed;
     reverseFlightState_e state;
 } reverseFlight_t;
@@ -97,6 +106,14 @@ static FAST_DATA_ZERO_INIT reverseFlight_t rf;
 static inline float signf(float x)
 {
     return (x > 0) ? 1.0f : (x < 0) ? -1.0f : 0.0f;
+}
+
+static inline void holdSign(int8_t *sign, float factor)
+{
+    if (factor > 0)
+        *sign = 1;
+    else if (factor < 0)
+        *sign = -1;
 }
 
 static inline float fadeIn(float magnitude)
@@ -116,6 +133,9 @@ void reverseFlightReset(void)
     rf.surfaceFactor = 1;
     rf.vectorFactor = 1;
     rf.coupledFactor = 1;
+    rf.surfaceSign = 1;
+    rf.vectorSign = 1;
+    rf.coupledSign = 1;
     rf.reversed = false;
     rf.state = rf.enabled ? REVERSE_STATE_DISARMED : REVERSE_STATE_OFF;
 }
@@ -210,7 +230,7 @@ void reverseFlightUpdate(float stickThrottle, bool armed, bool airborne, float d
 
     if (!airborne) {
         // On the ground the aircraft hasn't moved yet: keep full authority in the
-        // latched direction, so the controls can be checked before takeoff.
+        // latched direction, so the reversed gyro can be checked before takeoff.
         rf.vectorFactor = rf.dir;
         rf.surfaceFactor = rf.dir;
         rf.state = REVERSE_STATE_GROUND;
@@ -219,7 +239,7 @@ void reverseFlightUpdate(float stickThrottle, bool armed, bool airborne, float d
         // Gimbal: follows the real thrust, fades out as the thrust passes zero
         rf.vectorFactor = signf(rf.thrust) * fadeIn(fabsf(rf.thrust));
 
-        // Surfaces: follow the motion, zero while thrust and motion disagree
+        // Surfaces: follow the motion, gyro off while thrust and motion disagree
         const float motion = (fabsf(rf.speed) > SPEED_STOPPED) ? signf(rf.speed) : rf.dir;
         if (command != 0 && motion != rf.dir) {
             rf.surfaceFactor = 0;
@@ -234,12 +254,18 @@ void reverseFlightUpdate(float stickThrottle, bool armed, bool airborne, float d
         }
     }
 
-    // Separate tuning for flying tail first
+    // Separate gyro gain for flying tail first
     if (rf.surfaceFactor < 0)
         rf.surfaceFactor *= rf.surfaceGain;
 
     // Surface and gimbal on one servo: the gimbal while there is thrust, the surface as it fades
     rf.coupledFactor = rf.vectorFactor + (1.0f - fabsf(rf.vectorFactor)) * rf.surfaceFactor;
+
+    // The direction the stick works in, for the PID loops (see reverseFlightGetAxisSign()).
+    // Held through a zero factor, where the gyro has no say anyway.
+    holdSign(&rf.surfaceSign, rf.surfaceFactor);
+    holdSign(&rf.vectorSign, rf.vectorFactor);
+    holdSign(&rf.coupledSign, rf.coupledFactor);
 
     DEBUG(REVERSE_FLIGHT, 0, lrintf(stickThrottle * 1000));
     DEBUG(REVERSE_FLIGHT, 1, lrintf(rf.throttle * 1000));
@@ -278,6 +304,18 @@ float reverseFlightGetAxisFactor(int axis)
     if (!rf.enabled)
         return 1.0f;
     return (rf.coupledAxes & BIT(axis)) ? rf.coupledFactor : rf.surfaceFactor;
+}
+
+int8_t reverseFlightGetAxisSign(int axis)
+{
+    if (!rf.enabled)
+        return 1;
+    return (rf.coupledAxes & BIT(axis)) ? rf.coupledSign : rf.surfaceSign;
+}
+
+int8_t reverseFlightGetVectorSign(void)
+{
+    return rf.enabled ? rf.vectorSign : 1;
 }
 
 bool reverseFlightJustReversed(void)

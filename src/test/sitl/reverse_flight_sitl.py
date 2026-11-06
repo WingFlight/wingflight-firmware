@@ -113,6 +113,7 @@ class Sim:
         self.ch[4:8] = [1000, 1000, 1000, 1000]   # AUX1-4 low
         self.rc_on = True
         self.gyro_follow = 0.0      # rad/s per unit of roll stick, to latch "airborne"
+        self.pitch_rate = 0.0       # rad/s, injected to see which way the gyro corrects
         self.out = None             # (motor[4], servo[8])
         self.out_t = 0
         self.stop = False
@@ -150,7 +151,7 @@ class Sim:
         while not self.stop:
             roll = (self.ch[0] - 1500) / 500.0
             p = self.gyro_follow * roll
-            pkt = struct.pack("<17d", time.time() - t0, p, 0.0, 0.0, 0.0, 0.0, -G,
+            pkt = struct.pack("<17d", time.time() - t0, p, self.pitch_rate, 0.0, 0.0, 0.0, -G,
                               1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
             try:
                 self.fdm.sendto(pkt, (HOST, FDM_PORT))
@@ -342,6 +343,19 @@ def do_test():
     check("airborne latched, forward flight", rf["state"] == "forward", str(rf))
     check("forward: gimbal and surface factor +1", rf["vec"] == 1 and rf["surf"] == 1, str(rf))
 
+    def gyro_response():
+        # Sticks centred, a short pitch rotation: how far the elevator and the gimbal
+        # move against it (change from just before, so leftover I doesn't count)
+        before = sim.servo(2), sim.servo(4)
+        sim.pitch_rate = 0.5
+        time.sleep(0.15)
+        out = sim.servo(2) - before[0], sim.servo(4) - before[1]
+        sim.pitch_rate = 0.0
+        time.sleep(0.5)
+        return out
+    gyro_elev_f, gyro_gim_f = gyro_response()
+    print(f"forward, pitch rate: elevator {gyro_elev_f:+.0f} us, gimbal {gyro_gim_f:+.0f} us")
+
     # ---- the reversal: hold pitch and yaw stick so the outputs show the signs ----
     sim.set(pitch=1700, yaw=1700, thr=1862)       # ~70 % forward
     time.sleep(2.5)
@@ -364,23 +378,33 @@ def do_test():
     wrong = [t for t, r, *_ in log if t_surf and t < t_surf - 0.01 and r["surf"] > 0.05 and t > 0.03]
     check("no forward-sign surface while stopping", not wrong, f"{len(wrong)} samples")
 
-    # outputs: during the handover the elevator returns to centre while the coupled
-    # rudder servo follows the gimbal sign; afterwards everything is reversed
+    # outputs: the stick moves every servo the same way throughout, the handover
+    # included (surface gyro off then, stick still live); only the gyro reverses
+    sgn = lambda v: (v > 1505) - (v < 1495)
     mid = [x for x in log if x[1]["state"] == "handover" and x[0] > 0.1]
     if mid:
         _, r, elev, rud, gim = mid[len(mid) // 2]
         print(f"mid-handover: elevator {elev:.0f} rudder+gimbal {rud:.0f} gimbal {gim:.0f}  (factors {r['vec']:+.2f}/{r['surf']:+.2f})")
+        check("handover: the stick still moves the elevator", sgn(elev) == sgn(base_elev) != 0, f"{elev:.0f}")
     time.sleep(2.0)
     r = rf_status(msp)
     end_elev, end_gim, end_rud = sim.servo(2), sim.servo(4), sim.servo(3)
     print(f"reverse, stick held: elevator S3={end_elev:.0f} gimbal S5={end_gim:.0f} rudder+gimbal S4={end_rud:.0f}")
     check("reverse flight state, factors -1", r["state"] == "reverse" and r["vec"] == -1 and r["surf"] == -1, str(r))
-    sgn = lambda v: (v > 1505) - (v < 1495)
-    check("elevator deflection reversed", sgn(base_elev) == -sgn(end_elev) != 0, f"{base_elev:.0f} -> {end_elev:.0f}")
-    check("gimbal deflection reversed", sgn(base_gim) == -sgn(end_gim) != 0, f"{base_gim:.0f} -> {end_gim:.0f}")
-    check("coupled rudder deflection reversed", sgn(base_rud) == -sgn(end_rud) != 0, f"{base_rud:.0f} -> {end_rud:.0f}")
+    check("stick: elevator moves the same way in reverse", sgn(base_elev) == sgn(end_elev) != 0, f"{base_elev:.0f} -> {end_elev:.0f}")
+    check("stick: gimbal moves the same way in reverse", sgn(base_gim) == sgn(end_gim) != 0, f"{base_gim:.0f} -> {end_gim:.0f}")
+    check("stick: coupled rudder moves the same way in reverse", sgn(base_rud) == sgn(end_rud) != 0, f"{base_rud:.0f} -> {end_rud:.0f}")
 
-    # ---- MANUAL (AUX2 high): same flips without the gyro ----
+    sim.set(pitch=1500, yaw=1500)
+    time.sleep(1.0)
+    gyro_elev_r, gyro_gim_r = gyro_response()
+    print(f"reverse, pitch rate: elevator {gyro_elev_r:+.0f} us, gimbal {gyro_gim_r:+.0f} us")
+    dsgn = lambda d: (d > 5) - (d < -5)
+    check("gyro: elevator correction reversed", dsgn(gyro_elev_f) == -dsgn(gyro_elev_r) != 0, f"{gyro_elev_f:.0f} -> {gyro_elev_r:.0f}")
+    check("gyro: gimbal correction reversed", dsgn(gyro_gim_f) == -dsgn(gyro_gim_r) != 0, f"{gyro_gim_f:.0f} -> {gyro_gim_r:.0f}")
+    sim.set(pitch=1700, yaw=1700)
+
+    # ---- MANUAL (AUX2 high): no gyro, so nothing reverses ----
     sim.set(aux2=2000)
     time.sleep(1.0)
     man_elev, man_gim = sim.servo(2), sim.servo(4)
@@ -388,8 +412,8 @@ def do_test():
     time.sleep(2.0)
     man_elev_f, man_gim_f = sim.servo(2), sim.servo(4)
     print(f"MANUAL reverse: elevator {man_elev:.0f} gimbal {man_gim:.0f} | forward: elevator {man_elev_f:.0f} gimbal {man_gim_f:.0f}")
-    check("MANUAL: elevator flips with direction", sgn(man_elev) == -sgn(man_elev_f) != 0)
-    check("MANUAL: gimbal driven and flips with direction", sgn(man_gim) == -sgn(man_gim_f) != 0)
+    check("MANUAL: elevator the same in both directions", sgn(man_elev) == sgn(man_elev_f) != 0)
+    check("MANUAL: gimbal driven, the same in both directions", sgn(man_gim) == sgn(man_gim_f) != 0)
     sim.set(aux2=1000, pitch=1500, yaw=1500)
 
     # ---- motor stopped in the deadband: no auto-disarm, gimbal fades ----

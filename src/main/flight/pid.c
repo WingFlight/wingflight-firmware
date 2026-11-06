@@ -86,6 +86,33 @@ float pidGetSetpoint(int axis)
     return pid.data[axis].setPoint;
 }
 
+// The pilot's rate command in the stick's own sense, before reverse flight turns it into
+// the aircraft's frame. Zero in the leveling modes that take the stick as an angle
+// (ANGLE, failsafe, GPS), where there is no stick rate.
+float pidGetStickSetpoint(int axis)
+{
+    return pid.data[axis].stickSetPoint;
+}
+
+// What the leveling/hold layers add to the stick's rate command, in the aircraft's frame:
+// the final setpoint without the stick part. Lets the thrust vector loop rebuild the
+// setpoint with its own stick sign (tv_pid.c).
+float pidGetLevelingSetpoint(int axis)
+{
+    return pid.data[axis].setPoint - pid.data[axis].stickSetPoint * reverseFlightGetAxisSign(axis);
+}
+
+// Reverse flight (4D): the loop output is scaled by the factor, which reverses and fades
+// the correction, and the stick part of the setpoint has already been turned by the
+// factor's sign (pidApplySetpoint()), so with the factor at +-1 the stick moves the
+// surface exactly as forward and only the gyro works the other way round. While the
+// factor fades (stopping, the handover, gliding slowly) the gyro fades with it, but the
+// stick must not: put back the part of the stick's feedforward the factor took away.
+static float reverseFlightStickFeed(uint8_t axis, float factor, float kf)
+{
+    return (1.0f - fabsf(factor)) * kf * pid.data[axis].stickSetPoint;
+}
+
 float pidGetOutput(int axis)
 {
     return pid.data[axis].pidSum;
@@ -909,8 +936,18 @@ static void updatePropHangRelax(void)
 
 static float pidApplySetpoint(uint8_t axis)
 {
-    // Rate setpoint
-    float setpoint = getSetpoint(axis);
+    // Rate setpoint, from the stick
+    const float stick = getSetpoint(axis);
+
+    // Reverse flight (4D): the stick moves the surfaces the same way in both directions,
+    // so where they work the other way round it asks the aircraft to turn the other way.
+    // Turn the command into the aircraft's frame here, so the leveling layers and the
+    // gyro all work in that frame. Exactly 1 with normal throttle.
+    float setpoint = stick * reverseFlightGetAxisSign(axis);
+
+    // The stick's share of the setpoint, for the stick feed and the TV loop. ANGLE and the
+    // modes leveling with it take the stick as an angle and replace the rate command.
+    float stickSetpoint = stick;
 
 #ifdef USE_ACC
     // Apply leveling modes
@@ -918,6 +955,8 @@ static float pidApplySetpoint(uint8_t axis)
         // Failsafe/GPS rescue/GPS nav take priority over ATT HOLD and force recovery to level,
         // even while holding an off-level attitude -- a deliberate safety choice.
         setpoint = angleModeApply(axis, setpoint);
+        if (axis != FD_YAW)
+            stickSetpoint = 0;
     }
     else {
         // Next engagement starts the level target from the attitude at that moment
@@ -936,6 +975,7 @@ static float pidApplySetpoint(uint8_t axis)
 
     // Save setpoint
     pid.data[axis].setPoint = setpoint;
+    pid.data[axis].stickSetPoint = stickSetpoint;
 
     return setpoint;
 }
@@ -977,8 +1017,11 @@ static void pidApplyMode0(uint8_t axis)
 
   //// PID Sum
 
-    // Calculate PID sum, flipped and faded for reverse flight (factor 1 otherwise)
-    pid.data[axis].pidSum = pid.data[axis].F * reverseFlightGetAxisFactor(axis);
+    // Calculate PID sum. Reverse flight: correction reversed and faded, stick unchanged
+    // (see reverseFlightStickFeed()). Factor 1 and no stick feed with normal throttle.
+    const float factor = reverseFlightGetAxisFactor(axis);
+    pid.data[axis].pidSum = pid.data[axis].F * factor +
+                            reverseFlightStickFeed(axis, factor, pid.coef[axis].Kf);
 }
 
 
@@ -1285,11 +1328,16 @@ static void pidApplyMode1(uint8_t axis)
                             pid.data[axis].F + pid.data[axis].B;
 
     // Reverse flight (4D): the surfaces work the other way round once the aircraft flies
-    // backwards, and are faded out while it stops (flight/reverse_flight.c). Applied to the
-    // sum, so the terms (and I in particular) stay in the aircraft's frame: a rotation
-    // demand, not a surface position. An axis whose servo also tilts the gimbal gets the
-    // coupled factor (reverse_coupled_axes). The factor is 1 with normal throttle.
-    pid.data[axis].pidSum *= reverseFlightGetAxisFactor(axis);
+    // backwards, and the gyro has no say while it stops (flight/reverse_flight.c). Applied
+    // to the sum, so the terms (and I in particular) stay in the aircraft's frame: a
+    // rotation demand, not a surface position. The stick part of the setpoint was turned
+    // with the same sign, so it cancels: the stick moves the surface as forward, and only
+    // the gyro's correction reverses. The stick feed keeps the stick at full throw while
+    // the factor fades. An axis whose servo also tilts the gimbal gets the coupled factor
+    // (reverse_coupled_axes). Factor 1 and no stick feed with normal throttle.
+    const float factor = reverseFlightGetAxisFactor(axis);
+    pid.data[axis].pidSum = pid.data[axis].pidSum * factor +
+                            reverseFlightStickFeed(axis, factor, pid.coef[axis].Kf * atten);
 }
 
 

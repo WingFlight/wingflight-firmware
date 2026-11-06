@@ -32,6 +32,7 @@ extern "C" {
 #include "sensors/gyro.h"
 #include "io/gps.h"
 #include "fc/runtime_config.h"
+#include "flight/reverse_flight.h"
 
 gpsSolutionData_t gpsSol;
 
@@ -525,4 +526,139 @@ TEST_F(PIDPropHangTest, RollOnly)
     const float on = afterHang(100, 1.0f, 0)[1].axisError;
     EXPECT_GT(off, 10);
     EXPECT_FLOAT_EQ(on, off);
+}
+
+// Reverse flight (4D): the stick moves the surfaces the same way in both directions,
+// only the gyro's correction reverses, and the stick stays live while the gyro is off.
+class PIDReverseFlightTest : public PIDTestBase {
+  public:
+    void SetUp() override
+    {
+        PIDTestBase::SetUp();
+        reverseFlightConfig_t config = {};
+        config.throttle_mode = THROTTLE_MODE_BIDIRECTIONAL;
+        config.throttle_deadband = 40;
+        config.throttle_reverse_hysteresis = 50;
+        config.throttle_reverse_limit = 100;
+        config.reverse_motor_time = 80;
+        config.reverse_time_constant = 400;
+        config.reverse_surface_gain = 100;
+        config.reverse_fade = 15;
+        reverseFlightInit(&config);
+    }
+    void TearDown() override
+    {
+        reverseFlightConfig_t config = {};
+        config.throttle_mode = THROTTLE_MODE_NORMAL;
+        reverseFlightInit(&config);
+        for (int axis = 0; axis < 3; axis++) {
+            gyro.gyroADCf[axis] = 0;
+        }
+        PIDTestBase::TearDown();
+    }
+    // Armed and airborne, holding the throttle stick (us from neutral)
+    void fly(float stickUs, float seconds)
+    {
+        for (int i = 0; i < lrintf(seconds * 1000); i++) {
+            reverseFlightUpdate(reverseFlightMapStick(stickUs, 459), true, true, 0.001f);
+        }
+    }
+    void onlyRoll(uint16_t P, uint16_t F)
+    {
+        mockPidProfile->pid_mode = 1;
+        for (int axis = 0; axis < 3; axis++) {
+            mockPidProfile->pid[axis].P = 0;
+            mockPidProfile->pid[axis].I = 0;
+            mockPidProfile->pid[axis].D = 0;
+            mockPidProfile->pid[axis].F = 0;
+            mockPidProfile->pid[axis].B = 0;
+        }
+        mockPidProfile->pid[0].P = P;
+        mockPidProfile->pid[0].F = F;
+        pidInit(mockPidProfile);
+    }
+    // Steady roll output for a roll stick deflection and roll gyro rate
+    float rollOutput(float stick, float gyroRate)
+    {
+        gyro.gyroADCf[0] = gyroRate;
+        PIDIO input;
+        for (int i = 0; i < 300; i++) {
+            input[0].push_back(stick);
+            for (int axis = 1; axis < 4; axis++) {
+                input[axis].push_back(0);
+            }
+        }
+        return getResponse(input)[0].back();
+    }
+};
+
+TEST_F(PIDReverseFlightTest, StickMovesSurfaceTheSameWayInReverse)
+{
+    onlyRoll(0, 100);
+    fly(300, 2.0f);
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_FORWARD);
+    const float forward = rollOutput(0.1f, 0);
+
+    fly(-300, 3.0f);
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_REVERSE);
+    const float reverse = rollOutput(0.1f, 0);
+
+    EXPECT_GT(forward, 0);
+    EXPECT_NEAR(reverse, forward, fabsf(forward) * 1e-4f);
+}
+
+TEST_F(PIDReverseFlightTest, GyroCorrectionReversesInReverse)
+{
+    onlyRoll(100, 0);
+    fly(300, 2.0f);
+    const float forward = rollOutput(0, 100);
+
+    fly(-300, 3.0f);
+    const float reverse = rollOutput(0, 100);
+
+    EXPECT_LT(forward, 0);      // against the rotation
+    EXPECT_NEAR(reverse, -forward, fabsf(forward) * 1e-3f);
+}
+
+TEST_F(PIDReverseFlightTest, StickAndGyroTogetherInReverse)
+{
+    // P sees the stick too: in reverse the stick part stays, the gyro part flips
+    onlyRoll(100, 100);
+    fly(300, 2.0f);
+    const float stickOnly = rollOutput(0.1f, 0);
+    const float gyroOnly = rollOutput(0, 100);
+    fly(-300, 3.0f);
+    EXPECT_NEAR(rollOutput(0.1f, 100), stickOnly - gyroOnly, fabsf(stickOnly) * 1e-3f);
+}
+
+TEST_F(PIDReverseFlightTest, HandoverKeepsStickDropsGyro)
+{
+    onlyRoll(0, 100);
+    fly(300, 2.0f);
+    const float forward = rollOutput(0.1f, 0);
+
+    // Snap to reverse: the aircraft still moves forward, the surface factor is 0
+    fly(-362, 0.002f);
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_HANDOVER);
+    EXPECT_NEAR(rollOutput(0.1f, 0), forward, fabsf(forward) * 1e-4f);
+
+    onlyRoll(100, 0);
+    EXPECT_FLOAT_EQ(rollOutput(0, 100), 0);
+}
+
+TEST_F(PIDReverseFlightTest, GroundInReverseReversesGyroOnly)
+{
+    onlyRoll(100, 100);
+    const float stickForward = rollOutput(0.1f, 0);
+    const float gyroForward = rollOutput(0, 100);
+
+    // Armed, on the ground, stick past the flip point below neutral
+    for (int i = 0; i < 100; i++) {
+        reverseFlightUpdate(reverseFlightMapStick(-75, 459), true, false, 0.001f);
+    }
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_GROUND);
+    ASSERT_EQ(reverseFlightGetDirection(), -1);
+
+    EXPECT_NEAR(rollOutput(0.1f, 0), stickForward, fabsf(stickForward) * 1e-3f);
+    EXPECT_NEAR(rollOutput(0, 100), -gyroForward, fabsf(gyroForward) * 1e-3f);
 }

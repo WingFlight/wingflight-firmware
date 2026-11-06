@@ -88,6 +88,7 @@ typedef struct {
     float setPoint;
     float gyroRate;
     float axisError;
+    float stickSetPoint;    // the stick's part of setPoint, in the stick's own sense (see pidApplySetpoint())
 } pidAxisData_t;
 
 typedef struct {
@@ -189,6 +190,8 @@ float pidGetDT(void);
 float pidGetPidFrequency(void);
 
 float pidGetSetpoint(int axis);
+float pidGetStickSetpoint(int axis);
+float pidGetLevelingSetpoint(int axis);
 float pidGetOutput(int axis);
 float pidGetFeedforward(int axis, float rate);
 
