@@ -96,6 +96,8 @@
 #include "sensors/gyro.h"
 #include "sensors/esc_sensor.h"
 
+#include "flight/reverse_flight.h"
+
 #include "config.h"
 
 #include "drivers/dshot.h"
@@ -163,6 +165,7 @@ static void activateConfig(void)
     loadControlRateProfile();
     loadTvProfile();
 
+    reverseFlightInit(reverseFlightConfig());
     initRcProcessing();
     adjustmentRangeInit();
 

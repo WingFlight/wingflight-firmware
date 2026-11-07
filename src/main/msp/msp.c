@@ -94,6 +94,7 @@
 #include "flight/tv_pid.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
+#include "flight/reverse_flight.h"
 #include "flight/servos.h"
 #include "flight/tune_advisor.h"
 
@@ -131,6 +132,7 @@
 #include "pg/rx_input_backup.h"
 #include "pg/bus_servo.h"
 #include "pg/logic_condition.h"
+#include "pg/reverse_flight.h"
 #ifdef USE_SRXL2_ESC
 #include "pg/srxl2_esc.h"
 #endif
@@ -1549,6 +1551,54 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, srxl2escConfig()->motor2_channel); // 0 = off, 1..31
         break;
 #endif
+
+    case MSP2_WING_REVERSE_FLIGHT_CONFIG: {
+        // Payload version 1: the PG_REVERSE_FLIGHT_CONFIG fields in struct order (the coupled
+        // axes after the dwell), then the
+        // throttle channel value for zero thrust in bidirectional mode (read only, follows
+        // rc_center / rc_min_throttle / rc_max_throttle), then U8 motor control mode mask
+        // (motor_control_mode, bit n set = motor n+1 bidirectional) and U8 motor count.
+        const reverseFlightConfig_t *cfg = reverseFlightConfig();
+        sbufWriteU8(dst, 1); // payload version
+        sbufWriteU8(dst, cfg->throttle_mode);
+        sbufWriteU8(dst, cfg->throttle_deadband);
+        sbufWriteU8(dst, cfg->throttle_reverse_hysteresis);
+        sbufWriteU8(dst, cfg->throttle_reverse_limit);
+        sbufWriteU16(dst, cfg->reverse_motor_time);
+        sbufWriteU16(dst, cfg->reverse_time_constant);
+        sbufWriteU16(dst, cfg->reverse_surface_gain);
+        sbufWriteU8(dst, cfg->reverse_fade);
+        sbufWriteU8(dst, cfg->reverse_motor_dwell);
+        sbufWriteU8(dst, cfg->reverse_coupled_axes);
+        sbufWriteU16(dst, getThrottleNeutral());
+        uint8_t bidirMask = 0;
+        for (int i = 0; i < MAX_SUPPORTED_MOTORS; i++) {
+            if (motorConfig()->dev.motorControlMode[i] == MOTOR_CONTROL_BIDIR) {
+                bidirMask |= BIT(i);
+            }
+        }
+        sbufWriteU8(dst, bidirMask);
+        sbufWriteU8(dst, getMotorCount());
+        break;
+    }
+
+    case MSP2_WING_REVERSE_FLIGHT_STATUS:
+        // Payload version 1: U8 enabled, U8 state (reverseFlightState_e), S8 motor direction,
+        // U8 stick in deadband, U16 throttle channel (us), then S16 x1000: stick thrust, motor
+        // command, thrust estimate, speed estimate, gimbal factor, surface factor.
+        sbufWriteU8(dst, 1); // payload version
+        sbufWriteU8(dst, reverseFlightIsEnabled());
+        sbufWriteU8(dst, reverseFlightGetState());
+        sbufWriteS8(dst, reverseFlightGetDirection());
+        sbufWriteU8(dst, isThrottleBidirectional() && isThrottleOff());
+        sbufWriteU16(dst, lrintf(rcInput[THROTTLE]));
+        sbufWriteS16(dst, lrintf(getThrottleSigned() * 1000));
+        sbufWriteS16(dst, lrintf(reverseFlightGetThrottle() * 1000));
+        sbufWriteS16(dst, lrintf(reverseFlightGetThrustEstimate() * 1000));
+        sbufWriteS16(dst, lrintf(reverseFlightGetSpeedEstimate() * 1000));
+        sbufWriteS16(dst, lrintf(reverseFlightGetVectorFactor() * 1000));
+        sbufWriteS16(dst, lrintf(reverseFlightGetSurfaceFactor() * 1000));
+        break;
 
 #ifdef USE_FBUS_MUX_FPGA
     case MSP2_WING_FBUS_MUX_CONFIG: {
@@ -4876,6 +4926,34 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         break;
     }
 #endif
+
+    case MSP2_WING_SET_REVERSE_FLIGHT_CONFIG: {
+        // Same fields as MSP2_WING_REVERSE_FLIGHT_CONFIG (14 bytes) without the version byte, the
+        // read-only neutral and the motor count. Exact length, so a GET-format payload is
+        // refused. Not while armed: switching the throttle mode in flight would move the
+        // motor's zero point. The settings take effect with the EEPROM write that follows
+        // (activateConfig()), the motor control modes after a reboot (motor driver init).
+        if (dataSize != 14 || ARMING_FLAG(ARMED)) {
+            return MSP_RESULT_ERROR;
+        }
+        reverseFlightConfig_t *cfg = reverseFlightConfigMutable();
+        cfg->throttle_mode = MIN(sbufReadU8(src), THROTTLE_MODE_COUNT - 1);
+        cfg->throttle_deadband = MIN(sbufReadU8(src), THROTTLE_DEADBAND_MAX);
+        cfg->throttle_reverse_hysteresis = MIN(sbufReadU8(src), THROTTLE_REVERSE_HYSTERESIS_MAX);
+        cfg->throttle_reverse_limit = constrain(sbufReadU8(src), THROTTLE_REVERSE_LIMIT_MIN, 100);
+        cfg->reverse_motor_time = constrain(sbufReadU16(src), REVERSE_MOTOR_TIME_MIN, REVERSE_MOTOR_TIME_MAX);
+        cfg->reverse_time_constant = constrain(sbufReadU16(src), REVERSE_TIME_CONSTANT_MIN, REVERSE_TIME_CONSTANT_MAX);
+        cfg->reverse_surface_gain = MIN(sbufReadU16(src), REVERSE_SURFACE_GAIN_MAX);
+        cfg->reverse_fade = constrain(sbufReadU8(src), REVERSE_FADE_MIN, REVERSE_FADE_MAX);
+        cfg->reverse_motor_dwell = MIN(sbufReadU8(src), 250);
+        cfg->reverse_coupled_axes = sbufReadU8(src) & REVERSE_COUPLED_AXES_MASK;
+        const uint8_t bidirMask = sbufReadU8(src);
+        for (int i = 0; i < MAX_SUPPORTED_MOTORS; i++) {
+            motorConfigMutable()->dev.motorControlMode[i] =
+                (bidirMask & BIT(i)) ? MOTOR_CONTROL_BIDIR : MOTOR_CONTROL_UNIDIR;
+        }
+        break;
+    }
 
 #ifdef USE_FBUS_MUX_FPGA
     case MSP2_WING_SET_FBUS_MUX_CONFIG: {

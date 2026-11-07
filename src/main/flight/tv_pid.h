@@ -59,6 +59,7 @@ void tvPidReset(void);
 void tvPidController(timeUs_t currentTimeUs);
 
 float tvPidGetOutput(int axis);
+float tvPidGetFeedforward(int axis, float rate);
 const tvPidAxisData_t * tvPidGetAxisData(void);
 void tvPidGetRuntimeGains(tvPidRuntimeGains_t *runtimeGains);
 

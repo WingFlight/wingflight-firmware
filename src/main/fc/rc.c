@@ -42,8 +42,10 @@
 #include "fc/rc_rates.h"
 
 #include "flight/pid.h"
+#include "flight/reverse_flight.h"
 #include "flight/setpoint.h"
 
+#include "pg/reverse_flight.h"
 #include "pg/rx.h"
 
 #include "rx/rx.h"
@@ -73,6 +75,9 @@ typedef struct {
     float       range[4];
 
     float       throttle;
+    float       throttleSigned;
+    float       throttleCenter;
+    float       throttleHalfRange;
     float       offThrottle;
     float       minThrottle;
     float       maxThrottle;
@@ -104,13 +109,49 @@ float getThrottle(void)
     return rc.throttle;
 }
 
+float getThrottleSigned(void)
+{
+    return rc.throttleSigned;
+}
+
+// Read from the stored config rather than reverseFlightIsEnabled(), so it is valid
+// before the flight code is initialised (rx.c uses it at RX init).
+bool isThrottleBidirectional(void)
+{
+    return reverseFlightConfig()->throttle_mode == THROTTLE_MODE_BIDIRECTIONAL;
+}
+
+// Throttle channel value for zero thrust in BIDIRECTIONAL mode: the middle of the
+// throttle range, which is rc_center unless rc_min_throttle/rc_max_throttle move it.
+// From the config alone, for the same reason as above.
+uint16_t getThrottleNeutral(void)
+{
+    const rcControlsConfig_t *cfg = rcControlsConfig();
+    const float minThrottle = cfg->rc_min_throttle ?
+        constrain(cfg->rc_min_throttle, RX_PWM_PULSE_MIN, RX_PWM_PULSE_MAX) :
+        cfg->rc_center - cfg->rc_deflection * 0.9f;
+    const float maxThrottle = cfg->rc_max_throttle ?
+        constrain(cfg->rc_max_throttle, RX_PWM_PULSE_MIN, RX_PWM_PULSE_MAX) :
+        cfg->rc_center + cfg->rc_deflection * 0.9f;
+    return lrintf((minThrottle + fmaxf(maxThrottle, minThrottle + 10)) / 2);
+}
+
+// "Throttle off" is what arming and the throttle-low checks want: below the low end
+// normally, inside the deadband around mid stick in BIDIRECTIONAL mode.
 bool isThrottleOff(void)
 {
+    if (isThrottleBidirectional()) {
+        return reverseFlightStickInDeadband(rcInput[THROTTLE] - rc.throttleCenter);
+    }
     return (rcInput[THROTTLE] < rc.offThrottle);
 }
 
 uint16_t getFailsafeThrottle(void)
 {
+    // Zero thrust. In BIDIRECTIONAL mode the low end would be full reverse.
+    if (isThrottleBidirectional()) {
+        return getThrottleNeutral();
+    }
     return rc.offThrottle - RC_THROTTLE_DEADBAND;
 }
 
@@ -209,11 +250,29 @@ void updateRcCommands(void)
         DEBUG(RC_COMMAND, axis, rcCommand[axis]);
     }
 
-    // Throttle range is 0..1
-    rc.throttle = transition(rcInput[THROTTLE], rc.minThrottle, rc.maxThrottle, 0, 1);
+    if (isThrottleBidirectional()) {
+        // Signed thrust -1..1 around mid stick, with the deadband and direction latch
+        // (flight/reverse_flight.c). getThrottle() stays the magnitude 0..1, which is
+        // what TPA, the in-flight latch and the other 0..1 consumers need.
+        rc.throttleSigned = reverseFlightMapStick(rcInput[THROTTLE] - rc.throttleCenter, rc.throttleHalfRange);
+        rc.throttle = fabsf(rc.throttleSigned);
+    }
+    else {
+        // Throttle range is 0..1
+        rc.throttle = transition(rcInput[THROTTLE], rc.minThrottle, rc.maxThrottle, 0, 1);
+        rc.throttleSigned = rc.throttle;
+    }
 
-    // Legacy throttle command range is -500..500 for compatibility with other channels
-    rcCommand[THROTTLE] = rc.throttle * 1000 - 500;
+    // Legacy throttle command range is -500..500 for compatibility with other channels.
+    // With bidirectional throttle it is the stick itself, centred on the neutral point
+    // (no deadband), so the raw throttle channel mixer input and the stick commands see
+    // the low end as full reverse rather than as "off".
+    if (isThrottleBidirectional()) {
+        rcCommand[THROTTLE] = constrainf((rcInput[THROTTLE] - rc.throttleCenter) / fmaxf(rc.throttleHalfRange, 1.0f), -1, 1) * 500;
+    }
+    else {
+        rcCommand[THROTTLE] = rc.throttle * 1000 - 500;
+    }
 
     DEBUG(RC_COMMAND, THROTTLE, lrintf(rc.throttle * 1000));
 
@@ -260,6 +319,9 @@ INIT_CODE void initRcProcessing(void)
     rc.maxThrottle = fmaxf(rc.maxThrottle, rc.minThrottle + 10);
 
     rc.offThrottle = rc.minThrottle - RC_THROTTLE_DEADBAND;
+
+    rc.throttleCenter = (rc.minThrottle + rc.maxThrottle) / 2;
+    rc.throttleHalfRange = (rc.maxThrottle - rc.minThrottle) / 2;
 
     // Start with 100Hz rate
     rc.averageRxRefreshRate = 10000;

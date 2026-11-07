@@ -336,7 +336,8 @@ NOINLINE void failsafeUpdateState(void)
                             break;
 #ifdef USE_GPS_RESCUE
                         case FAILSAFE_PROCEDURE_GPS_RESCUE:
-                            if (navCanRTH()) {
+                            // No GPS rescue with bidirectional (4D) throttle: falls back to landing.
+                            if (navCanRTH() && !isThrottleBidirectional()) {
                                 // Fly home and orbit using the same fixed-wing RTH controller
                                 // BOXRTH uses (navRthStart()/updateGpsNav(), see
                                 // gps_nav.c) -- not gps_rescue.c's multirotor hover-throttle

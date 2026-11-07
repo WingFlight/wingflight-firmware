@@ -58,7 +58,10 @@ void updateRcCommands(void);
 
 float getRcDeflection(int axis);
 
-float getThrottle(void);
+float getThrottle(void);         // 0..1 (the magnitude in BIDIRECTIONAL mode)
+float getThrottleSigned(void);   // -1..1 in BIDIRECTIONAL mode, else same as getThrottle()
+bool isThrottleBidirectional(void);
+uint16_t getThrottleNeutral(void);
 
 static inline float getThrottleCommand(void) { return getThrottle() * 1000; }
 static inline uint8_t getThrottlePercent(void) { return lrintf(getThrottle() * 100); }

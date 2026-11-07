@@ -38,6 +38,7 @@
 #include "flight/pid.h"
 #include "flight/mixer.h"
 #include "flight/hold_engine.h"
+#include "flight/reverse_flight.h"
 #include "flight/tv_hold.h"
 
 #include "tv_pid.h"
@@ -72,6 +73,13 @@ static FAST_DATA_ZERO_INIT tvPidData_t tvPid;
 float tvPidGetOutput(int axis)
 {
     return tvPid.data[axis].pidSum;
+}
+
+// What the TV loop's feedforward would command for this rate, with no gyro correction.
+// MANUAL with bidirectional (4D) throttle drives the gimbal with it (setpoint.c).
+float tvPidGetFeedforward(int axis, float rate)
+{
+    return tvPid.coef[axis].Kf * tvPid.masterGain[axis] * rate;
 }
 
 const tvPidAxisData_t * tvPidGetAxisData(void)
@@ -497,7 +505,11 @@ static void tvPidApplyAxis(uint8_t axis)
     // Reuse this tick's final main-loop setpoint (post rates-curve, post any
     // leveling-mode shaping). Only correct because tvPidController() is called
     // after pidController() within the same TASK_PID tick -- see fc/core.c.
-    float setpoint = pidGetSetpoint(axis);
+    // Reverse flight (4D): rebuilt from its parts with the gimbal's own stick sign,
+    // which follows the thrust rather than the motion (see the PID sum below).
+    // The same as pidGetSetpoint() with normal throttle.
+    const float stick = pidGetStickSetpoint(axis);
+    float setpoint = pidGetLevelingSetpoint(axis) + stick * reverseFlightGetVectorSign();
 
     // Independent attitude/heading hold for this loop only (BOXTVHOLD) -- see
     // tv_hold.c. Skipped while a safety mode is driving the main loop's setpoint
@@ -538,12 +550,20 @@ static void tvPidApplyAxis(uint8_t axis)
 
     const bool saturation = (tvPidAxisSaturated(axis) && tvPid.data[axis].axisError * itermErrorRate > 0);
 
-    // PASSTHROUGH zeroes the TV mixer inputs (mixer.c), so the nozzle is not tracking
-    // this setpoint: hold the accumulation, as pid.c does for the main loop, or the
-    // wound-up I steps the nozzle on switching back. Decay below still applies.
-    const bool bypassed = mixerStabilizationBypassed() && IS_RC_MODE_ACTIVE(BOXPASSTHROUGH);
+    // PASSTHROUGH zeroes the TV mixer inputs (mixer.c), and with bidirectional (4D) throttle
+    // MANUAL drives them from the sticks, so the nozzle is not tracking this setpoint: hold the
+    // accumulation, as pid.c does for the main loop, or the wound-up I steps the nozzle on
+    // switching back. Decay below still applies.
+    const bool bypassed = mixerVectorBypassed();
 
-    const float itermDelta = (saturation || bypassed) ? 0 : itermErrorRate * pidGetDT();
+    // Reverse flight (4D): hold I while there is too little thrust for the gimbal to act on,
+    // and start again when the motor reverses, as its torque and the gimbal's effect do.
+    const bool reverseHold = fabsf(reverseFlightGetVectorFactor()) < REVERSE_FLIGHT_ITERM_HOLD;
+    if (reverseFlightJustReversed()) {
+        tvPid.data[axis].axisError = 0;
+    }
+
+    const float itermDelta = (saturation || bypassed || reverseHold) ? 0 : itermErrorRate * pidGetDT();
 
     tvPid.data[axis].axisError = limitf(tvPid.data[axis].axisError + itermDelta, tvPid.errorLimit[axis]);
     tvPid.data[axis].I = tvPid.coef[axis].Ki * masterGain * tvPid.data[axis].axisError;
@@ -570,6 +590,15 @@ static void tvPidApplyAxis(uint8_t axis)
 
     tvPid.data[axis].pidSum = tvPid.data[axis].P + tvPid.data[axis].I + tvPid.data[axis].D +
                                tvPid.data[axis].F + tvPid.data[axis].B;
+
+    // Reverse flight (4D): the gimbal's push reverses with the thrust and fades out as the
+    // thrust passes through zero (flight/reverse_flight.c). The stick part of the setpoint
+    // was turned with the same sign, so the stick tilts the gimbal as forward and only the
+    // gyro's correction reverses; while the factor fades, put back the stick's feedforward
+    // it took away (as pid.c does). Factor 1 and no stick feed with normal throttle.
+    const float vector = reverseFlightGetVectorFactor();
+    tvPid.data[axis].pidSum = tvPid.data[axis].pidSum * vector +
+                              (1.0f - fabsf(vector)) * tvPid.coef[axis].Kf * masterGain * stick;
 }
 
 void tvPidController(timeUs_t currentTimeUs)

@@ -23,6 +23,7 @@ float applyRatesCurve(const int, float rcCommandf) { return rcCommandf * fullSti
 
 static float feedforwardGain = 0.0f;
 float pidGetFeedforward(int, float rate) { return feedforwardGain * rate; }
+float tvPidGetFeedforward(int, float rate) { return feedforwardGain * rate; }
 }
 // Dummy variables.
 uint8_t armingFlags = 0;
