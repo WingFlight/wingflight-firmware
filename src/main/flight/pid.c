@@ -137,6 +137,7 @@ const pidAxisData_t * pidGetAxisData(void)
 void INIT_CODE pidReset(void)
 {
     memset(pid.data, 0, sizeof(pid.data));
+    memset(pid.reverseTrim, 0, sizeof(pid.reverseTrim));
 
     memset(pid.snapAboveTime, 0, sizeof(pid.snapAboveTime));
     pid.snapActive = false;
@@ -1175,6 +1176,46 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
     }
 }
 
+/*
+ * Reverse flight (4D): a trim per direction
+ *
+ * The motor torque reverses with the prop, so I is not carried across a reversal. Starting
+ * each leg from zero, though, the reverse prop torque rolled the aircraft 30-110 degrees in
+ * the first half second of every reverse leg before roll I had built up again (fourth test
+ * flight: forward, half backflip, reverse, half backflip, ...), and roll I ended every leg at
+ * its limit. The torque is the same every time, so each direction keeps a slow average of the
+ * I it settled at, and a reversal starts the new leg from the one learned for it.
+ *
+ * The average only follows I while it is building normally: not while held (handover, motor
+ * stopped, saturated, on the ground, PASSTHROUGH/MANUAL), so a transient that the hold or the
+ * saturation already caught does not end up in the trim, and with REVERSE_TRIM_TIME a short
+ * spike (a yaw drop-out at the end of a hang) only moves it a little. Every flight starts
+ * from zero: the trims are cleared until the aircraft is airborne.
+ */
+#define REVERSE_TRIM_TIME       1.0f    // s, time constant of the per-direction I average
+
+static inline int reverseTrimIndex(void)
+{
+    return (reverseFlightGetDirection() < 0) ? 1 : 0;
+}
+
+static void pidUpdateReverseTrim(uint8_t axis, bool held)
+{
+    const reverseFlightState_e state = reverseFlightGetState();
+
+    if (state == REVERSE_STATE_OFF || state == REVERSE_STATE_DISARMED || state == REVERSE_STATE_GROUND) {
+        pid.reverseTrim[axis][0] = 0;
+        pid.reverseTrim[axis][1] = 0;
+        return;
+    }
+
+    if (held || (state != REVERSE_STATE_FORWARD && state != REVERSE_STATE_REVERSE))
+        return;
+
+    float *trim = &pid.reverseTrim[axis][reverseTrimIndex()];
+    *trim += (pid.data[axis].axisError - *trim) * (pid.dT / (REVERSE_TRIM_TIME + pid.dT));
+}
+
 static void pidApplyMode1(uint8_t axis)
 {
     // Rate setpoint
@@ -1256,9 +1297,10 @@ static void pidApplyMode1(uint8_t axis)
                              reverseFlightGetState() == REVERSE_STATE_HANDOVER;
 
     // When the motor reverses, so does its torque, and the aircraft flies the other way:
-    // the I that trimmed out the old direction would push the wrong way. Start again.
+    // the I that trimmed out the old direction would push the wrong way. Start from the trim
+    // last learned in the new direction instead (see pidUpdateReverseTrim()), 0 the first time.
     if (reverseFlightJustReversed()) {
-        pid.data[axis].axisError = 0;
+        pid.data[axis].axisError = pid.reverseTrim[axis][reverseTrimIndex()];
     }
 
     // I-term change
@@ -1271,6 +1313,8 @@ static void pidApplyMode1(uint8_t axis)
     if (axis == PID_ROLL && propHangRelax > 0) {
         pid.data[axis].axisError -= pid.data[axis].axisError * MIN(propHangRelax * pid.dT / PROP_HANG_BLEED_TIME, 1.0f);
     }
+    pidUpdateReverseTrim(axis, saturation || bypassed || onGround || reverseHold);
+
     // TRADITIONAL_MODE forces I output to zero without touching axisError's own bookkeeping, so
     // relax/decay keep behaving as configured and I resumes smoothly if the mode is switched off.
     pid.data[axis].I = FLIGHT_MODE(TRADITIONAL_MODE) ? 0.0f

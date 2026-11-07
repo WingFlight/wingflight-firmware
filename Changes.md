@@ -44,6 +44,16 @@ existing setup unchanged.
   gimbal gyro is already back on: falling out of a long reverse hang the yaw I
   integrated the left-over 300-500 deg/s rotation to its limit in 0.3 s and held
   the rudder deflected for a second after the rotation had stopped.
+- **A trim per direction.** The rate loop keeps a slow average (1 s) of each
+  axis's I for forward and for reverse, updated only while I builds normally
+  (not while held or saturated), and a reversal starts the new leg from the one
+  learned for that direction instead of from zero. Starting from zero, the
+  reverse prop torque rolled the aircraft 30-110 degrees in the first half
+  second of every reverse leg (forward, half backflip, reverse, half backflip)
+  before roll I had built up again. Replayed on that log, reverse legs would
+  start at 45-80 % of the trim they ended at. Each flight starts from zero: the
+  trims are cleared until airborne. The thrust vector loop still clears its I
+  on a reversal.
 - **Prop hang.** The prop-hang roll I relax also detects the tail-up hang on
   reverse thrust, so the airframe can torque roll there without the roll I
   sitting at its limit. The hang test smooths the vario over about a second

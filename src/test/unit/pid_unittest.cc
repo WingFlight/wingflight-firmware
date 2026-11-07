@@ -714,6 +714,64 @@ TEST_F(PIDReverseFlightTest, HandoverHoldsCoupledAxisI)
     EXPECT_GT(fabsf(pidGetAxisData()[0].axisError), 10);
 }
 
+// The reverse prop torque is the same on every reverse leg: a reversal starts the new leg
+// from the I learned in that direction, not from zero
+TEST_F(PIDReverseFlightTest, ReversalRestoresTheTrimOfTheNewDirection)
+{
+    onlyRoll(0, 0);
+    mockPidProfile->pid[0].I = 100;
+    pidInit(mockPidProfile);
+
+    // Reverse leg: the torque rolls the aircraft, roll I builds against it
+    fly(-300, 3.0f);
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_REVERSE);
+    for (int i = 0; i < 10; i++) {
+        rollOutput(0, 100);
+    }
+    const float reverseI = pidGetAxisData()[0].axisError;
+    ASSERT_GT(fabsf(reverseI), 10);
+
+    // Forward: nothing learned for forward yet, so it starts from zero
+    fly(300, 0.001f);
+    ASSERT_TRUE(reverseFlightJustReversed());
+    rollOutput(0, 0);
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_HANDOVER);
+    EXPECT_FLOAT_EQ(pidGetAxisData()[0].axisError, 0);
+
+    // A forward trim the other way
+    fly(300, 3.0f);
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_FORWARD);
+    for (int i = 0; i < 10; i++) {
+        rollOutput(0, -100);
+    }
+    const float forwardI = pidGetAxisData()[0].axisError;
+    ASSERT_LT(forwardI * reverseI, 0);
+
+    // Back to reverse: starts from the reverse trim (a 1 s average of the 3 s leg)
+    fly(-300, 0.001f);
+    ASSERT_TRUE(reverseFlightJustReversed());
+    rollOutput(0, 0);
+    const float restored = pidGetAxisData()[0].axisError;
+    EXPECT_GT(restored * reverseI, 0);
+    EXPECT_GT(fabsf(restored), fabsf(reverseI) * 0.5f);
+    EXPECT_LE(fabsf(restored), fabsf(reverseI) + 1e-3f);
+
+    // And forward again from the forward trim
+    fly(300, 0.001f);
+    rollOutput(0, 0);
+    EXPECT_GT(pidGetAxisData()[0].axisError * forwardI, 0);
+
+    // A new flight starts from zero
+    for (int i = 0; i < 10; i++) {
+        reverseFlightUpdate(0, false, false, 0.001f);
+    }
+    rollOutput(0, 0);
+    fly(-300, 3.0f);
+    fly(300, 0.001f);
+    rollOutput(0, 0);
+    EXPECT_FLOAT_EQ(pidGetAxisData()[0].axisError, 0);
+}
+
 // With reverse thrust the aircraft hangs tail up: the prop-hang relax releases roll I there too
 TEST_F(PIDReverseFlightTest, ReverseHangReleasesRollI)
 {

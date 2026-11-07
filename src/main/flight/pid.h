@@ -155,6 +155,7 @@ typedef struct pid_s {
     float propHangRelax;                        // Current roll I relax, 0..propHangStrength
     float propHangYawRelax;                     // Current yaw I accumulation relax: propHangRelax while torque rolling fast
     pt1Filter_t propHangVarioFilter;            // Vario for the hang test, smoothed over about a second
+    float reverseTrim[PID_AXIS_COUNT][2];       // Reverse flight: slow average of each axis's I, [0] forward, [1] reverse
 
     float itermDecayRate[PID_AXIS_COUNT];
     float itermDecayLimit;
