@@ -39,7 +39,14 @@ existing setup unchanged.
   direction at full strength, so the reversed gyro can be checked on the bench
   with the throttle below neutral.
 - **I-term.** Both loops hold I while their factor is below 0.5 and clear it on
-  every reversal, as the motor torque reverses with the prop.
+  every reversal, as the motor torque reverses with the prop. The rate loop also
+  holds I on every axis during the handover, including a coupled axis whose
+  gimbal gyro is already back on: falling out of a long reverse hang the yaw I
+  integrated the left-over 300-500 deg/s rotation to its limit in 0.3 s and held
+  the rudder deflected for a second after the rotation had stopped.
+- **Prop hang.** The prop-hang roll I relax also detects the tail-up hang on
+  reverse thrust, so the airframe can torque roll there without the roll I
+  sitting at its limit.
 - **MANUAL** has no gyro, so nothing reverses: the surfaces and (with THRUST
   VECTOR on) the gimbal follow the sticks through the feedforward, the same in
   both directions. PASSTHROUGH is unchanged.

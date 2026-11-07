@@ -646,6 +646,84 @@ TEST_F(PIDReverseFlightTest, HandoverKeepsStickDropsGyro)
     EXPECT_FLOAT_EQ(rollOutput(0, 100), 0);
 }
 
+// Falling out of a reverse hang the aircraft still turns fast when the thrust goes forward
+// again. On a coupled axis (rudder linked to the gimbal yaw) the gyro is already back on in
+// the handover, and I used to integrate the left-over rotation to its limit.
+TEST_F(PIDReverseFlightTest, HandoverHoldsCoupledAxisI)
+{
+    reverseFlightConfig_t config = {};
+    config.throttle_mode = THROTTLE_MODE_BIDIRECTIONAL;
+    config.throttle_deadband = 40;
+    config.throttle_reverse_hysteresis = 50;
+    config.throttle_reverse_limit = 100;
+    config.reverse_motor_time = 80;
+    config.reverse_time_constant = 400;
+    config.reverse_surface_gain = 100;
+    config.reverse_fade = 15;
+    config.reverse_coupled_axes = 1;    // roll coupled, so the onlyRoll() helpers apply
+    reverseFlightInit(&config);
+
+    onlyRoll(0, 0);
+    mockPidProfile->pid[0].I = 100;
+    pidInit(mockPidProfile);
+
+    fly(-300, 3.0f);
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_REVERSE);
+
+    // Throttle forward: thrust follows within the motor time, the aircraft still moves backwards
+    fly(300, 0.1f);
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_HANDOVER);
+    ASSERT_GT(fabsf(reverseFlightGetAxisFactor(0)), REVERSE_FLIGHT_ITERM_HOLD);
+    rollOutput(0, 300);
+    EXPECT_FLOAT_EQ(pidGetAxisData()[0].axisError, 0);
+
+    // Once it flies forward, I builds as usual
+    fly(300, 3.0f);
+    ASSERT_EQ(reverseFlightGetState(), REVERSE_STATE_FORWARD);
+    rollOutput(0, 300);
+    EXPECT_GT(fabsf(pidGetAxisData()[0].axisError), 10);
+}
+
+// With reverse thrust the aircraft hangs tail up: the prop-hang relax releases roll I there too
+TEST_F(PIDReverseFlightTest, ReverseHangReleasesRollI)
+{
+    auto rollIAfterHang = [this](uint8_t strength, float noseUp) {
+        mockPidProfile->pid_mode = 1;
+        for (int axis = 0; axis < 3; axis++) {
+            mockPidProfile->pid[axis].P = 50;
+            mockPidProfile->pid[axis].I = 50;
+            mockPidProfile->pid[axis].D = 0;
+            mockPidProfile->pid[axis].F = 0;
+            mockPidProfile->pid[axis].B = 0;
+        }
+        propHangConfigsMutable(0)->strength = strength;
+        pidInit(mockPidProfile);
+        rMat[2][0] = noseUp;
+        mockVario = 0;
+        gyro.gyroADCf[0] = -100;
+        PIDIO input;
+        for (int i = 0; i < 2000; i++) {
+            for (int axis = 0; axis < 4; axis++) {
+                input[axis].push_back(0);
+            }
+        }
+        getResponse(input);
+        rMat[2][0] = 0;
+        return pidGetAxisData()[0].axisError;
+    };
+
+    fly(-300, 3.0f);
+    ASSERT_EQ(reverseFlightGetDirection(), -1);
+
+    // Tail up: a hang
+    const float off = rollIAfterHang(0, -1.0f);
+    EXPECT_GT(fabsf(off), 10);
+    EXPECT_LT(fabsf(rollIAfterHang(100, -1.0f)), fabsf(off) * 0.1f);
+
+    // Nose up on reverse thrust is no hang (sliding down tail first)
+    EXPECT_FLOAT_EQ(rollIAfterHang(100, 1.0f), rollIAfterHang(0, 1.0f));
+}
+
 TEST_F(PIDReverseFlightTest, GroundInReverseReversesGyroOnly)
 {
     onlyRoll(100, 100);

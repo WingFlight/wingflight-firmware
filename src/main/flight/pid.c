@@ -879,7 +879,8 @@ static float getSnapRelaxFactor(int axis, float error, float setpoint)
  * up-line cannot be told from a hang, so nothing is relaxed. While hanging, roll I stops
  * building and what it holds bleeds off, so the prop is free to roll the airframe; P, D and F
  * are untouched, so the stick still rolls it and P still damps a gust. Roll only: in a hang
- * the rudder and elevator steer the nose. Once the hang ends, the relax fades out over the
+ * the rudder and elevator steer the nose. With reverse thrust (4D) the hang is tail up and
+ * counts the same. Once the hang ends, the relax fades out over the
  * fade time.
  */
 #define PROP_HANG_VARIO_MAX     2.0f    // m/s
@@ -904,12 +905,14 @@ static void updatePropHangRelax(void)
     const bool rateFlight = !FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE |
                                          LOITER_MODE | RTH_MODE | ATTHOLD_MODE | TRAINER_MODE);
 
-    // rMat[2][0] is the nose-up component of the body X axis: 1 pointing straight up
+    // rMat[2][0] is the nose-up component of the body X axis: 1 pointing straight up.
+    // Reverse flight (4D): with the thrust reversed the aircraft hangs tail up, nose down.
     const float noseUp = rMat[2][0];
+    const float hangUp = (reverseFlightGetDirection() < 0) ? -noseUp : noseUp;
     const float vario = hasEstimatedAltitude() ? getVario() : 0;
 
     const bool hanging = rateFlight && hasEstimatedAltitude() &&
-                         noseUp >= pid.propHangCosAngle &&
+                         hangUp >= pid.propHangCosAngle &&
                          fabsf(vario) <= PROP_HANG_VARIO_MAX;
 
     pid.propHangTime = hanging ? MIN(pid.propHangTime + pid.dT, PROP_HANG_ENTRY_TIME) : 0;
@@ -1224,7 +1227,13 @@ static void pidApplyMode1(uint8_t axis)
     // Reverse flight (4D): while the surfaces have little or no authority (stopping, or
     // gliding slowly with the motor stopped) the error says nothing about the trim the
     // surfaces need, so hold the accumulation. The factor is 1 with normal throttle.
-    const bool reverseHold = fabsf(reverseFlightGetAxisFactor(axis)) < REVERSE_FLIGHT_ITERM_HOLD;
+    // The same holds on every axis while the thrust has reversed but the aircraft still moves
+    // the old way, including a coupled axis whose gimbal gyro is already back on: the error
+    // there is mostly the rotation left over from the old direction (falling out of a reverse
+    // hang it was 300-500 deg/s on yaw and wound I to its limit in 0.3 s, leaving the rudder
+    // deflected for a second after the rotation had stopped). P, D and F still stop it.
+    const bool reverseHold = fabsf(reverseFlightGetAxisFactor(axis)) < REVERSE_FLIGHT_ITERM_HOLD ||
+                             reverseFlightGetState() == REVERSE_STATE_HANDOVER;
 
     // When the motor reverses, so does its torque, and the aircraft flies the other way:
     // the I that trimmed out the old direction would push the wrong way. Start again.
