@@ -153,6 +153,8 @@ typedef struct pid_s {
     float propHangTime;                         // s the hang conditions have held, 0 while not hanging
     float propHangFadeTimer;                    // s of fade-out left after the hang ended
     float propHangRelax;                        // Current roll I relax, 0..propHangStrength
+    float propHangYawRelax;                     // Current yaw I accumulation relax: propHangRelax while torque rolling fast
+    pt1Filter_t propHangVarioFilter;            // Vario for the hang test, smoothed over about a second
 
     float itermDecayRate[PID_AXIS_COUNT];
     float itermDecayLimit;

@@ -546,6 +546,8 @@ static void INIT_CODE pidInitFilters(const pidProfile_t *pidProfile)
     }
     pt1FilterInit(&pid.crossAxisRelaxFilter, 1, pid.freq);
 
+    // Vario for the prop-hang test: 1 s time constant (see updatePropHangRelax)
+    pt1FilterInit(&pid.propHangVarioFilter, 1.0f / (2.0f * M_PIf), pid.freq);
 }
 
 void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
@@ -882,16 +884,29 @@ static float getSnapRelaxFactor(int axis, float error, float setpoint)
  * the rudder and elevator steer the nose. With reverse thrust (4D) the hang is tail up and
  * counts the same. Once the hang ends, the relax fades out over the
  * fade time.
+ *
+ * The vertical speed is smoothed over about a second first. In reverse hangs the baro vario
+ * swung +-2-3 m/s from one moment to the next (the reversed slipstream runs over the
+ * airframe), which hid two thirds of the hang; an up-line climbs steadily.
+ *
+ * Yaw: torque rolling fast about an axis a few degrees off the body X axis (coning), the
+ * yaw gyro sees a steady share of the roll rate, about 0.1x in the reverse-hang logs. That
+ * is no yaw error the rudder could remove, and yaw I wound up against it until the rudder
+ * sat on its stop for seconds. While hanging and rolling faster than
+ * PROP_HANG_YAW_ROLL_RATE, yaw I stops building. Nothing is bled off: the yaw trim it
+ * already holds stays, and it builds again as soon as the roll slows.
  */
 #define PROP_HANG_VARIO_MAX     2.0f    // m/s
 #define PROP_HANG_ENTRY_TIME    0.5f    // s
 #define PROP_HANG_BLEED_TIME    0.5f    // s, time constant of the roll I bleed while hanging
+#define PROP_HANG_YAW_ROLL_RATE 200.0f  // deg/s
 
 static void resetPropHangRelax(void)
 {
     pid.propHangTime = 0;
     pid.propHangFadeTimer = 0;
     pid.propHangRelax = 0;
+    pid.propHangYawRelax = 0;
 }
 
 static void updatePropHangRelax(void)
@@ -909,7 +924,7 @@ static void updatePropHangRelax(void)
     // Reverse flight (4D): with the thrust reversed the aircraft hangs tail up, nose down.
     const float noseUp = rMat[2][0];
     const float hangUp = (reverseFlightGetDirection() < 0) ? -noseUp : noseUp;
-    const float vario = hasEstimatedAltitude() ? getVario() : 0;
+    const float vario = hasEstimatedAltitude() ? pt1FilterApply(&pid.propHangVarioFilter, getVario()) : 0;
 
     const bool hanging = rateFlight && hasEstimatedAltitude() &&
                          hangUp >= pid.propHangCosAngle &&
@@ -929,12 +944,15 @@ static void updatePropHangRelax(void)
         pid.propHangRelax = 0;
     }
 
+    pid.propHangYawRelax = (fabsf(gyro.gyroADCf[FD_ROLL]) > PROP_HANG_YAW_ROLL_RATE) ? pid.propHangRelax : 0;
+
     DEBUG(PROP_HANG, 0, lrintf(pid.propHangRelax * 1000));
     DEBUG(PROP_HANG, 1, lrintf(noseUp * 1000));
     DEBUG(PROP_HANG, 2, lrintf(vario * 100));
     DEBUG(PROP_HANG, 3, lrintf(pid.propHangTime * 1000));
     DEBUG(PROP_HANG, 4, hasEstimatedAltitude());
     DEBUG(PROP_HANG, 5, rateFlight);
+    DEBUG(PROP_HANG, 6, lrintf(pid.propHangYawRelax * 1000));
 }
 
 static float pidApplySetpoint(uint8_t axis)
@@ -1203,8 +1221,10 @@ static void pidApplyMode1(uint8_t axis)
     // Apply error relax. Cross-axis relax slows the accumulation here and is NOT
     // applied again to the I output below: scaling the output as well made I drop
     // immediately when rudder was applied and jump back on release (#112).
-    // Prop-hang relax holds roll I back so the prop torque can roll the airframe
-    const float propHangRelax = (axis == PID_ROLL) ? pid.propHangRelax : 0;
+    // Prop-hang relax holds roll I back so the prop torque can roll the airframe, and yaw I
+    // while it torque rolls fast (see updatePropHangRelax)
+    const float propHangRelax = (axis == PID_ROLL) ? pid.propHangRelax :
+                                (axis == PID_YAW) ? pid.propHangYawRelax : 0;
 
     const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax * snapRelax * (1.0f - propHangRelax);
 
@@ -1248,7 +1268,7 @@ static void pidApplyMode1(uint8_t axis)
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
 
     // Bleed off the roll I that was holding the airframe against the torque before the hang
-    if (propHangRelax > 0) {
+    if (axis == PID_ROLL && propHangRelax > 0) {
         pid.data[axis].axisError -= pid.data[axis].axisError * MIN(propHangRelax * pid.dT / PROP_HANG_BLEED_TIME, 1.0f);
     }
     // TRADITIONAL_MODE forces I output to zero without touching axisError's own bookkeeping, so

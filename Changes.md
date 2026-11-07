@@ -46,7 +46,12 @@ existing setup unchanged.
   the rudder deflected for a second after the rotation had stopped.
 - **Prop hang.** The prop-hang roll I relax also detects the tail-up hang on
   reverse thrust, so the airframe can torque roll there without the roll I
-  sitting at its limit.
+  sitting at its limit. The hang test smooths the vario over about a second
+  (in reverse hangs it swung +-2-3 m/s and hid two thirds of the hang). While
+  hanging and torque rolling faster than 200 deg/s, yaw I stops building too:
+  coning puts about a tenth of the roll rate on the yaw gyro, and yaw I wound up
+  against it until the rudder sat on its stop. Debug PROP_HANG value 6 is the
+  yaw relax.
 - **MANUAL** has no gyro, so nothing reverses: the surfaces and (with THRUST
   VECTOR on) the gimbal follow the sticks through the feedforward, the same in
   both directions. PASSTHROUGH is unchanged.

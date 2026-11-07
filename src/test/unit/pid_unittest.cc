@@ -443,10 +443,11 @@ class PIDPropHangTest : public PIDTestBase {
         DISABLE_FLIGHT_MODE(ANGLE_MODE);
         PIDTestBase::TearDown();
     }
-    // Sticks centred for 2 s with the airframe torque-rolling at 100 deg/s (and pitching at
-    // 50 deg/s), nose-up component noseUp and vertical speed vario. Returns the roll and pitch
-    // axis data at the end.
-    std::array<pidAxisData_t, 2> afterHang(uint8_t strength, float noseUp, float vario)
+    // Sticks centred for 2 s with the airframe torque-rolling at rollRate (and pitching at
+    // 50 deg/s, yawing at yawRate), nose-up component noseUp and vertical speed vario, which
+    // swings by +-varioSwing every 100 ms. Returns the roll, pitch and yaw axis data at the end.
+    std::array<pidAxisData_t, 3> afterHang(uint8_t strength, float noseUp, float vario,
+                                           float rollRate = -100, float yawRate = 0, float varioSwing = 0)
     {
         mockPidProfile->pid_mode = 1;
         for (int axis = 0; axis < 3; axis++) {
@@ -460,18 +461,21 @@ class PIDPropHangTest : public PIDTestBase {
         pidInit(mockPidProfile);
 
         rMat[2][0] = noseUp;
-        mockVario = vario;
-        gyro.gyroADCf[0] = -100;
+        gyro.gyroADCf[0] = rollRate;
         gyro.gyroADCf[1] = -50;
+        gyro.gyroADCf[2] = yawRate;
 
-        PIDIO input;
-        for (int i = 0; i < 2000; i++) {
-            for (int axis = 0; axis < 4; axis++) {
-                input[axis].push_back(0);
+        for (int chunk = 0; chunk < 20; chunk++) {
+            mockVario = vario + ((chunk & 1) ? varioSwing : -varioSwing);
+            PIDIO input;
+            for (int i = 0; i < 100; i++) {
+                for (int axis = 0; axis < 4; axis++) {
+                    input[axis].push_back(0);
+                }
             }
+            getResponse(input);
         }
-        getResponse(input);
-        return { pidGetAxisData()[0], pidGetAxisData()[1] };
+        return { pidGetAxisData()[0], pidGetAxisData()[1], pidGetAxisData()[2] };
     }
 };
 
@@ -525,6 +529,32 @@ TEST_F(PIDPropHangTest, RollOnly)
     const float off = afterHang(0, 1.0f, 0)[1].axisError;
     const float on = afterHang(100, 1.0f, 0)[1].axisError;
     EXPECT_GT(off, 10);
+    EXPECT_FLOAT_EQ(on, off);
+}
+
+TEST_F(PIDPropHangTest, NoisyVarioIsStillAHang)
+{
+    // The vario swinging +-3 m/s around zero, as in the reverse-hang logs
+    const float off = afterHang(0, 1.0f, 0, -100, 0, 3.0f)[0].axisError;
+    const float on = afterHang(100, 1.0f, 0, -100, 0, 3.0f)[0].axisError;
+    EXPECT_GT(fabsf(off), 10);
+    EXPECT_LT(fabsf(on), fabsf(off) * 0.1f);
+}
+
+TEST_F(PIDPropHangTest, FastTorqueRollHoldsYawI)
+{
+    // Rolling at 600 deg/s with the coning share on the yaw gyro: yaw I doesn't build
+    const float off = afterHang(0, 1.0f, 0, -600, -60)[2].axisError;
+    const float on = afterHang(100, 1.0f, 0, -600, -60)[2].axisError;
+    EXPECT_GT(fabsf(off), 10);
+    EXPECT_LT(fabsf(on), fabsf(off) * 0.4f);    // only the 0.5 s before the hang is detected
+}
+
+TEST_F(PIDPropHangTest, SlowTorqueRollKeepsYawI)
+{
+    // Below PROP_HANG_YAW_ROLL_RATE yaw I builds as usual, so a yaw trim is still learned
+    const float off = afterHang(0, 1.0f, 0, -100, -60)[2].axisError;
+    const float on = afterHang(100, 1.0f, 0, -100, -60)[2].axisError;
     EXPECT_FLOAT_EQ(on, off);
 }
 
