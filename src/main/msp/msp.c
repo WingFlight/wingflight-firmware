@@ -3226,12 +3226,14 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         uint8_t srcProfileIndex = sbufReadU8(src);
         if (value == 0) {
             pidCopyProfile(dstProfileIndex, srcProfileIndex);
+            tuneAdvisorTuneChanged();
             if (!ARMING_FLAG(ARMED) && dstProfileIndex == getCurrentPidProfileIndex()) {
                 changePidProfile(dstProfileIndex);
             }
         }
         else if (value == 1) {
             copyControlRateProfile(dstProfileIndex, srcProfileIndex);
+            tuneAdvisorTuneChanged();
             if (!ARMING_FLAG(ARMED) && dstProfileIndex == getCurrentControlRateProfileIndex()) {
               changeControlRateProfile(dstProfileIndex);
             }
@@ -3291,6 +3293,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             }
         }
         pidLoadProfile(currentPidProfile);
+        tuneAdvisorTuneChanged();
         break;
 
     case MSP_SET_MODE_RANGE:
@@ -3364,6 +3367,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             currentControlRateProfile->yaw_dynamic_deadband_filter= sbufReadU8(src);
         }
         loadControlRateProfile();
+        tuneAdvisorTuneChanged();
         break;
 
 #ifdef USE_MSP_SET_MOTOR
@@ -3659,6 +3663,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         resetLevelConfig(levelConfigsMutable(getCurrentPidProfileIndex()));
         resetSnapRelaxConfig(snapRelaxConfigsMutable(getCurrentPidProfileIndex()));
         resetPropHangConfig(propHangConfigsMutable(getCurrentPidProfileIndex()));
+        tuneAdvisorTuneChanged();
         break;
 
     case MSP_SET_SENSOR_ALIGNMENT:
@@ -3857,6 +3862,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);
+        tuneAdvisorTuneChanged();
         break;
 
     case MSP_SET_SENSOR_CONFIG:

@@ -47,6 +47,7 @@
 #include "flight/trainer.h"
 #include "flight/leveling.h"
 #include "flight/atthold.h"
+#include "flight/tune_advisor.h"
 
 #include "io/beeper.h"
 #include "io/ledstrip.h"
@@ -556,6 +557,7 @@ void processRcAdjustments(void)
 
                 if (adjval != adjState->adjValue) {
                     setAdjustmentValue(adjRange, adjConfig, adjval);
+                    tuneAdvisorTuneChanged();
                     adjval = getAdjustmentValue(adjRange, adjConfig);
 
                     if (adjval != adjState->adjValue) {

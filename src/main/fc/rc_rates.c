@@ -35,6 +35,8 @@
 #include "fc/rc.h"
 #include "fc/rc_rates.h"
 
+#include "flight/tune_advisor.h"
+
 
 FAST_DATA_ZERO_INIT controlRateConfig_t * currentControlRateProfile;
 
@@ -197,6 +199,8 @@ INIT_CODE void changeControlRateProfile(uint8_t controlRateProfileIndex)
     }
 
     loadControlRateProfile();
+
+    tuneAdvisorTuneChanged();
 }
 
 INIT_CODE void copyControlRateProfile(uint8_t dstControlRateProfileIndex, uint8_t srcControlRateProfileIndex)

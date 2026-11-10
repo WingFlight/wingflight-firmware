@@ -36,7 +36,8 @@
 // airframe rebound (small counter-surface, I near 0: needs damping) from I-term push-back.
 //
 // Everything accumulates across flights, so the numbers firm up, and is cleared when the tune
-// changes (checked when arming) or on MSP2_WING_TUNE_ADVISOR_CLEAR.
+// changes (checked when arming, and in flight after a profile switch, an adjustment or an MSP
+// write of the tune) or on MSP2_WING_TUNE_ADVISOR_CLEAR.
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -132,6 +133,7 @@ typedef struct {
     float accTime;
     uint32_t signature;
     bool wasArmed;
+    bool tuneChanged;           // a profile or an adjusted setting changed: check the signature
 #endif
 } tuneAdvisor_t;
 
@@ -421,8 +423,8 @@ static uint32_t hashBytes(uint32_t h, const void *data, size_t len)
     return h;
 }
 
-// Anything that changes what the statistics describe. Checked when arming, so the numbers
-// always belong to the tune being flown.
+// Anything that changes what the statistics describe. Checked when arming and after a change in
+// flight (tuneAdvisorTuneChanged()), so the numbers always belong to the tune being flown.
 static uint32_t tuneSignature(void)
 {
     uint32_t h = 2166136261u;
@@ -445,6 +447,11 @@ static bool plainRateFlight(void)
     return ARMING_FLAG(ARMED) && isAirborne() &&
         !FLIGHT_MODE(ANGLE_MODE | ATTHOLD_MODE | TRAINER_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE |
                      LOITER_MODE | RTH_MODE | PASSTHROUGH_MODE | MANUAL_MODE);
+}
+
+void tuneAdvisorTuneChanged(void)
+{
+    ta.tuneChanged = true;
 }
 
 void tuneAdvisorUpdate(float dT)
@@ -483,6 +490,20 @@ void tuneAdvisorUpdate(float dT)
 
     if (ta.accTime < 1.0f / TA_SAMPLE_HZ)
         return;
+
+    // A profile switch or an adjustment in flight changes the tune too: start again from the
+    // new one, so the statistics never mix two tunes. The signature is only worked out again
+    // after tuneAdvisorTuneChanged() was called, not on every sample.
+    if (armed && ta.tuneChanged) {
+        ta.tuneChanged = false;
+        const uint32_t signature = tuneSignature();
+        if (signature != ta.signature) {
+            tuneAdvisorReset();
+            ta.signature = signature;
+            ta.wasArmed = armed;
+            return;
+        }
+    }
 
     const float k = 1.0f / ta.accCount;
     acc->valid = ta.accValid;
