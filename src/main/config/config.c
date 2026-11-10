@@ -59,6 +59,7 @@
 #include "flight/motors.h"
 #include "flight/servos.h"
 #include "flight/position.h"
+#include "flight/tune_advisor.h"
 #include "flight/tv_pid.h"
 #include "flight/tv_hold.h"
 
@@ -857,6 +858,7 @@ void changePidProfile(uint8_t pidProfileIndex)
         systemConfigMutable()->pidProfileIndex = pidProfileIndex;
         loadPidProfile();
         pidChangeProfile(currentPidProfile);
+        tuneAdvisorTuneChanged();
     }
 
     beeperConfirmationBeeps(pidProfileIndex + 1);

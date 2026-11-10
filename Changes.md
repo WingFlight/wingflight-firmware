@@ -302,7 +302,8 @@ clients. Flight behaviour is unchanged.
   counter-surface and the I-term at release.
 - Statistics accumulate across flights and clear when the PID gains, master
   gains, I-term relax, PID mode, rates or active profiles change (checked on
-  arming).
+  arming, and in flight after a profile switch, an RC adjustment or an MSP
+  write of the PID or rate settings).
 - `MSP2_WING_TUNE_ADVISOR` (0x5F18) reads one axis per request. Request:
   `U8 axis` (0 roll, 1 pitch, 2 yaw). Reply (48 bytes: one CRSF frame),
   payload v2: `U8 version, U8 flags` (bits 0-1 axis, bit 2 collecting),
