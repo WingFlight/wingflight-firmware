@@ -87,6 +87,8 @@ typedef enum {
                          // meaningful while BOXTHRUSTVECTOR is also active.
     BOXTRADITIONAL,     // TRADITIONAL: forces I-term output to zero while layered on top of
                          // whatever stabilisation is already active (see TRADITIONAL_MODE)
+    BOXAUTOGAIN,        // AUTO GAIN: switches auto gain on for roll, pitch and yaw, whatever the
+                         // profile's auto_gain says (flight/auto_gain.c) -- not a flight mode
 
     CHECKBOX_ITEM_COUNT,
 

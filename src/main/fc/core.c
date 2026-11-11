@@ -82,6 +82,7 @@
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
 #include "flight/trim_monitor.h"
+#include "flight/auto_gain.h"
 #include "flight/tune_advisor.h"
 
 #include "io/beeper.h"
@@ -762,6 +763,8 @@ void processRxModes(timeUs_t currentTimeUs)
     } else {
         DISABLE_FLIGHT_MODE(TRADITIONAL_MODE);
     }
+
+    autoGainSetSwitch(IS_RC_MODE_ACTIVE(BOXAUTOGAIN));
 
 #ifdef USE_SERVOS
     if (IS_RC_MODE_ACTIVE(BOXAUTOTRIM)) {

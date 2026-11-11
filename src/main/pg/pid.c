@@ -213,6 +213,25 @@ void pgResetFn_propHangConfigs(propHangConfig_t *configs)
     }
 }
 
+PG_REGISTER_ARRAY_WITH_RESET_FN(autoGainConfig_t, PID_PROFILE_COUNT, autoGainConfigs, PG_AUTO_GAIN_CONFIG, 0);
+
+void resetAutoGainConfig(autoGainConfig_t *config)
+{
+    RESET_CONFIG(autoGainConfig_t, config,
+        .enable = { 0, 0, 0 },
+        .min = 40,
+        .threshold = 20,
+        .recovery = 5,
+    );
+}
+
+void pgResetFn_autoGainConfigs(autoGainConfig_t *configs)
+{
+    for (int i = 0; i < PID_PROFILE_COUNT; i++) {
+        resetAutoGainConfig(&configs[i]);
+    }
+}
+
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis)
 {
     if (!override) {

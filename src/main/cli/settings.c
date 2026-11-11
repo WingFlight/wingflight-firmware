@@ -1104,6 +1104,12 @@ const clivalue_t valueTable[] = {
 
     // Snap relax: a fast roll + pitch + yaw stick input (pop top, pinwheel, snap) stops
     // roll/pitch/yaw feedback from fighting the rotation. snap_relax_strength = 0 turns it off.
+    // Auto gain (flight/auto_gain.c). auto_gain is per axis (roll, pitch, yaw): 0 = off, 1 = on.
+    { "auto_gain",                  VAR_UINT8  | PROFILE_VALUE | MODE_ARRAY, .config.array.length = PID_AXIS_COUNT, PG_AUTO_GAIN_CONFIG, offsetof(autoGainConfig_t, enable) },
+    { "auto_gain_min",              VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { AUTO_GAIN_MIN_MIN, AUTO_GAIN_MIN_MAX }, PG_AUTO_GAIN_CONFIG, offsetof(autoGainConfig_t, min) },
+    { "auto_gain_threshold",        VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { AUTO_GAIN_THRESHOLD_MIN, AUTO_GAIN_THRESHOLD_MAX }, PG_AUTO_GAIN_CONFIG, offsetof(autoGainConfig_t, threshold) },
+    { "auto_gain_recovery",         VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { AUTO_GAIN_RECOVERY_MIN, AUTO_GAIN_RECOVERY_MAX }, PG_AUTO_GAIN_CONFIG, offsetof(autoGainConfig_t, recovery) },
+
     { "snap_relax_strength",        VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { 0, 100 }, PG_SNAP_RELAX_CONFIG, offsetof(snapRelaxConfig_t, strength) },
     { "snap_relax_threshold",       VAR_UINT8  | PROFILE_VALUE, .config.minmaxUnsigned = { SNAP_RELAX_THRESHOLD_MIN, 100 }, PG_SNAP_RELAX_CONFIG, offsetof(snapRelaxConfig_t, threshold) },
     { "snap_relax_window",          VAR_UINT16 | PROFILE_VALUE, .config.minmaxUnsigned = { 0, SNAP_RELAX_TIME_MAX }, PG_SNAP_RELAX_CONFIG, offsetof(snapRelaxConfig_t, window) },

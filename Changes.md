@@ -3,6 +3,43 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Auto Gain
+
+Per-axis automatic gain control (`flight/auto_gain.c`, hooked into
+`pidApplyMode1()` in `flight/pid.c`). When the rate loop of an axis oscillates,
+its P and D are scaled down until it stops, then eased back up. I, F and B are
+not scaled. Off by default.
+
+Detection runs on the feedback itself (P + D, high-passed at 1.5 Hz): four
+swings in a row from one side of `auto_gain_threshold` to the other, each
+20-250 ms after the last (2-25 Hz). Each further swing multiplies the scale by
+0.85, down to `auto_gain_min`. After 2 s without a cut the scale recovers at
+`auto_gain_recovery`. Swings while the stick is being moved are not counted.
+The scale is 100 % before takeoff and in PASSTHROUGH/MANUAL. The thrust-vector
+loop is not covered.
+
+It is switched on per axis with `auto_gain`, or for all three axes at once with
+the new `AUTO GAIN` mode (`BOXAUTOGAIN`, permanent id 66, `fc/rc_modes.h`),
+which uses the profile's other auto gain settings. The mode is not a flight
+mode flag.
+
+- CLI (per PID profile): `auto_gain` (roll, pitch, yaw: 0 = off, 1 = on,
+  default 0,0,0), `auto_gain_min` (20-90 %, default 40), `auto_gain_threshold`
+  (5-200, 0.1 % of surface travel, default 20), `auto_gain_recovery`
+  (1-100 %/s, default 5).
+- Modes: new box `AUTO GAIN`, permanent id 66, reported by `MSP_BOXNAMES` and
+  `MSP_BOXIDS`.
+- Storage: new `PG_AUTO_GAIN_CONFIG` (one entry per PID profile), so existing
+  PID profiles are not reset.
+- MSP: `MSP_PID_PROFILE` and `MSP_SET_PID_PROFILE` append six U8 (enable roll,
+  pitch, yaw, min, threshold, recovery) after the prop-hang relax fields.
+  `MSP2_WING_EFFECTIVE_PID_GAINS` is payload version 4: per axis, the auto gain
+  scale (U32, centi-percent) and an enabled flag (U8) are appended; effective
+  P and D now include the scale.
+- Blackbox: header `auto_gain` (enable roll, pitch, yaw, min, threshold,
+  recovery) and debug mode `AUTO_GAIN`: [0-2] roll/pitch/yaw scale x1000,
+  [3-5] roll/pitch/yaw high-passed P + D x1000.
+
 ## SRXL2 Dual Motor
 
 An SRXL2 ESC can drive a second motor (Spektrum "Smart" dual ESCs such as the

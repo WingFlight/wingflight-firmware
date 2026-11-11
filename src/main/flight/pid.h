@@ -115,6 +115,8 @@ typedef struct {
     uint32_t fwSpa;                             // Current GPS speed attenuation scale, centi-percent
     uint16_t fwSpaSpeed;                        // Filtered GPS speed used by SPA, 0.1 km/h
     bool fwSpaEnabled;                          // A speed curve is assigned (SPA is active)
+    uint32_t autoGain[PID_AXIS_COUNT];          // Current per-axis auto gain scale of P and D, centi-percent
+    bool autoGainEnabled[PID_AXIS_COUNT];       // Auto gain is on for the axis
     pidfCenti_t effective[PID_AXIS_COUNT];      // Final effective PID gain values, centi-gain
 } pidRuntimeGains_t;
 

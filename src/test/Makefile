@@ -419,6 +419,7 @@ pid_unittest_SRC :=  \
 		$(USER_DIR)/drivers/accgyro/gyro_sync.c \
 		$(USER_DIR)/fc/runtime_config.c \
 		$(USER_DIR)/flight/pid.c \
+		$(USER_DIR)/flight/auto_gain.c \
 		$(USER_DIR)/flight/speed_atten.c \
 		$(USER_DIR)/pg/pid.c \
 		$(USER_DIR)/pg/pg.c \
@@ -436,6 +437,11 @@ speed_atten_unittest_SRC := \
         $(USER_DIR)/common/filter.c \
         $(USER_DIR)/common/maths.c \
         $(USER_DIR)/flight/speed_atten.c
+
+auto_gain_unittest_SRC := \
+        $(USER_DIR)/common/filter.c \
+        $(USER_DIR)/common/maths.c \
+        $(USER_DIR)/flight/auto_gain.c
 
 tune_advisor_unittest_SRC := \
         $(USER_DIR)/flight/tune_advisor.c

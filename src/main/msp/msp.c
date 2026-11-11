@@ -1331,7 +1331,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         pidRuntimeGains_t runtimeGains;
         pidGetRuntimeGains(&runtimeGains);
 
-        sbufWriteU8(dst, 3); // payload version (3: GPS speed attenuation appended)
+        sbufWriteU8(dst, 4); // payload version (3: GPS speed attenuation appended, 4: auto gain appended)
         sbufWriteU8(dst, currentPidProfile->pid_mode);
         sbufWriteU32(dst, runtimeGains.fwTpa);
 
@@ -1354,6 +1354,11 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU32(dst, runtimeGains.fwSpa);
         sbufWriteU16(dst, runtimeGains.fwSpaSpeed);
         sbufWriteU8(dst, runtimeGains.fwSpaEnabled);
+        // v4: auto gain scale of P and D, already included in the effective gains above
+        for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+            sbufWriteU32(dst, runtimeGains.autoGain[axis]);
+            sbufWriteU8(dst, runtimeGains.autoGainEnabled[axis]);
+        }
         break;
     }
 
@@ -2486,6 +2491,13 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, propHangConfigs(getCurrentPidProfileIndex())->strength);
         sbufWriteU8(dst, propHangConfigs(getCurrentPidProfileIndex())->angle);
         sbufWriteU16(dst, propHangConfigs(getCurrentPidProfileIndex())->fade);
+        /* Auto gain (separate per-profile storage) */
+        sbufWriteU8(dst, autoGainConfigs(getCurrentPidProfileIndex())->enable[PID_ROLL]);
+        sbufWriteU8(dst, autoGainConfigs(getCurrentPidProfileIndex())->enable[PID_PITCH]);
+        sbufWriteU8(dst, autoGainConfigs(getCurrentPidProfileIndex())->enable[PID_YAW]);
+        sbufWriteU8(dst, autoGainConfigs(getCurrentPidProfileIndex())->min);
+        sbufWriteU8(dst, autoGainConfigs(getCurrentPidProfileIndex())->threshold);
+        sbufWriteU8(dst, autoGainConfigs(getCurrentPidProfileIndex())->recovery);
         break;
 
     case MSP_SENSOR_CONFIG:
@@ -3663,6 +3675,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         resetLevelConfig(levelConfigsMutable(getCurrentPidProfileIndex()));
         resetSnapRelaxConfig(snapRelaxConfigsMutable(getCurrentPidProfileIndex()));
         resetPropHangConfig(propHangConfigsMutable(getCurrentPidProfileIndex()));
+        resetAutoGainConfig(autoGainConfigsMutable(getCurrentPidProfileIndex()));
         tuneAdvisorTuneChanged();
         break;
 
@@ -3859,6 +3872,16 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             hang->strength = MIN(sbufReadU8(src), 100);
             hang->angle = constrain(sbufReadU8(src), PROP_HANG_ANGLE_MIN, PROP_HANG_ANGLE_MAX);
             hang->fade = MIN(sbufReadU16(src), PROP_HANG_FADE_MAX);
+        }
+        /* Auto gain extension; older clients omit it and leave auto gain untouched. */
+        if (sbufBytesRemaining(src) >= 6) {
+            autoGainConfig_t *autoGain = autoGainConfigsMutable(getCurrentPidProfileIndex());
+            autoGain->enable[PID_ROLL] = sbufReadU8(src) ? 1 : 0;
+            autoGain->enable[PID_PITCH] = sbufReadU8(src) ? 1 : 0;
+            autoGain->enable[PID_YAW] = sbufReadU8(src) ? 1 : 0;
+            autoGain->min = constrain(sbufReadU8(src), AUTO_GAIN_MIN_MIN, AUTO_GAIN_MIN_MAX);
+            autoGain->threshold = constrain(sbufReadU8(src), AUTO_GAIN_THRESHOLD_MIN, AUTO_GAIN_THRESHOLD_MAX);
+            autoGain->recovery = constrain(sbufReadU8(src), AUTO_GAIN_RECOVERY_MIN, AUTO_GAIN_RECOVERY_MAX);
         }
         /* Load new values */
         pidLoadProfile(currentPidProfile);

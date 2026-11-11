@@ -222,5 +222,24 @@ PG_DECLARE_ARRAY(propHangConfig_t, PID_PROFILE_COUNT, propHangConfigs);
 
 void resetPropHangConfig(propHangConfig_t *config);
 
+// Auto gain (flight/auto_gain.c), one per PID profile. Separate storage, like propHangConfig_t.
+#define AUTO_GAIN_MIN_MIN         20
+#define AUTO_GAIN_MIN_MAX         90
+#define AUTO_GAIN_THRESHOLD_MIN   5
+#define AUTO_GAIN_THRESHOLD_MAX   200
+#define AUTO_GAIN_RECOVERY_MIN    1
+#define AUTO_GAIN_RECOVERY_MAX    100
+
+typedef struct {
+    uint8_t  enable[PID_AXIS_COUNT];    // Per axis: 0 = off, anything else = on
+    uint8_t  min;        // Lowest scale auto gain may take P and D to, percent
+    uint8_t  threshold;  // P + D swing that counts as oscillation, 0.1 % of surface travel
+    uint8_t  recovery;   // Scale regained once the oscillation has stopped, percent per second
+} autoGainConfig_t;
+
+PG_DECLARE_ARRAY(autoGainConfig_t, PID_PROFILE_COUNT, autoGainConfigs);
+
+void resetAutoGainConfig(autoGainConfig_t *config);
+
 // Positive axis overrides use the SAFE-style range; zero preserves the legacy shared value.
 uint8_t attitudeLimitDegrees(uint8_t override, uint8_t legacy, int axis);

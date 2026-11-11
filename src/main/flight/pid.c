@@ -59,6 +59,7 @@
 #include "flight/hold_engine.h"
 #include "flight/position.h"
 #include "flight/rpm_filter.h"
+#include "flight/auto_gain.h"
 #include "flight/speed_atten.h"
 
 #include "io/gps.h"
@@ -548,6 +549,9 @@ void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
     // GPS speed attenuation (separate per-profile storage, see fwSpaConfig_t)
     speedAttenInit(fwSpaConfigs(getCurrentPidProfileIndex()), pid.freq);
 
+    // Auto gain (separate per-profile storage, see autoGainConfig_t)
+    autoGainInit(autoGainConfigs(getCurrentPidProfileIndex()), pid.freq);
+
     // Roll axis
     pid.coef[PID_ROLL].Kp = ROLL_P_TERM_SCALE * pidProfile->pid[PID_ROLL].P;
     pid.coef[PID_ROLL].Ki = ROLL_I_TERM_SCALE * pidProfile->pid[PID_ROLL].I;
@@ -636,6 +640,7 @@ void INIT_CODE pidInit(const pidProfile_t *pidProfile)
 {
     pidReset();
     speedAttenReset();
+    autoGainReset();
     pidSetLooptime(gyro.targetLooptime);
     pidInitFilters(pidProfile);
     pidChangeProfile(pidProfile);
@@ -651,6 +656,7 @@ void INIT_CODE pidCopyProfile(uint8_t dstPidProfileIndex, uint8_t srcPidProfileI
         memcpy(levelConfigsMutable(dstPidProfileIndex), levelConfigs(srcPidProfileIndex), sizeof(levelConfig_t));
         memcpy(snapRelaxConfigsMutable(dstPidProfileIndex), snapRelaxConfigs(srcPidProfileIndex), sizeof(snapRelaxConfig_t));
         memcpy(propHangConfigsMutable(dstPidProfileIndex), propHangConfigs(srcPidProfileIndex), sizeof(propHangConfig_t));
+        memcpy(autoGainConfigsMutable(dstPidProfileIndex), autoGainConfigs(srcPidProfileIndex), sizeof(autoGainConfig_t));
     }
 }
 
@@ -1096,15 +1102,19 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
         const pidf_t *raw = &currentPidProfile->pid[axis];
         const float gainCurve = pidAxisGainCurve(axis);
         const float masterGain = pid.masterGain[axis] * gainCurve;
+        const float autoGain = autoGainGetScale(axis);
+
+        runtimeGains->autoGain[axis] = pidScaleToCentiPercent(autoGain);
+        runtimeGains->autoGainEnabled[axis] = autoGainIsEnabled(axis);
 
         runtimeGains->raw[axis] = *raw;
         runtimeGains->masterGain[axis] = currentPidProfile->master_gain[axis];
         runtimeGains->gainCurve[axis] = pidScaleToCentiPercent(gainCurve);
         runtimeGains->gainCurvePosition[axis] = pidScaleToCentiPercent(pidGetGainCurvePosition(axis));
 
-        runtimeGains->effective[axis].P = pidGainToCenti(raw->P * masterGain * atten);
+        runtimeGains->effective[axis].P = pidGainToCenti(raw->P * masterGain * atten * autoGain);
         runtimeGains->effective[axis].I = pidGainToCenti(raw->I * masterGain);
-        runtimeGains->effective[axis].D = pidGainToCenti(raw->D * masterGain * atten);
+        runtimeGains->effective[axis].D = pidGainToCenti(raw->D * masterGain * atten * autoGain);
         runtimeGains->effective[axis].F = pidGainToCenti(raw->F * atten);
         runtimeGains->effective[axis].B = pidGainToCenti(raw->B * atten);
     }
@@ -1134,11 +1144,14 @@ static void pidApplyMode1(uint8_t axis)
     const float curveMult = pidAxisGainCurve(axis);
     const float masterGain = pid.masterGain[axis] * curveMult;
 
+    // Auto gain: P and D scaled down while this axis oscillates (flight/auto_gain.c)
+    const float autoGain = autoGainGetScale(axis);
+
 
   //// P-term
 
     // Calculate P-component
-    pid.data[axis].P = pid.coef[axis].Kp * masterGain * atten * crossAxisRelax * snapRelax * errorRate;
+    pid.data[axis].P = pid.coef[axis].Kp * masterGain * atten * autoGain * crossAxisRelax * snapRelax * errorRate;
 
 
   //// D-term (gyro only)
@@ -1148,7 +1161,12 @@ static void pidApplyMode1(uint8_t axis)
 
     // Calculate D-component. Relaxed only while it pushes against the snap too.
     const float snapRelaxD = getSnapRelaxFactor(axis, dTerm, setpoint);
-    pid.data[axis].D = pid.coef[axis].Kd * masterGain * atten * crossAxisRelax * snapRelaxD * dTerm;
+    pid.data[axis].D = pid.coef[axis].Kd * masterGain * atten * autoGain * crossAxisRelax * snapRelaxD * dTerm;
+
+    // Watch the feedback just sent for oscillation. Not before takeoff, where gear and taxi
+    // bumps would cut the gain for the climb-out, and not while the surfaces are bypassed.
+    autoGainUpdate(axis, pid.data[axis].P + pid.data[axis].D, getRcDeflection(axis),
+        isAirborne() && !mixerStabilizationBypassed(), pid.dT);
 
 
   //// I-term
@@ -1297,6 +1315,11 @@ void pidController(const pidProfile_t *pidProfile, timeUs_t currentTimeUs)
     DEBUG(GAIN_ATTEN, 3, MAX(gpsSol.speed3d, gpsSol.groundSpeed));
     DEBUG(GAIN_ATTEN, 4, STATE(GPS_FIX) ? 1 : 0);
 #endif
+
+    for (int axis = 0; axis < PID_AXIS_COUNT; axis++) {
+        DEBUG(AUTO_GAIN, axis, lrintf(autoGainGetScale(axis) * 1000));
+        DEBUG(AUTO_GAIN, axis + 3, lrintf(autoGainGetFeedback(axis) * 1000));
+    }
 
     // Apply PID for each axis. Only mode 0 (feedforward only, no gyro) and mode 1
     // exist; pid_mode accepts 0..9, so any other value runs the stabilized mode 1

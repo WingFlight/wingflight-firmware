@@ -130,6 +130,7 @@ typedef enum {
     DEBUG_SNAP_RELAX,
     DEBUG_PROP_HANG,
     DEBUG_FBUS,
+    DEBUG_AUTO_GAIN,
     DEBUG_COUNT
 } debugType_e;
 

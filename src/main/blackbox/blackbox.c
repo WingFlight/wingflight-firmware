@@ -1749,6 +1749,12 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE("fw_spa", "%d,%d,%d",                    fwSpaConfigs(getCurrentPidProfileIndex())->gain,
                                                                             fwSpaConfigs(getCurrentPidProfileIndex())->curve,
                                                                             fwSpaConfigs(getCurrentPidProfileIndex())->speed_max);
+        BLACKBOX_PRINT_HEADER_LINE("auto_gain", "%d,%d,%d,%d,%d,%d",        autoGainConfigs(getCurrentPidProfileIndex())->enable[PID_ROLL],
+                                                                            autoGainConfigs(getCurrentPidProfileIndex())->enable[PID_PITCH],
+                                                                            autoGainConfigs(getCurrentPidProfileIndex())->enable[PID_YAW],
+                                                                            autoGainConfigs(getCurrentPidProfileIndex())->min,
+                                                                            autoGainConfigs(getCurrentPidProfileIndex())->threshold,
+                                                                            autoGainConfigs(getCurrentPidProfileIndex())->recovery);
         BLACKBOX_PRINT_HEADER_ARRAY("master_gain", "%d", 3,                 currentPidProfile->master_gain);
         BLACKBOX_PRINT_HEADER_ARRAY("gain_curve", "%d", 3,                  currentPidProfile->gain_curve);
         BLACKBOX_PRINT_HEADER_LINE("tvRollPID", "%d,%d,%d,%d,%d",           currentTvPidProfile->pid[PID_ROLL].P,
