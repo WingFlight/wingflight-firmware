@@ -6,13 +6,20 @@ the APIs or flight performance.
 ## SRXL2 Dual Motor
 
 An SRXL2 ESC can drive a second motor (Spektrum "Smart" dual ESCs such as the
-SPMXAE1020). `srxl2esc_motor2_channel` (0 = off, 1..31) names the SRXL2
-channel that carries motor 2; channel 0 stays motor 1. With it set the motor
+SPMXAE1020). `srxl2esc_motor2_channel` (0 = off, 2..32) names the SRXL2
+channel that carries motor 2; channel 1 stays motor 1. With it set the motor
 count is 2, mixer output M2 is sent as that channel's value in the same channel
 data frame, and the per-frame throttle timing accounts for the longer frame
 (`drivers/srxl2_esc.c`, `flight/motors.c`). `srxl2escConfig` became PG
 version 1, so stored SRXL2 ESC settings reset to defaults on upgrade. Ported
 from Rotorflight PR #537.
+
+Channels are numbered from 1, as in Rotorflight PR #537. Before, the setting
+was a 0-based index (0 = off, 1..31, motor 1 on channel 0), so a stored value
+now names the channel one lower. `srxl2escConfig` is PG version 2 for that
+reason, which resets the SRXL2 ESC settings once more on upgrade. The MSP
+payload layout is unchanged; `motor2_channel` is 0 or 2..32, and anything else
+reads as off.
 
 MSP: new `MSP2_WING_SRXL2_ESC_CONFIG` (0x5F35) returns payload version 1, then
 `throttle_rate_hz` (U16), `telem_interval_frames` (U8) and `motor2_channel`

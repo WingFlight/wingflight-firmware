@@ -25,7 +25,7 @@
 typedef struct srxl2escConfig_s {
     uint16_t throttle_rate_hz;        // SMART ESC channel/throttle refresh rate
     uint8_t  telem_interval_frames;   // Telemetry request interval in frames (0 = off)
-    uint8_t  motor2_channel;          // SRXL2 channel carrying motor 2 (0 = off, 1..31)
+    uint8_t  motor2_channel;          // SRXL2 channel carrying motor 2 (0 = off, 2..32; channel 1 is motor 1)
 } srxl2esc_pgConfig_t;
 
 PG_DECLARE(srxl2esc_pgConfig_t, srxl2escConfig);

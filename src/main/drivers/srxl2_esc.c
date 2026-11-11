@@ -245,7 +245,7 @@ typedef struct __attribute__((packed)) {
     uint8_t crcLow;
 } srxl2escChannelDataFrame2_t;
 
-/* 0 = disabled, 1..31 = SRXL2 channel for motor 2. Channel 0 is motor 1.
+/* 0 = disabled, 2..32 = SRXL2 channel for motor 2. Channel 1 is reserved for motor 1.
  * Latched once at boot so a runtime config change (MSP, CLI) cannot change
  * the frame layout while motorCount is fixed; it takes effect after reboot. */
 static uint8_t srxl2escMotor2Ch = 0;
@@ -253,7 +253,7 @@ static uint8_t srxl2escMotor2Ch = 0;
 void srxl2escInitMotorConfig(void)
 {
     const uint8_t ch = srxl2escConfig()->motor2_channel;
-    srxl2escMotor2Ch = (ch >= 1 && ch < SRXL2_ESC_MAX_CHANNELS) ? ch : 0;
+    srxl2escMotor2Ch = (ch >= 2 && ch <= SRXL2_ESC_MAX_CHANNELS) ? ch : 0; // Channel 1 is reserved for motor 1.
 }
 
 static inline uint8_t srxl2escMotor2Channel(void)
@@ -443,7 +443,7 @@ static bool srxl2escQueueChannelDataFrame(uint16_t channelValue)
             .channel = {
                 .rssi = 0,
                 .frameLosses = 0,
-                .channelMask = {.u32 = 0x00000001u | (1u << motor2Ch)},
+                .channelMask = {.u32 = 0x00000001u | (1u << (motor2Ch - 1))}, // channel number to bit index
             },
             .channelValue = { channelValue, srxl2escMotor2Command },
             .crcHigh = 0,
@@ -1272,7 +1272,7 @@ void validateAndFixSrxl2escConfig()
     if (cfg->throttle_rate_hz > 2000) {
         cfg->throttle_rate_hz = 2000;
     }
-    if (cfg->motor2_channel >= SRXL2_ESC_MAX_CHANNELS) {
+    if (cfg->motor2_channel < 2 || cfg->motor2_channel > SRXL2_ESC_MAX_CHANNELS) {
         cfg->motor2_channel = 0;   /* invalid -> disabled */
     }
 }
