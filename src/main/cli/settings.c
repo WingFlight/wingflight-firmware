@@ -105,6 +105,7 @@
 #include "pg/srxl2_esc.h"
 #endif
 #include "pg/bus_servo.h"
+#include "pg/reverse_flight.h"
 
 #include "rx/a7105_flysky.h"
 #include "rx/cc2500_frsky_common.h"
@@ -482,6 +483,10 @@ static const char * const lookupTableGovernorMode[] = {
     "OFF", "RPM", "THROTTLE", "RPM_RANGE",
 };
 
+static const char * const lookupTableThrottleMode[] = {
+    "NORMAL", "BIDIRECTIONAL",
+};
+
 #ifdef USE_FBUS_MUX_FPGA
 static const char * const lookupTableFbusMuxMode[] = {
     "PWM", "FBUS", "DSHOT",
@@ -590,6 +595,7 @@ const lookupTableEntry_t lookupTables[] = {
     LOOKUP_TABLE_ENTRY(lookupTableSmartFuelMode),
 #endif
     LOOKUP_TABLE_ENTRY(lookupTableGovernorMode),
+    LOOKUP_TABLE_ENTRY(lookupTableThrottleMode),
 #ifdef USE_FBUS_MUX_FPGA
     LOOKUP_TABLE_ENTRY(lookupTableFbusMuxMode),
 #endif
@@ -1032,6 +1038,18 @@ const clivalue_t valueTable[] = {
     { "rc_deflection",              VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 250, 750 }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_deflection) },
     { "rc_min_throttle",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PWM_PULSE_MAX }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_min_throttle) },
     { "rc_max_throttle",            VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, PWM_PULSE_MAX }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_max_throttle) },
+
+// PG_REVERSE_FLIGHT_CONFIG: bidirectional (4D) throttle and reverse flight, see flight/reverse_flight.c
+    { "throttle_mode",                  VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_THROTTLE_MODE }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, throttle_mode) },
+    { "throttle_deadband",              VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, THROTTLE_DEADBAND_MAX }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, throttle_deadband) },
+    { "throttle_reverse_hysteresis",    VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, THROTTLE_REVERSE_HYSTERESIS_MAX }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, throttle_reverse_hysteresis) },
+    { "throttle_reverse_limit",         VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { THROTTLE_REVERSE_LIMIT_MIN, 100 }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, throttle_reverse_limit) },
+    { "reverse_motor_time",             VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { REVERSE_MOTOR_TIME_MIN, REVERSE_MOTOR_TIME_MAX }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_motor_time) },
+    { "reverse_time_constant",          VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { REVERSE_TIME_CONSTANT_MIN, REVERSE_TIME_CONSTANT_MAX }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_time_constant) },
+    { "reverse_surface_gain",           VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, REVERSE_SURFACE_GAIN_MAX }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_surface_gain) },
+    { "reverse_fade",                   VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { REVERSE_FADE_MIN, REVERSE_FADE_MAX }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_fade) },
+    { "reverse_motor_dwell",            VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_motor_dwell) },
+    { "reverse_coupled_axes",           VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, REVERSE_COUPLED_AXES_MASK }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_coupled_axes) },
     { "rc_smoothness",              VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_smoothness) },
     { "rc_threshold",               VAR_UINT8  | MASTER_VALUE | MODE_ARRAY, .config.array.length = 3, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_threshold) },
 

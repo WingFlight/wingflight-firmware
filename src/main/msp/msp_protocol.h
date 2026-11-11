@@ -373,4 +373,9 @@
 // the channel carrying motor 2 (0 = single motor). CLI srxl2esc_* settings.
 #define MSP2_WING_SRXL2_ESC_CONFIG            0x5F35
 #define MSP2_WING_SET_SRXL2_ESC_CONFIG        0x5F36
+// Bidirectional (4D) throttle and reverse flight settings (pg/reverse_flight.h), and the
+// live state of the reverse flight estimate (flight/reverse_flight.c).
+#define MSP2_WING_REVERSE_FLIGHT_CONFIG       0x5F37
+#define MSP2_WING_SET_REVERSE_FLIGHT_CONFIG   0x5F38
+#define MSP2_WING_REVERSE_FLIGHT_STATUS       0x5F39
 #define MSP_V2_FRAME                         255

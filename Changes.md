@@ -3,6 +3,131 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## 4D Shockflyers: Bidirectional Throttle and Reverse Flight
+
+`throttle_mode = BIDIRECTIONAL` puts zero thrust at mid stick, forward above
+and reverse below, for airframes with a reversible motor on a pitch/yaw gimbal
+(`fc/rc.c`, `flight/reverse_flight.c`). `NORMAL`, the default, leaves every
+existing setup unchanged.
+
+- **Throttle.** `throttle_deadband` (40 us each side) stops the motor around the
+  middle of the throttle range. The direction only flips once the stick passes
+  the deadband by `throttle_reverse_hysteresis` (50 % of the deadband), so a
+  stick parked near an edge can't chatter. Thrust starts from zero at the
+  deadband edge. `throttle_reverse_limit` caps reverse. `getThrottle()` stays the
+  magnitude 0..1 (TPA, in-flight latch, LEDs); the motor and the throttle mixer
+  inputs get the signed value, and their input minimum mirrors the maximum.
+- **Sticks never reverse.** The sticks move every surface and the gimbal the
+  same way in both directions, as without a gyro; only the gyro's correction
+  reverses. Both PID loops turn the stick's rate command into the aircraft's
+  frame with the sign of their factor and scale the whole loop by the factor,
+  so the stick part cancels; while a factor fades, the stick's feedforward is
+  put back, so the stick keeps its full throw and only the gyro fades
+  (`pidGetStickSetpoint()`, `pidGetLevelingSetpoint()`). ANGLE and the modes
+  leveling with it take the stick as an angle, so there the setpoint stays in
+  the aircraft's frame.
+- **Gimbal.** The thrust vector loop's gyro correction follows the sign of the
+  estimated real thrust (the command through a `reverse_motor_time` lag, 80 ms,
+  for the ESC braking and reversing the prop) and fades out as it passes zero.
+- **Surfaces.** The main loop's gyro correction follows the estimated direction
+  of motion (the command through a `reverse_time_constant` lag, 400 ms). While
+  the thrust is reversed but the aircraft still moves the old way it is off
+  (the stick still moves the surfaces), and it comes back reversed once the
+  aircraft moves backwards, scaled by `reverse_surface_gain`. `reverse_fade` sets
+  how much speed or thrust a factor needs to fade in fully.
+- **On the ground** (armed, not yet airborne) both factors are the latched
+  direction at full strength, so the reversed gyro can be checked on the bench
+  with the throttle below neutral.
+- **I-term.** Both loops hold I while their factor is below 0.5 and clear it on
+  every reversal, as the motor torque reverses with the prop. The rate loop also
+  holds I on every axis during the handover, including a coupled axis whose
+  gimbal gyro is already back on: falling out of a long reverse hang the yaw I
+  integrated the left-over 300-500 deg/s rotation to its limit in 0.3 s and held
+  the rudder deflected for a second after the rotation had stopped.
+- **A trim per direction.** The rate loop keeps a slow average (1 s) of each
+  axis's I for forward and for reverse, updated only while I builds normally
+  (not while held or saturated), and a reversal starts the new leg from the one
+  learned for that direction instead of from zero. Starting from zero, the
+  reverse prop torque rolled the aircraft 30-110 degrees in the first half
+  second of every reverse leg (forward, half backflip, reverse, half backflip)
+  before roll I had built up again. Replayed on that log, reverse legs would
+  start at 45-80 % of the trim they ended at. Each flight starts from zero: the
+  trims are cleared until airborne. The thrust vector loop still clears its I
+  on a reversal.
+- **Prop hang.** The prop-hang roll I relax also detects the tail-up hang on
+  reverse thrust, so the airframe can torque roll there without the roll I
+  sitting at its limit. The hang test smooths the vario over about a second
+  (in reverse hangs it swung +-2-3 m/s and hid two thirds of the hang). While
+  hanging and torque rolling faster than 200 deg/s, yaw I stops building too:
+  coning puts about a tenth of the roll rate on the yaw gyro, and yaw I wound up
+  against it until the rudder sat on its stop. Debug PROP_HANG value 6 is the
+  yaw relax.
+- **MANUAL** has no gyro, so nothing reverses: the surfaces and (with THRUST
+  VECTOR on) the gimbal follow the sticks through the feedforward, the same in
+  both directions. PASSTHROUGH is unchanged.
+- **Arming.** Throttle off for arming means inside the deadband at mid stick.
+  The sticks never arm or disarm in this mode (full rudder at any throttle is
+  an ordinary 4D manoeuvre, so a stick disarm could happen in flight): an ARM
+  switch is required: while no ARM mode range is set up, arming is refused with
+  the new flag `NO_ARM_SWITCH` (bit 14, formerly the never-set `CMS_MENU`),
+  whether or not `enable_stick_arming` is on. `rcCommand[THROTTLE]`
+  (the raw throttle channel mixer input `RT`, stick commands) is the stick
+  centred on the neutral point, so its low end is full reverse, not "off".
+- **Safety.** The RX
+  failsafe and startup throttle value is the neutral point, failsafe gives zero
+  thrust, and the GPS rescue procedure falls back to landing; LOITER and RTH
+  don't engage. Once airborne there is no auto-disarm or armed beeping in the
+  deadband. Arming is refused (`MOTOR_PROTOCOL`) while a motor is not
+  `motor_control_mode = BIDIR`. Autotrim only samples in forward flight.
+- **Coupled axes.** Where one servo moves both a surface and a gimbal axis (the
+  rudder linked to the gimbal's yaw tilt), set that axis in
+  `reverse_coupled_axes` (bit 0 roll, 1 pitch, 2 yaw) and drive the servo from
+  the surface's stabilized input only. The main loop then blends the factors for
+  the gyro correction: the gimbal's while there is thrust, the surface's as the
+  thrust fades out.
+- `reverse_motor_dwell` (0 ms) optionally holds the motor at zero before it may
+  reverse, for ESCs that don't like an instant reversal.
+- Debug mode `REVERSE_FLIGHT`: stick thrust, motor command, thrust estimate,
+  speed estimate, gimbal factor, surface factor (x1000), direction, state.
+  Blackbox header line `reverse_flight` lists the settings.
+
+**SITL:** a bidirectional motor's `motor_speed` in the `servo_packet` is the
+signed command -1..1, as `target.h` documents, instead of a pulse width offset.
+
+**Bidirectional PWM motor output:** zero now outputs the middle of
+`min_throttle`..`max_throttle` instead of `min_command` (`drivers/pwm_output.c`,
+SITL). A 3D ESC reads `min_command` (1000 us by default) as full reverse, so a
+disarmed or stopped bidirectional PWM motor was commanded to full reverse.
+
+New parameter group `PG_REVERSE_FLIGHT_CONFIG` (1026). MSP:
+`MSP2_WING_REVERSE_FLIGHT_CONFIG` (0x5F37) returns payload version 1, the ten
+settings in struct order (U8 mode, U8 deadband, U8 hysteresis, U8 reverse
+limit, U16 motor time, U16 time constant, U16 surface gain, U8 fade, U8 dwell,
+U8 coupled axes),
+U16 throttle neutral (read only), U8 bidirectional motor mask (bit n = motor
+n+1 `motor_control_mode` BIDIR) and U8 motor count.
+`MSP2_WING_SET_REVERSE_FLIGHT_CONFIG` (0x5F38) takes the ten settings and the
+motor mask (14 bytes), refused while armed; the motor modes apply after a
+reboot. `MSP2_WING_REVERSE_FLIGHT_STATUS` (0x5F39) returns payload version 1,
+U8 enabled, U8 state, S8 direction, U8 stick in deadband, U16 throttle channel
+(us), then S16 x1000 stick thrust, motor command, thrust estimate, speed
+estimate, gimbal factor and surface factor.
+
+## ATT HOLD Gives Up a Lost Target
+
+The quaternion hold (`flight/hold_engine.c`, shared by ATT HOLD and the thrust
+vector hold) used to keep its target however far the aircraft turned away. In a
+continuous rotation it can't stop, such as torque roll in a reverse-thrust hang
+where the ailerons get no airflow, the error grew to 180 degrees. There the
+shortest way back flips to the other side, and the correction jumped from full
+one way to full the other way in one loop: a full-throw surface snap once per
+turn. Now, once the target is more than 90 degrees away, the frozen axes go back
+to tracking (rate mode). The correction they were commanding fades out over
+0.3 s. They stay in tracking until the aircraft has actually stopped turning,
+without the usual 0.4 s settle cap, and then hold the attitude it stopped at.
+The stall re-capture count also counts these. Debug ATTHOLD value 6 has bit 3
+set while an axis's target is lost.
+
 ## SRXL2 Dual Motor
 
 An SRXL2 ESC can drive a second motor (Spektrum "Smart" dual ESCs such as the

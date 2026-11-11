@@ -60,6 +60,7 @@
 #include "fc/runtime_config.h"
 #include "fc/stats.h"
 
+#include "flight/airborne.h"
 #include "flight/failsafe.h"
 #include "flight/gps_rescue.h"
 #include "flight/gps_nav.h"
@@ -70,10 +71,12 @@
 #endif
 
 #include "flight/pid.h"
+#include "flight/reverse_flight.h"
 #include "flight/tv_hold.h"
 #include "flight/tv_pid.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
+#include "flight/motors.h"
 #include "flight/pid.h"
 #include "flight/trainer.h"
 #include "flight/atthold.h"
@@ -440,6 +443,28 @@ void updateArmingStatus(void)
             setArmingDisabled(ARMING_DISABLED_MOTOR_PROTOCOL);
         }
 
+        // Bidirectional (4D) throttle can't be armed with the sticks (fc/rc_controls.c), so
+        // it needs an ARM switch, whether or not stick arming is enabled: without one there
+        // is no way to arm and nothing else would say why. Arming itself still requires the
+        // throttle in the deadband at mid stick (isThrottleOff(), ARMING_DISABLED_THROTTLE).
+        if (isThrottleBidirectional() && !isModeActivationConditionPresent(BOXARM)) {
+            setArmingDisabled(ARMING_DISABLED_NO_ARM_SWITCH);
+        } else {
+            unsetArmingDisabled(ARMING_DISABLED_NO_ARM_SWITCH);
+        }
+
+        // Bidirectional (4D) throttle sends reverse as negative motor commands, which a motor
+        // in unidirectional mode turns into a stopped motor. Refuse to arm until every motor
+        // is set to bidirectional. Sticky like the other MOTOR_PROTOCOL causes: the Motors tab
+        // reboots after saving anyway.
+        if (isThrottleBidirectional()) {
+            for (int i = 0; i < getMotorCount(); i++) {
+                if (motorConfig()->dev.motorControlMode[i] != MOTOR_CONTROL_BIDIR) {
+                    setArmingDisabled(ARMING_DISABLED_MOTOR_PROTOCOL);
+                }
+            }
+        }
+
 #ifdef USE_FBUS_MUX_FPGA
         // Polled first: ending a lapsed override sends the saved modes, which the
         // readiness check below must see
@@ -694,7 +719,10 @@ void processRxModes(timeUs_t currentTimeUs)
 #ifdef USE_TELEMETRY
     static bool sharedPortTelemetryEnabled = false;
 #endif
-    const bool throttleOff = isThrottleOff();
+    // With bidirectional (4D) throttle the stick passes through the deadband on every
+    // reversal, and the motor rests there in flight. Once airborne that is flying, not idling:
+    // no auto-disarm and no armed beeps.
+    const bool throttleOff = isThrottleOff() && !(isThrottleBidirectional() && isAirborne());
 
     // When armed and motors aren't spinning, do beeps and then disarm
     // board after delay so users without buzzer won't lose fingers.
@@ -799,7 +827,11 @@ void processRxModes(timeUs_t currentTimeUs)
             // Start nav on the switch's off->on edge, and also whenever the mode is
             // on but nav is not running: failsafe recovery calls navStop() while the
             // switch is still held, and nothing else would restart it.
-            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXRTH)) {
+            // No GPS nav with bidirectional (4D) throttle: an indoor airframe, and nav_throttle
+            // has no meaning for a motor that reverses.
+            const bool navAllowed = !isThrottleBidirectional();
+
+            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXRTH) && navAllowed) {
                 if (!wasRthActive || !navIsActive()) {
                     navRthStart();
                 }
@@ -824,7 +856,7 @@ void processRxModes(timeUs_t currentTimeUs)
                 wasRthActive = false;
             }
 
-            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXLOITER) && !FLIGHT_MODE(RTH_MODE)) {
+            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXLOITER) && !FLIGHT_MODE(RTH_MODE) && navAllowed) {
                 if (!wasLoiterActive || !navIsActive()) {
                     navLoiterStart();
                 }
@@ -1011,6 +1043,11 @@ static void subTaskPidController(timeUs_t currentTimeUs)
         previousUpdateTime = startTime;
     }
 
+    // Reverse flight (4D): motor direction, thrust and speed estimates and the factors both
+    // PID loops and MANUAL apply this cycle. Zero thrust in failsafe. A no-op with normal throttle.
+    reverseFlightUpdate(failsafeIsActive() ? 0.0f : getThrottleSigned(),
+                        ARMING_FLAG(ARMED), isAirborne(), pidGetDT());
+
     pidController(currentPidProfile, currentTimeUs);
 
     // Independent Thrust Vector loop -- must run after pidController() above so
@@ -1028,10 +1065,11 @@ static void subTaskPidController(timeUs_t currentTimeUs)
         // then -- same mask as attHoldSetState's below/above): leaving it "engaged" but
         // unapplied would let the target go stale, and the nozzle would head back to the
         // pre-safety-mode attitude once the safety mode cleared instead of re-capturing.
-        // PASSTHROUGH zeroes the TV mixer inputs (same condition as tv_pid.c's I hold), so the
-        // nozzle is not following the hold: disengage so the release re-captures.
+        // PASSTHROUGH zeroes the TV mixer inputs, and with bidirectional (4D) throttle MANUAL
+        // drives them from the sticks (same condition as tv_pid.c's I hold), so the nozzle is
+        // not following the hold: disengage so the release re-captures.
         const bool tvSafetyLevelingActive = FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE);
-        const bool tvBypassed = mixerStabilizationBypassed() && IS_RC_MODE_ACTIVE(BOXPASSTHROUGH);
+        const bool tvBypassed = mixerVectorBypassed();
         tvHoldSetState(IS_RC_MODE_ACTIVE(BOXTVHOLD) && !tvSafetyLevelingActive && !tvBypassed);
         tvPidController(currentTimeUs);
     } else {

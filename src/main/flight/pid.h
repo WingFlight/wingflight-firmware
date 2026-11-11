@@ -88,6 +88,7 @@ typedef struct {
     float setPoint;
     float gyroRate;
     float axisError;
+    float stickSetPoint;    // the stick's part of setPoint, in the stick's own sense (see pidApplySetpoint())
 } pidAxisData_t;
 
 typedef struct {
@@ -152,6 +153,9 @@ typedef struct pid_s {
     float propHangTime;                         // s the hang conditions have held, 0 while not hanging
     float propHangFadeTimer;                    // s of fade-out left after the hang ended
     float propHangRelax;                        // Current roll I relax, 0..propHangStrength
+    float propHangYawRelax;                     // Current yaw I accumulation relax: propHangRelax while torque rolling fast
+    pt1Filter_t propHangVarioFilter;            // Vario for the hang test, smoothed over about a second
+    float reverseTrim[PID_AXIS_COUNT][2];       // Reverse flight: slow average of each axis's I, [0] forward, [1] reverse
 
     float itermDecayRate[PID_AXIS_COUNT];
     float itermDecayLimit;
@@ -189,6 +193,8 @@ float pidGetDT(void);
 float pidGetPidFrequency(void);
 
 float pidGetSetpoint(int axis);
+float pidGetStickSetpoint(int axis);
+float pidGetLevelingSetpoint(int axis);
 float pidGetOutput(int axis);
 float pidGetFeedforward(int axis, float rate);
 

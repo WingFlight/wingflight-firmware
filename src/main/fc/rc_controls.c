@@ -138,6 +138,12 @@ void processRcStickPositions(void)
     }
     rcSticks = stTmp;
 
+    // With bidirectional (4D) throttle the sticks never arm or disarm: the arm switch is
+    // required (ARMING_DISABLED_NO_ARM_SWITCH otherwise, see fc/core.c). Full rudder with
+    // the throttle in any position is an ordinary 4D manoeuvre, so a stick disarm could
+    // happen in flight.
+    const bool stickArmingAllowed = !isThrottleBidirectional();
+
     // perform actions
     if (!isUsingStickArming) {
         if (IS_RC_MODE_ACTIVE(BOXARM)) {
@@ -155,7 +161,7 @@ void processRcStickPositions(void)
                 }
             }
         }
-    } else if (rcSticks == COL_LO + YAW_LO + PIT_CE + ROL_CE) {
+    } else if (stickArmingAllowed && rcSticks == COL_LO + YAW_LO + PIT_CE + ROL_CE) {
         if (rcDelayMs >= ARM_DELAY_MS && !doNotRepeat) {
             doNotRepeat = true;
             // Disarm on throttle down + yaw
@@ -168,7 +174,7 @@ void processRcStickPositions(void)
             }
         }
         return;
-    } else if (rcSticks == COL_LO + YAW_HI + PIT_CE + ROL_CE) {
+    } else if (stickArmingAllowed && rcSticks == COL_LO + YAW_HI + PIT_CE + ROL_CE) {
         if (rcDelayMs >= ARM_DELAY_MS && !doNotRepeat) {
             doNotRepeat = true;
             if (!ARMING_FLAG(ARMED)) {

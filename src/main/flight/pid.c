@@ -58,6 +58,7 @@
 #include "flight/atthold.h"
 #include "flight/hold_engine.h"
 #include "flight/position.h"
+#include "flight/reverse_flight.h"
 #include "flight/rpm_filter.h"
 #include "flight/speed_atten.h"
 
@@ -85,6 +86,33 @@ float pidGetSetpoint(int axis)
     return pid.data[axis].setPoint;
 }
 
+// The pilot's rate command in the stick's own sense, before reverse flight turns it into
+// the aircraft's frame. Zero in the leveling modes that take the stick as an angle
+// (ANGLE, failsafe, GPS), where there is no stick rate.
+float pidGetStickSetpoint(int axis)
+{
+    return pid.data[axis].stickSetPoint;
+}
+
+// What the leveling/hold layers add to the stick's rate command, in the aircraft's frame:
+// the final setpoint without the stick part. Lets the thrust vector loop rebuild the
+// setpoint with its own stick sign (tv_pid.c).
+float pidGetLevelingSetpoint(int axis)
+{
+    return pid.data[axis].setPoint - pid.data[axis].stickSetPoint * reverseFlightGetAxisSign(axis);
+}
+
+// Reverse flight (4D): the loop output is scaled by the factor, which reverses and fades
+// the correction, and the stick part of the setpoint has already been turned by the
+// factor's sign (pidApplySetpoint()), so with the factor at +-1 the stick moves the
+// surface exactly as forward and only the gyro works the other way round. While the
+// factor fades (stopping, the handover, gliding slowly) the gyro fades with it, but the
+// stick must not: put back the part of the stick's feedforward the factor took away.
+static float reverseFlightStickFeed(uint8_t axis, float factor, float kf)
+{
+    return (1.0f - fabsf(factor)) * kf * pid.data[axis].stickSetPoint;
+}
+
 float pidGetOutput(int axis)
 {
     return pid.data[axis].pidSum;
@@ -109,6 +137,7 @@ const pidAxisData_t * pidGetAxisData(void)
 void INIT_CODE pidReset(void)
 {
     memset(pid.data, 0, sizeof(pid.data));
+    memset(pid.reverseTrim, 0, sizeof(pid.reverseTrim));
 
     memset(pid.snapAboveTime, 0, sizeof(pid.snapAboveTime));
     pid.snapActive = false;
@@ -518,6 +547,8 @@ static void INIT_CODE pidInitFilters(const pidProfile_t *pidProfile)
     }
     pt1FilterInit(&pid.crossAxisRelaxFilter, 1, pid.freq);
 
+    // Vario for the prop-hang test: 1 s time constant (see updatePropHangRelax)
+    pt1FilterInit(&pid.propHangVarioFilter, 1.0f / (2.0f * M_PIf), pid.freq);
 }
 
 void INIT_CODE pidLoadProfile(const pidProfile_t *pidProfile)
@@ -851,18 +882,32 @@ static float getSnapRelaxFactor(int axis, float error, float setpoint)
  * up-line cannot be told from a hang, so nothing is relaxed. While hanging, roll I stops
  * building and what it holds bleeds off, so the prop is free to roll the airframe; P, D and F
  * are untouched, so the stick still rolls it and P still damps a gust. Roll only: in a hang
- * the rudder and elevator steer the nose. Once the hang ends, the relax fades out over the
+ * the rudder and elevator steer the nose. With reverse thrust (4D) the hang is tail up and
+ * counts the same. Once the hang ends, the relax fades out over the
  * fade time.
+ *
+ * The vertical speed is smoothed over about a second first. In reverse hangs the baro vario
+ * swung +-2-3 m/s from one moment to the next (the reversed slipstream runs over the
+ * airframe), which hid two thirds of the hang; an up-line climbs steadily.
+ *
+ * Yaw: torque rolling fast about an axis a few degrees off the body X axis (coning), the
+ * yaw gyro sees a steady share of the roll rate, about 0.1x in the reverse-hang logs. That
+ * is no yaw error the rudder could remove, and yaw I wound up against it until the rudder
+ * sat on its stop for seconds. While hanging and rolling faster than
+ * PROP_HANG_YAW_ROLL_RATE, yaw I stops building. Nothing is bled off: the yaw trim it
+ * already holds stays, and it builds again as soon as the roll slows.
  */
 #define PROP_HANG_VARIO_MAX     2.0f    // m/s
 #define PROP_HANG_ENTRY_TIME    0.5f    // s
 #define PROP_HANG_BLEED_TIME    0.5f    // s, time constant of the roll I bleed while hanging
+#define PROP_HANG_YAW_ROLL_RATE 200.0f  // deg/s
 
 static void resetPropHangRelax(void)
 {
     pid.propHangTime = 0;
     pid.propHangFadeTimer = 0;
     pid.propHangRelax = 0;
+    pid.propHangYawRelax = 0;
 }
 
 static void updatePropHangRelax(void)
@@ -876,12 +921,14 @@ static void updatePropHangRelax(void)
     const bool rateFlight = !FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE |
                                          LOITER_MODE | RTH_MODE | ATTHOLD_MODE | TRAINER_MODE);
 
-    // rMat[2][0] is the nose-up component of the body X axis: 1 pointing straight up
+    // rMat[2][0] is the nose-up component of the body X axis: 1 pointing straight up.
+    // Reverse flight (4D): with the thrust reversed the aircraft hangs tail up, nose down.
     const float noseUp = rMat[2][0];
-    const float vario = hasEstimatedAltitude() ? getVario() : 0;
+    const float hangUp = (reverseFlightGetDirection() < 0) ? -noseUp : noseUp;
+    const float vario = hasEstimatedAltitude() ? pt1FilterApply(&pid.propHangVarioFilter, getVario()) : 0;
 
     const bool hanging = rateFlight && hasEstimatedAltitude() &&
-                         noseUp >= pid.propHangCosAngle &&
+                         hangUp >= pid.propHangCosAngle &&
                          fabsf(vario) <= PROP_HANG_VARIO_MAX;
 
     pid.propHangTime = hanging ? MIN(pid.propHangTime + pid.dT, PROP_HANG_ENTRY_TIME) : 0;
@@ -898,18 +945,31 @@ static void updatePropHangRelax(void)
         pid.propHangRelax = 0;
     }
 
+    pid.propHangYawRelax = (fabsf(gyro.gyroADCf[FD_ROLL]) > PROP_HANG_YAW_ROLL_RATE) ? pid.propHangRelax : 0;
+
     DEBUG(PROP_HANG, 0, lrintf(pid.propHangRelax * 1000));
     DEBUG(PROP_HANG, 1, lrintf(noseUp * 1000));
     DEBUG(PROP_HANG, 2, lrintf(vario * 100));
     DEBUG(PROP_HANG, 3, lrintf(pid.propHangTime * 1000));
     DEBUG(PROP_HANG, 4, hasEstimatedAltitude());
     DEBUG(PROP_HANG, 5, rateFlight);
+    DEBUG(PROP_HANG, 6, lrintf(pid.propHangYawRelax * 1000));
 }
 
 static float pidApplySetpoint(uint8_t axis)
 {
-    // Rate setpoint
-    float setpoint = getSetpoint(axis);
+    // Rate setpoint, from the stick
+    const float stick = getSetpoint(axis);
+
+    // Reverse flight (4D): the stick moves the surfaces the same way in both directions,
+    // so where they work the other way round it asks the aircraft to turn the other way.
+    // Turn the command into the aircraft's frame here, so the leveling layers and the
+    // gyro all work in that frame. Exactly 1 with normal throttle.
+    float setpoint = stick * reverseFlightGetAxisSign(axis);
+
+    // The stick's share of the setpoint, for the stick feed and the TV loop. ANGLE and the
+    // modes leveling with it take the stick as an angle and replace the rate command.
+    float stickSetpoint = stick;
 
 #ifdef USE_ACC
     // Apply leveling modes
@@ -917,6 +977,8 @@ static float pidApplySetpoint(uint8_t axis)
         // Failsafe/GPS rescue/GPS nav take priority over ATT HOLD and force recovery to level,
         // even while holding an off-level attitude -- a deliberate safety choice.
         setpoint = angleModeApply(axis, setpoint);
+        if (axis != FD_YAW)
+            stickSetpoint = 0;
     }
     else {
         // Next engagement starts the level target from the attitude at that moment
@@ -935,6 +997,7 @@ static float pidApplySetpoint(uint8_t axis)
 
     // Save setpoint
     pid.data[axis].setPoint = setpoint;
+    pid.data[axis].stickSetPoint = stickSetpoint;
 
     return setpoint;
 }
@@ -976,8 +1039,11 @@ static void pidApplyMode0(uint8_t axis)
 
   //// PID Sum
 
-    // Calculate PID sum
-    pid.data[axis].pidSum = pid.data[axis].F;
+    // Calculate PID sum. Reverse flight: correction reversed and faded, stick unchanged
+    // (see reverseFlightStickFeed()). Factor 1 and no stick feed with normal throttle.
+    const float factor = reverseFlightGetAxisFactor(axis);
+    pid.data[axis].pidSum = pid.data[axis].F * factor +
+                            reverseFlightStickFeed(axis, factor, pid.coef[axis].Kf);
 }
 
 
@@ -1110,6 +1176,46 @@ void pidGetRuntimeGains(pidRuntimeGains_t *runtimeGains)
     }
 }
 
+/*
+ * Reverse flight (4D): a trim per direction
+ *
+ * The motor torque reverses with the prop, so I is not carried across a reversal. Starting
+ * each leg from zero, though, the reverse prop torque rolled the aircraft 30-110 degrees in
+ * the first half second of every reverse leg before roll I had built up again (fourth test
+ * flight: forward, half backflip, reverse, half backflip, ...), and roll I ended every leg at
+ * its limit. The torque is the same every time, so each direction keeps a slow average of the
+ * I it settled at, and a reversal starts the new leg from the one learned for it.
+ *
+ * The average only follows I while it is building normally: not while held (handover, motor
+ * stopped, saturated, on the ground, PASSTHROUGH/MANUAL), so a transient that the hold or the
+ * saturation already caught does not end up in the trim, and with REVERSE_TRIM_TIME a short
+ * spike (a yaw drop-out at the end of a hang) only moves it a little. Every flight starts
+ * from zero: the trims are cleared until the aircraft is airborne.
+ */
+#define REVERSE_TRIM_TIME       1.0f    // s, time constant of the per-direction I average
+
+static inline int reverseTrimIndex(void)
+{
+    return (reverseFlightGetDirection() < 0) ? 1 : 0;
+}
+
+static void pidUpdateReverseTrim(uint8_t axis, bool held)
+{
+    const reverseFlightState_e state = reverseFlightGetState();
+
+    if (state == REVERSE_STATE_OFF || state == REVERSE_STATE_DISARMED || state == REVERSE_STATE_GROUND) {
+        pid.reverseTrim[axis][0] = 0;
+        pid.reverseTrim[axis][1] = 0;
+        return;
+    }
+
+    if (held || (state != REVERSE_STATE_FORWARD && state != REVERSE_STATE_REVERSE))
+        return;
+
+    float *trim = &pid.reverseTrim[axis][reverseTrimIndex()];
+    *trim += (pid.data[axis].axisError - *trim) * (pid.dT / (REVERSE_TRIM_TIME + pid.dT));
+}
+
 static void pidApplyMode1(uint8_t axis)
 {
     // Rate setpoint
@@ -1156,8 +1262,10 @@ static void pidApplyMode1(uint8_t axis)
     // Apply error relax. Cross-axis relax slows the accumulation here and is NOT
     // applied again to the I output below: scaling the output as well made I drop
     // immediately when rudder was applied and jump back on release (#112).
-    // Prop-hang relax holds roll I back so the prop torque can roll the airframe
-    const float propHangRelax = (axis == PID_ROLL) ? pid.propHangRelax : 0;
+    // Prop-hang relax holds roll I back so the prop torque can roll the airframe, and yaw I
+    // while it torque rolls fast (see updatePropHangRelax)
+    const float propHangRelax = (axis == PID_ROLL) ? pid.propHangRelax :
+                                (axis == PID_YAW) ? pid.propHangYawRelax : 0;
 
     const float itermErrorRate = applyItermRelax(axis, errorRate, gyroRate, setpoint) * crossAxisRelax * snapRelax * (1.0f - propHangRelax);
 
@@ -1177,16 +1285,36 @@ static void pidApplyMode1(uint8_t axis)
     // wound in. Hold the accumulation until airborne; decay below runs at the normal rate.
     const bool onGround = !isAirborne();
 
+    // Reverse flight (4D): while the surfaces have little or no authority (stopping, or
+    // gliding slowly with the motor stopped) the error says nothing about the trim the
+    // surfaces need, so hold the accumulation. The factor is 1 with normal throttle.
+    // The same holds on every axis while the thrust has reversed but the aircraft still moves
+    // the old way, including a coupled axis whose gimbal gyro is already back on: the error
+    // there is mostly the rotation left over from the old direction (falling out of a reverse
+    // hang it was 300-500 deg/s on yaw and wound I to its limit in 0.3 s, leaving the rudder
+    // deflected for a second after the rotation had stopped). P, D and F still stop it.
+    const bool reverseHold = fabsf(reverseFlightGetAxisFactor(axis)) < REVERSE_FLIGHT_ITERM_HOLD ||
+                             reverseFlightGetState() == REVERSE_STATE_HANDOVER;
+
+    // When the motor reverses, so does its torque, and the aircraft flies the other way:
+    // the I that trimmed out the old direction would push the wrong way. Start from the trim
+    // last learned in the new direction instead (see pidUpdateReverseTrim()), 0 the first time.
+    if (reverseFlightJustReversed()) {
+        pid.data[axis].axisError = pid.reverseTrim[axis][reverseTrimIndex()];
+    }
+
     // I-term change
-    const float itermDelta = (saturation || bypassed || onGround) ? 0 : itermErrorRate * pid.dT;
+    const float itermDelta = (saturation || bypassed || onGround || reverseHold) ? 0 : itermErrorRate * pid.dT;
 
     // Calculate I-component
     pid.data[axis].axisError = limitf(pid.data[axis].axisError + itermDelta, pid.errorLimit[axis]);
 
     // Bleed off the roll I that was holding the airframe against the torque before the hang
-    if (propHangRelax > 0) {
+    if (axis == PID_ROLL && propHangRelax > 0) {
         pid.data[axis].axisError -= pid.data[axis].axisError * MIN(propHangRelax * pid.dT / PROP_HANG_BLEED_TIME, 1.0f);
     }
+    pidUpdateReverseTrim(axis, saturation || bypassed || onGround || reverseHold);
+
     // TRADITIONAL_MODE forces I output to zero without touching axisError's own bookkeeping, so
     // relax/decay keep behaving as configured and I resumes smoothly if the mode is switched off.
     pid.data[axis].I = FLIGHT_MODE(TRADITIONAL_MODE) ? 0.0f
@@ -1271,6 +1399,18 @@ static void pidApplyMode1(uint8_t axis)
     // Calculate sum of all terms (no Offset/HSI term -- heli-only)
     pid.data[axis].pidSum = pid.data[axis].P + pid.data[axis].I + pid.data[axis].D +
                             pid.data[axis].F + pid.data[axis].B;
+
+    // Reverse flight (4D): the surfaces work the other way round once the aircraft flies
+    // backwards, and the gyro has no say while it stops (flight/reverse_flight.c). Applied
+    // to the sum, so the terms (and I in particular) stay in the aircraft's frame: a
+    // rotation demand, not a surface position. The stick part of the setpoint was turned
+    // with the same sign, so it cancels: the stick moves the surface as forward, and only
+    // the gyro's correction reverses. The stick feed keeps the stick at full throw while
+    // the factor fades. An axis whose servo also tilts the gimbal gets the coupled factor
+    // (reverse_coupled_axes). Factor 1 and no stick feed with normal throttle.
+    const float factor = reverseFlightGetAxisFactor(axis);
+    pid.data[axis].pidSum = pid.data[axis].pidSum * factor +
+                            reverseFlightStickFeed(axis, factor, pid.coef[axis].Kf * atten);
 }
 
 

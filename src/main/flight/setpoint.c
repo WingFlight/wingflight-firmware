@@ -30,6 +30,7 @@
 #include "config/feature.h"
 
 #include "flight/pid.h"
+#include "flight/tv_pid.h"
 #include "flight/imu.h"
 #include "flight/position.h"
 #include "flight/airborne.h"
@@ -193,6 +194,17 @@ float getManualDeflection(int axis)
     const float maxRate = applyRatesCurve(axis, 1.0f);
     const float shape = (maxRate > 0) ? applyRatesCurve(axis, sp.deflection[axis]) / maxRate : sp.deflection[axis];
     const float fullThrow = fmaxf(pidGetFeedforward(axis, maxRate), MANUAL_MIN_THROW);
+
+    return constrainf(shape * fullThrow, -1.0f, 1.0f);
+}
+
+// The same for the thrust vector gimbal, from the TV loop's feedforward. Used by MANUAL with
+// bidirectional (4D) throttle, where the gimbal is the main control near the hover.
+float getTvManualDeflection(int axis)
+{
+    const float maxRate = applyRatesCurve(axis, 1.0f);
+    const float shape = (maxRate > 0) ? applyRatesCurve(axis, sp.deflection[axis]) / maxRate : sp.deflection[axis];
+    const float fullThrow = fmaxf(tvPidGetFeedforward(axis, maxRate), MANUAL_MIN_THROW);
 
     return constrainf(shape * fullThrow, -1.0f, 1.0f);
 }

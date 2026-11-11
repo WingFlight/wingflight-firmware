@@ -49,6 +49,7 @@
 #include "flight/wiggle.h"
 #include "flight/logic_condition.h"
 #include "flight/governor.h"
+#include "flight/reverse_flight.h"
 #include "flight/setpoint.h"
 
 #include "rx/rx.h"
@@ -122,6 +123,15 @@ bool mixerInputUsed(uint8_t index)
 bool mixerStabilizationBypassed(void)
 {
     return !failsafeIsActive() && (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH) || IS_RC_MODE_ACTIVE(BOXMANUAL));
+}
+
+// True while the thrust vector inputs are not driven by the TV loop: PASSTHROUGH always
+// zeroes them, and with bidirectional (4D) throttle MANUAL drives the gimbal straight from
+// the sticks as well, so MANUAL flies exactly like the stabilised modes minus the gyro.
+bool mixerVectorBypassed(void)
+{
+    return mixerStabilizationBypassed() &&
+        (IS_RC_MODE_ACTIVE(BOXPASSTHROUGH) || reverseFlightIsEnabled());
 }
 
 void mixerSaturateInput(uint8_t index)
@@ -201,6 +211,13 @@ static inline void mixerApplyInputLimit(int index, float value)
     // Input limits
     float in_min = in->min / 1000.0f;
     float in_max = in->max / 1000.0f;
+
+    // With bidirectional (4D) throttle the throttle inputs run -1..1. Their stored
+    // minimum is 0 for a normal motor, so mirror the maximum instead.
+    if (reverseFlightIsEnabled() &&
+        (index == MIXER_IN_STABILIZED_THROTTLE || index == MIXER_IN_RC_COMMAND_THROTTLE)) {
+        in_min = -in_max;
+    }
 
     // Constrain and saturate. +-Inf are still correctly caught below even
     // under -ffast-math (see constrainf() in common/maths.h). A NaN input
@@ -358,8 +375,8 @@ static void mixerUpdateInputs(void)
     mixerSetInput(MIXER_IN_RC_COMMAND_PITCH, getRcDeflection(PITCH));
     mixerSetInput(MIXER_IN_RC_COMMAND_YAW, getRcDeflection(YAW));
 
-    // Throttle input
-    mixerSetInput(MIXER_IN_RC_COMMAND_THROTTLE, getThrottle());
+    // Throttle input (signed with bidirectional throttle)
+    mixerSetInput(MIXER_IN_RC_COMMAND_THROTTLE, getThrottleSigned());
 
     // RC channels
     // CH1-18 are contiguous from MIXER_IN_RC_CHANNEL_ROLL; CH19-24 follow the
@@ -411,11 +428,29 @@ static void mixerUpdateInputs(void)
         // PID rate loop targets, but skip the gyro-corrected PID output itself - same stick feel as
         // stabilized flight, no stabilization. getManualDeflection() already matches the stabilized
         // sign convention (yaw included), so no extra reversal is needed here.
+        // With bidirectional (4D) throttle MANUAL is exactly the stabilised mode without the
+        // gyro: the stick moves the surfaces and the gimbal the same way in both directions
+        // there too (reverse flight only reverses the gyro's correction), and the gimbal
+        // follows the stick here rather than the TV loop.
         else {
             mixerSetBypassInput(MIXER_IN_STABILIZED_ROLL, getManualDeflection(FD_ROLL));
             mixerSetBypassInput(MIXER_IN_STABILIZED_PITCH, getManualDeflection(FD_PITCH));
             mixerSetBypassInput(MIXER_IN_STABILIZED_YAW, getManualDeflection(FD_YAW));
+
+            // Only with the THRUST VECTOR switch on, as for the TV loop
+            if (reverseFlightIsEnabled() && IS_RC_MODE_ACTIVE(BOXTHRUSTVECTOR)) {
+                mixerSetBypassInput(MIXER_IN_STABILIZED_TV_ROLL, getTvManualDeflection(FD_ROLL));
+                mixerSetBypassInput(MIXER_IN_STABILIZED_TV_PITCH, getTvManualDeflection(FD_PITCH));
+                mixerSetBypassInput(MIXER_IN_STABILIZED_TV_YAW, getTvManualDeflection(FD_YAW));
+            }
         }
+    }
+
+    // Bidirectional (4D) throttle: the motor command after the reversal dwell, zero in
+    // failsafe (flight/reverse_flight.c). No GPS nav (indoor 4D) and no governor.
+    if (reverseFlightIsEnabled()) {
+        mixerSetInput(MIXER_IN_STABILIZED_THROTTLE, reverseFlightGetThrottle());
+        return;
     }
 
     // Update throttle (governor holds RPM/throttle per its configured mode when BOXGOVERNOR is engaged)

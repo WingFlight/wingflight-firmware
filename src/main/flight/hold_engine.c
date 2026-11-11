@@ -87,6 +87,18 @@
 // axis bleeds at the normal full rate instead, which clears a saturated I in about 2-3 s.
 #define HOLD_STALL_BLEED_S   3.0f
 
+// A frozen target more than HOLD_LOST_ERROR_DEG away has been lost: the aircraft keeps turning
+// away and the correction can't stop it, e.g. torque roll in a reverse-thrust hang, where the
+// surfaces get no airflow. Holding on is worse than useless. The error would grow to 180 degrees,
+// where the shortest way back flips to the other side and the correction jumps from full one way
+// to full the other way in a single loop: a full-throw surface snap once per turn. So the hold
+// gives up first: the frozen axes go back to tracking (rate mode) and stay there until the
+// aircraft has actually stopped turning (no HOLD_SETTLE_MAX_S cap, which would re-freeze mid-turn
+// and lose it again a moment later). The correction it was commanding fades out over
+// HOLD_LOST_FADE_S instead of dropping in one step.
+#define HOLD_LOST_ERROR_DEG  90.0f
+#define HOLD_LOST_FADE_S     0.3f
+
 // Lowest max_rate (deg/s) the hold runs with.
 #define HOLD_MIN_MAX_RATE    10.0f
 
@@ -154,6 +166,9 @@ void quatHoldSetState(quatHold_t *hold, bool state)
             hold->StallTime[i] = 0.0f;
             hold->BleedTime[i] = 0.0f;
             hold->ErrorDeg[i] = 0.0f;
+            hold->Lost[i] = false;
+            hold->FadeTime[i] = 0.0f;
+            hold->FadeRate[i] = 0.0f;
         }
         hold->RecaptureCount = 0;
         hold->LastRecaptureAxis = -1;
@@ -183,7 +198,8 @@ void quatHoldGetDebug(const quatHold_t *hold, int axis, int16_t out[QUATHOLD_DEB
     out[2] = lrintf(hold->BleedTime[axis] * 1000.0f);
     out[3] = hold->RecaptureCount;
     out[4] = hold->LastRecaptureAxis;
-    out[5] = (hold->Tracking[FD_ROLL] ? 1 : 0) | (hold->Tracking[FD_PITCH] ? 2 : 0) | (hold->Tracking[FD_YAW] ? 4 : 0);
+    out[5] = (hold->Tracking[FD_ROLL] ? 1 : 0) | (hold->Tracking[FD_PITCH] ? 2 : 0) | (hold->Tracking[FD_YAW] ? 4 : 0)
+           | (hold->Lost[axis] ? 8 : 0);
 }
 
 float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
@@ -208,15 +224,22 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
             if (hold->BleedTime[i] > 0.0f) {
                 hold->BleedTime[i] = fmaxf(0.0f, hold->BleedTime[i] - dT);
             }
+            if (hold->FadeTime[i] > 0.0f) {
+                hold->FadeTime[i] = fmaxf(0.0f, hold->FadeTime[i] - dT);
+            }
 
             if (hold->Free[i] || fabsf(getDeflection(i)) > hold->Deadband) {
                 hold->Tracking[i] = true;
                 hold->SettleTime[i] = 0.0f;
+                hold->Lost[i] = false;
             } else if (hold->Tracking[i]) {
                 hold->SettleTime[i] += dT;
 
-                if (fabsf(pidData[i].gyroRate) < HOLD_SETTLE_RATE || hold->SettleTime[i] >= HOLD_SETTLE_MAX_S) {
+                // A lost axis waits for the rotation to really stop (see HOLD_LOST_ERROR_DEG)
+                const bool settled = fabsf(pidData[i].gyroRate) < HOLD_SETTLE_RATE;
+                if (settled || (!hold->Lost[i] && hold->SettleTime[i] >= HOLD_SETTLE_MAX_S)) {
                     hold->Tracking[i] = false;
+                    hold->Lost[i] = false;
                 }
             }
         }
@@ -254,6 +277,31 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
         }
         if (freeCount == 1) {
             quatHoldSwing(&qError, freeAxis);
+        }
+
+        // Target lost (see HOLD_LOST_ERROR_DEG): the error is a single rotation of
+        // 2 * acos(w), so this is error > HOLD_LOST_ERROR_DEG. Caught long before 180 degrees,
+        // since the aircraft turns far less than that in one loop.
+        if (qError.w < cos_approx(DEGREES_TO_RADIANS(HOLD_LOST_ERROR_DEG / 2.0f))) {
+            int lostAxis = -1;
+            for (int i = 0; i < 3; i++) {
+                if (!hold->Tracking[i]) {
+                    hold->Tracking[i] = true;
+                    hold->Lost[i] = true;
+                    hold->SettleTime[i] = 0.0f;
+                    hold->StallTime[i] = 0.0f;
+                    hold->BleedTime[i] = HOLD_STALL_BLEED_S;
+                    hold->FadeRate[i] = hold->Rate[i];
+                    hold->FadeTime[i] = HOLD_LOST_FADE_S;
+                    if (lostAxis < 0 || fabsf(hold->ErrorDeg[i]) > fabsf(hold->ErrorDeg[lostAxis])) {
+                        lostAxis = i;
+                    }
+                }
+            }
+            if (lostAxis >= 0) {
+                hold->RecaptureCount = (hold->RecaptureCount + 1) & 0x7FFF;
+                hold->LastRecaptureAxis = lostAxis;
+            }
         }
 
         // Standard geometric attitude-control error term (2 * vector part), singularity-free
@@ -312,6 +360,8 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
             if (!hold->Tracking[i]) {
                 hold->Rate[i] = errorDeg[i] * hold->Gain;
                 magnitude += sq(hold->Rate[i]);
+            } else {
+                hold->Rate[i] = 0.0f;
             }
         }
         magnitude = sqrtf(magnitude);
@@ -362,7 +412,8 @@ float quatHoldApply(quatHold_t *hold, int axis, float pidSetpoint)
     }
 
     if (hold->Tracking[axis]) {
-        return pidSetpoint;
+        // The correction a lost target was commanding, fading out (see HOLD_LOST_ERROR_DEG)
+        return pidSetpoint + hold->FadeRate[axis] * (hold->FadeTime[axis] / HOLD_LOST_FADE_S);
     }
 
     return hold->Rate[axis];
