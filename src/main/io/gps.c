@@ -125,6 +125,27 @@ static serialPort_t *gpsPort;
 // gpsUpdate().
 static uint32_t mspGpsLastUpdateMs;
 
+// MSP_SET_RAW_GPS carries no ground course, and GPS navigation steers on it, so it is worked
+// out from the track between positions this far apart. Closer than that (stationary, or a
+// fast feed) the last course is kept.
+#define MSP_GPS_COURSE_MIN_DISTANCE_CM 100
+#define MSP_GPS_CM_PER_LATLON_UNIT 1.113195f
+static bool mspGpsCourseRefSet;
+static int32_t mspGpsCourseRefLat;
+static int32_t mspGpsCourseRefLon;
+
+#ifdef USE_GPS_UBLOX
+// The module refused the 10 Hz navigation rate (some can't run all their enabled constellations
+// that fast), so configure 5 Hz instead.
+static bool ubloxNavRateFallback;
+
+// Slowest port that carries the 10 Hz output. NAV-PVT is 100 bytes, so 10,000 bit/s at 10 Hz
+// with UART framing, and NAV-SAT (every 5th solution, 16 + 12 bytes per satellite) adds up to
+// about as much again. That overruns 9600 on NAV-PVT alone and leaves no margin at 19200. The
+// module ACKs the rate anyway and then drops or delays output, so the NAK fallback never runs.
+#define UBLOX_10HZ_MIN_BAUD 38400
+#endif
+
 typedef struct gpsInitData_s {
     uint8_t index;
     uint8_t baudrateIndex; // see baudRate_e
@@ -350,6 +371,22 @@ bool gpsUsesFbusTransport(void)
 #else
     return false;
 #endif
+}
+
+bool gpsProviderSupportsNav(void)
+{
+    switch (gpsConfig()->provider) {
+    case GPS_MSP:
+        return true;
+    case GPS_UBLOX: {
+        // Not on a 9600 baud port: that can't reliably carry even the 5 Hz output (see
+        // gpsInitData), so fixes arrive late or not at all.
+        const serialPortConfig_t *gpsPortConfig = findSerialPortConfig(FUNCTION_GPS);
+        return !gpsPortConfig || gpsPortConfig->gps_baudrateIndex != BAUD_9600;
+    }
+    default:
+        return false;
+    }
 }
 
 bool gpsUsesCrsfTransport(void)
@@ -755,6 +792,7 @@ void gpsInitUblox(void)
                     case 0:
                         gpsData.ubloxUsePVT = true;
                         gpsData.ubloxUseSAT = true;
+                        ubloxNavRateFallback = false;
                         ubloxSendNAV5Message(gpsConfig()->gps_ublox_mode == UBLOX_AIRBORNE);
                         break;
                     case 1: //Disable NMEA Messages
@@ -811,7 +849,11 @@ void gpsInitUblox(void)
                         }
                         break;
                     case 12:
-                        ubloxSetNavRate(0xC8, 1, 1); // set rate to 5Hz (measurement period: 200ms, navigation rate: 1 cycle)
+                        // 10 Hz (measurement period 100 ms, one measurement per solution), the rate
+                        // GPS navigation needs; 5 Hz if the module refused that or the port is
+                        // too slow to carry it.
+                        ubloxSetNavRate((ubloxNavRateFallback
+                            || baudRates[gpsInitData[gpsData.baudrateIndex].baudrateIndex] < UBLOX_10HZ_MIN_BAUD) ? 200 : 100, 1, 1);
                         break;
                     case 13:
                         ubloxSetSbas();
@@ -852,6 +894,9 @@ void gpsInitUblox(void)
                     } else {
                         if (gpsData.state_position == 11) { // If we were asking for NAV-SAT...
                             gpsData.ubloxUseSAT = false;   // ...retry asking for NAV-SVINFO
+                            gpsData.ackState = UBLOX_ACK_IDLE;
+                        } else if (gpsData.state_position == 12 && !ubloxNavRateFallback) {
+                            ubloxNavRateFallback = true;   // 10 Hz refused: retry at 5 Hz
                             gpsData.ackState = UBLOX_ACK_IDLE;
                         } else {
                             gpsSetState(GPS_STATE_CONFIGURE);
@@ -2086,9 +2131,40 @@ void gpsSetFixState(bool state)
     }
 }
 
-// Called from msp.c's MSP_SET_RAW_GPS handler on every message received.
+// Ground course for the MSP feed, from the track since the last reference position.
+static void gpsMspUpdateGroundCourse(void)
+{
+    if (!STATE(GPS_FIX)) {
+        mspGpsCourseRefSet = false;
+        return;
+    }
+
+    if (mspGpsCourseRefSet) {
+        const float lonScale = cos_approx(DEGREES_TO_RADIANS(gpsSol.llh.lat / 1e7f));
+        const float northCm = (float)(gpsSol.llh.lat - mspGpsCourseRefLat) * MSP_GPS_CM_PER_LATLON_UNIT;
+        const float eastCm = (float)(gpsSol.llh.lon - mspGpsCourseRefLon) * MSP_GPS_CM_PER_LATLON_UNIT * lonScale;
+
+        if (sq(northCm) + sq(eastCm) < sq((float)MSP_GPS_COURSE_MIN_DISTANCE_CM)) {
+            return;
+        }
+
+        float courseDeg = RADIANS_TO_DEGREES(atan2_approx(eastCm, northCm));
+        if (courseDeg < 0) {
+            courseDeg += 360.0f;
+        }
+        gpsSol.groundCourse = (uint16_t)(lrintf(courseDeg * 10.0f) % 3600);
+    }
+
+    mspGpsCourseRefSet = true;
+    mspGpsCourseRefLat = gpsSol.llh.lat;
+    mspGpsCourseRefLon = gpsSol.llh.lon;
+}
+
+// Called from msp.c's MSP_SET_RAW_GPS handler on every message received, after gpsSol and the
+// fix state are updated.
 void gpsMspDataReceived(void)
 {
     mspGpsLastUpdateMs = millis();
+    gpsMspUpdateGroundCourse();
 }
 #endif

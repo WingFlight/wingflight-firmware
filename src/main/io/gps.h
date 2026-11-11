@@ -136,6 +136,11 @@ bool gpsNewFrame(uint8_t c);
 bool gpsIsHealthy(void); // Check for healthy communications
 bool gpsUsesFbusTransport(void);
 bool gpsUsesCrsfTransport(void);
+// Whether GPS navigation (LOITER/RTH/GPS rescue) may use this provider: u-blox, which is set up
+// for 10 Hz (5 Hz on a port below 38400 baud), or MSP (the simulator feed). NMEA, FBUS and CRSF
+// GPS are too slow or report too little about their fix quality to steer on, and so is u-blox
+// on a 9600 baud port.
+bool gpsProviderSupportsNav(void);
 #ifdef USE_GPS
 // GPS is in use when the port / provider setup gives it a data source. There is no
 // separate GPS feature flag. gpsIsConfigured() evaluates the live config;
