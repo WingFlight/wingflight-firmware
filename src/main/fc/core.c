@@ -799,7 +799,11 @@ void processRxModes(timeUs_t currentTimeUs)
             // Start nav on the switch's off->on edge, and also whenever the mode is
             // on but nav is not running: failsafe recovery calls navStop() while the
             // switch is still held, and nothing else would restart it.
-            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXRTH)) {
+            //
+            // Not on a GPS that can't navigate (gpsProviderSupportsNav()): nav would never get
+            // a position, but the mode flag alone makes the mixer fly nav_throttle, so the
+            // switch would take the throttle away and steer nowhere. The pilot keeps control.
+            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXRTH) && gpsProviderSupportsNav()) {
                 if (!wasRthActive || !navIsActive()) {
                     navRthStart();
                 }
@@ -824,7 +828,7 @@ void processRxModes(timeUs_t currentTimeUs)
                 wasRthActive = false;
             }
 
-            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXLOITER) && !FLIGHT_MODE(RTH_MODE)) {
+            if (ARMING_FLAG(ARMED) && IS_RC_MODE_ACTIVE(BOXLOITER) && !FLIGHT_MODE(RTH_MODE) && gpsProviderSupportsNav()) {
                 if (!wasLoiterActive || !navIsActive()) {
                     navLoiterStart();
                 }
