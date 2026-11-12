@@ -275,9 +275,9 @@ uint8_t getPwmServoCount(void)
 /*
  * The bus channel counts can be changed while running, so the count is worked
  * out again every 256 loops rather than on every one (it searches the serial
- * port configuration).
+ * port configuration), and straight away when MSP changes them.
  */
-static void servoUpdateCount(void)
+void servoUpdateCount(void)
 {
     uint8_t count = servoPwmCount;
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)

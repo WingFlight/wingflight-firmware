@@ -52,6 +52,8 @@ Configurator and Lua versions misread the servo lists:
   `MSP_SERVO_TRIM`, `MSP_SERVO_CURVES` and `MSP_SERVO_OVERRIDE` hold the servos
   in use (`MSP_SERVO` and `MSP_SERVO_OVERRIDE` used to send every slot).
 - The set messages take any servo 0-23, in use or not.
+- After `MSP_SET_MIXER_CONFIG` changes a bus channel count, the servo lists
+  read next already have the new length.
 - `MSP2_WING_SERVO_TIMING` count is the number of PWM outputs: servos below it
   have one, the rest are bus only.
 - `MSP_MIXER_CONFIG` / `MSP_SET_MIXER_CONFIG`: the second byte (was

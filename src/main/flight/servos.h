@@ -83,6 +83,8 @@ ADJFUN_DECLARE(SERVO_TRIM_YAW)
 uint8_t getServoCount(void);
 // Servos that have a PWM output on this board, S1 up to this
 uint8_t getPwmServoCount(void);
+// Work the count of servos in use out again, after a bus channel count change
+void servoUpdateCount(void);
 uint16_t getServoRunRate(uint8_t servo);
 uint8_t getServoTimerGroup(uint8_t servo);
 uint16_t getServoOutput(uint8_t servo);

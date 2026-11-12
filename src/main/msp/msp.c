@@ -4041,6 +4041,10 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 #ifdef USE_FBUS_MASTER
             fbusMasterConfigMutable()->channels = fbusSetting;
 #endif
+#ifdef USE_SERVOS
+            // So the servo lists read back next already hold the new count
+            servoUpdateCount();
+#endif
         }
         break;
 
