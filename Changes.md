@@ -25,8 +25,13 @@ and travel limits. The bus drivers only convert it to the wire format.
   -700/700 on S1-S8 and -500/500 on the bus servos.
 - The servo center (`servo` mid) is limited to 1000-2000us on every servo.
   Narrow-pulse (760us) servos are no longer supported.
-- The servo update rate (`servo` rate) is limited to 25-333Hz (was up to
-  5000Hz, for narrow-pulse servos).
+- The PWM update rate is one setting for every servo output,
+  `servo_pwm_rate` (25-333Hz, default 50), instead of a rate per servo that
+  servos on one hardware timer had to share. 50Hz suits any servo; a higher
+  rate is for digital servos only. It takes effect at boot. The `servo` CLI
+  line no longer has a rate: `servo <index> <mid> <min> <max> <rneg> <rpos>
+  <speed> <flags>`. A line with nine values, from an older `diff`/`dump`, is
+  still taken, without its rate.
 - The two digital channels of a 16-channel SBUS/F.Bus frame (CH17-18) come from
   S17 and S18 (they were S25 and S26).
 - The speed limit of every servo now steps at the PID loop rate. Before, bus
@@ -61,7 +66,11 @@ Configurator and Lua versions misread the servo lists:
 - `MSP2_WING_SERVO_TIMING` count is the number of PWM outputs: servos below it
   have one, the rest are bus only.
 - `MSP_MIXER_CONFIG` / `MSP_SET_MIXER_CONFIG`: the second byte (was
-  `bus_servo_clone_pwm`) is sent as 0 and ignored.
+  `bus_servo_clone_pwm`) is sent as 0 and ignored. `U16 servo_pwm_rate` is
+  appended (optional on set, after the two bus channel counts).
+- `MSP_SERVO_CONFIGURATIONS`, `MSP_SET_SERVO_CONFIGURATION`,
+  `MSP_GET_SERVO_CONFIG` and `MSP_SET_SERVO_CONFIG` have seven `U16` per servo
+  instead of eight: the rate, which came after rpos, is gone.
 
 ## SRXL2 Dual Motor
 

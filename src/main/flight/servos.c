@@ -62,10 +62,8 @@ static FAST_DATA_ZERO_INIT float        servoInput[MAX_SUPPORTED_SERVOS];
 static FAST_DATA_ZERO_INIT float        servoOutput[MAX_SUPPORTED_SERVOS];
 static FAST_DATA_ZERO_INIT float        servoResolution[MAX_SUPPORTED_SERVOS];
 
-// Outputs on one hardware timer share its period, so they all run at the
-// lowest rate set among them (servoInit()). The stored rates are left as set;
-// these hold the rate each output really runs at, and the first output on
-// its timer, for MSP2_WING_SERVO_TIMING.
+// The rate each PWM output runs at (servo_pwm_rate, as it was at boot) and
+// the first output on its hardware timer, for MSP2_WING_SERVO_TIMING.
 static uint16_t servoRunRate[MAX_SUPPORTED_SERVOS];
 static uint8_t  servoTimerGroup[MAX_SUPPORTED_SERVOS];
 
@@ -383,6 +381,8 @@ bool isServoOverrideActive(void)
 
 void validateAndFixServoConfig(void)
 {
+    servoConfigMutable()->pwmRate = constrain(servoConfig()->pwmRate, SERVO_RATE_MIN, SERVO_RATE_MAX);
+
     for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
         volatile servoParam_t *servo = servoParamsMutable(i);
 #ifndef USE_SERVO_GEOMETRY_CORRECTION
@@ -393,9 +393,6 @@ void validateAndFixServoConfig(void)
         // value suits a PWM output and a bus channel. Narrow-pulse (760us) servos
         // are not supported.
         servo->mid = constrain(servo->mid, SERVO_CENTER_MIN, SERVO_CENTER_MAX);
-
-        // Only the PWM outputs use the rate; it is kept in range on every servo
-        servo->rate = constrain(servo->rate, SERVO_RATE_MIN, SERVO_RATE_MAX);
 
         // Constrain travel to valid offset limits. The signal range is not
         // applied here: min/max keep what was set, and servoTravelMin/Max()
@@ -460,24 +457,23 @@ void servoInit(void)
     servoPwmCount = index;
     servoUpdateCount();
 
+    // Every PWM output runs at the one rate (servo_pwm_rate). The longest
+    // pulse, SERVO_SIGNAL_MAX, fits its period at any rate up to
+    // SERVO_RATE_MAX.
+    const uint32_t pwmRate = constrain(servoConfig()->pwmRate, SERVO_RATE_MIN, SERVO_RATE_MAX);
+
     for (index = 0; index < servoPwmCount; index++)
     {
-        uint32_t update_rate = servoParams(index)->rate;
-
         servoTimerGroup[index] = index;
 
-        for (jndex = 0; jndex < servoPwmCount; jndex++) {
+        for (jndex = 0; jndex < index; jndex++) {
             if (timer[index]->tim == timer[jndex]->tim) {
-                if (jndex < servoTimerGroup[index])
-                    servoTimerGroup[index] = jndex;
-                uint32_t maxpulse = servoParams(jndex)->mid + servoTravelMax(jndex);
-                uint32_t maxrate = MIN(servoParams(jndex)->rate, 950000 / maxpulse);  // 1000000 / (maxpulse +5%)
-                if (maxrate < update_rate)
-                    update_rate = maxrate;
+                servoTimerGroup[index] = jndex;
+                break;
             }
         }
 
-        rates[index] = constrain(update_rate, SERVO_RATE_MIN, SERVO_RATE_MAX);
+        rates[index] = pwmRate;
     }
 
     for (index = 0; index < servoPwmCount; index++)

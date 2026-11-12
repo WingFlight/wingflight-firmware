@@ -94,7 +94,6 @@ protected:
             servo->max = 700;
             servo->rneg = 500;
             servo->rpos = 500;
-            servo->rate = 50;
             servo->speed = 0;
             servo->flags = 0;
         }
@@ -102,6 +101,7 @@ protected:
             servoConfigMutable()->ioTags[i] = i + 1;
             fakeTimers[i].tim = (TIM_TypeDef *)&fakeTimers[i];
         }
+        servoConfigMutable()->pwmRate = 50;
         busServoCount = busServos;
 
         servoShutdown();
@@ -253,15 +253,33 @@ TEST_F(ServosTest, CenterIsAStandardPulseOnEveryServo)
         servoParamsMutable(i)->mid = 760;
         servoParamsMutable(i + 1)->mid = 2200;
     }
-    servoParamsMutable(2)->rate = 560;
-    servoParamsMutable(3)->rate = 10;
+    servoConfigMutable()->pwmRate = 560;
     validateAndFixServoConfig();
     for (int i : {0, 12}) {
         EXPECT_EQ(1000, servoParams(i)->mid);
         EXPECT_EQ(2000, servoParams(i + 1)->mid);
     }
-    EXPECT_EQ(333, servoParams(2)->rate);
-    EXPECT_EQ(25, servoParams(3)->rate);
+    EXPECT_EQ(333, servoConfig()->pwmRate);
+    servoConfigMutable()->pwmRate = 10;
+    validateAndFixServoConfig();
+    EXPECT_EQ(25, servoConfig()->pwmRate);
+}
+
+TEST_F(ServosTest, EveryPwmOutputRunsAtTheOneRate)
+{
+    start(4, 0);
+    for (int i = 0; i < 4; i++) {
+        EXPECT_EQ(50, getServoRunRate(i));
+    }
+
+    servoConfigMutable()->pwmRate = 333;
+    servoShutdown();
+    ccrNext = 0;
+    servoInit();
+    for (int i = 0; i < 4; i++) {
+        EXPECT_EQ(333, getServoRunRate(i));
+    }
+    EXPECT_EQ(0, getServoRunRate(4));
 }
 
 TEST_F(ServosTest, ServoCountFollowsTheBusChannelCount)

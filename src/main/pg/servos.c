@@ -31,16 +31,17 @@
 #include "flight/servos.h"
 
 
-PG_REGISTER_WITH_RESET_FN(servoConfig_t, servoConfig, PG_SERVO_CONFIG, 2);
+PG_REGISTER_WITH_RESET_FN(servoConfig_t, servoConfig, PG_SERVO_CONFIG, 3);
 
 void pgResetFn_servoConfig(servoConfig_t *servoConfig)
 {
     for (unsigned i = 0; i < MAX_SUPPORTED_PWM_SERVOS; i++) {
         servoConfig->ioTags[i] = timerioTagGetByUsage(TIM_USE_SERVO, i);
     }
+    servoConfig->pwmRate = DEFAULT_SERVO_RATE;
 }
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(servoParam_t, MAX_SUPPORTED_SERVOS, servoParams, PG_SERVO_PARAMS, 3);
+PG_REGISTER_ARRAY_WITH_RESET_FN(servoParam_t, MAX_SUPPORTED_SERVOS, servoParams, PG_SERVO_PARAMS, 4);
 
 void pgResetFn_servoParams(servoParam_t *instance)
 {
@@ -51,7 +52,6 @@ void pgResetFn_servoParams(servoParam_t *instance)
                      .max   = DEFAULT_SERVO_MAX,
                      .rneg  = DEFAULT_SERVO_SCALE,
                      .rpos  = DEFAULT_SERVO_SCALE,
-                     .rate  = DEFAULT_SERVO_RATE,
                      .speed = DEFAULT_SERVO_SPEED,
                      .flags = DEFAULT_SERVO_FLAGS,
         );

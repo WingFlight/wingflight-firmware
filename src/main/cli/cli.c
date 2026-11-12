@@ -2681,7 +2681,7 @@ static void printServoTrim(dumpFlags_t dumpMask, const servoTrim_t *servoTrims, 
 // Lists the servos in use, and any other that isn't at its default.
 static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, const servoParam_t *defaultServoParams, const char *headingStr)
 {
-    const char *format = "servo %u %u %d %d %u %u %u %u %u";
+    const char *format = "servo %u %u %d %d %u %u %u %u";
     const uint8_t servoCount = getServoCount();
 
     headingStr = cliPrintSectionHeading(dumpMask, false, headingStr);
@@ -2705,7 +2705,6 @@ static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, co
                 defaultServoConf->max,
                 defaultServoConf->rneg,
                 defaultServoConf->rpos,
-                defaultServoConf->rate,
                 defaultServoConf->speed,
                 defaultServoConf->flags
             );
@@ -2717,7 +2716,6 @@ static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, co
             servoConf->max,
             servoConf->rneg,
             servoConf->rpos,
-            servoConf->rate,
             servoConf->speed,
             servoConf->flags
         );
@@ -2893,12 +2891,19 @@ static void cliServo(const char *cmdName, char *cmdline)
             cliShowInvalidArgumentCountError(cmdName);
         }
     }
-    else if (count == 9) {
-        const char *format = "servo %u %u %d %d %u %u %u %u %u";
-        enum { INDEX = 0, MID, MIN, MAX, RNEG, RPOS, RATE, SPEED, FLAGS, ARGS_COUNT };
+    else if (count == 8 || count == 9) {
+        // servo <index> <mid> <min> <max> <rneg> <rpos> <speed> <flags>
+        // With nine values it is the form that had a per-servo update rate
+        // after rpos. The rate is one setting now (servo_pwm_rate), so that
+        // value is skipped and the rest is taken as it is.
+        const char *format = "servo %u %u %d %d %u %u %u %u";
+        enum { INDEX = 0, MID, MIN, MAX, RNEG, RPOS, SPEED, FLAGS, ARGS_COUNT };
         int vals[ARGS_COUNT] = { 0, };
-        for (int i=0; i<count; i++)
-            vals[i] = atoi(args[i]);
+        for (int i = 0, n = 0; i < count; i++) {
+            if (count == 9 && i == RPOS + 1)
+                continue;
+            vals[n++] = atoi(args[i]);
+        }
         if (vals[INDEX] < 1 || vals[INDEX] > MAX_SUPPORTED_SERVOS ||
             vals[MID] < SERVO_CENTER_MIN || vals[MID] > SERVO_CENTER_MAX ||
             vals[MIN] < SERVO_LIMIT_MIN || vals[MIN] > SERVO_LIMIT_MAX  ||
@@ -2906,7 +2911,6 @@ static void cliServo(const char *cmdName, char *cmdline)
             vals[MIN] > vals[MAX] ||
             vals[RNEG] < SERVO_SCALE_MIN || vals[RNEG] > SERVO_SCALE_MAX ||
             vals[RPOS] < SERVO_SCALE_MIN || vals[RPOS] > SERVO_SCALE_MAX ||
-            vals[RATE] < SERVO_RATE_MIN || vals[RATE] > SERVO_RATE_MAX ||
             vals[SPEED] < SERVO_SPEED_MIN || vals[SPEED] > SERVO_SPEED_MAX ||
             vals[FLAGS] > SERVO_FLAGS_ALL) {
             cliShowArgumentRangeError(cmdName, NULL, 0, 0);
@@ -2919,7 +2923,6 @@ static void cliServo(const char *cmdName, char *cmdline)
         servo->max = vals[MAX];
         servo->rneg = vals[RNEG];
         servo->rpos = vals[RPOS];
-        servo->rate = vals[RATE];
         servo->speed = vals[SPEED];
         servo->flags = vals[FLAGS];
 
@@ -2941,7 +2944,6 @@ static void cliServo(const char *cmdName, char *cmdline)
             servo->max,
             servo->rneg,
             servo->rpos,
-            servo->rate,
             servo->speed,
             servo->flags
         );

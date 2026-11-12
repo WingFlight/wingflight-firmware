@@ -41,6 +41,8 @@
 #define SERVO_LIMIT_MAX       1000
 #define SERVO_SCALE_MIN         50
 #define SERVO_SCALE_MAX       1000
+// servo_pwm_rate: one update rate for every PWM servo output. 50Hz suits any
+// servo; a higher rate is for digital servos only.
 #define SERVO_RATE_MIN          25
 #define SERVO_RATE_MAX         333
 #define SERVO_SPEED_MIN          0

@@ -1095,7 +1095,6 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
             sbufWriteU16(dst, servoParams(i)->max);
             sbufWriteU16(dst, servoParams(i)->rneg);
             sbufWriteU16(dst, servoParams(i)->rpos);
-            sbufWriteU16(dst, servoParams(i)->rate);
             sbufWriteU16(dst, servoParams(i)->speed);
             sbufWriteU16(dst, servoParams(i)->flags);
         }
@@ -1968,6 +1967,12 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, 0);
 #endif
         sbufWriteU8(dst, getBusServoOutputCount());
+        // API 22.16: update rate of every PWM servo output, Hz
+#ifdef USE_SERVOS
+        sbufWriteU16(dst, servoConfig()->pwmRate);
+#else
+        sbufWriteU16(dst, 0);
+#endif
         break;
 
     case MSP_MIXER_INPUTS:
@@ -2893,8 +2898,8 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
     case MSP_SET_SERVO_CONFIG:
         {
             const int rem = sbufBytesRemaining(src);
-            // Expect index (U8) + eight U16 fields = 1 + 8*2 bytes
-            if (rem != 1 + 8 * 2) {
+            // Expect index (U8) + seven U16 fields = 1 + 7*2 bytes
+            if (rem != 1 + 7 * 2) {
                 return MSP_RESULT_ERROR;
             }
 
@@ -2909,7 +2914,6 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             servoParamsMutable(i)->max   = sbufReadU16(src);
             servoParamsMutable(i)->rneg  = sbufReadU16(src);
             servoParamsMutable(i)->rpos  = sbufReadU16(src);
-            servoParamsMutable(i)->rate  = sbufReadU16(src);
             servoParamsMutable(i)->speed = sbufReadU16(src);
             servoParamsMutable(i)->flags = sbufReadU16(src);
 
@@ -2934,7 +2938,6 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             sbufWriteU16(dst, servoParams(i)->max);
             sbufWriteU16(dst, servoParams(i)->rneg);
             sbufWriteU16(dst, servoParams(i)->rpos);
-            sbufWriteU16(dst, servoParams(i)->rate);
             sbufWriteU16(dst, servoParams(i)->speed);
             sbufWriteU16(dst, servoParams(i)->flags);
         }
@@ -3390,7 +3393,7 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
 #ifdef USE_SERVOS
     case MSP_SET_SERVO_CONFIGURATION:
-        if (dataSize != 1 + 16) {
+        if (dataSize != 1 + 14) {
             return MSP_RESULT_ERROR;
         }
         i = sbufReadU8(src);
@@ -3403,7 +3406,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         servoParamsMutable(i)->max = sbufReadU16(src);
         servoParamsMutable(i)->rneg = sbufReadU16(src);
         servoParamsMutable(i)->rpos = sbufReadU16(src);
-        servoParamsMutable(i)->rate = sbufReadU16(src);
         servoParamsMutable(i)->speed = sbufReadU16(src);
         servoParamsMutable(i)->flags = sbufReadU16(src);
         
@@ -4046,6 +4048,16 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
             servoUpdateCount();
 #endif
         }
+#ifdef USE_SERVOS
+        // API 22.16: optional PWM servo update rate. Used from the next boot.
+        if (sbufBytesRemaining(src) >= 2) {
+            const uint16_t pwmRate = sbufReadU16(src);
+            if (pwmRate < SERVO_RATE_MIN || pwmRate > SERVO_RATE_MAX) {
+                return MSP_RESULT_ERROR;
+            }
+            servoConfigMutable()->pwmRate = pwmRate;
+        }
+#endif
         break;
 
     case MSP_SET_MIXER_INPUT:
