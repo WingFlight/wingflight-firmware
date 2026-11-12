@@ -16,9 +16,12 @@ and travel limits. The bus drivers only convert it to the wire format.
   the same number, so there is nothing to clone. To send something different on
   the bus, use a servo number the board has no PWM output for.
 - The servos in use are S1 up to the larger of the board's PWM outputs and the
-  bus channel count. A servo only on a bus is kept to the bus range
-  (1000-2000us); one that also has a PWM output keeps the full pulse range on
-  the PWM output and is clipped to the bus range on the bus only.
+  bus channel count. A servo only on a bus is kept to the bus range; one that
+  also has a PWM output keeps the full pulse range on the PWM output and is
+  clipped to the bus range on the bus only.
+- The bus range is the whole 11-bit channel field, 880-2159us (was
+  1000-2000us), at the same scale as before: 1500us is 992 and 1000/2000us are
+  192/1792. Servos 9-24 still default to a travel of +-500.
 - The servo center (`servo` mid) is limited to 1000-2000us on every servo.
   Narrow-pulse (760us) servos are no longer supported.
 - The servo update rate (`servo` rate) is limited to 25-333Hz (was up to

@@ -23,8 +23,6 @@
 
 #include "drivers/io_types.h"
 
-#define FBUS_MIN 192
-#define FBUS_MAX 1792
 
 #define FBUS_MASTER_MAX_FORWARDED_SENSORS 8
 

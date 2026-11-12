@@ -176,10 +176,10 @@ TEST_F(ServosTest, BusOnlyServoIsKeptInTheBusRange)
     // With a PWM output the travel limit (+700) applies
     EXPECT_EQ(2200, getServoOutput(0));
     EXPECT_EQ(700, servoTravelMax(0));
-    // Only on the bus, which carries 1000-2000us
-    EXPECT_EQ(2000, getServoOutput(5));
-    EXPECT_EQ(500, servoTravelMax(5));
-    EXPECT_EQ(-500, servoTravelMin(5));
+    // Only on the bus, which carries 880-2159us
+    EXPECT_EQ(2159, getServoOutput(5));
+    EXPECT_EQ(659, servoTravelMax(5));
+    EXPECT_EQ(-620, servoTravelMin(5));
     EXPECT_TRUE(saturated(0));
     EXPECT_TRUE(saturated(5));
 }
@@ -220,9 +220,22 @@ TEST_F(ServosTest, OverrideAndProbeWorkOnAnyServo)
     EXPECT_TRUE(setServoProbe(6, 900, 1000));
     servoUpdate();
     // The probe ignores the travel limits but not the signal range
-    EXPECT_EQ(2000, getServoOutput(6));
+    EXPECT_EQ(2159, getServoOutput(6));
     EXPECT_TRUE(setServoProbe(6, 0, 0));
     EXPECT_FALSE(setServoProbe(MAX_SUPPORTED_SERVOS, 0, 1000));
+}
+
+TEST_F(ServosTest, BusChannelValueCoversTheWholeField)
+{
+    // The usual SBUS / F.Bus scale
+    EXPECT_EQ(992, busServoValue(1500));
+    EXPECT_EQ(192, busServoValue(1000));
+    EXPECT_EQ(1792, busServoValue(2000));
+    // The ends of the 11-bit field
+    EXPECT_EQ(0, busServoValue(BUS_SERVO_MIN_SIGNAL));
+    EXPECT_EQ(2046, busServoValue(BUS_SERVO_MAX_SIGNAL));
+    EXPECT_EQ(0, busServoValue(50));
+    EXPECT_EQ(2047, busServoValue(2250));
 }
 
 TEST_F(ServosTest, CenterIsAStandardPulseOnEveryServo)

@@ -36,10 +36,6 @@
 #include "platform.h"
 #include "rx/rx.h"
 
-// SBUS payload value range for analog channels
-#define SBUS_MIN 192
-#define SBUS_MAX 1792
-
 static serialPort_t *sbusOutPort = NULL;
 
 static void sbusOutPrepareSbusFrame(sbusOutFrame_t *frame,
@@ -95,10 +91,8 @@ static uint16_t sbusOutConvertToSbus(uint8_t channel, float pwm)
         return (pwm >= 1500) ? 1 : 0;
     }
 
-    // For analog channels (0-15), convert microseconds to SBUS range (192-1792)
-    // Bus servo range: (1000 -> BUS_SERVO_MIN_SIGNAL) to (2000 -> BUS_SERVO_MAX_SIGNAL) -> SBUS 192-1792
-    const float value = scaleRangef(pwm, BUS_SERVO_MIN_SIGNAL, BUS_SERVO_MAX_SIGNAL, SBUS_MIN, SBUS_MAX);
-    return constrain(nearbyintf(value), SBUS_MIN, SBUS_MAX);
+    // Analog channels (0-15): the 11-bit channel value, see pg/bus_servo.h
+    return busServoValue(pwm);
 }
 
 void sbusOutUpdate(timeUs_t currentTimeUs)

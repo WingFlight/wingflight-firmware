@@ -608,10 +608,8 @@ static uint16_t fbusMasterConvertToSbus(float value, bool digital)
         return (value >= 1500) ? 1 : 0;
     }
 
-    // Analog channels: bus servo range (1000 -> BUS_SERVO_MIN_SIGNAL) to
-    // (2000 -> BUS_SERVO_MAX_SIGNAL) -> SBUS 192-1792
-    const float scaledValue = scaleRangef(value, BUS_SERVO_MIN_SIGNAL, BUS_SERVO_MAX_SIGNAL, 192, 1792);
-    return constrain(nearbyintf(scaledValue), FBUS_MIN, FBUS_MAX);
+    // Analog channels: the 11-bit channel value, see pg/bus_servo.h
+    return busServoValue(value);
 }
 
 void fbusMasterUpdate(timeUs_t currentTimeUs)

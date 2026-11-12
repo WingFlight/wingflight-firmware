@@ -17,6 +17,9 @@
 
 #pragma once
 
+#include <math.h>
+
+#include "common/maths.h"
 #include "common/utils.h"
 #include "pg/pg.h"
 
@@ -43,11 +46,24 @@ uint8_t getBusServoOutputCount(void);
 
 // Servo N is channel N on the wire: a bus output sends the same finished servo
 // output (flight/servos.c) that goes to PWM output N on boards that have one.
-// The bus carries 1000-2000us, so a servo that is only on the bus is limited
-// to that range, and one that is also on a PWM output is clipped to it on the
-// bus only.
-#define BUS_SERVO_MAX_SIGNAL       2000
-#define BUS_SERVO_MIN_SIGNAL       1000
+//
+// A channel is an 11-bit value. 1500us is 992 and one us is 1.6 steps, the
+// usual SBUS / F.Bus scale (1000us = 192, 2000us = 1792, which is +-100% on a
+// FrSky radio). The whole field, 0-2047, is 880-2159us. A servo that is only
+// on a bus is limited to that, and one that is also on a PWM output is clipped
+// to it on the bus only.
+#define BUS_SERVO_VALUE_MAX        2047
+#define BUS_SERVO_VALUE_CENTER     992
+#define BUS_SERVO_VALUE_PER_US     1.6f
+#define BUS_SERVO_MIN_SIGNAL       880
+#define BUS_SERVO_MAX_SIGNAL       2159
+
+// The channel value for a servo output in us
+static inline uint16_t busServoValue(float us)
+{
+    const long value = lrintf((us - 1500.0f) * BUS_SERVO_VALUE_PER_US) + BUS_SERVO_VALUE_CENTER;
+    return constrain(value, 0, BUS_SERVO_VALUE_MAX);
+}
 
 // Default travel of the servos past the PWM outputs (S9-S24), which can only
 // ever be on a bus
