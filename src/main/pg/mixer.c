@@ -47,7 +47,9 @@ PG_RESET_TEMPLATE(mixerConfig_t, mixerConfig,
 // reverse -- it only ever negated weight/weightNeg, so polarity is expressed
 // by their sign directly now. v6: added condition. v7: reset stale saved
 // rules that could still point throttle at S9 after the motor output moved to M1.
-PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 7);
+// v8: reset rules saved when the bus servos had slots of their own (S9-S32),
+// which would now drive a different servo.
+PG_REGISTER_ARRAY_WITH_RESET_FN(mixerRule_t, MIXER_RULE_COUNT, mixerRules, PG_GENERIC_MIXER_RULES, 8);
 
 void pgResetFn_mixerRules(mixerRule_t *rule)
 {

@@ -38,7 +38,7 @@ typedef struct {
 PG_DECLARE_ARRAY(servoParam_t, MAX_SUPPORTED_SERVOS, servoParams);
 
 typedef struct {
-    ioTag_t  ioTags[MAX_SUPPORTED_SERVOS];
+    ioTag_t  ioTags[MAX_SUPPORTED_PWM_SERVOS];
 } servoConfig_t;
 
 PG_DECLARE(servoConfig_t, servoConfig);

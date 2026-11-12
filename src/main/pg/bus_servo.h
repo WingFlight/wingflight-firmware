@@ -41,40 +41,26 @@ uint8_t busOutChannelSetting(uint8_t count);
 // SBUS and F.Bus are both set up), 0 without a bus output
 uint8_t getBusServoOutputCount(void);
 
-// Bus servo defaults (S9-S32) - constrained to BUS_SERVO_MIN/MAX range
-#define DEFAULT_BUS_SERVO_MIN     -500
-#define DEFAULT_BUS_SERVO_MAX      500
-// Full mixer output (1.0) x scale = full travel (+-500us), same as PWM servos
-#define DEFAULT_BUS_SERVO_SCALE    500
+// Servo N is channel N on the wire: a bus output sends the same finished servo
+// output (flight/servos.c) that goes to PWM output N on boards that have one.
+// The bus carries 1000-2000us, so a servo that is only on the bus is limited
+// to that range, and one that is also on a PWM output is clipped to it on the
+// bus only.
 #define BUS_SERVO_MAX_SIGNAL       2000
 #define BUS_SERVO_MIN_SIGNAL       1000
 
-// S1-S8 (indices 0-7) are PWM servos
-// S9-S32 (indices 8-31) are BUS servos for SBUS/FBUS
-// Bus servo N is channel N on the wire.
-#define BUS_SERVO_OFFSET 8
+// Default travel of the servos past the PWM outputs (S9-S24), which can only
+// ever be on a bus
+#define DEFAULT_BUS_SERVO_MIN     -500
+#define DEFAULT_BUS_SERVO_MAX      500
 
-// Bus servo output functions
-void setBusServoOutput(uint8_t channel, float value);
-uint16_t getBusServoOutput(uint8_t channel);
+// Servos a bus output of this many analog channels takes its values from.
+// The 16-channel frame also has two digital channels (CH17-18), on at 1500us
+// and above, taken from S17 and S18.
+uint8_t busOutServoCount(uint8_t channels);
+// Servos the configured bus outputs take their values from (the larger if
+// SBUS and F.Bus are both set up), 0 without a bus output
+uint8_t getBusServoCount(void);
 
-// Bus servo configuration helpers
+// Whether a bus output (SBUS or F.Bus) is set up on a serial port
 bool hasBusServosConfigured(void);
-
-typedef struct busServoConfig_s {
-    // When ON (default), bus channel N mirrors PWM servo output S(N+1)
-    // one-to-one (PWM1->BUS1, PWM2->BUS2, ...) for every bus channel that
-    // has a physical PWM counterpart, so mixer setups built by the
-    // configurator's PWM-only wizards (named model types) drive bus servos
-    // too without any extra mixer rules. Bus channels beyond the physical
-    // PWM servo count always keep their own independent mixer rule
-    // regardless of this setting, since there's no PWM output to mirror.
-    //
-    // Turn this OFF for a custom model where the bus servos need mixer
-    // rules of their own that differ from the PWM outputs (e.g. a
-    // different surface layout, or extra bus-only channels interleaved
-    // with the PWM-mirrored ones).
-    uint8_t cloneFromPwm;
-} busServoConfig_t;
-
-PG_DECLARE(busServoConfig_t, busServoConfig);

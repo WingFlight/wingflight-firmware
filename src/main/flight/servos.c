@@ -51,7 +51,12 @@
 #include "rx/rx.h"
 
 
-static FAST_DATA_ZERO_INIT uint8_t      servoCount;
+// Servos are logical: servo N goes out on PWM output N where the board has one
+// and on channel N of a bus output (SBUS, F.Bus) when one is set up. Both send
+// the same finished output, worked out once in servoUpdate().
+static FAST_DATA_ZERO_INIT uint8_t      servoPwmCount;      // servos with a PWM output: S1 to this
+static FAST_DATA_ZERO_INIT uint8_t      servoCount;         // servos in use: the larger of PWM outputs and bus servos
+static FAST_DATA_ZERO_INIT uint8_t      servoCountRefresh;  // loops left until servoCount is worked out again
 
 static FAST_DATA_ZERO_INIT float        servoInput[MAX_SUPPORTED_SERVOS];
 static FAST_DATA_ZERO_INIT float        servoOutput[MAX_SUPPORTED_SERVOS];
@@ -71,13 +76,13 @@ static FAST_DATA_ZERO_INIT int16_t      servoOverride[MAX_SUPPORTED_SERVOS];
 static timeMs_t servoOverrideExpiryMs[MAX_SUPPORTED_SERVOS];
 static bool     servoOverrideTimed[MAX_SUPPORTED_SERVOS];
 
-// Servo probe (MSP2_WING_SET_SERVO_PROBE): holds a PWM servo at mid + offset us,
+// Servo probe (MSP2_WING_SET_SERVO_PROBE): holds a servo at mid + offset us,
 // bypassing the mixer, scale, reverse, speed, trim, curves and the min/max travel
 // limits, so a setup tool can find the mechanical end stops without widening the
 // stored limits. Only the signal range applies. Always has a timeout.
-static int16_t  servoProbeOffset[MAX_SUPPORTED_PWM_SERVOS];
-static timeMs_t servoProbeExpiryMs[MAX_SUPPORTED_PWM_SERVOS];
-static bool     servoProbeActive[MAX_SUPPORTED_PWM_SERVOS];
+static int16_t  servoProbeOffset[MAX_SUPPORTED_SERVOS];
+static timeMs_t servoProbeExpiryMs[MAX_SUPPORTED_SERVOS];
+static bool     servoProbeActive[MAX_SUPPORTED_SERVOS];
 
 static FAST_DATA_ZERO_INIT float        servoRuntimeAxisTrim[3]; // runtime-only (continuous mode) axis trim in µs, never saved
 static FAST_DATA_ZERO_INIT float        servoRuntimeTrim[MAX_SUPPORTED_SERVOS]; // the above, resolved per servo
@@ -101,23 +106,10 @@ static FAST_DATA_ZERO_INIT timerChannel_t servoChannel[MAX_SUPPORTED_SERVOS];
  * coordinated with other servos sharing the same axis, regardless of which
  * mechanism reverses which servo.
  */
-/*
- * Whether a servo's own output stage is in use: PWM servos up to the servo count,
- * and bus servos while bus output is on, except a channel cloned from its PWM servo
- * (sbusOutGetValueMixer() then sends the PWM servo's finished output, trim included,
- * and ignores the bus servo's own settings).
- */
+// Whether a servo is sent anywhere: on a PWM output, a bus channel, or both.
 bool isServoOutputInUse(uint8_t servo)
 {
-    const uint8_t pwmServoCount = getServoCount();
-
-    if (servo < BUS_SERVO_OFFSET)
-        return servo < pwmServoCount;
-
-    if (servo >= MAX_SUPPORTED_SERVOS || !hasBusServosConfigured())
-        return false;
-
-    return !(busServoConfig()->cloneFromPwm && servo - BUS_SERVO_OFFSET < pwmServoCount);
+    return servo < servoCount;
 }
 
 static int axisTrimDirection(int axis, int servo)
@@ -275,30 +267,50 @@ uint8_t getServoCount(void)
     return servoCount;
 }
 
+uint8_t getPwmServoCount(void)
+{
+    return servoPwmCount;
+}
+
+/*
+ * The bus channel counts can be changed while running, so the count is worked
+ * out again every 256 loops rather than on every one (it searches the serial
+ * port configuration).
+ */
+static void servoUpdateCount(void)
+{
+    uint8_t count = servoPwmCount;
+#if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
+    count = MAX(count, getBusServoCount());
+#endif
+    servoCount = count;
+}
+
 uint16_t getServoRunRate(uint8_t servo)
 {
-    return (servo < servoCount) ? servoRunRate[servo] : 0;
+    return (servo < servoPwmCount) ? servoRunRate[servo] : 0;
 }
 
 uint8_t getServoTimerGroup(uint8_t servo)
 {
-    return (servo < servoCount) ? servoTimerGroup[servo] : servo;
+    return (servo < servoPwmCount) ? servoTimerGroup[servo] : servo;
 }
 
 uint16_t getServoOutput(uint8_t servo)
 {
-#if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
-    // Check if this is a bus servo (SBUS/FBUS)
-    if (servo >= BUS_SERVO_OFFSET && servo < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS) {
-        const uint8_t busServoIndex = servo - BUS_SERVO_OFFSET;
-        return getBusServoOutput(busServoIndex);
-    }
-#endif
-    // PWM servo
     if (servo >= MAX_SUPPORTED_SERVOS) {
         return 0;
     }
     return lrintf(servoOutput[servo]);
+}
+
+// The same in us without rounding, for outputs with a finer resolution (bus outputs)
+float getServoOutputFloat(uint8_t servo)
+{
+    if (servo >= MAX_SUPPORTED_SERVOS) {
+        return 0;
+    }
+    return servoOutput[servo];
 }
 
 bool hasServoOverride(uint8_t servo)
@@ -312,7 +324,7 @@ bool hasServoOverride(uint8_t servo)
 
 static bool hasServoProbe(uint8_t servo)
 {
-    if (servo >= MAX_SUPPORTED_PWM_SERVOS || !servoProbeActive[servo]) {
+    if (servo >= MAX_SUPPORTED_SERVOS || !servoProbeActive[servo]) {
         return false;
     }
     if (OVERRIDE_EXPIRED(millis(), servoProbeExpiryMs[servo])) {
@@ -340,11 +352,11 @@ void setServoOverrideTimed(uint8_t servo, int16_t val, uint16_t timeoutMs)
     servoOverrideTimed[servo] = true;
 }
 
-// timeoutMs 0 clears the probe. Refused while armed, for a bus servo, or for an
-// offset outside SERVO_LIMIT_MIN..SERVO_LIMIT_MAX.
+// timeoutMs 0 clears the probe. Refused while armed, or for an offset outside
+// SERVO_LIMIT_MIN..SERVO_LIMIT_MAX.
 bool setServoProbe(uint8_t servo, int16_t offset, uint16_t timeoutMs)
 {
-    if (servo >= MAX_SUPPORTED_PWM_SERVOS) {
+    if (servo >= MAX_SUPPORTED_SERVOS) {
         return false;
     }
     if (timeoutMs == 0) {
@@ -373,16 +385,14 @@ void validateAndFixServoConfig(void)
 {
     for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
         volatile servoParam_t *servo = servoParamsMutable(i);
-        const bool isBusServo = (i >= BUS_SERVO_OFFSET);
-        const uint16_t minSignal = isBusServo ? BUS_SERVO_MIN_SIGNAL : PWM_SERVO_PULSE_MIN;
-        const uint16_t maxSignal = isBusServo ? BUS_SERVO_MAX_SIGNAL : PWM_SERVO_PULSE_MAX;
-        
 #ifndef USE_SERVO_GEOMETRY_CORRECTION
         servo->flags &= ~SERVO_FLAG_GEO_CORR;
 #endif
 
-        // Constrain midpoint to the valid signal range.
-        servo->mid = constrain(servo->mid, minSignal, maxSignal);
+        // The center is a standard 1000-2000us pulse on every servo, so the same
+        // value suits a PWM output and a bus channel. Narrow-pulse (760us) servos
+        // are not supported.
+        servo->mid = constrain(servo->mid, SERVO_CENTER_MIN, SERVO_CENTER_MAX);
 
         // Constrain travel to valid offset limits. The signal range is not
         // applied here: min/max keep what was set, and servoTravelMin/Max()
@@ -393,25 +403,33 @@ void validateAndFixServoConfig(void)
     }
 }
 
-static bool isBusServoIndex(uint8_t index)
+/*
+ * The signal range a servo's output is kept in. A servo with a PWM output has the
+ * full pulse range (a bus output sending it as well clips it to the bus range);
+ * one that is only on a bus has the bus range.
+ */
+static int servoSignalMin(uint8_t index)
 {
-    return index >= BUS_SERVO_OFFSET;
+    return (index < servoPwmCount) ? PWM_SERVO_PULSE_MIN : BUS_SERVO_MIN_SIGNAL;
+}
+
+static int servoSignalMax(uint8_t index)
+{
+    return (index < servoPwmCount) ? PWM_SERVO_PULSE_MAX : BUS_SERVO_MAX_SIGNAL;
 }
 
 // Travel below center that keeps mid + min at or above the signal minimum.
 int servoTravelMin(uint8_t index)
 {
     const servoParam_t *servo = servoParams(index);
-    const int minSignal = isBusServoIndex(index) ? BUS_SERVO_MIN_SIGNAL : PWM_SERVO_PULSE_MIN;
-    return MAX(servo->min, minSignal - servo->mid);
+    return MAX(servo->min, servoSignalMin(index) - servo->mid);
 }
 
 // Travel above center that keeps mid + max at or below the signal maximum.
 int servoTravelMax(uint8_t index)
 {
     const servoParam_t *servo = servoParams(index);
-    const int maxSignal = isBusServoIndex(index) ? BUS_SERVO_MAX_SIGNAL : PWM_SERVO_PULSE_MAX;
-    return MIN(servo->max, maxSignal - servo->mid);
+    return MIN(servo->max, servoSignalMax(index) - servo->mid);
 }
 
 void servoInit(void)
@@ -427,7 +445,7 @@ void servoInit(void)
         servoOverride[index] = SERVO_OVERRIDE_OFF;
     }
 
-    // PWM servos only: indices from BUS_SERVO_OFFSET up are the SBUS/FBUS bus servos.
+    // The PWM outputs the board has, S1 up to the first one without a pin or timer
     for (index = 0; index < MAX_SUPPORTED_PWM_SERVOS && ioTags[index]; index++)
     {
         const ioTag_t tag = ioTags[index];
@@ -446,15 +464,16 @@ void servoInit(void)
 #endif
     }
 
-    servoCount = index;
+    servoPwmCount = index;
+    servoUpdateCount();
 
-    for (index = 0; index < servoCount; index++)
+    for (index = 0; index < servoPwmCount; index++)
     {
         uint32_t update_rate = servoParams(index)->rate;
 
         servoTimerGroup[index] = index;
 
-        for (jndex = 0; jndex < servoCount; jndex++) {
+        for (jndex = 0; jndex < servoPwmCount; jndex++) {
             if (timer[index]->tim == timer[jndex]->tim) {
                 if (jndex < servoTimerGroup[index])
                     servoTimerGroup[index] = jndex;
@@ -468,7 +487,7 @@ void servoInit(void)
         rates[index] = constrain(update_rate, SERVO_RATE_MIN, SERVO_RATE_MAX);
     }
 
-    for (index = 0; index < servoCount; index++)
+    for (index = 0; index < servoPwmCount; index++)
     {
         const uint32_t timer_clock = timerClock(timer[index]->tim);
         const uint32_t update_rate = rates[index];
@@ -584,6 +603,9 @@ void servoUpdate(void)
 {
     float input[MAX_SUPPORTED_SERVOS];
 
+    if (!servoCountRefresh--)
+        servoUpdateCount();
+
     for (int i = 0; i < servoCount; i++)
     {
         if (!ARMING_FLAG(ARMED) && hasServoOverride(i))
@@ -632,7 +654,7 @@ void servoUpdate(void)
         servoInput[i] = pos;
 
         if (!ARMING_FLAG(ARMED) && hasServoProbe(i)) {
-            servoSetOutput(i, constrain(servo->mid + servoProbeOffset[i], PWM_SERVO_PULSE_MIN, PWM_SERVO_PULSE_MAX));
+            servoSetOutput(i, constrain(servo->mid + servoProbeOffset[i], servoSignalMin(i), servoSignalMax(i)));
             continue;
         }
 

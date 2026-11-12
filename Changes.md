@@ -3,6 +3,58 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## 24 Servos, PWM or Bus
+
+A servo is no longer a "PWM servo" (S1-S8) or a "bus servo" (S9-S32). There are
+24 servos, S1-S24. Servo N is sent on PWM output N where the board has one, and
+on channel N of a bus output (SBUS, F.Bus) when one is set up. Both get the same
+finished output from one output stage (`servoUpdate()` in `flight/servos.c`):
+override, geometry correction, balance curve, speed limit, reverse, scale, trim
+and travel limits. The bus drivers only convert it to the wire format.
+
+- `bus_servo_clone_pwm` is removed. A bus channel always carries the servo with
+  the same number, so there is nothing to clone. To send something different on
+  the bus, use a servo number the board has no PWM output for.
+- The servos in use are S1 up to the larger of the board's PWM outputs and the
+  bus channel count. A servo only on a bus is kept to the bus range
+  (1000-2000us); one that also has a PWM output keeps the full pulse range on
+  the PWM output and is clipped to the bus range on the bus only.
+- The servo center (`servo` mid) is limited to 1000-2000us on every servo.
+  Narrow-pulse (760us) servos are no longer supported.
+- The two digital channels of a 16-channel SBUS/F.Bus frame (CH17-18) come from
+  S17 and S18 (they were S25 and S26).
+- The speed limit of every servo now steps at the PID loop rate. Before, bus
+  servos stepped once per bus frame, separately for SBUS and F.Bus.
+- Servo probe (`MSP2_WING_SET_SERVO_PROBE`) works on every servo, not only the
+  ones with a PWM output.
+- Mixer outputs: S1-S24 are outputs 1-24 and the motors stay at 27-30. Outputs
+  25 and 26 (were S25, S26) are reserved, and 31-36 (were S27-S32) are gone.
+- Stored settings reset on upgrade: `servoParams`, `servoConfig`, `servoCurves`,
+  `servoTrims` and `mixerRules` have a new PG version. A rule or servo line that
+  named S9 or above meant a bus channel 8 lower than it does now, so an old
+  `diff`/`dump` must not be pasted back as it is.
+- CLI: `servo`, `servo status`, `servo override` and `servo trim` list the
+  servos in use without the PWM/bus split. `diff`/`dump` also print any other
+  servo that isn't at its default.
+- Blackbox logs the first eight servos in use, as before, whether they are on
+  a PWM output or a bus.
+
+MSP, API 22.16. The API version is bumped with this change because older
+Configurator and Lua versions misread the servo lists:
+
+- Servo index N is servo S(N+1) in every message. The remapping that skipped
+  the missing PWM outputs is gone from `MSP_SERVO_CONFIGURATIONS`,
+  `MSP_SET_SERVO_CONFIGURATION`, `MSP_SERVO_TRIM`, `MSP2_WING_SET_SERVO_TRIM`,
+  `MSP_SERVO_CURVES` and `MSP_SET_SERVO_CURVE`.
+- `MSP_STATUS` servo count, `MSP_SERVO`, `MSP_SERVO_CONFIGURATIONS`,
+  `MSP_SERVO_TRIM`, `MSP_SERVO_CURVES` and `MSP_SERVO_OVERRIDE` hold the servos
+  in use (`MSP_SERVO` and `MSP_SERVO_OVERRIDE` used to send every slot).
+- The set messages take any servo 0-23, in use or not.
+- `MSP2_WING_SERVO_TIMING` count is the number of PWM outputs: servos below it
+  have one, the rest are bus only.
+- `MSP_MIXER_CONFIG` / `MSP_SET_MIXER_CONFIG`: the second byte (was
+  `bus_servo_clone_pwm`) is sent as 0 and ignored.
+
 ## SRXL2 Dual Motor
 
 An SRXL2 ESC can drive a second motor (Spektrum "Smart" dual ESCs such as the

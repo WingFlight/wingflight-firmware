@@ -1466,10 +1466,6 @@ const clivalue_t valueTable[] = {
     { "fbus_master_channels",          VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_BUS_OUT_CHANNELS }, PG_DRIVER_FBUS_MASTER_CONFIG, offsetof(fbusMasterConfig_t, channels) },
 #endif
 
-#if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER) || defined(USE_BUS_SERVO)
-    { "bus_servo_clone_pwm",           VAR_UINT8 | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON}, PG_BUS_SERVO_CONFIG, offsetof(busServoConfig_t, cloneFromPwm) },
-#endif
-
 #ifdef USE_FBUS_MUX_FPGA
     { "fpga_spi_bus",                  VAR_UINT8 | HARDWARE_VALUE, .config.minmaxUnsigned = { 0, SPIDEV_COUNT }, PG_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, spiDevice) },
     { "fpga_serial",                   VAR_UINT8 | HARDWARE_VALUE, .config.minmaxUnsigned = { 0, SERIAL_PORT_USART10 + 1 }, PG_FBUS_MUX_FPGA_CONFIG, offsetof(fbusMuxFpgaConfig_t, serialPort) },

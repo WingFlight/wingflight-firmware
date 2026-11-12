@@ -31,6 +31,8 @@
 #define DEFAULT_SERVO_RATE      50
 #define DEFAULT_SERVO_SPEED      0
 
+#define SERVO_CENTER_MIN      1000
+#define SERVO_CENTER_MAX      2000
 #define SERVO_LIMIT_MIN      -1000
 #define SERVO_LIMIT_MAX       1000
 #define SERVO_SCALE_MIN         50
@@ -76,10 +78,15 @@ ADJFUN_DECLARE(SERVO_TRIM_ROLL)
 ADJFUN_DECLARE(SERVO_TRIM_PITCH)
 ADJFUN_DECLARE(SERVO_TRIM_YAW)
 
+// Servos in use, S1 up to this: the larger of the board's PWM outputs and the
+// servos a configured bus output (SBUS, F.Bus) sends
 uint8_t getServoCount(void);
+// Servos that have a PWM output on this board, S1 up to this
+uint8_t getPwmServoCount(void);
 uint16_t getServoRunRate(uint8_t servo);
 uint8_t getServoTimerGroup(uint8_t servo);
 uint16_t getServoOutput(uint8_t servo);
+float getServoOutputFloat(uint8_t servo);
 
 int16_t getServoOverride(uint8_t servo);
 int16_t setServoOverride(uint8_t servo, int16_t val);

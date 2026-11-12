@@ -34,21 +34,13 @@
 
 /** Mixer constants **/
 
-#define MIXER_OUTPUT_COUNT    (1 + MAX_SUPPORTED_SERVOS + MAX_SUPPORTED_MOTORS)
-
 // Mixer output numbers are stored in mixer rules, CLI diffs and backups, so
-// they must not move. S1-S26 come first (outputs 1-26), then the motors
-// (27-30), then the bus servos added for 24-channel F.Bus, S27-S32 (31-36).
-#define MIXER_SERVO_LOW_MAX   26
-#if MAX_SUPPORTED_SERVOS > MIXER_SERVO_LOW_MAX
-#define MIXER_SERVO_LOW_COUNT MIXER_SERVO_LOW_MAX
-#else
-#define MIXER_SERVO_LOW_COUNT MAX_SUPPORTED_SERVOS
-#endif
-
+// they must not move. Output 0 is "none", the servos S1-S24 are outputs 1-24,
+// 25 and 26 are reserved (they were S25 and S26 when PWM and bus servos had
+// separate slots) and the motors are 27-30.
 #define MIXER_SERVO_OFFSET    1
-#define MIXER_MOTOR_OFFSET    (MIXER_SERVO_OFFSET + MIXER_SERVO_LOW_COUNT)
-#define MIXER_SERVO_HIGH_OFFSET (MIXER_MOTOR_OFFSET + MAX_SUPPORTED_MOTORS)
+#define MIXER_MOTOR_OFFSET    27
+#define MIXER_OUTPUT_COUNT    (MIXER_MOTOR_OFFSET + MAX_SUPPORTED_MOTORS)
 
 #define MIXER_RATE_MIN       -10000
 #define MIXER_RATE_MAX        10000
@@ -109,9 +101,7 @@ bool    isMixerOverrideActive(void);
 
 static inline uint8_t mixerServoOutputIndex(uint8_t servo)
 {
-    return (servo < MIXER_SERVO_LOW_COUNT) ?
-        MIXER_SERVO_OFFSET + servo :
-        MIXER_SERVO_HIGH_OFFSET + (servo - MIXER_SERVO_LOW_COUNT);
+    return MIXER_SERVO_OFFSET + servo;
 }
 
 static inline float mixerGetServoOutput(uint8_t index)

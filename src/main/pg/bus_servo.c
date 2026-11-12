@@ -31,12 +31,6 @@
 #include "pg/sbus_output.h"
 #include "pg/pg_ids.h"
 
-PG_REGISTER_WITH_RESET_TEMPLATE(busServoConfig_t, busServoConfig, PG_BUS_SERVO_CONFIG, 0);
-
-PG_RESET_TEMPLATE(busServoConfig_t, busServoConfig,
-    .cloneFromPwm = 1,
-);
-
 bool hasBusServosConfigured(void)
 {
     return findSerialPortConfig(FUNCTION_SBUS_OUT) || findSerialPortConfig(FUNCTION_FBUS_MASTER);
@@ -77,24 +71,24 @@ uint8_t getBusServoOutputCount(void)
     return count;
 }
 
-// Storage for bus servo outputs (SBUS/FBUS)
-static float busServoOutput[BUS_SERVO_CHANNELS];
-
-void setBusServoOutput(uint8_t channel, float value)
+uint8_t busOutServoCount(uint8_t channels)
 {
-    if (channel < BUS_SERVO_CHANNELS) {
-        busServoOutput[channel] = value;
-    }
+    return (channels == 16) ? 18 : channels;
 }
 
-uint16_t getBusServoOutput(uint8_t channel)
+uint8_t getBusServoCount(void)
 {
-    if (channel < BUS_SERVO_CHANNELS) {
-        long value = lrintf(busServoOutput[channel]);
-        if (value < 0) return 0;
-        if (value > UINT16_MAX) return UINT16_MAX;
-        return (uint16_t)value;
+    uint8_t count = 0;
+#ifdef USE_FBUS_MASTER
+    if (findSerialPortConfig(FUNCTION_FBUS_MASTER)) {
+        count = MAX(count, busOutServoCount(busOutChannelCount(fbusMasterConfig()->channels)));
     }
-    return 0;
+#endif
+#ifdef USE_SBUS_OUTPUT
+    if (findSerialPortConfig(FUNCTION_SBUS_OUT)) {
+        count = MAX(count, busOutServoCount(MIN(busOutChannelCount(sbusOutConfig()->channels), 16)));
+    }
+#endif
+    return MIN(count, MAX_SUPPORTED_SERVOS);
 }
 #endif
