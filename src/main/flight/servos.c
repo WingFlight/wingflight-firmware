@@ -406,33 +406,23 @@ void validateAndFixServoConfig(void)
     }
 }
 
-/*
- * The signal range a servo's output is kept in. A servo with a PWM output has the
- * full pulse range (a bus output sending it as well clips it to the bus range);
- * one that is only on a bus has the bus range.
- */
-static int servoSignalMin(uint8_t index)
-{
-    return (index < servoPwmCount) ? PWM_SERVO_PULSE_MIN : BUS_SERVO_MIN_SIGNAL;
-}
-
-static int servoSignalMax(uint8_t index)
-{
-    return (index < servoPwmCount) ? PWM_SERVO_PULSE_MAX : BUS_SERVO_MAX_SIGNAL;
-}
+// Every servo has the same signal range whether it is sent on a PWM output, a
+// bus channel or both, so one servo setup behaves the same on either. It is
+// what a bus channel can carry (pg/bus_servo.h).
+STATIC_ASSERT(SERVO_SIGNAL_MIN == BUS_SERVO_MIN_SIGNAL && SERVO_SIGNAL_MAX == BUS_SERVO_MAX_SIGNAL, servo_signal_range_is_the_bus_range);
 
 // Travel below center that keeps mid + min at or above the signal minimum.
 int servoTravelMin(uint8_t index)
 {
     const servoParam_t *servo = servoParams(index);
-    return MAX(servo->min, servoSignalMin(index) - servo->mid);
+    return MAX(servo->min, SERVO_SIGNAL_MIN - servo->mid);
 }
 
 // Travel above center that keeps mid + max at or below the signal maximum.
 int servoTravelMax(uint8_t index)
 {
     const servoParam_t *servo = servoParams(index);
-    return MIN(servo->max, servoSignalMax(index) - servo->mid);
+    return MIN(servo->max, SERVO_SIGNAL_MAX - servo->mid);
 }
 
 void servoInit(void)
@@ -652,7 +642,7 @@ void servoUpdate(void)
         servoInput[i] = pos;
 
         if (!ARMING_FLAG(ARMED) && hasServoProbe(i)) {
-            servoSetOutput(i, constrain(servo->mid + servoProbeOffset[i], servoSignalMin(i), servoSignalMax(i)));
+            servoSetOutput(i, constrain(servo->mid + servoProbeOffset[i], SERVO_SIGNAL_MIN, SERVO_SIGNAL_MAX));
             continue;
         }
 

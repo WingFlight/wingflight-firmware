@@ -163,9 +163,10 @@ TEST_F(ServosTest, BusOutputAddsServosPastThePwmOutputs)
     EXPECT_FALSE(isServoOutputInUse(16));
 }
 
-TEST_F(ServosTest, BusOnlyServoIsKeptInTheBusRange)
+TEST_F(ServosTest, EveryServoHasTheSameSignalRange)
 {
     start(4, 8);
+    // S1 has a PWM output, S6 is only on the bus
     for (int i : {0, 5}) {
         servoParamsMutable(i)->rpos = 1000;
         servoParamsMutable(i)->rneg = 1000;
@@ -173,15 +174,22 @@ TEST_F(ServosTest, BusOnlyServoIsKeptInTheBusRange)
     }
     servoUpdate();
 
-    // With a PWM output the travel limit (+700) applies
-    EXPECT_EQ(2200, getServoOutput(0));
-    EXPECT_EQ(700, servoTravelMax(0));
-    // Only on the bus, which carries 880-2159us
-    EXPECT_EQ(2159, getServoOutput(5));
-    EXPECT_EQ(659, servoTravelMax(5));
-    EXPECT_EQ(-620, servoTravelMin(5));
-    EXPECT_TRUE(saturated(0));
-    EXPECT_TRUE(saturated(5));
+    for (int i : {0, 5}) {
+        EXPECT_EQ(SERVO_SIGNAL_MAX, getServoOutput(i));
+        EXPECT_EQ(659, servoTravelMax(i));
+        EXPECT_EQ(-620, servoTravelMin(i));
+        EXPECT_TRUE(saturated(i));
+    }
+    EXPECT_EQ(2159u, ccr[0]);
+
+    // Inside the range the travel limits are the ones set
+    for (int i : {0, 5}) {
+        servoParamsMutable(i)->max = 400;
+        setMixer(i, 1.0f);
+    }
+    servoUpdate();
+    EXPECT_EQ(1900, getServoOutput(0));
+    EXPECT_EQ(1900, getServoOutput(5));
 }
 
 TEST_F(ServosTest, ReverseTrimAndSpeedApplyToBusOnlyServos)

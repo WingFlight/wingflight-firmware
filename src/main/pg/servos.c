@@ -40,7 +40,7 @@ void pgResetFn_servoConfig(servoConfig_t *servoConfig)
     }
 }
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(servoParam_t, MAX_SUPPORTED_SERVOS, servoParams, PG_SERVO_PARAMS, 2);
+PG_REGISTER_ARRAY_WITH_RESET_FN(servoParam_t, MAX_SUPPORTED_SERVOS, servoParams, PG_SERVO_PARAMS, 3);
 
 void pgResetFn_servoParams(servoParam_t *instance)
 {
@@ -55,13 +55,6 @@ void pgResetFn_servoParams(servoParam_t *instance)
                      .speed = DEFAULT_SERVO_SPEED,
                      .flags = DEFAULT_SERVO_FLAGS,
         );
-
-        // The servos past the PWM outputs can only be on a bus, which carries
-        // a narrower range
-        if (i >= MAX_SUPPORTED_PWM_SERVOS) {
-            instance[i].min = DEFAULT_BUS_SERVO_MIN;
-            instance[i].max = DEFAULT_BUS_SERVO_MAX;
-        }
     }
 }
 

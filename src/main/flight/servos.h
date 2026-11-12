@@ -25,12 +25,16 @@
 
 #define DEFAULT_SERVO_FLAGS      0
 #define DEFAULT_SERVO_CENTER  1500
-#define DEFAULT_SERVO_MIN     -700
-#define DEFAULT_SERVO_MAX      700
+#define DEFAULT_SERVO_MIN     -600
+#define DEFAULT_SERVO_MAX      600
 #define DEFAULT_SERVO_SCALE    500
 #define DEFAULT_SERVO_RATE      50
 #define DEFAULT_SERVO_SPEED      0
 
+// The output of every servo is kept in this range, on a PWM output and on a
+// bus alike: what an SBUS / F.Bus channel can carry (pg/bus_servo.h)
+#define SERVO_SIGNAL_MIN       880
+#define SERVO_SIGNAL_MAX      2159
 #define SERVO_CENTER_MIN      1000
 #define SERVO_CENTER_MAX      2000
 #define SERVO_LIMIT_MIN      -1000

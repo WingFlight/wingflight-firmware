@@ -49,9 +49,9 @@ uint8_t getBusServoOutputCount(void);
 //
 // A channel is an 11-bit value. 1500us is 992 and one us is 1.6 steps, the
 // usual SBUS / F.Bus scale (1000us = 192, 2000us = 1792, which is +-100% on a
-// FrSky radio). The whole field, 0-2047, is 880-2159us. A servo that is only
-// on a bus is limited to that, and one that is also on a PWM output is clipped
-// to it on the bus only.
+// FrSky radio). The whole field, 0-2047, is 880-2159us, and that is the
+// signal range of every servo (SERVO_SIGNAL_MIN/MAX in flight/servos.h), so
+// a PWM output and a bus channel always carry the same value.
 #define BUS_SERVO_VALUE_MAX        2047
 #define BUS_SERVO_VALUE_CENTER     992
 #define BUS_SERVO_VALUE_PER_US     1.6f
@@ -64,11 +64,6 @@ static inline uint16_t busServoValue(float us)
     const long value = lrintf((us - 1500.0f) * BUS_SERVO_VALUE_PER_US) + BUS_SERVO_VALUE_CENTER;
     return constrain(value, 0, BUS_SERVO_VALUE_MAX);
 }
-
-// Default travel of the servos past the PWM outputs (S9-S24), which can only
-// ever be on a bus
-#define DEFAULT_BUS_SERVO_MIN     -500
-#define DEFAULT_BUS_SERVO_MAX      500
 
 // Servos a bus output of this many analog channels takes its values from.
 // The 16-channel frame also has two digital channels (CH17-18), on at 1500us
