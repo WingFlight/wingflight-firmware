@@ -232,11 +232,15 @@ TEST_F(ServosTest, CenterIsAStandardPulseOnEveryServo)
         servoParamsMutable(i)->mid = 760;
         servoParamsMutable(i + 1)->mid = 2200;
     }
+    servoParamsMutable(2)->rate = 560;
+    servoParamsMutable(3)->rate = 10;
     validateAndFixServoConfig();
     for (int i : {0, 12}) {
         EXPECT_EQ(1000, servoParams(i)->mid);
         EXPECT_EQ(2000, servoParams(i + 1)->mid);
     }
+    EXPECT_EQ(333, servoParams(2)->rate);
+    EXPECT_EQ(25, servoParams(3)->rate);
 }
 
 TEST_F(ServosTest, ServoCountFollowsTheBusChannelCount)

@@ -21,6 +21,8 @@ and travel limits. The bus drivers only convert it to the wire format.
   the PWM output and is clipped to the bus range on the bus only.
 - The servo center (`servo` mid) is limited to 1000-2000us on every servo.
   Narrow-pulse (760us) servos are no longer supported.
+- The servo update rate (`servo` rate) is limited to 25-333Hz (was up to
+  5000Hz, for narrow-pulse servos).
 - The two digital channels of a 16-channel SBUS/F.Bus frame (CH17-18) come from
   S17 and S18 (they were S25 and S26).
 - The speed limit of every servo now steps at the PID loop rate. Before, bus

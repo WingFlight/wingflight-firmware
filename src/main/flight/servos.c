@@ -394,6 +394,9 @@ void validateAndFixServoConfig(void)
         // are not supported.
         servo->mid = constrain(servo->mid, SERVO_CENTER_MIN, SERVO_CENTER_MAX);
 
+        // Only the PWM outputs use the rate; it is kept in range on every servo
+        servo->rate = constrain(servo->rate, SERVO_RATE_MIN, SERVO_RATE_MAX);
+
         // Constrain travel to valid offset limits. The signal range is not
         // applied here: min/max keep what was set, and servoTravelMin/Max()
         // limit them against the center when the output is worked out, so
@@ -495,12 +498,7 @@ void servoInit(void)
 
         servoRunRate[index] = update_rate;
 
-        if (update_rate > 500) {
-            const uint32_t timer_rate = update_rate * 64000;
-            const uint32_t timer_div = (timer_clock + timer_rate - 1) / timer_rate;
-            timebase = timer_clock / timer_div;
-        }
-        else if (update_rate > 154 && timer_clock % 10000000 == 0) {
+        if (update_rate > 154 && timer_clock % 10000000 == 0) {
             timebase = 10000000;
         }
         else if (update_rate > 124 && timer_clock % 8000000 == 0) {
