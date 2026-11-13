@@ -4026,17 +4026,39 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
     }
 
-    case MSP_SET_MIXER_CONFIG:
-        mixerConfigMutable()->model_type = sbufReadU8(src);
+    case MSP_SET_MIXER_CONFIG: {
+        // Every field is read and checked before any is applied, so a
+        // request that is refused changes nothing.
+        const uint8_t modelType = sbufReadU8(src);
         sbufReadU8(src); // was bus_servo_clone_pwm
         // API 22.5: optional SBUS and F.Bus output channel counts. Takes
         // effect on the next frame.
+        bool hasChannels = false;
+        uint8_t sbusSetting = 0;
+        uint8_t fbusSetting = 0;
         if (sbufBytesRemaining(src) >= 2) {
-            const uint8_t sbusSetting = busOutChannelSetting(sbufReadU8(src));
-            const uint8_t fbusSetting = busOutChannelSetting(sbufReadU8(src));
+            hasChannels = true;
+            sbusSetting = busOutChannelSetting(sbufReadU8(src));
+            fbusSetting = busOutChannelSetting(sbufReadU8(src));
             if (sbusSetting > BUS_OUT_CHANNELS_16 || fbusSetting >= BUS_OUT_CHANNELS_COUNT) {
                 return MSP_RESULT_ERROR;
             }
+        }
+#ifdef USE_SERVOS
+        // API 22.16: optional PWM servo update rate. Used from the next boot.
+        bool hasPwmRate = false;
+        uint16_t pwmRate = 0;
+        if (sbufBytesRemaining(src) >= 2) {
+            hasPwmRate = true;
+            pwmRate = sbufReadU16(src);
+            if (pwmRate < SERVO_RATE_MIN || pwmRate > SERVO_RATE_MAX) {
+                return MSP_RESULT_ERROR;
+            }
+        }
+#endif
+
+        mixerConfigMutable()->model_type = modelType;
+        if (hasChannels) {
 #ifdef USE_SBUS_OUTPUT
             sbusOutConfigMutable()->channels = sbusSetting;
 #endif
@@ -4049,16 +4071,12 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 #endif
         }
 #ifdef USE_SERVOS
-        // API 22.16: optional PWM servo update rate. Used from the next boot.
-        if (sbufBytesRemaining(src) >= 2) {
-            const uint16_t pwmRate = sbufReadU16(src);
-            if (pwmRate < SERVO_RATE_MIN || pwmRate > SERVO_RATE_MAX) {
-                return MSP_RESULT_ERROR;
-            }
+        if (hasPwmRate) {
             servoConfigMutable()->pwmRate = pwmRate;
         }
 #endif
         break;
+    }
 
     case MSP_SET_MIXER_INPUT:
         i = sbufReadU8(src);

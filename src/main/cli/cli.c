@@ -7434,7 +7434,7 @@ const clicmd_t cmdTable[] = {
 #endif
 #ifdef USE_SERVOS
     CLI_COMMAND_DEF("servo", "configure servos",
-                    "<servo> <center> <min> <max> <-scale> <+scale> <update_rate> <speed> <flags>\r\n\t"
+                    "<servo> <center> <min> <max> <-scale> <+scale> <speed> <flags>\r\n\t"
                     "status\r\n\t"
                     "flags\r\n\t"
                     "flags <servo> <[+|-]FLAG> ...\r\n\t"
