@@ -286,10 +286,17 @@ static void mixerSetInput(int index, float value)
 // Writes a PASSTHROUGH/MANUAL value to a stabilized input, unless a bench override holds it.
 // Overrides only apply while disarmed (see mixerSetInput()), and a setup tool that holds an
 // axis must win over the pilot's mode switch, or the radio keeps moving the surface.
+// The same goes for a wiggle: mixerSetInput() has already put it on roll/pitch/yaw, and
+// the indication must show whatever flight mode the switches happen to select.
 static void mixerSetBypassInput(int index, float value)
 {
-    if (!ARMING_FLAG(ARMED) && mixerOverrideSet(index)) {
-        return;
+    if (!ARMING_FLAG(ARMED)) {
+        if (mixerOverrideSet(index)) {
+            return;
+        }
+        if (wiggleActive() && index >= MIXER_IN_STABILIZED_ROLL && index <= MIXER_IN_STABILIZED_YAW) {
+            return;
+        }
     }
     mixer.input[index] = value;
 }
