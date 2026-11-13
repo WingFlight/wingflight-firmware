@@ -67,6 +67,8 @@ STATIC_ASSERT(MIXER_INPUT_COUNT <= 64, mixer_input_count_exceeds_mapping_bits);
 STATIC_ASSERT(MAX_SUPPORTED_RC_CHANNEL_COUNT == 18 + (MIXER_IN_RC_CHANNEL_24 - MIXER_IN_RC_CHANNEL_19 + 1),
               mixer_rc_channel_inputs_mismatch);
 
+STATIC_ASSERT(MIXER_SERVO_OFFSET + MAX_SUPPORTED_SERVOS <= MIXER_MOTOR_OFFSET, mixer_servo_outputs_overlap_motors);
+
 typedef struct {
 
     float           input[MIXER_INPUT_COUNT];

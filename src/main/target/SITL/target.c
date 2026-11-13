@@ -668,7 +668,7 @@ static void refreshPwmPacket(bool motorsActive)
     }
 
     // wing control-surface outputs (S1-Sn), in microseconds, for fixed-wing FDMs
-    const uint8_t servoCount = MIN(getServoCount(), (uint8_t)ARRAYLEN(pwmPkt.servo));
+    const uint8_t servoCount = MIN(getPwmServoCount(), (uint8_t)ARRAYLEN(pwmPkt.servo));
     for (uint8_t i = 0; i < ARRAYLEN(pwmPkt.servo); i++) {
         pwmPkt.servo[i] = (i < servoCount) ? getServoOutput(i) : 0;
     }

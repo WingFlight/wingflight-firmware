@@ -30,7 +30,6 @@ typedef struct {
     int16_t     max;     // upper limit in us from the midpoint
     uint16_t    rneg;    // negative scale (slope) in us
     uint16_t    rpos;    // positive scale (slope) in us
-    uint16_t    rate;    // servo update rate Hz
     uint16_t    speed;   // speed limit
     uint16_t    flags;   // feature flags
 } servoParam_t;
@@ -38,7 +37,8 @@ typedef struct {
 PG_DECLARE_ARRAY(servoParam_t, MAX_SUPPORTED_SERVOS, servoParams);
 
 typedef struct {
-    ioTag_t  ioTags[MAX_SUPPORTED_SERVOS];
+    ioTag_t  ioTags[MAX_SUPPORTED_PWM_SERVOS];
+    uint16_t pwmRate;    // update rate of every PWM servo output, Hz (servo_pwm_rate)
 } servoConfig_t;
 
 PG_DECLARE(servoConfig_t, servoConfig);

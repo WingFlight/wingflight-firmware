@@ -685,8 +685,15 @@
 #define BUS_SERVO_CHANNELS 24
 #endif
 
+// Servos are logical: servo N is sent on PWM output N where the board has one,
+// and on channel N of a bus output (SBUS, F.Bus) when one is set up. So the
+// servo count is the larger of the two, not their sum.
 #if defined(USE_SBUS_OUTPUT) || defined(USE_FBUS_MASTER)
-#define MAX_SUPPORTED_SERVOS (MAX_SUPPORTED_PWM_SERVOS + BUS_SERVO_CHANNELS)
+#if BUS_SERVO_CHANNELS > MAX_SUPPORTED_PWM_SERVOS
+#define MAX_SUPPORTED_SERVOS BUS_SERVO_CHANNELS
+#else
+#define MAX_SUPPORTED_SERVOS MAX_SUPPORTED_PWM_SERVOS
+#endif
 #else
 #define MAX_SUPPORTED_SERVOS MAX_SUPPORTED_PWM_SERVOS
 #endif

@@ -372,11 +372,10 @@ static const char * const mixerInputNames[] = {
 #error MAX_SUPPORTED_MOTORS hardcoded to 4 in cli/cli.c
 #endif
 
-// Mixer output names (1 + 26 + 4 + 6), in mixer output order -- see flight/mixer.h
+// Mixer output names (1 + 24 + 2 reserved + 4), in mixer output order -- see flight/mixer.h
 static const char * const mixerOutputNames[] = {
     "-", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14", "S15", "S16", "S17", "S18",
-    "S19", "S20", "S21", "S22", "S23", "S24", "S25", "S26", "M1", "M2", "M3", "M4",
-    "S27", "S28", "S29", "S30", "S31", "S32"
+    "S19", "S20", "S21", "S22", "S23", "S24", "R25", "R26", "M1", "M2", "M3", "M4",
 };
 
 STATIC_ASSERT(ARRAYLEN(mixerOutputNames) >= MIXER_OUTPUT_COUNT, mixer_output_names_too_short);
@@ -2653,59 +2652,25 @@ static void cliModeColor(const char *cmdName, char *cmdline)
 #endif
 
 #ifdef USE_SERVOS
-static bool serialConfigHasBusServos(const serialConfig_t *config)
-{
-    if (!config) {
-        return false;
-    }
-
-    for (int i = 0; i < SERIAL_PORT_COUNT; i++) {
-        if (config->portConfigs[i].functionMask & (FUNCTION_SBUS_OUT | FUNCTION_FBUS_MASTER)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static bool shouldPrintBusServos(const servoParam_t *servoParams, const servoParam_t *defaultServoParams, const serialConfig_t *serialConfigCurrent, const serialConfig_t *serialConfigDefault)
-{
-    const bool hasBusServos = serialConfigHasBusServos(serialConfigCurrent) || serialConfigHasBusServos(serialConfigDefault);
-
-    if (hasBusServos || !defaultServoParams) {
-        return hasBusServos;
-    }
-
-    for (int i = BUS_SERVO_OFFSET; i < MAX_SUPPORTED_SERVOS; i++) {
-        if (memcmp(&servoParams[i], &defaultServoParams[i], sizeof(servoParams[i])) != 0) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 // Saved servo trims (servoTrims PG), as "servo trim <servo> <us>". Printed after the
 // "servo" lines, so a restore sets the scales the trim limit is worked out from first.
-static void printServoTrim(dumpFlags_t dumpMask, const servoTrim_t *servoTrims, const servoTrim_t *defaultServoTrims, const serialConfig_t *serialConfigCurrent, const serialConfig_t *serialConfigDefault, const char *headingStr)
+// Lists the servos in use, and any other that isn't at its default.
+static void printServoTrim(dumpFlags_t dumpMask, const servoTrim_t *servoTrims, const servoTrim_t *defaultServoTrims, const char *headingStr)
 {
     const char *format = "servo trim %u %d";
-    const uint8_t pwmServoCount = getServoCount();
-    bool printBusServos = serialConfigHasBusServos(serialConfigCurrent) || serialConfigHasBusServos(serialConfigDefault);
-
-    for (int i = BUS_SERVO_OFFSET; i < MAX_SUPPORTED_SERVOS && !printBusServos; i++) {
-        printBusServos = defaultServoTrims && servoTrims[i].trim != defaultServoTrims[i].trim;
-    }
+    const uint8_t servoCount = getServoCount();
 
     headingStr = cliPrintSectionHeading(dumpMask, false, headingStr);
 
     for (uint32_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
-        if (i < BUS_SERVO_OFFSET ? i >= pwmServoCount : !printBusServos) {
-            continue;
-        }
         bool equalsDefault = false;
         if (defaultServoTrims) {
             equalsDefault = servoTrims[i].trim == defaultServoTrims[i].trim;
+        }
+        if (i >= servoCount && (!defaultServoTrims || equalsDefault)) {
+            continue;
+        }
+        if (defaultServoTrims) {
             headingStr = cliPrintSectionHeading(dumpMask, !equalsDefault, headingStr);
             cliDefaultPrintLinef(dumpMask, equalsDefault, format, i + 1, defaultServoTrims[i].trim);
         }
@@ -2713,24 +2678,25 @@ static void printServoTrim(dumpFlags_t dumpMask, const servoTrim_t *servoTrims, 
     }
 }
 
-static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, const servoParam_t *defaultServoParams, const serialConfig_t *serialConfigCurrent, const serialConfig_t *serialConfigDefault, const char *headingStr)
+// Lists the servos in use, and any other that isn't at its default.
+static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, const servoParam_t *defaultServoParams, const char *headingStr)
 {
-    const char *format = "servo %u %u %d %d %u %u %u %u %u";
-    const uint8_t pwmServoCount = getServoCount();
-    const bool printBusServos = shouldPrintBusServos(servoParams, defaultServoParams, serialConfigCurrent, serialConfigDefault);
+    const char *format = "servo %u %u %d %d %u %u %u %u";
+    const uint8_t servoCount = getServoCount();
 
     headingStr = cliPrintSectionHeading(dumpMask, false, headingStr);
 
-    // Print PWM servos
-    if (pwmServoCount > 0) {
-        cliPrintLine("# PWM Servos");
-    }
-    for (uint32_t i = 0; i < pwmServoCount; i++) {
+    for (uint32_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
         const servoParam_t *servoConf = &servoParams[i];
         bool equalsDefault = false;
         if (defaultServoParams) {
+            equalsDefault = !memcmp(servoConf, &defaultServoParams[i], sizeof(*servoConf));
+        }
+        if (i >= servoCount && (!defaultServoParams || equalsDefault)) {
+            continue;
+        }
+        if (defaultServoParams) {
             const servoParam_t *defaultServoConf = &defaultServoParams[i];
-            equalsDefault = !memcmp(servoConf, defaultServoConf, sizeof(*servoConf));
             headingStr = cliPrintSectionHeading(dumpMask, !equalsDefault, headingStr);
             cliDefaultPrintLinef(dumpMask, equalsDefault, format,
                 i + 1,
@@ -2739,7 +2705,6 @@ static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, co
                 defaultServoConf->max,
                 defaultServoConf->rneg,
                 defaultServoConf->rpos,
-                defaultServoConf->rate,
                 defaultServoConf->speed,
                 defaultServoConf->flags
             );
@@ -2751,97 +2716,32 @@ static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, co
             servoConf->max,
             servoConf->rneg,
             servoConf->rpos,
-            servoConf->rate,
             servoConf->speed,
             servoConf->flags
         );
-    }
-
-    // Print Bus servos
-    if (printBusServos) {
-        for (uint32_t i = BUS_SERVO_OFFSET; i < MAX_SUPPORTED_SERVOS; i++) {
-            const servoParam_t *servoConf = &servoParams[i];
-            bool equalsDefault = false;
-            if (defaultServoParams) {
-                const servoParam_t *defaultServoConf = &defaultServoParams[i];
-                equalsDefault = !memcmp(servoConf, defaultServoConf, sizeof(*servoConf));
-                headingStr = cliPrintSectionHeading(dumpMask, !equalsDefault, headingStr);
-                cliDefaultPrintLinef(dumpMask, equalsDefault, format,
-                    i + 1,
-                    defaultServoConf->mid,
-                    defaultServoConf->min,
-                    defaultServoConf->max,
-                    defaultServoConf->rneg,
-                    defaultServoConf->rpos,
-                    defaultServoConf->rate,
-                    defaultServoConf->speed,
-                    defaultServoConf->flags
-                );
-            }
-            cliDumpPrintLinef(dumpMask, equalsDefault, format,
-                i + 1,
-                servoConf->mid,
-                servoConf->min,
-                servoConf->max,
-                servoConf->rneg,
-                servoConf->rpos,
-                servoConf->rate,
-                servoConf->speed,
-                servoConf->flags
-            );
-        }
     }
 }
 
 static void printServoStatus(uint8_t index)
 {
-    const bool hasBusServos = hasBusServosConfigured();
-    const bool isBusServo = hasBusServos && index >= BUS_SERVO_OFFSET;
-    
-    if (isBusServo) {
-        // Bus servos occupy mixer slots S9-S26 and are numbered Bus Servo #1-#18.
-        const int busServoNum = index - BUS_SERVO_OFFSET + 1;
-        if (hasServoOverride(index))
-            cliPrintLinef("servo %d (Bus Servo %d, S%d): %4dus %3d OVERRIDE", index+1, busServoNum, index + 1,
-                getServoOutput(index),
-                getServoOverride(index));
-        else
-            cliPrintLinef("servo %d (Bus Servo %d, S%d): %4dus %3d", index+1, busServoNum, index + 1,
-                getServoOutput(index),
-                lrintf(mixerGetServoOutput(index) * 1000));
-    } else {
-        // PWM servos: S1-S8 (indices 0-7)
-        if (hasServoOverride(index))
-            cliPrintLinef("servo %d: %4dus %3d OVERRIDE", index+1,
-                getServoOutput(index),
-                getServoOverride(index));
-        else
-            cliPrintLinef("servo %d: %4dus %3d", index+1,
-                getServoOutput(index),
-                lrintf(mixerGetServoOutput(index) * 1000));
-    }
+    if (hasServoOverride(index))
+        cliPrintLinef("servo %d: %4dus %3d OVERRIDE", index+1,
+            getServoOutput(index),
+            getServoOverride(index));
+    else
+        cliPrintLinef("servo %d: %4dus %3d", index+1,
+            getServoOutput(index),
+            lrintf(mixerGetServoOutput(index) * 1000));
 }
 
 static void printServoOverride(uint8_t index)
 {
-    const bool hasBusServos = hasBusServosConfigured();
-    const bool isBusServo = hasBusServos && index >= BUS_SERVO_OFFSET;
-    
-    if (isBusServo) {
-        // Bus servos occupy mixer slots S9-S26 and are numbered Bus Servo #1-#18.
-        const int busServoNum = index - BUS_SERVO_OFFSET + 1;
-        if (hasServoOverride(index))
-            cliPrintLinef("servo override %d (Bus Servo %d, S%d) %d", index+1, busServoNum, index + 1, getServoOverride(index));
-        else
-            cliPrintLinef("servo override %d (Bus Servo %d, S%d) off", index+1, busServoNum, index + 1);
-    } else {
-        // PWM servos
-        if (hasServoOverride(index))
-            cliPrintLinef("servo override %d %d", index+1, getServoOverride(index));
-        else
-            cliPrintLinef("servo override %d off", index+1);
-    }
+    if (hasServoOverride(index))
+        cliPrintLinef("servo override %d %d", index+1, getServoOverride(index));
+    else
+        cliPrintLinef("servo override %d off", index+1);
 }
+
 
 static void cliServo(const char *cmdName, char *cmdline)
 {
@@ -2850,10 +2750,8 @@ static void cliServo(const char *cmdName, char *cmdline)
     char *saveptr, *ptr;
     int count = 0;
 
-    // Show PWM servos + bus servos if SBUS/FBUS is enabled
-    const int pwmServoCount = getServoCount();
-    const bool hasBusServos = hasBusServosConfigured();
-    const int servoCount = hasBusServos ? MAX_SUPPORTED_SERVOS : pwmServoCount;
+    // The servos in use: on a PWM output, a bus channel (SBUS, F.Bus) or both
+    const int servoCount = getServoCount();
 
     ptr = strtok_r(cmdline, " ", &saveptr);
     while (ptr && count < ARGS_MAX) {
@@ -2862,35 +2760,17 @@ static void cliServo(const char *cmdName, char *cmdline)
     }
 
     if (count == 0) {
-        printServo(DUMP_MASTER, servoParams(0), NULL, serialConfig(), NULL, NULL);
+        printServo(DUMP_MASTER, servoParams(0), NULL, NULL);
     }
     else if (strcasecmp(args[FUNC], "status") == 0) {
-        if (pwmServoCount > 0) {
-            cliPrintLine("# PWM Servos");
-            for (int i = 0; i < pwmServoCount; i++) {
-                printServoStatus(i);
-            }
-        }
-        if (hasBusServos) {
-            cliPrintLine("# Bus Servos");
-            for (int i = BUS_SERVO_OFFSET; i < MAX_SUPPORTED_SERVOS; i++) {
-                printServoStatus(i);
-            }
+        for (int i = 0; i < servoCount; i++) {
+            printServoStatus(i);
         }
     }
     else if (strcasecmp(args[FUNC], "override") == 0) {
         if (count == 1) {
-            if (pwmServoCount > 0) {
-                cliPrintLine("# PWM Servos");
-                for (int i = 0; i < pwmServoCount; i++) {
-                    printServoOverride(i);
-                }
-            }
-            if (hasBusServos) {
-                cliPrintLine("# Bus Servos");
-                for (int i = BUS_SERVO_OFFSET; i < MAX_SUPPORTED_SERVOS; i++) {
-                    printServoOverride(i);
-                }
+            for (int i = 0; i < servoCount; i++) {
+                printServoOverride(i);
             }
         }
         else if (count == 2) {
@@ -2947,7 +2827,7 @@ static void cliServo(const char *cmdName, char *cmdline)
     }
     else if (strcasecmp(args[FUNC], "trim") == 0) {
         if (count == 1) {
-            printServoTrim(DUMP_MASTER, servoTrims(0), NULL, serialConfig(), NULL, NULL);
+            printServoTrim(DUMP_MASTER, servoTrims(0), NULL, NULL);
         }
         else if (count == 3) {
             enum { FUNC=0, INDEX, VALUE };
@@ -3011,20 +2891,26 @@ static void cliServo(const char *cmdName, char *cmdline)
             cliShowInvalidArgumentCountError(cmdName);
         }
     }
-    else if (count == 9) {
-        const char *format = "servo %u %u %d %d %u %u %u %u %u";
-        enum { INDEX = 0, MID, MIN, MAX, RNEG, RPOS, RATE, SPEED, FLAGS, ARGS_COUNT };
+    else if (count == 8 || count == 9) {
+        // servo <index> <mid> <min> <max> <rneg> <rpos> <speed> <flags>
+        // With nine values it is the form that had a per-servo update rate
+        // after rpos. The rate is one setting now (servo_pwm_rate), so that
+        // value is skipped and the rest is taken as it is.
+        const char *format = "servo %u %u %d %d %u %u %u %u";
+        enum { INDEX = 0, MID, MIN, MAX, RNEG, RPOS, SPEED, FLAGS, ARGS_COUNT };
         int vals[ARGS_COUNT] = { 0, };
-        for (int i=0; i<count; i++)
-            vals[i] = atoi(args[i]);
+        for (int i = 0, n = 0; i < count; i++) {
+            if (count == 9 && i == RPOS + 1)
+                continue;
+            vals[n++] = atoi(args[i]);
+        }
         if (vals[INDEX] < 1 || vals[INDEX] > MAX_SUPPORTED_SERVOS ||
-            vals[MID] < PWM_SERVO_PULSE_MIN || vals[MID] > PWM_SERVO_PULSE_MAX ||
+            vals[MID] < SERVO_CENTER_MIN || vals[MID] > SERVO_CENTER_MAX ||
             vals[MIN] < SERVO_LIMIT_MIN || vals[MIN] > SERVO_LIMIT_MAX  ||
             vals[MAX] < SERVO_LIMIT_MIN || vals[MAX] > SERVO_LIMIT_MAX ||
             vals[MIN] > vals[MAX] ||
             vals[RNEG] < SERVO_SCALE_MIN || vals[RNEG] > SERVO_SCALE_MAX ||
             vals[RPOS] < SERVO_SCALE_MIN || vals[RPOS] > SERVO_SCALE_MAX ||
-            vals[RATE] < SERVO_RATE_MIN || vals[RATE] > SERVO_RATE_MAX ||
             vals[SPEED] < SERVO_SPEED_MIN || vals[SPEED] > SERVO_SPEED_MAX ||
             vals[FLAGS] > SERVO_FLAGS_ALL) {
             cliShowArgumentRangeError(cmdName, NULL, 0, 0);
@@ -3037,7 +2923,6 @@ static void cliServo(const char *cmdName, char *cmdline)
         servo->max = vals[MAX];
         servo->rneg = vals[RNEG];
         servo->rpos = vals[RPOS];
-        servo->rate = vals[RATE];
         servo->speed = vals[SPEED];
         servo->flags = vals[FLAGS];
 
@@ -3059,7 +2944,6 @@ static void cliServo(const char *cmdName, char *cmdline)
             servo->max,
             servo->rneg,
             servo->rpos,
-            servo->rate,
             servo->speed,
             servo->flags
         );
@@ -5957,7 +5841,7 @@ const cliResourceValue_t resourceTable[] = {
 #endif
     DEFA( OWNER_MOTOR,         PG_MOTOR_CONFIG, motorConfig_t, dev.ioTags[0], MAX_SUPPORTED_MOTORS ),
 #ifdef USE_SERVOS
-    DEFA( OWNER_SERVO,         PG_SERVO_CONFIG, servoConfig_t, ioTags[0], MAX_SUPPORTED_SERVOS ),
+    DEFA( OWNER_SERVO,         PG_SERVO_CONFIG, servoConfig_t, ioTags[0], MAX_SUPPORTED_PWM_SERVOS ),
 #endif
 #if defined(USE_PPM)
     DEFS( OWNER_PPMINPUT,      PG_PPM_CONFIG, ppmConfig_t, ioTag ),
@@ -7155,8 +7039,8 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
             printSerial(dumpMask, &serialConfig_Copy, serialConfig(), "serial");
 
 #ifdef USE_SERVOS
-            printServo(dumpMask, servoParams_CopyArray, servoParams(0), &serialConfig_Copy, serialConfig(), "servo");
-            printServoTrim(dumpMask, servoTrims_CopyArray, servoTrims(0), &serialConfig_Copy, serialConfig(), "servo trim");
+            printServo(dumpMask, servoParams_CopyArray, servoParams(0), "servo");
+            printServoTrim(dumpMask, servoTrims_CopyArray, servoTrims(0), "servo trim");
 #endif
 
             printMixerInputs(dumpMask, mixerInputs_CopyArray, mixerInputs(0), "mixer input");
@@ -7550,7 +7434,7 @@ const clicmd_t cmdTable[] = {
 #endif
 #ifdef USE_SERVOS
     CLI_COMMAND_DEF("servo", "configure servos",
-                    "<servo> <center> <min> <max> <-scale> <+scale> <update_rate> <speed> <flags>\r\n\t"
+                    "<servo> <center> <min> <max> <-scale> <+scale> <speed> <flags>\r\n\t"
                     "status\r\n\t"
                     "flags\r\n\t"
                     "flags <servo> <[+|-]FLAG> ...\r\n\t"

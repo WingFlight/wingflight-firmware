@@ -36,16 +36,7 @@
 #include "platform.h"
 #include "rx/rx.h"
 
-// SBUS payload value range for analog channels
-#define SBUS_MIN 192
-#define SBUS_MAX 1792
-
 static serialPort_t *sbusOutPort = NULL;
-
-// Speed-limit state for SBUS output (similar to servoInput in servos.c). F.Bus
-// output keeps its own, so each output steps only on its own frames.
-static FAST_DATA_ZERO_INIT float sbusServoInput[SBUS_OUT_CHANNELS];
-static timeUs_t sbusOutLastFrameUs = 0;
 
 static void sbusOutPrepareSbusFrame(sbusOutFrame_t *frame,
                                     uint16_t *channels)
@@ -84,125 +75,12 @@ float sbusOutGetRX(uint8_t channel)
     return 0;
 }
 
-// Helper function similar to limitTravel in servos.c
-static inline float sbusLimitTravel(uint8_t channel, float pos, float min, float max)
+// The value sent on a bus channel: servo N's finished output (flight/servos.c),
+// the same one that goes to PWM output N on boards that have one, clipped to
+// the range the bus carries. Shared with F.Bus output.
+float sbusOutGetServoValue(uint8_t channel)
 {
-    const uint8_t servoIndex = BUS_SERVO_OFFSET + channel;
-
-    // +-Inf are still correctly caught below even under -ffast-math (see
-    // constrainf() in common/maths.h). Only a NaN fails both comparisons
-    // and would otherwise fall through untouched -- isfinitef() catches
-    // that remaining case without changing how Inf is already handled.
-    if (pos > max) {
-        mixerSaturateServoOutput(servoIndex);
-        return max;
-    } else if (pos < min) {
-        mixerSaturateServoOutput(servoIndex);
-        return min;
-    } else if (!isfinitef(pos)) {
-        mixerSaturateServoOutput(servoIndex);
-        return min;
-    }
-    return pos;
-}
-
-// Helper function similar to limitSpeed in servos.c
-// dt is the time since this output's previous frame: the limit is applied once
-// per output frame, not once per PID loop like servoUpdate().
-static inline float sbusLimitSpeed(float old, float new, float speed, float dt)
-{
-    float rate = 1200 * dt / speed;
-    float diff = new - old;
-
-    if (diff > rate)
-        new = old + rate;
-    else if (diff < -rate)
-        new = old - rate;
-
-    return new;
-}
-
-// Process a single SBUS mixer channel with same logic as servoUpdate()
-// Returns processed value in microseconds
-// lastPos is the calling output's speed-limit state for this channel and dt
-// the time since that output's previous frame.
-float sbusOutGetValueMixer(uint8_t channel, float *lastPos, float dt)
-{
-    if (channel >= BUS_SERVO_CHANNELS)
-        return 0;
-    
-    const uint8_t servoIndex = BUS_SERVO_OFFSET + channel;
-
-    if (servoIndex >= MAX_SUPPORTED_SERVOS)
-        return 0;
-
-    // Clone mode: mirror the already fully-mixed/trimmed/limited PWM servo
-    // output for this channel instead of evaluating this bus channel's own
-    // (independent) mixer rule and servoParams. This is what lets a
-    // PWM-only mixer setup (e.g. one of the configurator's named-type
-    // wizards) drive bus servos too. Only applies to channels that have an
-    // actual PWM counterpart -- channels beyond the physical PWM servo
-    // count have nothing to mirror, so they always fall through to their
-    // own mixer rule below.
-    if (busServoConfig()->cloneFromPwm && channel < getServoCount())
-        return constrainf(getServoOutput(channel), BUS_SERVO_MIN_SIGNAL, BUS_SERVO_MAX_SIGNAL);
-
-    const servoParam_t *servo = servoParams(servoIndex);
-
-    // Get normalized mixer output (-1.0 to 1.0), or servo override when disarmed
-    float input;
-    if (!ARMING_FLAG(ARMED) && hasServoOverride(servoIndex))
-        input = getServoOverride(servoIndex) / 1000.0f;
-    else
-        input = mixerGetServoOutput(servoIndex);
-
-#ifdef USE_SERVO_GEOMETRY_CORRECTION
-    // Apply geometry correction if enabled for this servo
-    if (servo->flags & SERVO_FLAG_GEO_CORR)
-        input = geometryCorrection(input);
-#endif
-
-    // Servo balance curve, as servoUpdate() in servos.c: a small delta added on
-    // top of the output so twin servos on one surface can be matched.
-    {
-        const servoCurve_t *curve = servoCurves(servoIndex);
-        input += evaluateCurvePoints(curve->points, curve->count, input * 1000.0f, 0.0f) / 1000.0f;
-    }
-
-    // Guard the boundary: a NaN here would otherwise sit in
-    // *lastPos and poison every future sbusLimitSpeed() call
-    // on this channel forever, since NaN - NaN is still NaN.
-    if (!isfinitef(input))
-        input = 0;
-
-    float pos = input;
-
-    // Apply speed limiting. Each SBUS channel is limited independently, same
-    // as servoUpdate() in servos.c -- there is no swashplate to keep in
-    // plane on a fixed-wing airframe, so one channel's overrun must not
-    // couple into another, unrelated surface.
-    if (servo->speed > 0)
-        pos = sbusLimitSpeed(*lastPos, pos, servo->speed, dt);
-
-    // Store input for next iteration
-    *lastPos = pos;
-
-    // Apply servo reversal
-    if (servo->flags & SERVO_FLAG_REVERSED)
-        pos = -pos;
-
-    // Apply servo scale (rneg/rpos)
-    float scale = (pos > 0) ? servo->rpos : servo->rneg;
-
-    // Apply the trim (saved + runtime) and travel limits with saturation, same as
-    // servoUpdate() in servos.c: the trim shifts the output but stays inside the limits.
-    pos = sbusLimitTravel(channel, scale * pos + getServoTrim(servoIndex), servoTravelMin(servoIndex), servoTravelMax(servoIndex));
-    
-    // Add midpoint to get final microsecond value
-    pos = servo->mid + pos;
-
-    // Clamp to bus servo limits for SBUS output
-    return constrainf(pos, BUS_SERVO_MIN_SIGNAL, BUS_SERVO_MAX_SIGNAL);
+    return constrainf(getServoOutputFloat(channel), BUS_SERVO_MIN_SIGNAL, BUS_SERVO_MAX_SIGNAL);
 }
 
 static uint16_t sbusOutConvertToSbus(uint8_t channel, float pwm)
@@ -213,14 +91,14 @@ static uint16_t sbusOutConvertToSbus(uint8_t channel, float pwm)
         return (pwm >= 1500) ? 1 : 0;
     }
 
-    // For analog channels (0-15), convert microseconds to SBUS range (192-1792)
-    // Bus servo range: (1000 -> BUS_SERVO_MIN_SIGNAL) to (2000 -> BUS_SERVO_MAX_SIGNAL) -> SBUS 192-1792
-    const float value = scaleRangef(pwm, BUS_SERVO_MIN_SIGNAL, BUS_SERVO_MAX_SIGNAL, SBUS_MIN, SBUS_MAX);
-    return constrain(nearbyintf(value), SBUS_MIN, SBUS_MAX);
+    // Analog channels (0-15): the 11-bit channel value, see pg/bus_servo.h
+    return busServoValue(pwm);
 }
 
 void sbusOutUpdate(timeUs_t currentTimeUs)
 {
+    UNUSED(currentTimeUs);
+
     if (!sbusOutPort)
         return;
 
@@ -228,16 +106,9 @@ void sbusOutUpdate(timeUs_t currentTimeUs)
     if (serialTxBytesFree(sbusOutPort) <= sizeof(sbusOutFrame_t))
         return;
 
-    // sbus_out_channels: CH1-count carry bus servos, the rest are sent at
+    // sbus_out_channels: CH1-count carry S1-count, the rest are sent at
     // center. The digital channels (17-18) are only used with all 16.
     const int count = MIN(busOutChannelCount(sbusOutConfig()->channels), 16);
-    // Time since the previous frame, for the speed limit. The first frame
-    // assumes the configured frame rate; a long gap is capped at 100ms.
-    const float dt = sbusOutLastFrameUs ?
-        constrainf(cmpTimeUs(currentTimeUs, sbusOutLastFrameUs) * 1e-6f, 0.0f, 0.1f) :
-        1.0f / sbusOutConfig()->frameRate;
-    sbusOutLastFrameUs = currentTimeUs;
-
     // Prepare SBUS frame
     sbusOutFrame_t frame;
     uint16_t channels[SBUS_OUT_CHANNELS];
@@ -248,11 +119,7 @@ void sbusOutUpdate(timeUs_t currentTimeUs)
             continue;
         }
 
-        const float value = sbusOutGetValueMixer(ch, &sbusServoInput[ch], dt);
-        channels[ch] = sbusOutConvertToSbus(ch, value);
-
-        // Store the output value for getServoOutput() to retrieve
-        setBusServoOutput(ch, value);
+        channels[ch] = sbusOutConvertToSbus(ch, sbusOutGetServoValue(ch));
     }
     sbusOutPrepareSbusFrame(&frame, channels);
 

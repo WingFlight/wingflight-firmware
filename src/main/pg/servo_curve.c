@@ -23,7 +23,7 @@
 #include "pg/pg_ids.h"
 #include "pg/servo_curve.h"
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(servoCurve_t, MAX_SUPPORTED_SERVOS, servoCurves, PG_SERVO_CURVES, 0);
+PG_REGISTER_ARRAY_WITH_RESET_FN(servoCurve_t, MAX_SUPPORTED_SERVOS, servoCurves, PG_SERVO_CURVES, 1);
 
 void pgResetFn_servoCurves(servoCurve_t *curve)
 {

@@ -373,6 +373,19 @@ typedef enum BlackboxState {
 } BlackboxState;
 
 
+// The log has fields for the first eight servos (the SERVO_1-SERVO_8 conditions)
+#define BLACKBOX_SERVO_COUNT 8
+
+// Servos logged, fixed for the length of a log: the count in use can change
+// while running (a bus output's channel count), and the frames must keep
+// matching the fields the log header declared.
+static uint8_t blackboxLoggedServoCount;
+
+static uint8_t blackboxServoCount(void)
+{
+    return blackboxLoggedServoCount;
+}
+
 typedef struct blackboxMainState_s {
     uint32_t time;
 
@@ -438,7 +451,7 @@ typedef struct blackboxMainState_s {
     uint16_t motor2speed;
 
     int16_t motor[MAX_SUPPORTED_MOTORS];
-    int16_t servo[MAX_SUPPORTED_SERVOS];
+    int16_t servo[BLACKBOX_SERVO_COUNT];
 
     int32_t debug[DEBUG_VALUE_COUNT];
 
@@ -637,21 +650,21 @@ static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
         return (getMotorCount() >= 4) && isFieldEnabled(FIELD_SELECT(MOTOR));
 
     case CONDITION(SERVO_1):
-        return (getServoCount() >= 1) && isFieldEnabled(FIELD_SELECT(SERVO));
+        return (blackboxServoCount() >= 1) && isFieldEnabled(FIELD_SELECT(SERVO));
     case CONDITION(SERVO_2):
-        return (getServoCount() >= 2) && isFieldEnabled(FIELD_SELECT(SERVO));
+        return (blackboxServoCount() >= 2) && isFieldEnabled(FIELD_SELECT(SERVO));
     case CONDITION(SERVO_3):
-        return (getServoCount() >= 3) && isFieldEnabled(FIELD_SELECT(SERVO));
+        return (blackboxServoCount() >= 3) && isFieldEnabled(FIELD_SELECT(SERVO));
     case CONDITION(SERVO_4):
-        return (getServoCount() >= 4) && isFieldEnabled(FIELD_SELECT(SERVO));
+        return (blackboxServoCount() >= 4) && isFieldEnabled(FIELD_SELECT(SERVO));
     case CONDITION(SERVO_5):
-        return (getServoCount() >= 5) && isFieldEnabled(FIELD_SELECT(SERVO));
+        return (blackboxServoCount() >= 5) && isFieldEnabled(FIELD_SELECT(SERVO));
     case CONDITION(SERVO_6):
-        return (getServoCount() >= 6) && isFieldEnabled(FIELD_SELECT(SERVO));
+        return (blackboxServoCount() >= 6) && isFieldEnabled(FIELD_SELECT(SERVO));
     case CONDITION(SERVO_7):
-        return (getServoCount() >= 7) && isFieldEnabled(FIELD_SELECT(SERVO));
+        return (blackboxServoCount() >= 7) && isFieldEnabled(FIELD_SELECT(SERVO));
     case CONDITION(SERVO_8):
-        return (getServoCount() >= 8) && isFieldEnabled(FIELD_SELECT(SERVO));
+        return (blackboxServoCount() >= 8) && isFieldEnabled(FIELD_SELECT(SERVO));
 
     case CONDITION(RSSI):
         return isRssiConfigured() && isFieldEnabled(FIELD_SELECT(RSSI));
@@ -684,6 +697,8 @@ static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
 
 static void blackboxBuildConditionCache(void)
 {
+    blackboxLoggedServoCount = MIN(getServoCount(), BLACKBOX_SERVO_COUNT);
+
     blackboxConditionCache = 0;
     for (int index = 0; index <  FLIGHT_LOG_FIELD_CONDITION_COUNT; index++) {
         if (testBlackboxConditionUncached(index)) {
@@ -736,7 +751,7 @@ static void writeIntraframe(void)
     blackboxMainState_t *blackboxCurrent = blackboxHistory[0];
 
     const int motorCount = getMotorCount();
-    const int servoCount = getServoCount();
+    const int servoCount = blackboxServoCount();
 
     blackboxWrite('I');
 
@@ -912,7 +927,7 @@ static void writeInterframe(void)
     blackboxMainState_t *blackboxPrev = blackboxHistory[1];
 
     const int motorCount = getMotorCount();
-    const int servoCount = getServoCount();
+    const int servoCount = blackboxServoCount();
 
     int32_t deltas[8];
 
@@ -1451,7 +1466,7 @@ static void loadMainState(timeUs_t currentTimeUs)
         blackboxCurrent->motor[i] = getMotorOutput(i);
     }
 
-    for (int i = 0; i < getServoCount(); i++) {
+    for (int i = 0; i < blackboxServoCount(); i++) {
         blackboxCurrent->servo[i] = getServoOutput(i);
     }
 

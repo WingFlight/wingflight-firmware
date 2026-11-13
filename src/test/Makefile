@@ -432,6 +432,14 @@ airborne_unittest_SRC := \
         $(USER_DIR)/common/maths.c \
         $(USER_DIR)/flight/airborne.c
 
+servos_unittest_SRC := \
+        $(USER_DIR)/common/curve.c \
+        $(USER_DIR)/common/maths.c \
+        $(USER_DIR)/flight/servos.c
+
+servos_unittest_DEFINES := \
+        USE_SBUS_OUTPUT=
+
 speed_atten_unittest_SRC := \
         $(USER_DIR)/common/filter.c \
         $(USER_DIR)/common/maths.c \

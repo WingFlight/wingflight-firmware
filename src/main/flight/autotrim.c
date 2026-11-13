@@ -75,7 +75,6 @@ static FAST_DATA_ZERO_INIT autoTrim_t autoTrim;
 // aren't part of the gyro-corrected control path this feature is trimming out drift for.
 static bool isTrimmableServo(int servo)
 {
-    // A bus channel cloned from a PWM servo sends that servo's output, already trimmed.
     if (!isServoOutputInUse(servo))
         return false;
 

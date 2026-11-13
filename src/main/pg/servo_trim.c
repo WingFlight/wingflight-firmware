@@ -25,6 +25,6 @@
 #include "pg/servo_trim.h"
 
 // Zero-filled by default: no trim.
-PG_REGISTER_ARRAY(servoTrim_t, MAX_SUPPORTED_SERVOS, servoTrims, PG_SERVO_TRIMS, 0);
+PG_REGISTER_ARRAY(servoTrim_t, MAX_SUPPORTED_SERVOS, servoTrims, PG_SERVO_TRIMS, 1);
 
 #endif

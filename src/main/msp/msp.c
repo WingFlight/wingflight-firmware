@@ -998,14 +998,8 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 
             sbufWriteU8(dst, getMotorCount());
 #ifdef USE_SERVOS
-            // Check if bus servos are actually configured
-            if (hasBusServosConfigured()) {
-                // When bus servos are configured, report configured PWM servos + all bus servos
-                sbufWriteU8(dst, getServoCount() + BUS_SERVO_CHANNELS);
-            } else {
-                // When bus servos are not configured, only report PWM servos
-                sbufWriteU8(dst, getServoCount());
-            }
+            // Servos in use: the larger of the PWM outputs and the bus servos
+            sbufWriteU8(dst, getServoCount());
 #else
             sbufWriteU8(dst, 0);
 #endif
@@ -1083,141 +1077,62 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         break;
 
 #ifdef USE_SERVOS
+    // Servo indexing is the same in every servo message: index N is servo S(N+1),
+    // whether it is sent on a PWM output, a bus channel (SBUS, F.Bus) or both.
+    // The lists hold the servos in use, getServoCount() of them.
     case MSP_SERVO:
-        // Check if bus servos are actually configured
-        if (hasBusServosConfigured()) {
-            // When bus servos are configured, send configured PWM servo outputs + all bus servo outputs
-            // Skip unconfigured PWM servos between getServoCount() and BUS_SERVO_OFFSET
-            const uint8_t pwmServoCount = getServoCount();
-            
-            // Send configured PWM servo outputs (S1-Sn where n = getServoCount())
-            for (int i = 0; i < pwmServoCount; i++) {
-                sbufWriteU16(dst, getServoOutput(i));
-            }
-            
-            // Send all bus servo outputs (S9-S26)
-            // Note: Unconfigured PWM servo outputs between pwmServoCount and BUS_SERVO_OFFSET are skipped
-            for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
-                sbufWriteU16(dst, getServoOutput(i));
-            }
-        } else {
-            // When bus servos are not configured, send all servo outputs
-            for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
-                sbufWriteU16(dst, getServoOutput(i));
-            }
+        for (int i = 0; i < getServoCount(); i++) {
+            sbufWriteU16(dst, getServoOutput(i));
         }
         break;
 
     case MSP_SERVO_CONFIGURATIONS:
-        // Check if bus servos are actually configured
-        if (hasBusServosConfigured()) {
-            // When bus servos are configured, send configured PWM servos + all bus servos
-            // Skip unconfigured PWM servos between getServoCount() and BUS_SERVO_OFFSET
-            const uint8_t pwmServoCount = getServoCount();
-            const uint8_t totalCount = pwmServoCount + BUS_SERVO_CHANNELS;
-            sbufWriteU8(dst, totalCount);
+        sbufWriteU8(dst, getServoCount());
 
-            // Send configured PWM servos (S1-Sn where n = getServoCount())
-            for (int i = 0; i < pwmServoCount; i++) {
-                sbufWriteU16(dst, servoParams(i)->mid);
-                sbufWriteU16(dst, servoParams(i)->min);
-                sbufWriteU16(dst, servoParams(i)->max);
-                sbufWriteU16(dst, servoParams(i)->rneg);
-                sbufWriteU16(dst, servoParams(i)->rpos);
-                sbufWriteU16(dst, servoParams(i)->rate);
-                sbufWriteU16(dst, servoParams(i)->speed);
-                sbufWriteU16(dst, servoParams(i)->flags);
-            }
-
-            // Send all bus servos (S9-S26)
-            // Note: Unconfigured PWM servos between pwmServoCount and BUS_SERVO_OFFSET are skipped
-            for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
-                sbufWriteU16(dst, servoParams(i)->mid);
-                sbufWriteU16(dst, servoParams(i)->min);
-                sbufWriteU16(dst, servoParams(i)->max);
-                sbufWriteU16(dst, servoParams(i)->rneg);
-                sbufWriteU16(dst, servoParams(i)->rpos);
-                sbufWriteU16(dst, servoParams(i)->rate);
-                sbufWriteU16(dst, servoParams(i)->speed);
-                sbufWriteU16(dst, servoParams(i)->flags);
-            }
-        } else {
-            // When bus servos are not configured, only send PWM servo configs
-            sbufWriteU8(dst, getServoCount());
-
-            for (int i = 0; i < getServoCount(); i++) {
-                sbufWriteU16(dst, servoParams(i)->mid);
-                sbufWriteU16(dst, servoParams(i)->min);
-                sbufWriteU16(dst, servoParams(i)->max);
-                sbufWriteU16(dst, servoParams(i)->rneg);
-                sbufWriteU16(dst, servoParams(i)->rpos);
-                sbufWriteU16(dst, servoParams(i)->rate);
-                sbufWriteU16(dst, servoParams(i)->speed);
-                sbufWriteU16(dst, servoParams(i)->flags);
-            }
+        for (int i = 0; i < getServoCount(); i++) {
+            sbufWriteU16(dst, servoParams(i)->mid);
+            sbufWriteU16(dst, servoParams(i)->min);
+            sbufWriteU16(dst, servoParams(i)->max);
+            sbufWriteU16(dst, servoParams(i)->rneg);
+            sbufWriteU16(dst, servoParams(i)->rpos);
+            sbufWriteU16(dst, servoParams(i)->speed);
+            sbufWriteU16(dst, servoParams(i)->flags);
         }
         break;
 
     case MSP_SERVO_TRIM:
         // U8 count, then one S16 per servo of the live, runtime-only trim in us from
         // continuous SERVO_TRIM_* adjustments (never saved), then one S16 per servo of
-        // the saved trim (servoTrims PG, from stepped SERVO_TRIM_* and AUTO TRIM). Same
-        // servo indexing/remap shape as MSP_SERVO_CONFIGURATIONS above. The saved block
-        // is appended so a client that only reads the runtime block still works.
+        // the saved trim (servoTrims PG, from stepped SERVO_TRIM_* and AUTO TRIM). The
+        // saved block is appended so a client that only reads the runtime block still
+        // works.
         {
-            const uint8_t pwmServoCount = getServoCount();
-            const bool busServos = hasBusServosConfigured();
-            const uint8_t count = busServos ? pwmServoCount + BUS_SERVO_CHANNELS : pwmServoCount;
+            const uint8_t count = getServoCount();
 
             sbufWriteU8(dst, count);
-            for (int n = 0; n < count; n++) {
-                const int i = (n < pwmServoCount) ? n : BUS_SERVO_OFFSET + (n - pwmServoCount);
+            for (int i = 0; i < count; i++) {
                 sbufWriteU16(dst, (int16_t)lrintf(getServoRuntimeTrim(i)));
             }
-            for (int n = 0; n < count; n++) {
-                const int i = (n < pwmServoCount) ? n : BUS_SERVO_OFFSET + (n - pwmServoCount);
+            for (int i = 0; i < count; i++) {
                 sbufWriteU16(dst, (int16_t)getServoSavedTrim(i));
             }
         }
         break;
 
     case MSP_SERVO_CURVES:
-        // Same servo indexing/remap shape as MSP_SERVO_CONFIGURATIONS above.
-        if (hasBusServosConfigured()) {
-            const uint8_t pwmServoCount = getServoCount();
-            const uint8_t totalCount = pwmServoCount + BUS_SERVO_CHANNELS;
-            sbufWriteU8(dst, totalCount);
+        sbufWriteU8(dst, getServoCount());
 
-            for (int i = 0; i < pwmServoCount; i++) {
-                sbufWriteU8(dst, servoCurves(i)->count);
-                for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
-                    sbufWriteU16(dst, servoCurves(i)->points[p].x);
-                    sbufWriteU16(dst, servoCurves(i)->points[p].y);
-                }
-            }
-
-            for (int i = BUS_SERVO_OFFSET; i < BUS_SERVO_OFFSET + BUS_SERVO_CHANNELS; i++) {
-                sbufWriteU8(dst, servoCurves(i)->count);
-                for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
-                    sbufWriteU16(dst, servoCurves(i)->points[p].x);
-                    sbufWriteU16(dst, servoCurves(i)->points[p].y);
-                }
-            }
-        } else {
-            sbufWriteU8(dst, getServoCount());
-
-            for (int i = 0; i < getServoCount(); i++) {
-                sbufWriteU8(dst, servoCurves(i)->count);
-                for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
-                    sbufWriteU16(dst, servoCurves(i)->points[p].x);
-                    sbufWriteU16(dst, servoCurves(i)->points[p].y);
-                }
+        for (int i = 0; i < getServoCount(); i++) {
+            sbufWriteU8(dst, servoCurves(i)->count);
+            for (int p = 0; p < SERVO_CURVE_POINTS; p++) {
+                sbufWriteU16(dst, servoCurves(i)->points[p].x);
+                sbufWriteU16(dst, servoCurves(i)->points[p].y);
             }
         }
         break;
 
     case MSP_SERVO_OVERRIDE:
-        for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
+        for (int i = 0; i < getServoCount(); i++) {
             sbufWriteU16(dst, getServoOverride(i));
         }
         break;
@@ -1358,7 +1273,8 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     }
 
     case MSP2_WING_SERVO_TIMING: {
-        const uint8_t count = getServoCount();
+        // PWM outputs only: the count is how many of the servos, S1 up, have one
+        const uint8_t count = getPwmServoCount();
 
         sbufWriteU8(dst, count);
         for (uint8_t i = 0; i < count; i++) {
@@ -2037,7 +1953,7 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
 #endif
     case MSP_MIXER_CONFIG:
         sbufWriteU8(dst, mixerConfig()->model_type);
-        sbufWriteU8(dst, busServoConfig()->cloneFromPwm);
+        sbufWriteU8(dst, 0); // was bus_servo_clone_pwm
         // API 22.5: bus output channel counts (8, 12, 16 or 24; 0 when not
         // built), then the count the configured bus output actually drives
 #ifdef USE_SBUS_OUTPUT
@@ -2051,6 +1967,12 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         sbufWriteU8(dst, 0);
 #endif
         sbufWriteU8(dst, getBusServoOutputCount());
+        // API 22.16: update rate of every PWM servo output, Hz
+#ifdef USE_SERVOS
+        sbufWriteU16(dst, servoConfig()->pwmRate);
+#else
+        sbufWriteU16(dst, 0);
+#endif
         break;
 
     case MSP_MIXER_INPUTS:
@@ -2976,8 +2898,8 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
     case MSP_SET_SERVO_CONFIG:
         {
             const int rem = sbufBytesRemaining(src);
-            // Expect index (U8) + eight U16 fields = 1 + 8*2 bytes
-            if (rem != 1 + 8 * 2) {
+            // Expect index (U8) + seven U16 fields = 1 + 7*2 bytes
+            if (rem != 1 + 7 * 2) {
                 return MSP_RESULT_ERROR;
             }
 
@@ -2992,7 +2914,6 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             servoParamsMutable(i)->max   = sbufReadU16(src);
             servoParamsMutable(i)->rneg  = sbufReadU16(src);
             servoParamsMutable(i)->rpos  = sbufReadU16(src);
-            servoParamsMutable(i)->rate  = sbufReadU16(src);
             servoParamsMutable(i)->speed = sbufReadU16(src);
             servoParamsMutable(i)->flags = sbufReadU16(src);
 
@@ -3017,7 +2938,6 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             sbufWriteU16(dst, servoParams(i)->max);
             sbufWriteU16(dst, servoParams(i)->rneg);
             sbufWriteU16(dst, servoParams(i)->rpos);
-            sbufWriteU16(dst, servoParams(i)->rate);
             sbufWriteU16(dst, servoParams(i)->speed);
             sbufWriteU16(dst, servoParams(i)->flags);
         }
@@ -3473,48 +3393,19 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
 #ifdef USE_SERVOS
     case MSP_SET_SERVO_CONFIGURATION:
-        if (dataSize != 1 + 16) {
+        if (dataSize != 1 + 14) {
             return MSP_RESULT_ERROR;
         }
         i = sbufReadU8(src);
-        
-        // Check if bus servos are actually configured
-        if (hasBusServosConfigured()) {
-            // When bus servos are configured, map the received index to actual servo index
-            // Skip unconfigured PWM servos between getServoCount() and BUS_SERVO_OFFSET
-            const uint8_t pwmServoCount = getServoCount();
-            const uint8_t totalCount = pwmServoCount + BUS_SERVO_CHANNELS;
-            
-            if (i >= totalCount) {
-                return MSP_RESULT_ERROR;
-            }
-            
-            // Map received index to actual servo index
-            if (i < pwmServoCount) {
-                // Configured PWM servo (S1-Sn where n = getServoCount())
-                // Index stays the same (0 to pwmServoCount-1)
-            } else {
-                // Bus servo (S9-S26)
-                // Map from sequential index to bus servo index
-                i = BUS_SERVO_OFFSET + (i - pwmServoCount);
-            }
-        } else {
-            // When bus servos are not configured, only accept PWM servo indices
-            if (i >= getServoCount()) {
-                return MSP_RESULT_ERROR;
-            }
-        }
-        
         if (i >= MAX_SUPPORTED_SERVOS) {
             return MSP_RESULT_ERROR;
         }
-        
+
         servoParamsMutable(i)->mid = sbufReadU16(src);
         servoParamsMutable(i)->min = sbufReadU16(src);
         servoParamsMutable(i)->max = sbufReadU16(src);
         servoParamsMutable(i)->rneg = sbufReadU16(src);
         servoParamsMutable(i)->rpos = sbufReadU16(src);
-        servoParamsMutable(i)->rate = sbufReadU16(src);
         servoParamsMutable(i)->speed = sbufReadU16(src);
         servoParamsMutable(i)->flags = sbufReadU16(src);
         
@@ -3524,25 +3415,6 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 
     case MSP_SET_SERVO_CURVE:
         i = sbufReadU8(src);
-
-        // Same servo indexing/remap shape as MSP_SET_SERVO_CONFIGURATION above.
-        if (hasBusServosConfigured()) {
-            const uint8_t pwmServoCount = getServoCount();
-            const uint8_t totalCount = pwmServoCount + BUS_SERVO_CHANNELS;
-
-            if (i >= totalCount) {
-                return MSP_RESULT_ERROR;
-            }
-
-            if (i >= pwmServoCount) {
-                i = BUS_SERVO_OFFSET + (i - pwmServoCount);
-            }
-        } else {
-            if (i >= getServoCount()) {
-                return MSP_RESULT_ERROR;
-            }
-        }
-
         if (i >= MAX_SUPPORTED_SERVOS) {
             return MSP_RESULT_ERROR;
         }
@@ -3613,22 +3485,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
     }
 
     case MSP2_WING_SET_SERVO_TRIM: {
-        // U8 servo (same indexing/remap as MSP_SET_SERVO_CURVE), S16 saved trim in us.
-        // Limited to SERVO_TRIM_LIMIT_PERCENT of the servo's scale, like every other
-        // way of setting it. Never changes the center.
+        // U8 servo, S16 saved trim in us. Limited to SERVO_TRIM_LIMIT_PERCENT of the
+        // servo's scale, like every other way of setting it. Never changes the center.
         if (dataSize != 3) {
             return MSP_RESULT_ERROR;
         }
-        uint8_t servo = sbufReadU8(src);
+        const uint8_t servo = sbufReadU8(src);
         const int16_t trim = sbufReadU16(src);
-        const uint8_t pwmServoCount = getServoCount();
-        const uint8_t count = hasBusServosConfigured() ? pwmServoCount + BUS_SERVO_CHANNELS : pwmServoCount;
-        if (servo >= count) {
-            return MSP_RESULT_ERROR;
-        }
-        if (servo >= pwmServoCount) {
-            servo = BUS_SERVO_OFFSET + (servo - pwmServoCount);
-        }
         if (servo >= MAX_SUPPORTED_SERVOS) {
             return MSP_RESULT_ERROR;
         }
@@ -4163,25 +4026,57 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
     }
 
-    case MSP_SET_MIXER_CONFIG:
-        mixerConfigMutable()->model_type = sbufReadU8(src);
-        busServoConfigMutable()->cloneFromPwm = sbufReadU8(src);
+    case MSP_SET_MIXER_CONFIG: {
+        // Every field is read and checked before any is applied, so a
+        // request that is refused changes nothing.
+        const uint8_t modelType = sbufReadU8(src);
+        sbufReadU8(src); // was bus_servo_clone_pwm
         // API 22.5: optional SBUS and F.Bus output channel counts. Takes
         // effect on the next frame.
+        bool hasChannels = false;
+        uint8_t sbusSetting = 0;
+        uint8_t fbusSetting = 0;
         if (sbufBytesRemaining(src) >= 2) {
-            const uint8_t sbusSetting = busOutChannelSetting(sbufReadU8(src));
-            const uint8_t fbusSetting = busOutChannelSetting(sbufReadU8(src));
+            hasChannels = true;
+            sbusSetting = busOutChannelSetting(sbufReadU8(src));
+            fbusSetting = busOutChannelSetting(sbufReadU8(src));
             if (sbusSetting > BUS_OUT_CHANNELS_16 || fbusSetting >= BUS_OUT_CHANNELS_COUNT) {
                 return MSP_RESULT_ERROR;
             }
+        }
+#ifdef USE_SERVOS
+        // API 22.16: optional PWM servo update rate. Used from the next boot.
+        bool hasPwmRate = false;
+        uint16_t pwmRate = 0;
+        if (sbufBytesRemaining(src) >= 2) {
+            hasPwmRate = true;
+            pwmRate = sbufReadU16(src);
+            if (pwmRate < SERVO_RATE_MIN || pwmRate > SERVO_RATE_MAX) {
+                return MSP_RESULT_ERROR;
+            }
+        }
+#endif
+
+        mixerConfigMutable()->model_type = modelType;
+        if (hasChannels) {
 #ifdef USE_SBUS_OUTPUT
             sbusOutConfigMutable()->channels = sbusSetting;
 #endif
 #ifdef USE_FBUS_MASTER
             fbusMasterConfigMutable()->channels = fbusSetting;
 #endif
+#ifdef USE_SERVOS
+            // So the servo lists read back next already hold the new count
+            servoUpdateCount();
+#endif
         }
+#ifdef USE_SERVOS
+        if (hasPwmRate) {
+            servoConfigMutable()->pwmRate = pwmRate;
+        }
+#endif
         break;
+    }
 
     case MSP_SET_MIXER_INPUT:
         i = sbufReadU8(src);

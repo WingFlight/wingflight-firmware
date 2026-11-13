@@ -172,7 +172,7 @@
 #define PG_THRUST_VECTOR_PROFILE     1013
 #define PG_SRXL2_ESC_CONFIG          1014
 #define PG_DRIVER_RX_INPUT_BACKUP_CONFIG 1015
-#define PG_BUS_SERVO_CONFIG          1016
+// 1016 was PG_BUS_SERVO_CONFIG (bus_servo_clone_pwm), do not reuse
 #define PG_SERVO_CURVES              1017
 // Appended after master's ids: renumbering the existing ones would change stored configs.
 #define PG_DRIVER_CRSF_SENSORS_CONFIG 1018

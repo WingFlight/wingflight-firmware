@@ -25,18 +25,26 @@
 
 #define DEFAULT_SERVO_FLAGS      0
 #define DEFAULT_SERVO_CENTER  1500
-#define DEFAULT_SERVO_MIN     -700
-#define DEFAULT_SERVO_MAX      700
+#define DEFAULT_SERVO_MIN     -600
+#define DEFAULT_SERVO_MAX      600
 #define DEFAULT_SERVO_SCALE    500
 #define DEFAULT_SERVO_RATE      50
 #define DEFAULT_SERVO_SPEED      0
 
+// The output of every servo is kept in this range, on a PWM output and on a
+// bus alike: what an SBUS / F.Bus channel can carry (pg/bus_servo.h)
+#define SERVO_SIGNAL_MIN       880
+#define SERVO_SIGNAL_MAX      2159
+#define SERVO_CENTER_MIN      1000
+#define SERVO_CENTER_MAX      2000
 #define SERVO_LIMIT_MIN      -1000
 #define SERVO_LIMIT_MAX       1000
 #define SERVO_SCALE_MIN         50
 #define SERVO_SCALE_MAX       1000
+// servo_pwm_rate: one update rate for every PWM servo output. 50Hz suits any
+// servo; a higher rate is for digital servos only.
 #define SERVO_RATE_MIN          25
-#define SERVO_RATE_MAX        5000
+#define SERVO_RATE_MAX         333
 #define SERVO_SPEED_MIN          0
 #define SERVO_SPEED_MAX      60000
 #define SERVO_OVERRIDE_MIN   -2000
@@ -76,10 +84,17 @@ ADJFUN_DECLARE(SERVO_TRIM_ROLL)
 ADJFUN_DECLARE(SERVO_TRIM_PITCH)
 ADJFUN_DECLARE(SERVO_TRIM_YAW)
 
+// Servos in use, S1 up to this: the larger of the board's PWM outputs and the
+// servos a configured bus output (SBUS, F.Bus) sends
 uint8_t getServoCount(void);
+// Servos that have a PWM output on this board, S1 up to this
+uint8_t getPwmServoCount(void);
+// Work the count of servos in use out again, after a bus channel count change
+void servoUpdateCount(void);
 uint16_t getServoRunRate(uint8_t servo);
 uint8_t getServoTimerGroup(uint8_t servo);
 uint16_t getServoOutput(uint8_t servo);
+float getServoOutputFloat(uint8_t servo);
 
 int16_t getServoOverride(uint8_t servo);
 int16_t setServoOverride(uint8_t servo, int16_t val);
