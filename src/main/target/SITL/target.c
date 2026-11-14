@@ -101,6 +101,7 @@ const timerHardware_t timerHardware[SITL_TIMER_MOTOR_COUNT + SITL_TIMER_SERVO_CO
 uint32_t SystemCoreClock;
 
 static fdm_packet fdmPkt;
+static int fdmPktSize;          // bytes of fdmPkt the last datagram carried
 static servo_packet pwmPkt;
 
 // Anything the simulator sends to the state port lands here and is dispatched
@@ -110,7 +111,14 @@ static union {
     baro_packet baro;
 } statePkt;
 
-STATIC_ASSERT(sizeof(baro_packet) != sizeof(fdm_packet), SITL_state_packets_must_differ_in_size);
+STATIC_ASSERT(sizeof(fdm_packet) == FDM_PACKET_SIZE_PACK, SITL_fdm_packet_layout);
+STATIC_ASSERT(sizeof(baro_packet) < FDM_PACKET_SIZE_BASE, SITL_state_packets_must_differ_in_size);
+
+static bool isFdmPacketSize(int n)
+{
+    return n == FDM_PACKET_SIZE_BASE || n == FDM_PACKET_SIZE_ERPM || n == FDM_PACKET_SIZE_BARO ||
+           n == FDM_PACKET_SIZE_MCU || n == FDM_PACKET_SIZE_RAILS || n == FDM_PACKET_SIZE_PACK;
+}
 
 // The two halves of the servo path have to agree, and nothing else checks them.
 //
@@ -218,11 +226,20 @@ static void updateFakeBaroFromPacket(const baro_packet *pkt)
 // sees the IC altitude as 0 m MSL, and the reading is noise-free.
 static void updateFakeBaroFromFdm(const fdm_packet *pkt)
 {
+    const double altitudeMeters = -pkt->position_xyz[2];
+
+    // The FDM tail's pressure (Rotorflight's layout) is a simulator barometer too.
+    if (fdmPktSize >= FDM_PACKET_SIZE_BARO && isfinite(pkt->pressure) && pkt->pressure > 0) {
+        lastBaroPacketUs = micros64_real();
+        fakeBaroSet((int32_t)lrint(pkt->pressure),
+                    (int32_t)lrint((15.0 - 0.0065 * altitudeMeters) * 100.0));
+        return;
+    }
+
     if (lastBaroPacketUs && micros64_real() - lastBaroPacketUs < BARO_PACKET_TIMEOUT_US) {
         return;
     }
 
-    const double altitudeMeters = -pkt->position_xyz[2];
 
     // ISA: p = p0 * (1 - 2.25577e-5 * h)^5.25588, valid to ~11 km.
     double factor = 1.0 - 2.25577e-5 * altitudeMeters;
@@ -370,9 +387,11 @@ static void* udpThread(void* data) {
 
     while (workerRunning) {
         n = udpRecv(&stateLink, &statePkt, sizeof(statePkt), 100);
-        if (n == sizeof(fdm_packet)) {
-//            printf("[data]new fdm %d\n", n);
+        if (isFdmPacketSize(n)) {
+            // fields beyond what this datagram carries read as 0
+            memset((uint8_t *)&statePkt.fdm + n, 0, sizeof(fdm_packet) - n);
             fdmPkt = statePkt.fdm;
+            fdmPktSize = n;
             updateState(&fdmPkt);
         }
 #if defined(USE_FAKE_BARO)
