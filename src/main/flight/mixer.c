@@ -626,7 +626,7 @@ static void addMapping(uint8_t in, uint8_t out)
 
 // Rebuild the output -> inputs map that mixerSaturateOutput() uses to flag the
 // stabilized inputs feeding a servo at its travel limit. Called at init and after
-// every rule write (MSP_SET_MIXER_RULE, CLI "mixer rule"), which edit rules live,
+// every rule write or reset (MSP_SET_MIXER_RULE, CLI "mixer rule", "mixer reset"),
 // so anti-windup follows the current wiring rather than the boot-time one.
 void mixerUpdateMapping(void)
 {
