@@ -1,3 +1,16 @@
+# 0.0.42
+
+Use the 0.0.42 Configurator and Lua suites with this firmware (MSP API 22.16); older ones do not work with it. Updating resets the servo settings, the mixer rules and the SRXL2 ESC settings to defaults, so save a backup first and set them up again afterwards. A backup made before 0.0.42 restores without its per-servo update rate, and mixer rules for servo 9 and above need recreating.
+Rework the servos into 24 servos that are each sent on PWM output N where the board has one and on channel N of a bus output (SBUS, F.Bus) when one is set up. The separate bus servo slots (S9 to S32) and bus_servo_clone_pwm are gone. Mixer outputs are S1 to S24 (1 to 24) and the motors stay at 27 to 30.
+Change the servo limits to be the same on a PWM output and on a bus: center 1000 to 2000us, signal 880 to 2159us, and Min/Max default to -600/600. Narrow-pulse (760us) servos are no longer supported.
+Change bus outputs to use the whole channel range (880 to 2159us) instead of 1000 to 2000us, so a bus servo can travel as far as a PWM servo.
+Replace the per-servo update rate with one setting, servo_pwm_rate (25 to 333Hz, default 50), for every PWM servo output. The rate is gone from the servo CLI line and the servo MSP messages; a servo line from an older dump is still accepted without it.
+Change the SRXL2 motor 2 channel to count from 1: motor 1 is channel 1 and srxl2esc_motor2_channel takes 0 (off) or 2 to 32.
+Restrict GPS navigation (LOITER, RTH and the GPS rescue failsafe) to a u-blox GPS; NMEA, FBUS and CRSF GPS no longer navigate. u-blox runs at 10Hz at 38400 baud or faster and 5Hz below, and does not navigate at 9600 baud. The RTH and LOITER switches do nothing on a GPS that can't navigate, and a new telemetry flag reports that setup on the bench.
+Fix the ready-to-arm wiggle not showing while MANUAL or PASSTHROUGH is selected.
+Fix the Tune Advisor mixing two tunes into one set of statistics when a profile switch, an adjustment or a save changes the tune during a flight.
+Fix a refused mixer config request over MSP changing part of the configuration before it was refused.
+
 # 0.0.41
 
 Use the 0.0.41 Configurator and Lua suites with this firmware (MSP API 22.15). Updating keeps your settings except the SRXL2 ESC settings (throttle rate and telemetry interval), which reset to defaults.
