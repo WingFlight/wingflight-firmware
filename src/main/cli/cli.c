@@ -3160,6 +3160,7 @@ static void cliMixer(const char *cmdName, char *cmdline)
         PG_RESET(mixerInputs);
         PG_RESET(mixerRules);
         PG_RESET(mixerCurves);
+        mixerUpdateMapping();
     }
     else if (strcasecmp(args[FUNC], "status") == 0) {
         for (unsigned i=1; i<MIXER_OUTPUT_COUNT; i++) {
@@ -3261,6 +3262,7 @@ static void cliMixer(const char *cmdName, char *cmdline)
         else if (count == 2) {
             if (strcasecmp(args[ARG1], "reset") == 0) {
                 PG_RESET(mixerRules);
+                mixerUpdateMapping();
             }
         }
         else if (count == 3) {

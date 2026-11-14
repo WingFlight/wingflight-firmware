@@ -4089,6 +4089,11 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP_SET_MIXER_RULE:
+        // payload: U8 idx plus the 14-byte rule. The rule is applied live,
+        // so refuse a short payload rather than read past the end of it.
+        if (dataSize < 15) {
+            return MSP_RESULT_ERROR;
+        }
         i = sbufReadU8(src);
         if (i >= MIXER_RULE_COUNT) {
             return MSP_RESULT_ERROR;
