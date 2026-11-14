@@ -82,6 +82,10 @@ static fbusMuxMode_e channelMode[FBUS_MUX_FPGA_CHANNELS];
 // A channel set to FBUS fell back to PWM because the send pin is assigned but
 // the FBUS master could not claim it (resource conflict)
 static bool fbusSendPinFailed;
+// FBUS line polarity the master's UART was opened with at boot. The stored
+// fbus_master_inverted can change while running (MSP, CLI), but the UART
+// keeps its polarity until the next boot, and the mode word must match it.
+static bool fbusIdleHigh;
 
 // Modes held over MSP (MSP2_WING_SET_FBUS_MUX_OVERRIDE) in place of the saved
 // ones, e.g. to put FBUS on one output at a time while XACT servos get their
@@ -219,7 +223,7 @@ static uint32_t buildModeWord(void)
     if (motor->motorPwmProtocol == PWM_TYPE_DSHOT600) {
         word |= MUX_WORD_DSHOT600;
     }
-    if (!fbusMasterConfig()->inverted) {
+    if (fbusIdleHigh) {
         word |= MUX_WORD_FBUS_IDLE_HIGH;
     }
 
@@ -332,6 +336,7 @@ void fbusMuxFpgaInit(void)
 {
     const fbusMuxFpgaConfig_t *config = fbusMuxFpgaConfig();
 
+    fbusIdleHigh = !fbusMasterConfig()->inverted;
     resetChannelModes();
 
     if (!config->cresetTag) {
