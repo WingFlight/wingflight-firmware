@@ -1445,10 +1445,12 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     }
 
     case MSP2_WING_FBUS_MASTER_CONFIG: {
-        sbufWriteU8(dst, 1); // payload version -- only the forwarding slots so far
+        sbufWriteU8(dst, 2); // payload version -- 2 adds the port wiring
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
             sbufWriteU8(dst, fbusMasterConfig()->forwardedSensors[i]);
         }
+        sbufWriteU8(dst, fbusMasterConfig()->pinSwap);
+        sbufWriteU8(dst, fbusMasterConfig()->inverted);
         break;
     }
 #endif
@@ -4750,6 +4752,13 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         }
         for (int i = 0; i < FBUS_MASTER_MAX_FORWARDED_SENSORS; i++) {
             fbusMasterConfigMutable()->forwardedSensors[i] = sbufReadU8(src);
+        }
+        // Port wiring, from payload version 2. A client that only knows the
+        // forwarding slots leaves it alone. The port is opened at boot, so
+        // this applies after a reboot.
+        if (sbufBytesRemaining(src) >= 2) {
+            fbusMasterConfigMutable()->pinSwap = sbufReadU8(src) ? 1 : 0;
+            fbusMasterConfigMutable()->inverted = sbufReadU8(src) ? 1 : 0;
         }
         // Forwarding buffers are only loaded from config at boot -- reload
         // them now so the change is live immediately, without a reboot.

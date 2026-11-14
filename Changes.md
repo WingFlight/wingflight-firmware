@@ -3,6 +3,27 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## F.Bus Master Pin Swap and Inversion over MSP
+
+`MSP2_WING_FBUS_MASTER_CONFIG` now carries `fbus_master_pinswap` and
+`fbus_master_inverted`, which could only be set in the CLI. F.Bus output runs
+on the UART's TX pin; the pin swap moves it to the RX pin, which is the SBUS
+connector on boards such as the RF007 and Nexus X/XR.
+
+- Reply, payload version 2, 11 bytes: U8 version, 8 x U8 forwarding slots,
+  U8 `pinSwap`, U8 `inverted`. Version 1 ended after the forwarding slots.
+- `MSP2_WING_SET_FBUS_MASTER_CONFIG`, 10 bytes: 8 x U8 forwarding slots, U8
+  `pinSwap`, U8 `inverted`, with no version byte. Each wiring value is stored
+  as 0 or 1.
+- The 8-byte set request (forwarding slots only) still works and leaves the
+  wiring unchanged.
+- The forwarding slots apply at once. The wiring applies after a reboot,
+  because the port is opened at boot. The FBUS mux FPGA keeps the polarity the
+  port was opened with until then.
+
+The API version is unchanged. Clients tell the two layouts apart by the reply
+length.
+
 ## 24 Servos, PWM or Bus
 
 A servo is no longer a "PWM servo" (S1-S8) or a "bus servo" (S9-S32). There are
