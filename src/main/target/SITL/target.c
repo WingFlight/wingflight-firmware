@@ -318,11 +318,23 @@ void updateState(const fdm_packet* pkt) {
 #endif
 
 
+    // The firmware clock runs at simRate = simulated time / real time. Taken
+    // per packet, two packets that arrive bunched (a sender or host that stalls
+    // and catches up) give a few ms of sim time over a few us of real time, and
+    // the clock races hundreds of times too fast until the next packet - every
+    // firmware timer with it. Measure over a window of at least 50 ms of real
+    // time instead (time-weighted, so bunching averages out), and clamp.
     if (deltaSim < 0.02 && deltaSim > 0) { // simulator should run faster than 50Hz
-//        simRate = simRate * 0.5 + (1e6 * deltaSim / (realtime_now - last_realtime)) * 0.5;
+        static double windowSim, windowReal;
         struct timespec out_ts;
         timeval_sub(&out_ts, &now_ts, &last_ts);
-        simRate = deltaSim / (out_ts.tv_sec + 1e-9*out_ts.tv_nsec);
+        windowSim += deltaSim;
+        windowReal += out_ts.tv_sec + 1e-9*out_ts.tv_nsec;
+        if (windowReal >= 0.05) {
+            simRate = constrainf(windowSim / windowReal, 0.05f, 20.0f);
+            windowSim = 0;
+            windowReal = 0;
+        }
     }
 //    printf("simRate = %lf, millis64 = %lu, millis64_real = %lu, deltaSim = %lf\n", simRate, millis64(), millis64_real(), deltaSim*1e6);
 
@@ -504,8 +516,13 @@ static uint64_t simNanos64(void)
 
     pthread_mutex_lock(&clockLock);
     const uint64_t now = nanos64_real();
-    out += (now - last) * simRate;
-    last = now;
+    // A host clock read on another core can be a few ns behind the last one;
+    // the unsigned difference would wrap and throw the clock far ahead.
+    // Never step back.
+    if (now > last) {
+        out += (now - last) * simRate;
+        last = now;
+    }
     const uint64_t result = out;
     pthread_mutex_unlock(&clockLock);
 

@@ -57,6 +57,7 @@
 #undef BAUD_USER
 #else
 #include <netinet/in.h>
+#include <netinet/tcp.h>   // TCP_NODELAY
 #include <sys/socket.h>
 #endif
 #include <pthread.h>
