@@ -1,100 +1,130 @@
-# Wingflight
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/WingFlight/wingflight-landing-page/master/logos/wf_logo_dark_white.svg">
+    <img src="https://raw.githubusercontent.com/WingFlight/wingflight-landing-page/master/logos/wf_logo_dark.svg" alt="Wingflight" width="420">
+  </picture>
+</p>
 
-[Wingflight](https://github.com/WingFlight) is a Flight Control software suite designed for
-fixed-wing aircraft. It consists of:
+# Wingflight Firmware
 
-- Wingflight Flight Controller Firmware (this repository)
-- Wingflight Configurator, for flashing and configuring the flight controller
-- Wingflight Blackbox Explorer, for analyzing blackbox flight logs
-- Wingflight Lua Scripts, for configuring the flight controller using a transmitter
+Wingflight is open-source flight controller firmware for fixed-wing aircraft: 3D and aerobatic
+planes, jets, gliders and sport models. It is a gyro stabilizer for line-of-sight flying, with the
+setup, tuning and logging tools to go with it.
 
-Wingflight is a fixed-wing fork of [Rotorflight](https://github.com/rotorflight), which is itself
-built on Betaflight 4.3. It's important to note that Wingflight is exclusively designed for
-fixed-wing aircraft; it does _not_ target multi-rotor or helicopter use, unlike its parent project.
+This repository is the firmware. It is for fixed-wing aircraft only; it does not fly helicopters
+or multirotors.
 
+**[Documentation](https://doc.wingflight.org)** ·
+**[Getting started](https://doc.wingflight.org/getting-started/)** ·
+**[Discord](https://discord.gg/aEyyAJTXRw)** ·
+**[Releases](https://github.com/WingFlight/wingflight-firmware/releases)**
 
-## Information
-
-Tutorials, documentation, and flight videos can be found on the [Wingflight GitHub organization](https://github.com/WingFlight).
+> Wingflight is under active development. Firmware is published as numbered snapshots (`0.0.x`),
+> not stable releases, and settings can change between them.
 
 
 ## Features
 
-Wingflight has many features inherited from Rotorflight and Betaflight:
+**Flight control**
 
-* Many receiver protocols: CRSF, S.BUS, FBUS, F.Port, SRXL2, IBUS, XBUS, EXBUS, GHOST, CPPM
-* Support for various telemetry protocols: CSRF, S.Port, FBUS, HoTT, etc.
-* ESC telemetry protocols: Hobbywing, Scorpion, Kontronik, Castle, OMP, ZTW, APD, YGE, XDFly, FLYROTOR
-* Remote configuration and tuning with the transmitter
-  - With knobs / switches assigned to functions
-  - With LUA scripts on EdgeTX, OpenTX and Ethos
-* Extra servo/motor outputs for AUX functions
-* Fully customisable servo/motor mixer
-* Sensors for battery voltage, current, BEC, etc.
-* Advanced gyro filtering
-  - Dynamic RPM based notch filters
-  - Dynamic notch filters based on FFT
-  - Dynamic LPF
-* High-speed Blackbox logging
+* Rate stabilization built for control surfaces, with throttle-based gain attenuation
+* [Attitude Hold](https://doc.wingflight.org/flight-modes/atthold/): holds the attitude the stick
+  was released at, on each axis
+* Angle (self-levelling) and [Trainer](https://doc.wingflight.org/flight-modes/trainer/) modes
+* [Thrust vectoring](https://doc.wingflight.org/configurator/tabs/thrust-vector/), with its own
+  attitude hold for hovering and post-stall flight
+* 3D helpers: Snap Relax, Prop-Hang Relax and Cross-Axis Relax
+* [Auto Trim](https://doc.wingflight.org/flight-modes/auto-trim/), and trims from the transmitter
+* Passthrough and Manual modes for setup and for flying without the gyro
+* [Throttle governor](https://doc.wingflight.org/flight-modes/governor/) for idle hold or RPM control
+* Experimental [GPS return-to-home and loiter](https://doc.wingflight.org/flight-modes/gps-rth/)
 
-Plus lots of features inherited from Betaflight:
+**Outputs**
 
-* Configuration profiles for changing various tuning parameters
-* Rates profiles for changing the stick feel and agility
-* Multiple ESC protocols: PWM, DSHOT, Multishot, etc.
-* Multi-color RGB LEDs
-* GPS support (telemetry & logging only)
+* Up to 24 servos, each on a PWM pin or a bus channel (S.BUS, FBUS)
+* Rule-based mixer: ailerons, elevons, V-tail, flaps, differential thrust and custom layouts
+* Motor protocols: PWM, OneShot, Multishot, DShot, Castle Link and SRXL2
 
-And much more...
+**Receivers and telemetry**
 
-> Note: this feature list is inherited from Rotorflight and hasn't yet been audited for what
-> applies to fixed-wing aircraft specifically (e.g. heli-only features like rotor speed governor,
-> swash/PID tuning, and Tail Torque Assist have been dropped from the list above, but the
-> remaining items still need a fixed-wing accuracy pass).
+* Receivers: CRSF/ELRS, S.BUS, F.Port, FBUS, SRXL2, Spektrum DSM, IBUS, SUMD, XBUS, Jeti EX Bus, GHOST
+* A [backup receiver](https://doc.wingflight.org/flight-modes/backup-rx-input/) that takes over
+  when the main link is lost
+* Telemetry: CRSF, S.Port, FBUS, SRXL2, HoTT, IBUS and Jeti EX Bus
+* ESC telemetry: BLHeli32, Hobbywing, Scorpion, Kontronik, OMP Hobby, ZTW, APD, YGE, FLYROTOR,
+  Graupner, XDFly, FBUS and SRXL2 ESCs
+
+**Tuning and tools**
+
+* PID and rate profiles, switchable in flight
+* Adjustments from transmitter knobs and switches, and logic conditions
+* Configuration from the transmitter with Lua scripts for Ethos and EdgeTX
+* Gyro filtering with dynamic notch and RPM filters
+* High-rate Blackbox logging to onboard flash or SD card
+* Battery voltage, current and BEC sensors, barometer, GPS and RGB LEDs
 
 
-## Hardware support
+## The Wingflight project
 
-Wingflight inherits its supported flight controller boards from Rotorflight (see
-[WingFlight/wingflight-targets](https://github.com/WingFlight/wingflight-targets)), which in turn
-supports all flight controller boards supported by Betaflight 4.3, assuming the board has enough
-suitable I/O pins for connecting all the servos and motors required.
+| | |
+| --- | --- |
+| **Firmware** | This repository |
+| [Configurator](https://github.com/WingFlight/wingflight-configurator) | Flashes and configures the flight controller, on the desktop or in a browser |
+| [Blackbox Explorer](https://github.com/WingFlight/wingflight-blackbox) | Analyses flight logs |
+| [Lua suite for Ethos](https://github.com/WingFlight/wingflight-lua-ethos-suite) | Configuration and dashboard on FrSky Ethos radios |
+| [Lua scripts for EdgeTX](https://github.com/WingFlight/wingflight-lua-edgetx) | Configuration on EdgeTX radios |
+| [Targets](https://github.com/WingFlight/wingflight-targets) | Board configurations |
+| [Documentation](https://github.com/WingFlight/wingflight-docs) | Source of [doc.wingflight.org](https://doc.wingflight.org) |
 
-Wingflight supports STM32F405, STM32F722, STM32F745 and STM32H743 MCUs from ST.
 
-The support for lesser MCUs like STM32G474 and STM32F411 is EOL and will be removed soon.
+## Hardware
+
+Wingflight builds one firmware per MCU family: STM32F405, STM32F411, STM32F7X2, STM32F745, STM32G47X
+and STM32H743. The board itself (pins and defaults) is a configuration applied on top, kept in
+[wingflight-targets](https://github.com/WingFlight/wingflight-targets). A board needs enough
+suitable outputs for the model's servos and motors.
+
+A flight controller running Rotorflight can be converted with
+[Rotorflight to Wingflight](https://github.com/WingFlight/rotorflight-to-wingflight).
 
 
 ## Installation
 
-Download and flash the Wingflight firmware with the
-[Wingflight Configurator](https://github.com/WingFlight/wingflight-configurator/releases).
+Flash the firmware with the
+[Wingflight Configurator](https://github.com/WingFlight/wingflight-configurator/releases). It picks
+the right firmware and board configuration for you. See
+[Flashing the Firmware](https://doc.wingflight.org/getting-started/flashing-the-firmware/).
 
-Flashing the Wingflight firmware with any other flashing tools is not recommended.
+Flashing with other tools is not recommended.
+
+
+## Building
+
+```
+make arm_sdk_install      # once: installs the ARM toolchain under tools/
+make TARGET=STM32F7X2     # one target; `make unified` builds all
+make test                 # unit tests
+```
+
+See [Building the Firmware](https://doc.wingflight.org/contributing/building-the-firmware/) and
+[AGENTS.md](AGENTS.md) for the layout of the code and the rules for changing it.
 
 
 ## Contributing
 
-Wingflight is an open-source community project. Anybody can join in and help to make it better by:
+Wingflight is a community project. You can help by:
 
-* helping other users in [GitHub Discussions](https://github.com/WingFlight) or other online forums
-* [reporting](https://github.com/WingFlight) bugs and issues, and suggesting improvements
-* testing new software versions, new features and fixes; and providing feedback
-* participating in discussions on new features
-* contributing to the software development - fixing bugs, implementing new features and improvements
-* translating Wingflight Configurator into a new language, or helping to maintain an existing translation
+* testing snapshots and reporting what you find, with a Blackbox log where it helps
+* [reporting bugs](https://github.com/WingFlight/wingflight-firmware/issues) and suggesting improvements
+* helping other pilots on [Discord](https://discord.gg/aEyyAJTXRw)
+* fixing bugs and adding features (see [Contributing](https://doc.wingflight.org/contributing/))
+* improving the [documentation](https://github.com/WingFlight/wingflight-docs)
 
 
 ## Origins
 
-Wingflight is software that is **open source** and is available free of charge without warranty.
+Wingflight is open source and free of charge, with no warranty.
 
-Wingflight is forked from [Rotorflight](https://github.com/rotorflight), which in turn is forked from
-[Betaflight](https://github.com/betaflight), which in turn is forked from [Cleanflight](https://github.com/cleanflight).
-
-Big thanks to everyone who has contributed along the journey!
-
-
-## Contact
-
-Team Wingflight can be contacted via [GitHub Issues and Discussions](https://github.com/WingFlight).
+It is a fork of [Rotorflight](https://github.com/rotorflight), which is a fork of
+[Betaflight](https://github.com/betaflight) 4.3, which is a fork of
+[Cleanflight](https://github.com/cleanflight). Thank you to everyone who contributed along the way.
