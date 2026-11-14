@@ -322,6 +322,7 @@ uint64_t nanos64_real(void);
 uint64_t micros64_real(void);
 uint64_t millis64_real(void);
 void delayMicroseconds_real(uint32_t us);
+void simLoopIdle(void);       // the main loop's pause between scheduler passes
 uint64_t micros64(void);
 uint64_t millis64(void);
 
