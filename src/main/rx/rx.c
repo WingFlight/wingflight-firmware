@@ -292,6 +292,7 @@ typedef struct rxSerialTrialRuntime_s {
     uint8_t savedCrsfUseNegotiatedBaud;
     uint8_t savedSbusBaudFast;
     uint8_t savedSrxl2BaudFast;
+    bool hasSavedSettings;      // true from the capture of the above until they are put back
 } rxSerialTrialRuntime_t;
 
 static rxSerialTrialRuntime_t rxSerialTrial = { .state = RX_SERIAL_TRIAL_IDLE };
@@ -375,6 +376,7 @@ static void rxSerialTrialRestore(void)
     rxConfigMutable()->crsf_use_negotiated_baud = rxSerialTrial.savedCrsfUseNegotiatedBaud;
     rxConfigMutable()->sbus_baud_fast    = rxSerialTrial.savedSbusBaudFast;
     rxConfigMutable()->srxl2_baud_fast   = rxSerialTrial.savedSrxl2BaudFast;
+    rxSerialTrial.hasSavedSettings = false;
 
     rxSerialTrialReinit();
 }
@@ -401,6 +403,7 @@ bool rxSerialTrialStart(void)
     rxSerialTrial.savedCrsfUseNegotiatedBaud = rxConfig()->crsf_use_negotiated_baud;
     rxSerialTrial.savedSbusBaudFast = rxConfig()->sbus_baud_fast;
     rxSerialTrial.savedSrxl2BaudFast = rxConfig()->srxl2_baud_fast;
+    rxSerialTrial.hasSavedSettings = true;
 
     rxConfigMutable()->crsf_use_negotiated_baud = 0;
     rxConfigMutable()->sbus_baud_fast = 0;
@@ -442,7 +445,13 @@ void rxSerialTrialStop(void)
         return;
     }
 
-    rxSerialTrialRestore();
+    // Only captured settings that are still outstanding are put back. A
+    // rejected start captured nothing: restoring then would write stale values
+    // (zeros on a fresh boot) over the receiver settings in use. A rejected
+    // start after a success still owes the restore of that success.
+    if (rxSerialTrial.hasSavedSettings) {
+        rxSerialTrialRestore();
+    }
     rxSerialTrial.state = RX_SERIAL_TRIAL_IDLE;
 }
 

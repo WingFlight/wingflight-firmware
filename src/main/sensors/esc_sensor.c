@@ -4580,6 +4580,7 @@ typedef struct escSensorTrialRuntime_s {
     timeMs_t lastPollAt;       // watchdog keep-alive, bumped by every status query
     uint8_t savedHalfDuplex;
     uint8_t savedPinSwap;
+    bool hasSavedWiring;       // true from the capture of the above until it is put back
     bool taskEnabledByTrial;
 } escSensorTrialRuntime_t;
 
@@ -4667,6 +4668,7 @@ static void escSensorTrialRestore(void)
 {
     escSensorConfigMutable()->halfDuplex = escSensorTrial.savedHalfDuplex;
     escSensorConfigMutable()->pinSwap = escSensorTrial.savedPinSwap;
+    escSensorTrial.hasSavedWiring = false;
 
     escSensorTrialReinit();
 }
@@ -4703,16 +4705,21 @@ bool escSensorTrialStart(void)
         return false;
     }
 
-    taskInfo_t escTaskInfo;
-    getTaskInfo(TASK_ESC_SENSOR, &escTaskInfo);
-    escSensorTrial.taskEnabledByTrial = !escTaskInfo.isEnabled;
-    if (escSensorTrial.taskEnabledByTrial) {
-        rescheduleTask(TASK_ESC_SENSOR, TASK_PERIOD_HZ(escSensorConfig()->update_hz));
-        setTaskEnabled(TASK_ESC_SENSOR, true);
+    // A task an earlier run enabled is still this trial's to release: a
+    // fresh look would see it running and forget that.
+    if (!escSensorTrial.taskEnabledByTrial) {
+        taskInfo_t escTaskInfo;
+        getTaskInfo(TASK_ESC_SENSOR, &escTaskInfo);
+        escSensorTrial.taskEnabledByTrial = !escTaskInfo.isEnabled;
+        if (escSensorTrial.taskEnabledByTrial) {
+            rescheduleTask(TASK_ESC_SENSOR, TASK_PERIOD_HZ(escSensorConfig()->update_hz));
+            setTaskEnabled(TASK_ESC_SENSOR, true);
+        }
     }
 
     escSensorTrial.savedHalfDuplex = escSensorConfig()->halfDuplex;
     escSensorTrial.savedPinSwap = escSensorConfig()->pinSwap;
+    escSensorTrial.hasSavedWiring = true;
 
     // Walk outward from the combo already configured, by Hamming distance -
     // same reasoning as the RX version: most real miswiring is one bit
@@ -4748,7 +4755,14 @@ void escSensorTrialStop(void)
         return;
     }
 
-    escSensorTrialRestore();
+    // Only a captured wiring that is still outstanding is put back. A
+    // rejected start captured nothing: restoring then would write stale values
+    // (zeros on a fresh boot) over the half duplex and pin swap in use. A
+    // rejected start after a success still owes the restore of that success,
+    // and the release of a task it enabled.
+    if (escSensorTrial.hasSavedWiring) {
+        escSensorTrialRestore();
+    }
     escSensorTrialReleaseTask();
     escSensorTrial.state = ESC_SENSOR_TRIAL_IDLE;
 }

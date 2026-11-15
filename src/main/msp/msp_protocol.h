@@ -373,4 +373,9 @@
 // the channel carrying motor 2 (0 = single motor). CLI srxl2esc_* settings.
 #define MSP2_WING_SRXL2_ESC_CONFIG            0x5F35
 #define MSP2_WING_SET_SRXL2_ESC_CONFIG        0x5F36
+// F.Bus master wiring trial: finds the pin swap and polarity on which a device
+// answers. Request: U8 action (0 poll, 1 start, 2 stop), optional. Reply: U8
+// state, U8 combo index, U8 combo count, U8 pinSwap, U8 inverted, U16 valid
+// frames on this wiring, U8 port open.
+#define MSP2_WING_FBUS_MASTER_TRIAL           0x5F37
 #define MSP_V2_FRAME                         255

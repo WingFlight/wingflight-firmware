@@ -2621,6 +2621,32 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         break;
 #endif
 
+#ifdef USE_FBUS_MASTER
+    case MSP2_WING_FBUS_MASTER_TRIAL:
+        // action: 0 = poll only, 1 = (re)start a scan, 2 = stop and put the
+        // wiring back. The same shape as MSP2_WING_ESC_SENSOR_TRIAL.
+        if (sbufBytesRemaining(src) >= 1) {
+            const uint8_t action = sbufReadU8(src);
+            if (action == 1) {
+                fbusMasterTrialStart();
+            } else if (action == 2) {
+                fbusMasterTrialStop();
+            }
+        }
+
+        {
+            const fbusMasterTrialStatus_t status = fbusMasterTrialGetStatus();
+            sbufWriteU8(dst, status.state);
+            sbufWriteU8(dst, status.comboIndex);
+            sbufWriteU8(dst, status.comboCount);
+            sbufWriteU8(dst, status.pinSwap);
+            sbufWriteU8(dst, status.inverted);
+            sbufWriteU16(dst, status.frameDelta);
+            sbufWriteU8(dst, status.portOpen);
+        }
+        break;
+#endif
+
 #ifdef USE_ESC_SENSOR
     case MSP2_WING_ESC_SENSOR_TRIAL:
         // action: 0 = poll only, 1 = (re)start a scan, 2 = stop/cancel - same
@@ -4754,11 +4780,27 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
             fbusMasterConfigMutable()->forwardedSensors[i] = sbufReadU8(src);
         }
         // Port wiring, from payload version 2. A client that only knows the
-        // forwarding slots leaves it alone. The port is opened at boot, so
-        // this applies after a reboot.
+        // forwarding slots leaves it alone. A change is applied at once when
+        // the port can be reopened (fbusMasterApplyWiring()), and at the next
+        // boot otherwise.
         if (sbufBytesRemaining(src) >= 2) {
-            fbusMasterConfigMutable()->pinSwap = sbufReadU8(src) ? 1 : 0;
-            fbusMasterConfigMutable()->inverted = sbufReadU8(src) ? 1 : 0;
+            const uint8_t pinSwap = sbufReadU8(src) ? 1 : 0;
+            const uint8_t inverted = sbufReadU8(src) ? 1 : 0;
+            // Not while a wiring trial runs: it owns these two settings, and
+            // a value written under it would be reported as the wiring it
+            // tested.
+#ifdef USE_FBUS_MASTER
+            const bool trialRunning = fbusMasterTrialIsRunning();
+#else
+            const bool trialRunning = false;
+#endif
+            if (!trialRunning && (pinSwap != fbusMasterConfig()->pinSwap || inverted != fbusMasterConfig()->inverted)) {
+                fbusMasterConfigMutable()->pinSwap = pinSwap;
+                fbusMasterConfigMutable()->inverted = inverted;
+#ifdef USE_FBUS_MASTER
+                fbusMasterApplyWiring();
+#endif
+            }
         }
         // Forwarding buffers are only loaded from config at boot -- reload
         // them now so the change is live immediately, without a reboot.

@@ -3,6 +3,38 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## F.Bus Master Wiring Detection
+
+New `MSP2_WING_FBUS_MASTER_TRIAL` (0x5F37) finds which pin and polarity the
+F.Bus output is on, the way `MSP2_WING_ESC_SENSOR_TRIAL` does for ESC telemetry.
+The flight controller reopens the F.Bus port with each combination of
+`fbus_master_pinswap` and `fbus_master_inverted`, starting from the one already
+set, until a device on the line answers.
+
+- Request: U8 action, optional: 0 poll, 1 start, 2 stop and put the wiring back.
+- Reply, 8 bytes: U8 state (0 idle, 1 running, 2 success, 3 failed, 4
+  rejected), U8 combination index, U8 combination count, U8 `pinSwap`, U8
+  `inverted` (the wiring in use now), U16 valid frames received on it, U8 port
+  open.
+- Success leaves the found wiring live and in the configuration in RAM; the
+  client saves it. Stop after a success puts the old wiring back.
+- Each combination is tried for 1.5 s. A run that is not polled for 3 s, or a
+  model that is armed, restores the old wiring.
+- Rejected when no F.Bus port is open (the port function needs a restart
+  first), when armed, and on boards with an F.Bus send pin (the FBUS mux): the
+  mux is told the line polarity at boot.
+
+`MSP2_WING_SET_FBUS_MASTER_CONFIG` now applies a pin swap or inversion change
+at once under the same conditions, by reopening the port. Otherwise the change
+still applies at the next boot.
+
+Also fixed: a stop sent after a rejected start of the ESC telemetry trial or
+the receiver trial restored wiring settings that were never saved (zeros on a
+fresh boot) over the ones in use, in RAM.
+
+The API version is unchanged. Firmware without the command answers it with no
+payload.
+
 ## F.Bus Master Pin Swap and Inversion over MSP
 
 `MSP2_WING_FBUS_MASTER_CONFIG` now carries `fbus_master_pinswap` and
