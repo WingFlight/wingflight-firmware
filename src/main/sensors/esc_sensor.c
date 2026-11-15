@@ -4748,6 +4748,14 @@ void escSensorTrialStop(void)
         return;
     }
 
+    // A rejected start saved no wiring, so there is none to put back:
+    // restoring would write stale values (zeros on a fresh boot) over the
+    // half duplex and pin swap in use.
+    if (escSensorTrial.state == ESC_SENSOR_TRIAL_REJECTED) {
+        escSensorTrial.state = ESC_SENSOR_TRIAL_IDLE;
+        return;
+    }
+
     escSensorTrialRestore();
     escSensorTrialReleaseTask();
     escSensorTrial.state = ESC_SENSOR_TRIAL_IDLE;

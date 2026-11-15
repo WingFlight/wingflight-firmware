@@ -93,6 +93,13 @@ uint8_t buffer[FBUS_MASTER_BUFFER_SIZE] = {0};
 static timeUs_t nextTelemetryPollTimeUs = 0;
 static timeUs_t sensorDiscoveryEndTimeUs = 0;
 
+// Checksum-valid frames received from devices on the line. The wiring trial
+// counts them: nothing arrives on the wrong pin, and a wrong polarity never
+// passes the checksum.
+static uint32_t validFrameCount = 0;
+
+static void fbusMasterTrialTick(void);
+
 fbusMasterPayloadState_e fbusMasterPayloadState = FBUS_MASTER_TELEMETRY;
 fbusMasterTelemetryState_e fbusMasterTelemetryState = FBUS_MASTER_SCAN_PHY_ID;
 
@@ -526,6 +533,7 @@ static void processDownlinkFrame(uint8_t *data)
         }
 
         downlink.phyID = decodedPhyId;
+        validFrameCount++;
         if (fbusMasterTelemetryState == FBUS_MASTER_SCAN_PHY_ID) {
             bool alreadyInList = false;
             for (uint8_t i = 0; i < physIdsfound; i++) {
@@ -616,6 +624,8 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
 {
     if (!fbusMasterPort)
         return;
+
+    fbusMasterTrialTick();
 
     // Keep derived FBUS sensor states (timeouts/GPS mirrors) updated.
     fbusSensorUpdate(currentTimeUs);
@@ -708,6 +718,182 @@ static void fbusMasterInitSendPin(void)
 bool fbusMasterIsEnabled(void)
 {
     return fbusMasterPort != NULL;
+}
+
+// --- Wiring: which pin and polarity the line is on ---------------------------
+//
+// F.Bus runs half-duplex on the UART's TX pin, or on its RX pin with
+// fbus_master_pinswap, and inverted or not (fbus_master_inverted). Devices on
+// the line answer the master's polls, so the wiring can be found by trying
+// each combination until one answers: the same start / poll / stop shape as
+// the ESC telemetry trial (sensors/esc_sensor.c) and the receiver one
+// (rx/rx.c).
+
+#define FBUS_MASTER_TRIAL_COMBO_COUNT   4
+// One pass over every physical ID takes well under half a second at the
+// slowest telemetry rate; devices that have just seen the line change need a
+// moment to answer again.
+#define FBUS_MASTER_TRIAL_SETTLE_MS     1500
+#define FBUS_MASTER_TRIAL_MIN_FRAMES    3
+#define FBUS_MASTER_TRIAL_WATCHDOG_MS   3000
+
+static struct {
+    uint8_t state;          // fbusMasterTrialState_e
+    uint8_t comboOrder[FBUS_MASTER_TRIAL_COMBO_COUNT];
+    uint8_t comboIndex;
+    uint8_t savedPinSwap;
+    uint8_t savedInverted;
+    timeMs_t comboStartedAt;
+    timeMs_t lastPollAt;
+    uint32_t comboBaselineFrameCount;
+} fbusMasterTrial;
+
+// Whether the port can be reopened while running. Not with a send pin (an
+// FBUS mux): the mux was told the line polarity at boot and the pin is
+// already claimed.
+static bool fbusMasterCanReopen(void)
+{
+    return fbusMasterPort != NULL && !fbusMasterConfig()->sendPin && !ARMING_FLAG(ARMED);
+}
+
+// Closing the old port first matters: openSerialPort() refuses an identifier
+// still marked in use, which would leave the master without a port.
+static void fbusMasterReopen(void)
+{
+    closeSerialPort(fbusMasterPort);
+    fbusMasterPort = NULL;
+    readBytes = 0;
+    readIngoreBytes = 0;
+    fbusMasterInit();
+}
+
+bool fbusMasterApplyWiring(void)
+{
+    if (!fbusMasterCanReopen() || fbusMasterTrial.state == FBUS_MASTER_TRIAL_RUNNING) {
+        return false;
+    }
+    fbusMasterReopen();
+    return true;
+}
+
+static void fbusMasterTrialApplyCombo(uint8_t combo)
+{
+    fbusMasterConfigMutable()->pinSwap = (combo & (1 << 0)) ? 1 : 0;
+    fbusMasterConfigMutable()->inverted = (combo & (1 << 1)) ? 1 : 0;
+
+    fbusMasterReopen();
+
+    fbusMasterTrial.comboStartedAt = millis();
+    fbusMasterTrial.comboBaselineFrameCount = validFrameCount;
+}
+
+static void fbusMasterTrialRestore(void)
+{
+    fbusMasterConfigMutable()->pinSwap = fbusMasterTrial.savedPinSwap;
+    fbusMasterConfigMutable()->inverted = fbusMasterTrial.savedInverted;
+
+    fbusMasterReopen();
+}
+
+bool fbusMasterTrialStart(void)
+{
+    if (fbusMasterTrial.state == FBUS_MASTER_TRIAL_RUNNING) {
+        return false;
+    }
+
+    if (!fbusMasterCanReopen()) {
+        fbusMasterTrial.state = FBUS_MASTER_TRIAL_REJECTED;
+        return false;
+    }
+
+    fbusMasterTrial.savedPinSwap = fbusMasterConfig()->pinSwap ? 1 : 0;
+    fbusMasterTrial.savedInverted = fbusMasterConfig()->inverted ? 1 : 0;
+
+    // Outward from the wiring already set, by the number of settings that
+    // differ: most miswiring is one setting wrong, and the wiring already in
+    // use is confirmed first.
+    const uint8_t current = (fbusMasterTrial.savedPinSwap ? (1 << 0) : 0)
+        | (fbusMasterTrial.savedInverted ? (1 << 1) : 0);
+    int n = 0;
+    for (int distance = 0; distance <= 2; distance++) {
+        for (int combo = 0; combo < FBUS_MASTER_TRIAL_COMBO_COUNT; combo++) {
+            if ((int)BITCOUNT((uint8_t)(combo ^ current)) == distance) {
+                fbusMasterTrial.comboOrder[n++] = (uint8_t)combo;
+            }
+        }
+    }
+
+    fbusMasterTrial.comboIndex = 0;
+    fbusMasterTrial.lastPollAt = millis();
+    fbusMasterTrial.state = FBUS_MASTER_TRIAL_RUNNING;
+    fbusMasterTrialApplyCombo(fbusMasterTrial.comboOrder[0]);
+
+    return true;
+}
+
+void fbusMasterTrialStop(void)
+{
+    // Only a run that started has a wiring to put back. A rejected start
+    // saved nothing, and a failed run has already restored.
+    if (fbusMasterTrial.state == FBUS_MASTER_TRIAL_RUNNING || fbusMasterTrial.state == FBUS_MASTER_TRIAL_SUCCESS) {
+        fbusMasterTrialRestore();
+    }
+    fbusMasterTrial.state = FBUS_MASTER_TRIAL_IDLE;
+}
+
+static void fbusMasterTrialTick(void)
+{
+    if (fbusMasterTrial.state != FBUS_MASTER_TRIAL_RUNNING) {
+        return;
+    }
+
+    const timeMs_t now = millis();
+
+    if (cmp32(now, fbusMasterTrial.lastPollAt) > FBUS_MASTER_TRIAL_WATCHDOG_MS || ARMING_FLAG(ARMED)) {
+        // The client stopped polling, or the model was armed: the line must
+        // not stay on a wiring nobody chose.
+        fbusMasterTrialRestore();
+        fbusMasterTrial.state = FBUS_MASTER_TRIAL_IDLE;
+        return;
+    }
+
+    if (validFrameCount - fbusMasterTrial.comboBaselineFrameCount >= FBUS_MASTER_TRIAL_MIN_FRAMES) {
+        // Left live, and in the config in RAM: the client saves it.
+        fbusMasterTrial.state = FBUS_MASTER_TRIAL_SUCCESS;
+        return;
+    }
+
+    if (cmp32(now, fbusMasterTrial.comboStartedAt) < FBUS_MASTER_TRIAL_SETTLE_MS) {
+        return;
+    }
+
+    if (fbusMasterTrial.comboIndex + 1 >= FBUS_MASTER_TRIAL_COMBO_COUNT) {
+        fbusMasterTrialRestore();
+        fbusMasterTrial.state = FBUS_MASTER_TRIAL_FAILED;
+        return;
+    }
+
+    fbusMasterTrial.comboIndex++;
+    fbusMasterTrialApplyCombo(fbusMasterTrial.comboOrder[fbusMasterTrial.comboIndex]);
+}
+
+fbusMasterTrialStatus_t fbusMasterTrialGetStatus(void)
+{
+    const uint32_t frameDelta = validFrameCount - fbusMasterTrial.comboBaselineFrameCount;
+
+    const fbusMasterTrialStatus_t status = {
+        .state = fbusMasterTrial.state,
+        .comboIndex = fbusMasterTrial.comboIndex,
+        .comboCount = FBUS_MASTER_TRIAL_COMBO_COUNT,
+        .pinSwap = fbusMasterConfig()->pinSwap ? 1 : 0,
+        .inverted = fbusMasterConfig()->inverted ? 1 : 0,
+        .frameDelta = (uint16_t)MIN(frameDelta, 0xFFFFu),
+        .portOpen = fbusMasterPort != NULL,
+    };
+
+    fbusMasterTrial.lastPollAt = millis(); // watchdog keep-alive
+
+    return status;
 }
 
 void fbusMasterInit(void)

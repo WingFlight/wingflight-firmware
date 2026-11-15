@@ -118,6 +118,42 @@ void fbusMasterInit(void);
 // Restarts sensor discovery (used by XACT servo programming before a scan)
 void fbusMasterStartDiscovery(void);
 
+// Reopens the port with fbus_master_pinswap and fbus_master_inverted as they
+// are now, so a change applies without a restart. False, and nothing done,
+// when the master has no port, is armed, has a send pin (FBUS mux) or a
+// wiring trial is running: the change then applies at the next boot.
+bool fbusMasterApplyWiring(void);
+
+// Wiring trial: finds the pin swap and polarity on which a device answers.
+// Keep fbusMasterTrialState_e in sync with the Configurator and the Lua
+// suite.
+typedef enum {
+    FBUS_MASTER_TRIAL_IDLE = 0,
+    FBUS_MASTER_TRIAL_RUNNING,
+    FBUS_MASTER_TRIAL_SUCCESS,      // a device answers; the wiring is live and in the config (RAM)
+    FBUS_MASTER_TRIAL_FAILED,       // nothing answered on any wiring; the old one is back
+    FBUS_MASTER_TRIAL_REJECTED,     // no F.Bus port open, armed, or an FBUS mux board
+} fbusMasterTrialState_e;
+
+typedef struct fbusMasterTrialStatus_s {
+    uint8_t state;          // fbusMasterTrialState_e
+    uint8_t comboIndex;     // 0-based, the wiring being tried
+    uint8_t comboCount;
+    uint8_t pinSwap;        // the wiring in use now
+    uint8_t inverted;
+    uint16_t frameDelta;    // valid frames since this wiring was applied
+    uint8_t portOpen;
+} fbusMasterTrialStatus_t;
+
+bool fbusMasterTrialStart(void);
+// Ends a run and puts the wiring back as it was before it. After a success
+// this undoes the found wiring: a client that wants to keep it saves without
+// stopping.
+void fbusMasterTrialStop(void);
+// Also the watchdog keep-alive: a running trial restores the wiring if this
+// is not called for three seconds.
+fbusMasterTrialStatus_t fbusMasterTrialGetStatus(void);
+
 // A read, write or state change from the radio for a device on the FBUS master line:
 // Ethos Device config (sent to ID 0x1B, the device chosen by its App ID) or a request
 // sent to the device's own ID. replyId is the bare 5-bit ID the radio sent it to, where

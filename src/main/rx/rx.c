@@ -442,6 +442,14 @@ void rxSerialTrialStop(void)
         return;
     }
 
+    // A rejected start saved no wiring, so there is none to put back:
+    // restoring would write stale values (zeros on a fresh boot) over the
+    // receiver settings in use.
+    if (rxSerialTrial.state == RX_SERIAL_TRIAL_REJECTED) {
+        rxSerialTrial.state = RX_SERIAL_TRIAL_IDLE;
+        return;
+    }
+
     rxSerialTrialRestore();
     rxSerialTrial.state = RX_SERIAL_TRIAL_IDLE;
 }
