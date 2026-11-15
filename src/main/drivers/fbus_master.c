@@ -627,6 +627,10 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
 
     fbusMasterTrialTick();
 
+    // The trial reopens the port, and can end without one.
+    if (!fbusMasterPort)
+        return;
+
     // Keep derived FBUS sensor states (timeouts/GPS mirrors) updated.
     fbusSensorUpdate(currentTimeUs);
 
@@ -743,6 +747,9 @@ static struct {
     uint8_t comboIndex;
     uint8_t savedPinSwap;
     uint8_t savedInverted;
+    // True from the capture of the wiring above until it is put back: a stop
+    // restores exactly when there is something outstanding to restore.
+    bool hasSavedWiring;
     timeMs_t comboStartedAt;
     timeMs_t lastPollAt;
     uint32_t comboBaselineFrameCount;
@@ -751,9 +758,13 @@ static struct {
 // Whether the port can be reopened while running. Not with a send pin (an
 // FBUS mux): the mux was told the line polarity at boot and the pin is
 // already claimed.
+// And not once the F.Bus function has been taken off the port
+// (MSP_SET_SERIAL_CONFIG can do that while the old port stays open):
+// fbusMasterInit() would find no port to open and leave the master without one.
 static bool fbusMasterCanReopen(void)
 {
-    return fbusMasterPort != NULL && !fbusMasterConfig()->sendPin && !ARMING_FLAG(ARMED);
+    return fbusMasterPort != NULL && findSerialPortConfig(FUNCTION_FBUS_MASTER) != NULL
+        && !fbusMasterConfig()->sendPin && !ARMING_FLAG(ARMED);
 }
 
 // Closing the old port first matters: openSerialPort() refuses an identifier
@@ -791,8 +802,18 @@ static void fbusMasterTrialRestore(void)
 {
     fbusMasterConfigMutable()->pinSwap = fbusMasterTrial.savedPinSwap;
     fbusMasterConfigMutable()->inverted = fbusMasterTrial.savedInverted;
+    fbusMasterTrial.hasSavedWiring = false;
 
-    fbusMasterReopen();
+    // Without the port function there is nothing to reopen; the settings are
+    // back, and the next boot uses them.
+    if (fbusMasterPort != NULL && findSerialPortConfig(FUNCTION_FBUS_MASTER) != NULL) {
+        fbusMasterReopen();
+    }
+}
+
+bool fbusMasterTrialIsRunning(void)
+{
+    return fbusMasterTrial.state == FBUS_MASTER_TRIAL_RUNNING;
 }
 
 bool fbusMasterTrialStart(void)
@@ -808,6 +829,7 @@ bool fbusMasterTrialStart(void)
 
     fbusMasterTrial.savedPinSwap = fbusMasterConfig()->pinSwap ? 1 : 0;
     fbusMasterTrial.savedInverted = fbusMasterConfig()->inverted ? 1 : 0;
+    fbusMasterTrial.hasSavedWiring = true;
 
     // Outward from the wiring already set, by the number of settings that
     // differ: most miswiring is one setting wrong, and the wiring already in
@@ -833,9 +855,10 @@ bool fbusMasterTrialStart(void)
 
 void fbusMasterTrialStop(void)
 {
-    // Only a run that started has a wiring to put back. A rejected start
-    // saved nothing, and a failed run has already restored.
-    if (fbusMasterTrial.state == FBUS_MASTER_TRIAL_RUNNING || fbusMasterTrial.state == FBUS_MASTER_TRIAL_SUCCESS) {
+    // Only a captured wiring that is still outstanding is put back. A
+    // rejected start captured nothing, and a failed run has already restored;
+    // a rejected start after a success still owes the restore of that success.
+    if (fbusMasterTrial.hasSavedWiring) {
         fbusMasterTrialRestore();
     }
     fbusMasterTrial.state = FBUS_MASTER_TRIAL_IDLE;
@@ -849,9 +872,11 @@ static void fbusMasterTrialTick(void)
 
     const timeMs_t now = millis();
 
-    if (cmp32(now, fbusMasterTrial.lastPollAt) > FBUS_MASTER_TRIAL_WATCHDOG_MS || ARMING_FLAG(ARMED)) {
-        // The client stopped polling, or the model was armed: the line must
-        // not stay on a wiring nobody chose.
+    if (cmp32(now, fbusMasterTrial.lastPollAt) > FBUS_MASTER_TRIAL_WATCHDOG_MS || ARMING_FLAG(ARMED)
+        || findSerialPortConfig(FUNCTION_FBUS_MASTER) == NULL) {
+        // The client stopped polling, the model was armed, or the F.Bus
+        // function was taken off the port: the line must not stay on a wiring
+        // nobody chose.
         fbusMasterTrialRestore();
         fbusMasterTrial.state = FBUS_MASTER_TRIAL_IDLE;
         return;

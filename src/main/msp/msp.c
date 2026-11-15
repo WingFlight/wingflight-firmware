@@ -4786,7 +4786,15 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         if (sbufBytesRemaining(src) >= 2) {
             const uint8_t pinSwap = sbufReadU8(src) ? 1 : 0;
             const uint8_t inverted = sbufReadU8(src) ? 1 : 0;
-            if (pinSwap != fbusMasterConfig()->pinSwap || inverted != fbusMasterConfig()->inverted) {
+            // Not while a wiring trial runs: it owns these two settings, and
+            // a value written under it would be reported as the wiring it
+            // tested.
+#ifdef USE_FBUS_MASTER
+            const bool trialRunning = fbusMasterTrialIsRunning();
+#else
+            const bool trialRunning = false;
+#endif
+            if (!trialRunning && (pinSwap != fbusMasterConfig()->pinSwap || inverted != fbusMasterConfig()->inverted)) {
                 fbusMasterConfigMutable()->pinSwap = pinSwap;
                 fbusMasterConfigMutable()->inverted = inverted;
 #ifdef USE_FBUS_MASTER

@@ -146,6 +146,8 @@ typedef struct fbusMasterTrialStatus_s {
 } fbusMasterTrialStatus_t;
 
 bool fbusMasterTrialStart(void);
+// While it runs the trial owns the pin swap and inversion in the config.
+bool fbusMasterTrialIsRunning(void);
 // Ends a run and puts the wiring back as it was before it. After a success
 // this undoes the found wiring: a client that wants to keep it saves without
 // stopping.
