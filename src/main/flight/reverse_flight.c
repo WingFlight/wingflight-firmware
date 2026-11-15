@@ -78,6 +78,12 @@
 // Without an altitude estimate, or with reverse_vario_crossover 0, the estimate alone
 // decides as before.
 //
+// The surface gyro only reverses while the direction is latched reverse, i.e. after the
+// throttle went below neutral. With the latch forward its factor is held at zero or
+// above: where the estimate or the measured motion says the surfaces work reversed (a
+// climb running out with the motor stopped, a tail slide at low forward throttle, the
+// moment after reversing back to forward), the gyro fades out instead.
+//
 // Pure apart from the debug output: the config comes in through
 // reverseFlightInit() and the flight state through reverseFlightSetMotion() and
 // reverseFlightUpdate(), so it can be unit tested on its own.
@@ -324,10 +330,21 @@ void reverseFlightUpdate(float stickThrottle, bool armed, bool airborne, float d
                 rf.state = (rf.dir > 0) ? REVERSE_STATE_FORWARD : REVERSE_STATE_REVERSE;
         }
 
-        // In a vertical line without prop wash the measured motion decides. Where it
-        // dominates with the motor running, the state follows it: HANDOVER while thrust
-        // and motion disagree (the loops hold their I-terms), as above.
-        if (applyMeasuredMotion() >= 0.5f && command != 0) {
+        // In a vertical line without prop wash the measured motion decides.
+        const float measuredWeight = applyMeasuredMotion();
+
+        // With the direction latched forward the throttle has not been below neutral since
+        // the last reversal: the surface gyro may fade out there, but it never reverses.
+        // Without this, a vertical line with the motor stopped or at low forward thrust
+        // (a climb running out, a tail slide out of a torque roll) could reverse it from
+        // the vario alone, which the pilot can't tell from the stick.
+        if (rf.dir > 0 && rf.surfaceFactor < 0)
+            rf.surfaceFactor = 0;
+
+        // Where the measured motion dominates with the motor running, the state follows
+        // it: HANDOVER while thrust and motion disagree (the loops hold their I-terms),
+        // as above.
+        if (measuredWeight >= 0.5f && command != 0) {
             if (rf.surfaceFactor * rf.dir > 0)
                 rf.state = (rf.dir > 0) ? REVERSE_STATE_FORWARD : REVERSE_STATE_REVERSE;
             else

@@ -506,3 +506,58 @@ TEST_F(ReverseFlightMotionTest, ForwardThrustFadesTheMeasurementOut)
     EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), 1.0f);
     EXPECT_EQ(reverseFlightGetState(), REVERSE_STATE_FORWARD);
 }
+
+// The surface gyro only reverses with the direction latched reverse. With the latch forward
+// (the throttle hasn't been below neutral since) it fades out instead, whatever the
+// estimate or the measured motion say.
+
+TEST_F(ReverseFlightMotionTest, ClimbRunningOutWithTheMotorStoppedDoesNotReverse)
+{
+    fly(362, 2.0f);
+    noseUp = 0.9f;                  // vertical climb, slowing down: 1.5 m/s nose-first
+    vario = 1.5f * noseUp;
+    motionValid = true;
+    fly(0, 0.5f);                   // stick to neutral, motor stopped
+
+    EXPECT_EQ(reverseFlightGetState(), REVERSE_STATE_MOTOR_STOPPED);
+    EXPECT_GT(reverseFlightGetDirection(), 0);
+    EXPECT_GE(reverseFlightGetSurfaceFactor(), 0.0f);
+    EXPECT_EQ(reverseFlightGetAxisSign(0), 1);
+}
+
+TEST_F(ReverseFlightMotionTest, TailSlideAtLowForwardThrottleDoesNotReverse)
+{
+    fly(362, 2.0f);
+    noseUp = 0.9f;                  // nose up, sliding back tail-first at 2 m/s
+    vario = -2.0f;
+    motionValid = true;
+    fly(61, 1.0f);                  // about 5 % forward thrust: little prop wash
+
+    EXPECT_GT(reverseFlightGetDirection(), 0);
+    EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), 0.0f);
+    EXPECT_EQ(reverseFlightGetAxisSign(0), 1);
+}
+
+TEST_F(ReverseFlightMotionTest, BackToForwardFadesOutInsteadOfStayingReversed)
+{
+    sinkNoseDown(-3.0f);            // tail-first: measured reverse
+    fly(-362, 2.0f);
+    EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), -1.0f);
+
+    // Forward again while the prop still brakes and the aircraft still moves tail-first
+    for (int i = 0; i < 300; i++) {
+        fly(362, DT);
+        ASSERT_GT(reverseFlightGetDirection(), 0);
+        ASSERT_GE(reverseFlightGetSurfaceFactor(), 0.0f);
+    }
+}
+
+TEST_F(ReverseFlightTest, ReverseLatchKeepsTheReversedGyroWithTheStickAtNeutral)
+{
+    fly(-362, 2.0f);
+    fly(0, 0.2f);                   // reverse glide, stick at neutral, latch still reverse
+
+    EXPECT_LT(reverseFlightGetDirection(), 0);
+    EXPECT_LT(reverseFlightGetSurfaceFactor(), -0.5f);
+    EXPECT_EQ(reverseFlightGetAxisSign(0), -1);
+}

@@ -55,6 +55,14 @@ existing setup unchanged.
   from roll acceleration against aileron deflection), it gives the normal sign
   in the 33 s where the reversed one was wrong and keeps the 230 s where it was
   right.
+- **The surface gyro only reverses with the direction latched reverse**, i.e.
+  after the throttle went below neutral. With the latch forward its factor is
+  held at zero or above: a vertical climb running out with the motor stopped,
+  a tail slide at low forward throttle, or the first ~0.1 s after reversing back
+  to forward fade the gyro out instead of reversing it. Previously the measured
+  motion could reverse it there from the vario alone (Slick indoor logs: 3.4 s
+  in 11 flights, down to -0.25 with the stick at neutral). Reverse glides with
+  the stick at neutral keep the reversed gyro, since the latch stays reverse.
 - **On the ground** (armed, not yet airborne) both factors are the latched
   direction at full strength, so the reversed gyro can be checked on the bench
   with the throttle below neutral.
