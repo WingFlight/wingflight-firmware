@@ -1050,6 +1050,8 @@ const clivalue_t valueTable[] = {
     { "reverse_fade",                   VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { REVERSE_FADE_MIN, REVERSE_FADE_MAX }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_fade) },
     { "reverse_motor_dwell",            VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_motor_dwell) },
     { "reverse_coupled_axes",           VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, REVERSE_COUPLED_AXES_MASK }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_coupled_axes) },
+    { "reverse_vario_crossover",        VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, REVERSE_VARIO_CROSSOVER_MAX }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_vario_crossover) },
+    { "reverse_vario_fade",             VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { REVERSE_VARIO_FADE_MIN, REVERSE_VARIO_FADE_MAX }, PG_REVERSE_FLIGHT_CONFIG, offsetof(reverseFlightConfig_t, reverse_vario_fade) },
     { "rc_smoothness",              VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 0, 250 }, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_smoothness) },
     { "rc_threshold",               VAR_UINT8  | MASTER_VALUE | MODE_ARRAY, .config.array.length = 3, PG_RC_CONTROLS_CONFIG, offsetof(rcControlsConfig_t, rc_threshold) },
 

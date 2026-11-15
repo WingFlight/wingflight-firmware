@@ -1045,6 +1045,7 @@ static void subTaskPidController(timeUs_t currentTimeUs)
 
     // Reverse flight (4D): motor direction, thrust and speed estimates and the factors both
     // PID loops and MANUAL apply this cycle. Zero thrust in failsafe. A no-op with normal throttle.
+    reverseFlightSetMotion(rMat[2][0], getVario(), hasEstimatedAltitude());
     reverseFlightUpdate(failsafeIsActive() ? 0.0f : getThrottleSigned(),
                         ARMING_FLAG(ARMED), isAirborne(), pidGetDT());
 

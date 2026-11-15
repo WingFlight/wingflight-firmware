@@ -39,4 +39,6 @@ PG_RESET_TEMPLATE(reverseFlightConfig_t, reverseFlightConfig,
     .reverse_fade = 15,
     .reverse_motor_dwell = 0,
     .reverse_coupled_axes = 0,
+    .reverse_vario_crossover = 30,  // 3.0 m/s, from the Nexus logs (aileron effect against measured motion)
+    .reverse_vario_fade = 15,       // 1.5 m/s
 );

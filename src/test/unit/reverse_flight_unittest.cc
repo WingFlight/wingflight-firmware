@@ -30,8 +30,16 @@ class ReverseFlightTest : public ::testing::Test {
 protected:
     reverseFlightConfig_t config;
 
+    // Measured motion fed to reverseFlightSetMotion() before every update
+    float noseUp = 0;
+    float vario = 0;
+    bool motionValid = false;
+
     void SetUp() override
     {
+        config = {};
+        config.reverse_vario_crossover = 30;
+        config.reverse_vario_fade = 15;
         config.throttle_mode = THROTTLE_MODE_BIDIRECTIONAL;
         config.throttle_deadband = 40;
         config.throttle_reverse_hysteresis = 50;
@@ -51,6 +59,7 @@ protected:
         const int steps = lrintf(seconds / DT);
         for (int i = 0; i < steps; i++) {
             const float thrust = reverseFlightMapStick(stickUs, HALF_RANGE);
+            reverseFlightSetMotion(noseUp, vario, motionValid);
             reverseFlightUpdate(thrust, true, airborne, DT);
         }
     }
@@ -345,4 +354,155 @@ TEST_F(ReverseFlightTest, SignsAreOneWhenOff)
     fly(-300, 1.0f);
     EXPECT_EQ(reverseFlightGetAxisSign(0), 1);
     EXPECT_EQ(reverseFlightGetVectorSign(), 1);
+}
+
+// Reverse thrust as a brake in a vertical line: after an idle dive the speed estimate says
+// the aircraft has stopped almost at once, but it keeps sinking nose-first and the surfaces
+// keep working the normal way round. The measured motion keeps the forward sign.
+
+class ReverseFlightMotionTest : public ReverseFlightTest {
+protected:
+    // A vertical line nose down: noseUp -0.9, moving bodySpeed m/s nose-first
+    void sinkNoseDown(float bodySpeed)
+    {
+        noseUp = -0.9f;
+        vario = bodySpeed * noseUp;
+        motionValid = true;
+    }
+};
+
+TEST_F(ReverseFlightMotionTest, SinkingNoseFirstKeepsTheSurfacesForward)
+{
+    fly(362, 2.0f);
+    sinkNoseDown(5.0f);
+    fly(-362, 1.0f);
+
+    EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), 1.0f);
+    EXPECT_EQ(reverseFlightGetAxisSign(0), 1);
+    EXPECT_EQ(reverseFlightGetState(), REVERSE_STATE_HANDOVER);
+    EXPECT_LT(reverseFlightGetVectorFactor(), -0.99f);     // the gimbal follows the thrust
+}
+
+TEST_F(ReverseFlightMotionTest, WithoutTheMeasurementTheEstimateReverses)
+{
+    fly(362, 2.0f);
+    sinkNoseDown(5.0f);
+    motionValid = false;            // no altitude estimate
+    fly(-362, 1.0f);
+
+    EXPECT_LT(reverseFlightGetSurfaceFactor(), -0.99f);
+    EXPECT_EQ(reverseFlightGetState(), REVERSE_STATE_REVERSE);
+}
+
+TEST_F(ReverseFlightMotionTest, CrossoverZeroTurnsItOff)
+{
+    config.reverse_vario_crossover = 0;
+    reverseFlightInit(&config);
+    fly(362, 2.0f);
+    sinkNoseDown(5.0f);
+    fly(-362, 1.0f);
+
+    EXPECT_LT(reverseFlightGetSurfaceFactor(), -0.99f);
+}
+
+TEST_F(ReverseFlightMotionTest, HangAndTailFirstClimbAreReverse)
+{
+    fly(362, 2.0f);
+    sinkNoseDown(0.0f);             // hanging
+    fly(-362, 1.0f);
+    EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), -1.0f);
+    EXPECT_EQ(reverseFlightGetState(), REVERSE_STATE_REVERSE);
+
+    sinkNoseDown(-2.0f);            // climbing tail-first
+    fly(-362, 0.1f);
+    EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), -1.0f);
+}
+
+TEST_F(ReverseFlightMotionTest, FadesThroughTheCrossover)
+{
+    fly(-362, 2.0f);
+    sinkNoseDown(3.0f);
+    fly(-362, 0.01f);
+    EXPECT_NEAR(reverseFlightGetSurfaceFactor(), 0.0f, 1e-4f);
+
+    sinkNoseDown(3.75f);
+    fly(-362, 0.01f);
+    EXPECT_NEAR(reverseFlightGetSurfaceFactor(), 0.5f, 1e-4f);
+    EXPECT_EQ(reverseFlightGetState(), REVERSE_STATE_HANDOVER);
+
+    sinkNoseDown(2.25f);
+    fly(-362, 0.01f);
+    EXPECT_NEAR(reverseFlightGetSurfaceFactor(), -0.5f, 1e-4f);
+}
+
+TEST_F(ReverseFlightMotionTest, CrossoverAndFadeAreSettings)
+{
+    config.reverse_vario_crossover = 50;    // 5 m/s
+    config.reverse_vario_fade = 10;         // 1 m/s
+    reverseFlightInit(&config);
+    fly(-362, 2.0f);
+    sinkNoseDown(5.5f);
+    fly(-362, 0.01f);
+    EXPECT_NEAR(reverseFlightGetSurfaceFactor(), 0.5f, 1e-4f);
+}
+
+TEST_F(ReverseFlightMotionTest, LevelFlightIgnoresTheVario)
+{
+    fly(-362, 2.0f);
+    noseUp = 0.3f;                  // 17 degrees: the vario says nothing about the body axis
+    vario = -5.0f;
+    motionValid = true;
+    fly(-362, 0.1f);
+    EXPECT_LT(reverseFlightGetSurfaceFactor(), -0.99f);
+}
+
+TEST_F(ReverseFlightMotionTest, BlendsAsTheAttitudeLeavesVertical)
+{
+    fly(-362, 2.0f);                // the estimate: reverse, factor -1
+    noseUp = -0.625f;               // halfway between 30 and 49 degrees
+    vario = 5.0f * noseUp;          // measured: 5 m/s nose-first, factor +1
+    motionValid = true;
+    fly(-362, 0.01f);
+    EXPECT_NEAR(reverseFlightGetSurfaceFactor(), 0.0f, 0.01f);
+}
+
+TEST_F(ReverseFlightMotionTest, ForwardThrustIgnoresTheVario)
+{
+    noseUp = 0.9f;                  // nose up, falling tail-first with forward thrust
+    vario = -5.0f;
+    motionValid = true;
+    fly(362, 2.0f);
+    EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), 1.0f);
+    EXPECT_EQ(reverseFlightGetState(), REVERSE_STATE_FORWARD);
+}
+
+TEST_F(ReverseFlightMotionTest, StoppedMotorFollowsTheMotionWithoutAStep)
+{
+    fly(-362, 2.0f);                // a reverse leg: the estimate says reverse
+    fly(362, 0.05f);                // a blip of forward throttle latches forward
+    sinkNoseDown(5.0f);
+    fly(0, 0.5f);                   // motor stopped, sinking nose-first
+    EXPECT_EQ(reverseFlightGetState(), REVERSE_STATE_MOTOR_STOPPED);
+    EXPECT_GT(reverseFlightGetDirection(), 0);
+    EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), 1.0f);
+
+    // Reversing to brake changes nothing: still sinking nose-first
+    float last = reverseFlightGetSurfaceFactor();
+    for (int i = 0; i < 200; i++) {
+        fly(-362, DT);
+        EXPECT_NEAR(reverseFlightGetSurfaceFactor(), last, 0.05f);
+        last = reverseFlightGetSurfaceFactor();
+    }
+    EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), 1.0f);
+}
+
+TEST_F(ReverseFlightMotionTest, ForwardThrustFadesTheMeasurementOut)
+{
+    sinkNoseDown(-3.0f);            // tail-first: measured reverse
+    fly(-362, 2.0f);
+    EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), -1.0f);
+
+    fly(362, 2.0f);                 // forward thrust: the prop wash decides, as the estimate says
+    EXPECT_FLOAT_EQ(reverseFlightGetSurfaceFactor(), 1.0f);
+    EXPECT_EQ(reverseFlightGetState(), REVERSE_STATE_FORWARD);
 }

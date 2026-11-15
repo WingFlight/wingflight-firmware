@@ -32,7 +32,7 @@ typedef enum {
     REVERSE_STATE_GROUND,           // armed, not yet airborne: gyro at full authority in the latched direction
     REVERSE_STATE_MOTOR_STOPPED,    // airborne, motor command zero (in the deadband or failsafe)
     REVERSE_STATE_FORWARD,          // thrust and motion forward
-    REVERSE_STATE_HANDOVER,         // thrust reversed, aircraft still moving the old way: surface gyro off
+    REVERSE_STATE_HANDOVER,         // thrust reversed, aircraft still moving the old way: surface gyro off, or following the measured motion
     REVERSE_STATE_REVERSE,          // thrust and motion backwards
 } reverseFlightState_e;
 
@@ -47,6 +47,11 @@ bool reverseFlightIsEnabled(void);
 // direction latch is not on). Updates the stick direction latch.
 float reverseFlightMapStick(float offsetUs, float halfRangeUs);
 bool  reverseFlightStickInDeadband(float offsetUs);
+
+// The measured motion for the control stage, before each reverseFlightUpdate():
+// noseUp is the nose-up component of the body X axis (rMat[2][0], 1 = straight up),
+// vario the climb rate in m/s, valid whether there is an altitude estimate behind it.
+void reverseFlightSetMotion(float noseUp, float vario, bool valid);
 
 // Control stage, once per PID cycle before the PID loops. stickThrottle is the
 // signed command from reverseFlightMapStick() (0 in failsafe).

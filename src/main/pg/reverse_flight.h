@@ -41,6 +41,9 @@ typedef enum {
 #define REVERSE_FADE_MIN                    1       // %
 #define REVERSE_FADE_MAX                    50      // %
 #define REVERSE_COUPLED_AXES_MASK           0x07    // bit 0 roll, 1 pitch, 2 yaw
+#define REVERSE_VARIO_CROSSOVER_MAX         200     // 0.1 m/s
+#define REVERSE_VARIO_FADE_MIN              1       // 0.1 m/s
+#define REVERSE_VARIO_FADE_MAX              100     // 0.1 m/s
 
 // 4D / reverse flight: bidirectional throttle and the direction estimate that
 // flips the stabilisation (flight/reverse_flight.c).
@@ -55,6 +58,10 @@ typedef struct reverseFlightConfig_s {
     uint8_t  reverse_fade;                  // % of full thrust/speed over which a factor fades in
     uint8_t  reverse_motor_dwell;           // ms the motor must rest at zero before it may reverse
     uint8_t  reverse_coupled_axes;          // axes where one servo moves both the surface and the gimbal (bit 0 roll, 1 pitch, 2 yaw)
+    // Added later: the U16 alignment keeps these clear of the old struct's padding byte, so a
+    // stored config of the old size loads with its values and these at their defaults.
+    uint16_t reverse_vario_crossover;       // 0.1 m/s nose-first where the surfaces flip in a vertical line with reverse thrust, 0 = off
+    uint8_t  reverse_vario_fade;            // 0.1 m/s either side of the crossover over which the surface factor fades
 } reverseFlightConfig_t;
 
 PG_DECLARE(reverseFlightConfig_t, reverseFlightConfig);

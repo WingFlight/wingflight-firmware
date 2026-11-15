@@ -62,11 +62,32 @@
 // That servo is driven by the main loop (its surface's mixer rule); the TV input
 // of that axis stays unmapped.
 //
+// The speed estimate only knows the throttle, not gravity. With reverse thrust in a
+// vertical line that goes wrong: after an idle dive, reverse thrust is used as a brake
+// and the aircraft keeps sinking nose-first for seconds, with the surfaces still
+// working the normal way round (the airflow from the descent beats the air the
+// reversed prop draws forward over them), while the estimate says it has stopped. A
+// reversed correction there is positive feedback. In a vertical line the motion is
+// measured instead: the vario divided by the nose-up component is the speed along the
+// body axis. The surfaces flip at reverse_vario_crossover nose-first, fading over
+// reverse_vario_fade either side; blended into the estimate as the attitude leaves
+// vertical, where the vario says nothing about the motion along the body axis. Not
+// with forward thrust: that blows the prop wash over the surfaces, so they work the
+// normal way round almost at once; the measurement fades out as forward thrust builds.
+// With the motor stopped it applies too, as only the airflow from the motion is left.
+// Without an altitude estimate, or with reverse_vario_crossover 0, the estimate alone
+// decides as before.
+//
 // Pure apart from the debug output: the config comes in through
-// reverseFlightInit() and the flight state through reverseFlightUpdate(), so it
-// can be unit tested on its own.
+// reverseFlightInit() and the flight state through reverseFlightSetMotion() and
+// reverseFlightUpdate(), so it can be unit tested on its own.
 
 #define SPEED_STOPPED   0.01f   // |speed estimate| below this counts as standing still
+
+// Nose-up component (sine of the angle to the horizon) over which the measured motion
+// takes over from the speed estimate: none below 30 degrees, all of it above about 49.
+#define VERTICAL_MIN    0.5f
+#define VERTICAL_FULL   0.75f
 
 typedef struct {
     bool    enabled;
@@ -81,6 +102,15 @@ typedef struct {
     float   fade;
     float   dwell;
     uint8_t coupledAxes;
+    bool    varioEnabled;
+    float   varioCrossover; // m/s
+    float   varioFade;      // m/s
+
+    // measured motion, see reverseFlightSetMotion()
+    bool    motionValid;
+    float   noseUp;
+    float   vario;          // m/s
+    float   bodySpeed;      // m/s along the body axis, + nose-first, 0 when not measured
 
     // stick stage
     int8_t  stickDir;
@@ -137,6 +167,8 @@ void reverseFlightReset(void)
     rf.vectorSign = 1;
     rf.coupledSign = 1;
     rf.reversed = false;
+    rf.motionValid = false;
+    rf.bodySpeed = 0;
     rf.state = rf.enabled ? REVERSE_STATE_DISARMED : REVERSE_STATE_OFF;
 }
 
@@ -153,6 +185,9 @@ void reverseFlightInit(const reverseFlightConfig_t *config)
     rf.fade = constrain(config->reverse_fade, REVERSE_FADE_MIN, REVERSE_FADE_MAX) / 100.0f;
     rf.dwell = config->reverse_motor_dwell / 1000.0f;
     rf.coupledAxes = config->reverse_coupled_axes & REVERSE_COUPLED_AXES_MASK;
+    rf.varioEnabled = (config->reverse_vario_crossover > 0);
+    rf.varioCrossover = MIN(config->reverse_vario_crossover, REVERSE_VARIO_CROSSOVER_MAX) / 10.0f;
+    rf.varioFade = constrain(config->reverse_vario_fade, REVERSE_VARIO_FADE_MIN, REVERSE_VARIO_FADE_MAX) / 10.0f;
 
     rf.stickDir = 1;
     reverseFlightReset();
@@ -191,9 +226,45 @@ float reverseFlightMapStick(float offsetUs, float halfRangeUs)
     return thrust;
 }
 
+void reverseFlightSetMotion(float noseUp, float vario, bool valid)
+{
+    rf.noseUp = noseUp;
+    rf.vario = vario;
+    rf.motionValid = valid;
+}
+
+// Surface factor from the measured motion in a vertical line without prop wash, blended
+// into the estimate's factor. Returns the blend weight, 0 when nothing was measured.
+static float applyMeasuredMotion(void)
+{
+    rf.bodySpeed = 0;
+
+    if (!rf.varioEnabled || !rf.motionValid)
+        return 0;
+
+    // Forward thrust blows the prop wash over the surfaces, so it decides there: the
+    // measurement fades out as forward thrust builds, over the same span as the gimbal
+    // factor fades in. Reverse thrust or a stopped motor leaves only the airflow from
+    // the motion.
+    const float noWash = 1.0f - fadeIn(MAX(rf.thrust, 0.0f));
+    const float vertical = constrainf((fabsf(rf.noseUp) - VERTICAL_MIN) / (VERTICAL_FULL - VERTICAL_MIN), 0.0f, 1.0f);
+    const float weight = noWash * vertical;
+    if (weight <= 0)
+        return 0;
+
+    // |noseUp| > VERTICAL_MIN here
+    rf.bodySpeed = rf.vario / rf.noseUp;
+
+    const float measured = constrainf((rf.bodySpeed - rf.varioCrossover) / rf.varioFade, -1.0f, 1.0f);
+    rf.surfaceFactor = weight * measured + (1.0f - weight) * rf.surfaceFactor;
+
+    return weight;
+}
+
 void reverseFlightUpdate(float stickThrottle, bool armed, bool airborne, float dT)
 {
     rf.reversed = false;
+    rf.bodySpeed = 0;
 
     if (!rf.enabled) {
         rf.throttle = stickThrottle;
@@ -252,6 +323,16 @@ void reverseFlightUpdate(float stickThrottle, bool armed, bool airborne, float d
             else
                 rf.state = (rf.dir > 0) ? REVERSE_STATE_FORWARD : REVERSE_STATE_REVERSE;
         }
+
+        // In a vertical line without prop wash the measured motion decides. Where it
+        // dominates with the motor running, the state follows it: HANDOVER while thrust
+        // and motion disagree (the loops hold their I-terms), as above.
+        if (applyMeasuredMotion() >= 0.5f && command != 0) {
+            if (rf.surfaceFactor * rf.dir > 0)
+                rf.state = (rf.dir > 0) ? REVERSE_STATE_FORWARD : REVERSE_STATE_REVERSE;
+            else
+                rf.state = REVERSE_STATE_HANDOVER;
+        }
     }
 
     // Separate gyro gain for flying tail first
@@ -267,7 +348,7 @@ void reverseFlightUpdate(float stickThrottle, bool armed, bool airborne, float d
     holdSign(&rf.vectorSign, rf.vectorFactor);
     holdSign(&rf.coupledSign, rf.coupledFactor);
 
-    DEBUG(REVERSE_FLIGHT, 0, lrintf(stickThrottle * 1000));
+    DEBUG(REVERSE_FLIGHT, 0, lrintf(rf.bodySpeed * 100));     // cm/s, 0 when not measured
     DEBUG(REVERSE_FLIGHT, 1, lrintf(rf.throttle * 1000));
     DEBUG(REVERSE_FLIGHT, 2, lrintf(rf.thrust * 1000));
     DEBUG(REVERSE_FLIGHT, 3, lrintf(rf.speed * 1000));

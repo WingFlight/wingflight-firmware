@@ -1557,7 +1557,8 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         // axes after the dwell), then the
         // throttle channel value for zero thrust in bidirectional mode (read only, follows
         // rc_center / rc_min_throttle / rc_max_throttle), then U8 motor control mode mask
-        // (motor_control_mode, bit n set = motor n+1 bidirectional) and U8 motor count.
+        // (motor_control_mode, bit n set = motor n+1 bidirectional) and U8 motor count, then
+        // U16 reverse_vario_crossover and U8 reverse_vario_fade.
         const reverseFlightConfig_t *cfg = reverseFlightConfig();
         sbufWriteU8(dst, 1); // payload version
         sbufWriteU8(dst, cfg->throttle_mode);
@@ -1579,6 +1580,9 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         }
         sbufWriteU8(dst, bidirMask);
         sbufWriteU8(dst, getMotorCount());
+        // Appended later, after the fields older readers know (they ignore the rest)
+        sbufWriteU16(dst, cfg->reverse_vario_crossover);
+        sbufWriteU8(dst, cfg->reverse_vario_fade);
         break;
     }
 
@@ -4929,11 +4933,12 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
 
     case MSP2_WING_SET_REVERSE_FLIGHT_CONFIG: {
         // Same fields as MSP2_WING_REVERSE_FLIGHT_CONFIG (14 bytes) without the version byte, the
-        // read-only neutral and the motor count. Exact length, so a GET-format payload is
-        // refused. Not while armed: switching the throttle mode in flight would move the
+        // read-only neutral and the motor count, optionally followed by U16 vario crossover and
+        // U8 vario fade (17 bytes; 14 leaves them as they are). Exact length, so a GET-format
+        // payload is refused. Not while armed: switching the throttle mode in flight would move the
         // motor's zero point. The settings take effect with the EEPROM write that follows
         // (activateConfig()), the motor control modes after a reboot (motor driver init).
-        if (dataSize != 14 || ARMING_FLAG(ARMED)) {
+        if ((dataSize != 14 && dataSize != 17) || ARMING_FLAG(ARMED)) {
             return MSP_RESULT_ERROR;
         }
         reverseFlightConfig_t *cfg = reverseFlightConfigMutable();
@@ -4951,6 +4956,10 @@ static mspResult_e mspCommonProcessInCommand(mspDescriptor_t srcDesc, int16_t cm
         for (int i = 0; i < MAX_SUPPORTED_MOTORS; i++) {
             motorConfigMutable()->dev.motorControlMode[i] =
                 (bidirMask & BIT(i)) ? MOTOR_CONTROL_BIDIR : MOTOR_CONTROL_UNIDIR;
+        }
+        if (dataSize == 17) {
+            cfg->reverse_vario_crossover = MIN(sbufReadU16(src), REVERSE_VARIO_CROSSOVER_MAX);
+            cfg->reverse_vario_fade = constrain(sbufReadU8(src), REVERSE_VARIO_FADE_MIN, REVERSE_VARIO_FADE_MAX);
         }
         break;
     }

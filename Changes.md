@@ -35,6 +35,26 @@ existing setup unchanged.
   (the stick still moves the surfaces), and it comes back reversed once the
   aircraft moves backwards, scaled by `reverse_surface_gain`. `reverse_fade` sets
   how much speed or thrust a factor needs to fade in fully.
+- **Vertical lines: the measured motion.** The speed estimate only knows the
+  throttle, not gravity. Reverse thrust used as a brake in a vertical down-line
+  (after an idle dive, the aircraft keeps sinking nose-first at 4-7 m/s for
+  seconds) had the estimate stopped within 0-150 ms, so the surfaces got the
+  reversed correction while the airflow from the descent still made them work
+  the normal way round: positive feedback, with roll rates of 450-630 deg/s in
+  those down-lines. Now, closer than 30-49 degrees to vertical and without prop
+  wash (reverse thrust or the motor stopped), the speed along the body axis is
+  measured: the vario (accelerometer-fused) divided by the nose-up component.
+  The surface correction keeps the normal sign above `reverse_vario_crossover`
+  nose-first (3.0 m/s) and reverses below it, fading over `reverse_vario_fade`
+  (1.5 m/s) either side; while it keeps the normal sign against reverse thrust
+  the state is HANDOVER and the I-terms hold. It fades out as forward thrust
+  builds, since the prop wash decides then, and as the attitude leaves vertical,
+  where the vario says nothing about the motion along the body axis. Without an
+  altitude estimate, or with `reverse_vario_crossover = 0`, the estimate alone
+  decides as before. Replayed on the Nexus logs (the aileron effect measured
+  from roll acceleration against aileron deflection), it gives the normal sign
+  in the 33 s where the reversed one was wrong and keeps the 230 s where it was
+  right.
 - **On the ground** (armed, not yet airborne) both factors are the latched
   direction at full strength, so the reversed gyro can be checked on the bench
   with the throttle below neutral.
@@ -87,8 +107,10 @@ existing setup unchanged.
   thrust fades out.
 - `reverse_motor_dwell` (0 ms) optionally holds the motor at zero before it may
   reverse, for ESCs that don't like an instant reversal.
-- Debug mode `REVERSE_FLIGHT`: stick thrust, motor command, thrust estimate,
-  speed estimate, gimbal factor, surface factor (x1000), direction, state.
+- Debug mode `REVERSE_FLIGHT`: measured speed along the body axis (cm/s,
+  nose-first positive, 0 when not measured), then x1000 motor command, thrust
+  estimate, speed estimate, gimbal factor, surface factor, then direction and
+  state.
   Blackbox header line `reverse_flight` lists the settings.
 
 **SITL:** a bidirectional motor's `motor_speed` in the `servo_packet` is the
@@ -105,9 +127,11 @@ settings in struct order (U8 mode, U8 deadband, U8 hysteresis, U8 reverse
 limit, U16 motor time, U16 time constant, U16 surface gain, U8 fade, U8 dwell,
 U8 coupled axes),
 U16 throttle neutral (read only), U8 bidirectional motor mask (bit n = motor
-n+1 `motor_control_mode` BIDIR) and U8 motor count.
+n+1 `motor_control_mode` BIDIR), U8 motor count, then U16 vario crossover and
+U8 vario fade.
 `MSP2_WING_SET_REVERSE_FLIGHT_CONFIG` (0x5F38) takes the ten settings and the
-motor mask (14 bytes), refused while armed; the motor modes apply after a
+motor mask (14 bytes), optionally followed by the vario crossover and fade (17
+bytes), refused while armed; the motor modes apply after a
 reboot. `MSP2_WING_REVERSE_FLIGHT_STATUS` (0x5F39) returns payload version 1,
 U8 enabled, U8 state, S8 direction, U8 stick in deadband, U16 throttle channel
 (us), then S16 x1000 stick thrust, motor command, thrust estimate, speed
