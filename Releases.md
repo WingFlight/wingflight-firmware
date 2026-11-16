@@ -1,3 +1,15 @@
+# 0.0.43
+
+Use with the 0.0.43 Configurator and Lua suites (MSP API 22.16, unchanged); the 0.0.42 ones work too, without servo names and F.Bus wiring detection.
+Add servo names: a short label (up to 8 characters) per servo, for reference only, set with `servo name` in the CLI or over MSP (MSP2_WING_SERVO_NAMES, MSP2_WING_SET_SERVO_NAME). They are kept in their own settings, so updating resets nothing.
+Add F.Bus wiring detection (MSP2_WING_FBUS_MASTER_TRIAL): the flight controller tries each pin swap and inversion on the F.Bus port until a device answers, and leaves the wiring found in use for the client to save.
+Add the F.Bus pin swap and inversion to MSP2_WING_FBUS_MASTER_CONFIG (payload version 2), so the Configurator and Lua suites can put F.Bus on an RX pin such as the SBUS connector. A change over MSP applies at once where the port can be reopened.
+Fix the thrust vector loop letting its I-term decay in ANGLE, failsafe, LOITER and RTH, where the main loop holds it.
+Fix a stop after a rejected ESC telemetry or receiver wiring trial putting back wiring that was never saved over the settings in use.
+Fix MSP_SET_MIXER_RULE reading a payload shorter than 15 bytes, and refresh the mixer map after a CLI mixer reset.
+Remove the unused multirotor GPS rescue controller and a GPS heading reset that had no effect. RTH and the GPS rescue failsafe still fly home through GPS navigation, and the gps_rescue_* settings are kept.
+Make SITL build on Linux, accept Rotorflight's FDM packet tail, keep its clock and loop rate steady on slow or bunching hosts, and survive a save interrupted by a kill.
+
 # 0.0.42
 
 Use the 0.0.42 Configurator and Lua suites with this firmware (MSP API 22.16); older ones do not work with it. Updating resets the servo settings, the mixer rules and the SRXL2 ESC settings to defaults, so save a backup first and set them up again afterwards. A backup made before 0.0.42 restores without its per-servo update rate, and mixer rules for servo 9 and above need recreating.
