@@ -35,8 +35,10 @@
 #include "fc/rc_modes.h"
 #include "fc/runtime_config.h"
 
+#include "flight/airborne.h"
 #include "flight/pid.h"
 #include "flight/mixer.h"
+#include "flight/trainer.h"
 #include "flight/hold_engine.h"
 #include "flight/tv_hold.h"
 
@@ -553,9 +555,28 @@ static void tvPidApplyAxis(uint8_t axis)
     // needs against a persistent disturbance (the correction "gives up" after a couple of
     // seconds), while no decay at all would leave stale I parking the nozzle off-center forever.
     // Same reasoning as pid.c's ATT HOLD handling.
-    const float decayScale = tvHoldIDecayScale(axis);
-    const float errorDecay = limitf(tvPid.data[axis].axisError * tvPid.itermDecayRate[axis] * decayScale, tvPid.itermDecayLimit * decayScale);
-    tvPid.data[axis].axisError -= errorDecay * pidGetDT();
+    //
+    // Decay is suspended altogether while a leveling layer shapes this axis's setpoint
+    // (ANGLE/failsafe/loiter/RTH on roll and pitch, the acro trainer while it limits), the same
+    // policy as the main loop: the leveled setpoint needs a sustained I against a persistent
+    // disturbance, and both loops follow the same setpoint, so they should bleed I the same way.
+    // On the ground it decays at the normal rate whatever the mode, so the nozzle cannot wind
+    // up before takeoff (I still accumulates here, unlike the main loop).
+    const bool onGround = !isAirborne();
+
+    bool trainerLimitingThisAxis = false;
+#ifdef USE_ACRO_TRAINER
+    trainerLimitingThisAxis = FLIGHT_MODE(TRAINER_MODE) && acroTrainerIsLimiting(axis);
+#endif
+
+    const bool levelingModeShapingThisAxis = trainerLimitingThisAxis
+        || (axis != FD_YAW && FLIGHT_MODE(ANGLE_MODE | GPS_RESCUE_MODE | FAILSAFE_MODE | LOITER_MODE | RTH_MODE));
+
+    if (!levelingModeShapingThisAxis || onGround) {
+        const float decayScale = onGround ? 1.0f : tvHoldIDecayScale(axis);
+        const float errorDecay = limitf(tvPid.data[axis].axisError * tvPid.itermDecayRate[axis] * decayScale, tvPid.itermDecayLimit * decayScale);
+        tvPid.data[axis].axisError -= errorDecay * pidGetDT();
+    }
 
   //// Feedforward
 
