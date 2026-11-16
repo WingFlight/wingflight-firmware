@@ -39,15 +39,4 @@ typedef enum {
     CURRENT_ALT
 } altitudeMode_e;
 
-
-extern int32_t gpsRescueAngle[ANGLE_INDEX_COUNT]; //NOTE: ANGLES ARE IN CENTIDEGREES
-
-void updateGPSRescueState(void);
-void rescueNewGpsData(void);
-
-float gpsRescueGetYawRate(void);
-float gpsRescueGetThrottle(void);
 bool gpsRescueIsConfigured(void);
-bool gpsRescueIsAvailable(void);
-bool gpsRescueIsDisabled(void);
-bool gpsRescueDisableMag(void);

@@ -1122,7 +1122,6 @@ void gpsUpdate(timeUs_t currentTimeUs)
 
 #if defined(USE_GPS_RESCUE)
     if (gpsRescueIsConfigured()) {
-        updateGPSRescueState();
         minSats = gpsRescueConfig()->minSats;
     }
 #endif
@@ -2115,10 +2114,6 @@ void onGpsNewData(void)
     if (ARMING_FLAG(ARMED)) {
         GPS_calculateDistanceFlownVerticalSpeed(false);
     }
-
-#ifdef USE_GPS_RESCUE
-    rescueNewGpsData();
-#endif
 }
 
 void gpsSetFixState(bool state)

@@ -777,17 +777,12 @@ void processRxModes(timeUs_t currentTimeUs)
 
     if (sensors(SENSOR_ACC)) {
 #ifdef USE_GPS_RESCUE
-        // GPS_RESCUE_MODE / gps_rescue.c is a multirotor/heli hover-throttle-learning descent
-        // algorithm: it learns a "hover throttle" from tilt vs. throttle and manages a vertical
-        // descent velocity, neither of which is meaningful -- or safe -- on a fixed-wing
-        // airframe. Nothing wires GPS_RESCUE_MODE on any more: BOXRTH drives the fixed-wing-native
-        // RTH_MODE / navRthStart() path (below, USE_GPS_NAV block), and a failsafe_procedure of
-        // FAILSAFE_PROCEDURE_GPS_RESCUE is handled entirely inside failsafe.c via that same
-        // RTH_MODE path. BOXGPSRESCUE, formerly a redundant switch alias for BOXRTH, has been
-        // retired (fc/rc_modes.h). Keep GPS_RESCUE_MODE explicitly, unconditionally cleared here
-        // (rather than just deleting this block) so updateGPSRescueState() -- still compiled in,
-        // still called every GPS fix -- stays a guaranteed no-op even if something else ever sets
-        // the flag by mistake.
+        // GPS_RESCUE_MODE is never used on a wing: BOXRTH drives the fixed-wing RTH_MODE /
+        // navRthStart() path (below, USE_GPS_NAV block), and a failsafe_procedure of
+        // FAILSAFE_PROCEDURE_GPS_RESCUE is handled inside failsafe.c via that same RTH_MODE path.
+        // The multirotor rescue controller it used to drive has been removed. The flag (and its
+        // bit) stays for telemetry and Blackbox compatibility, so keep it cleared here in case
+        // anything ever sets it by mistake.
         DISABLE_FLIGHT_MODE(GPS_RESCUE_MODE);
 #endif
 
