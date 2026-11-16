@@ -378,4 +378,10 @@
 // state, U8 combo index, U8 combo count, U8 pinSwap, U8 inverted, U16 valid
 // frames on this wiring, U8 port open.
 #define MSP2_WING_FBUS_MASTER_TRIAL           0x5F37
+// Servo names (pg/servo_name.h), labels only. 0x5F38-0x5F39 are taken on an open branch.
+// MSP2_WING_SERVO_NAMES reply: U8 servo count, U8 name length N, then per servo N bytes,
+// zero-padded. MSP2_WING_SET_SERVO_NAME request: U8 servo (0-based), then the name, up to
+// N printable ASCII bytes (none clears it).
+#define MSP2_WING_SERVO_NAMES                 0x5F3A
+#define MSP2_WING_SET_SERVO_NAME              0x5F3B
 #define MSP_V2_FRAME                         255

@@ -102,6 +102,7 @@ bool cliMode = false;
 #include "drivers/io_impl.h"
 
 #include "pg/bus_servo.h"
+#include "pg/servo_name.h"
 #include "pg/servo_trim.h"
 #include "pg/logic_condition.h"
 #include "drivers/light_led.h"
@@ -2680,6 +2681,39 @@ static void printServoTrim(dumpFlags_t dumpMask, const servoTrim_t *servoTrims, 
     }
 }
 
+// Servo names (servoNames PG), as "servo name <servo> <name>"; "servo name <servo>" with
+// no name clears one. Lists the named servos, and in a diff any name that differs from
+// the default (empty), so a restore also clears a name set since.
+static void printServoName(dumpFlags_t dumpMask, const servoName_t *servoNames, const servoName_t *defaultServoNames, const char *headingStr)
+{
+    headingStr = cliPrintSectionHeading(dumpMask, false, headingStr);
+
+    for (uint32_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
+        const char *name = servoNames[i].name;
+        bool equalsDefault = false;
+        if (defaultServoNames) {
+            equalsDefault = strncmp(name, defaultServoNames[i].name, sizeof(servoNames[i].name)) == 0;
+        }
+        if (name[0] == '\0' && (!defaultServoNames || equalsDefault)) {
+            continue;
+        }
+        if (defaultServoNames) {
+            headingStr = cliPrintSectionHeading(dumpMask, !equalsDefault, headingStr);
+            const char *defaultName = defaultServoNames[i].name;
+            if (defaultName[0]) {
+                cliDefaultPrintLinef(dumpMask, equalsDefault, "servo name %u %s", i + 1, defaultName);
+            } else {
+                cliDefaultPrintLinef(dumpMask, equalsDefault, "servo name %u", i + 1);
+            }
+        }
+        if (name[0]) {
+            cliDumpPrintLinef(dumpMask, equalsDefault, "servo name %u %s", i + 1, name);
+        } else {
+            cliDumpPrintLinef(dumpMask, equalsDefault, "servo name %u", i + 1);
+        }
+    }
+}
+
 // Lists the servos in use, and any other that isn't at its default.
 static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, const servoParam_t *defaultServoParams, const char *headingStr)
 {
@@ -2844,6 +2878,44 @@ static void cliServo(const char *cmdName, char *cmdline)
         }
         else {
             cliShowInvalidArgumentCountError(cmdName);
+        }
+    }
+    else if (strcasecmp(args[FUNC], "name") == 0) {
+        if (count == 1) {
+            printServoName(DUMP_MASTER, servoNames(0), NULL, NULL);
+        }
+        else {
+            enum { FUNC=0, INDEX, NAME };
+            const int index = atoi(args[INDEX]);
+            if (index < 1 || index > MAX_SUPPORTED_SERVOS) {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+                return;
+            }
+            // The name may contain spaces: join the remaining words with one space each
+            char name[SERVO_NAME_LENGTH + 1];
+            int len = 0;
+            for (int i = NAME; i < count; i++) {
+                const int wordLen = strlen(args[i]);
+                if (len + (len > 0) + wordLen > SERVO_NAME_LENGTH) {
+                    cliShowArgumentRangeError(cmdName, "NAME LENGTH", 0, SERVO_NAME_LENGTH);
+                    return;
+                }
+                if (len > 0) {
+                    name[len++] = ' ';
+                }
+                memcpy(&name[len], args[i], wordLen);
+                len += wordLen;
+            }
+            if (!setServoName(index - 1, name, len)) {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+                return;
+            }
+            const char *saved = servoNames(index - 1)->name;
+            if (saved[0]) {
+                cliPrintLinef("servo name %d %s", index, saved);
+            } else {
+                cliPrintLinef("servo name %d", index);
+            }
         }
     }
     else if (strcasecmp(args[FUNC], "flags") == 0) {
@@ -7045,6 +7117,7 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
 #ifdef USE_SERVOS
             printServo(dumpMask, servoParams_CopyArray, servoParams(0), "servo");
             printServoTrim(dumpMask, servoTrims_CopyArray, servoTrims(0), "servo trim");
+            printServoName(dumpMask, servoNames_CopyArray, servoNames(0), "servo name");
 #endif
 
             printMixerInputs(dumpMask, mixerInputs_CopyArray, mixerInputs(0), "mixer input");
@@ -7444,6 +7517,8 @@ const clicmd_t cmdTable[] = {
                     "flags <servo> <[+|-]FLAG> ...\r\n\t"
                     "trim\r\n\t"
                     "trim <servo> <us>\r\n\t"
+                    "name\r\n\t"
+                    "name <servo> [<name>]\r\n\t"
                     "override\r\n\t"
                     "override <value>|off\r\n\t"
                     "override <servo> <value>|off",
