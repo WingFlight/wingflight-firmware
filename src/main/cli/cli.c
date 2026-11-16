@@ -102,6 +102,7 @@ bool cliMode = false;
 #include "drivers/io_impl.h"
 
 #include "pg/bus_servo.h"
+#include "pg/servo_role.h"
 #include "pg/servo_trim.h"
 #include "pg/logic_condition.h"
 #include "drivers/light_led.h"
@@ -2680,6 +2681,36 @@ static void printServoTrim(dumpFlags_t dumpMask, const servoTrim_t *servoTrims, 
     }
 }
 
+// What each servo drives (servoRoles PG), as "servo role <servo> <role> <number>":
+// the role number from pg/servo_role.h and which servo of that role it is (1-8).
+// Lists the servos in use, and any other that isn't at its default.
+static void printServoRole(dumpFlags_t dumpMask, const servoRole_t *servoRoles, const servoRole_t *defaultServoRoles, const char *headingStr)
+{
+    const char *format = "servo role %u %u %u";
+    const uint8_t servoCount = getServoCount();
+
+    headingStr = cliPrintSectionHeading(dumpMask, false, headingStr);
+
+    for (uint32_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
+        const uint8_t value = servoRoles[i].value;
+        bool equalsDefault = false;
+        if (defaultServoRoles) {
+            equalsDefault = value == defaultServoRoles[i].value;
+        }
+        if (i >= servoCount && (!defaultServoRoles || equalsDefault)) {
+            continue;
+        }
+        if (defaultServoRoles) {
+            const uint8_t defaultValue = defaultServoRoles[i].value;
+            headingStr = cliPrintSectionHeading(dumpMask, !equalsDefault, headingStr);
+            cliDefaultPrintLinef(dumpMask, equalsDefault, format, i + 1,
+                servoRoleOf(defaultValue), servoRoleNumber(defaultValue));
+        }
+        cliDumpPrintLinef(dumpMask, equalsDefault, format, i + 1,
+            servoRoleOf(value), servoRoleNumber(value));
+    }
+}
+
 // Lists the servos in use, and any other that isn't at its default.
 static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, const servoParam_t *defaultServoParams, const char *headingStr)
 {
@@ -2841,6 +2872,29 @@ static void cliServo(const char *cmdName, char *cmdline)
             // Limited to SERVO_TRIM_LIMIT_PERCENT of the servo's scale.
             setServoSavedTrim(index - 1, atoi(args[VALUE]));
             cliPrintLinef("servo trim %d %d", index, getServoSavedTrim(index - 1));
+        }
+        else {
+            cliShowInvalidArgumentCountError(cmdName);
+        }
+    }
+    else if (strcasecmp(args[FUNC], "role") == 0) {
+        if (count == 1) {
+            printServoRole(DUMP_MASTER, servoRoles(0), NULL, NULL);
+        }
+        else if (count == 3 || count == 4) {
+            // servo role <servo> <role> [<number>]
+            enum { FUNC=0, INDEX, ROLE, NUMBER };
+            const int index = atoi(args[INDEX]);
+            const int role = atoi(args[ROLE]);
+            const int number = (count == 4) ? atoi(args[NUMBER]) : 1;
+            if (index < 1 || index > MAX_SUPPORTED_SERVOS ||
+                role < 0 || role >= SERVO_ROLE_COUNT ||
+                number < 1 || number > SERVO_ROLE_NUMBER_MAX) {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+                return;
+            }
+            servoRolesMutable(index - 1)->value = servoRoleValue(role, number);
+            cliPrintLinef("servo role %d %d %d", index, role, number);
         }
         else {
             cliShowInvalidArgumentCountError(cmdName);
@@ -7045,6 +7099,7 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
 #ifdef USE_SERVOS
             printServo(dumpMask, servoParams_CopyArray, servoParams(0), "servo");
             printServoTrim(dumpMask, servoTrims_CopyArray, servoTrims(0), "servo trim");
+            printServoRole(dumpMask, servoRoles_CopyArray, servoRoles(0), "servo role");
 #endif
 
             printMixerInputs(dumpMask, mixerInputs_CopyArray, mixerInputs(0), "mixer input");
@@ -7444,6 +7499,8 @@ const clicmd_t cmdTable[] = {
                     "flags <servo> <[+|-]FLAG> ...\r\n\t"
                     "trim\r\n\t"
                     "trim <servo> <us>\r\n\t"
+                    "role\r\n\t"
+                    "role <servo> <role> [<number>]\r\n\t"
                     "override\r\n\t"
                     "override <value>|off\r\n\t"
                     "override <servo> <value>|off",

@@ -130,6 +130,7 @@
 #include "pg/fbus_master.h"
 #include "pg/rx_input_backup.h"
 #include "pg/bus_servo.h"
+#include "pg/servo_role.h"
 #include "pg/logic_condition.h"
 #ifdef USE_SRXL2_ESC
 #include "pg/srxl2_esc.h"
@@ -1134,6 +1135,14 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     case MSP_SERVO_OVERRIDE:
         for (int i = 0; i < getServoCount(); i++) {
             sbufWriteU16(dst, getServoOverride(i));
+        }
+        break;
+
+    case MSP2_WING_SERVO_ROLES:
+        // U8 count, then one U8 per servo: role << 3 | (number - 1)
+        sbufWriteU8(dst, getServoCount());
+        for (int i = 0; i < getServoCount(); i++) {
+            sbufWriteU8(dst, servoRoles(i)->value);
         }
         break;
 #endif
@@ -3509,6 +3518,21 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         if (!setServoProbe(servo, offset, sbufReadU16(src))) {
             return MSP_RESULT_ERROR;
         }
+        break;
+    }
+
+    case MSP2_WING_SET_SERVO_ROLE: {
+        // U8 servo, U8 role << 3 | (number - 1). Any value is kept, so a role added
+        // later survives a round trip through older firmware.
+        if (dataSize != 2) {
+            return MSP_RESULT_ERROR;
+        }
+        const uint8_t servo = sbufReadU8(src);
+        const uint8_t value = sbufReadU8(src);
+        if (servo >= MAX_SUPPORTED_SERVOS) {
+            return MSP_RESULT_ERROR;
+        }
+        servoRolesMutable(servo)->value = value;
         break;
     }
 

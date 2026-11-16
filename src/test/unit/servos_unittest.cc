@@ -34,6 +34,7 @@ extern "C" {
 #include "pg/bus_servo.h"
 #include "pg/mixer.h"
 #include "pg/servo_curve.h"
+#include "pg/servo_role.h"
 #include "pg/servo_trim.h"
 #include "pg/servos.h"
 
@@ -302,4 +303,25 @@ TEST_F(ServosTest, ServoCountFollowsTheBusChannelCount)
         servoUpdate();
     }
     EXPECT_EQ(4, getServoCount());
+}
+
+// The role byte is part of the MSP and CLI interface: role in the upper 5 bits,
+// which servo of that role (1-8) in the lower 3.
+TEST_F(ServosTest, RoleByteKeepsRoleAndNumber)
+{
+    const uint8_t value = servoRoleValue(SERVO_ROLE_AILERON_LEFT, 2);
+    EXPECT_EQ((2 << 3) | 1, value);
+    EXPECT_EQ(SERVO_ROLE_AILERON_LEFT, servoRoleOf(value));
+    EXPECT_EQ(2, servoRoleNumber(value));
+
+    EXPECT_EQ(0, servoRoleValue(SERVO_ROLE_NONE, 1));
+    EXPECT_EQ(255, servoRoleValue(SERVO_ROLE_OTHER, 8));
+    // A number outside 1-8 is held at the nearest end
+    EXPECT_EQ(1, servoRoleNumber(servoRoleValue(SERVO_ROLE_RUDDER, 0)));
+    EXPECT_EQ(8, servoRoleNumber(servoRoleValue(SERVO_ROLE_RUDDER, 12)));
+    EXPECT_EQ(SERVO_ROLE_RUDDER, servoRoleOf(servoRoleValue(SERVO_ROLE_RUDDER, 12)));
+    // The numbers clients rely on
+    EXPECT_EQ(7, SERVO_ROLE_RUDDER);
+    EXPECT_EQ(28, SERVO_ROLE_CHOKE);
+    EXPECT_EQ(31, SERVO_ROLE_OTHER);
 }
