@@ -78,7 +78,6 @@ void imuSetHasNewData(uint32_t dt);
 #endif
 #endif
 
-bool shouldInitializeGPSHeading(void);
 // True once the attitude estimate has been established (or there is no accelerometer to need one).
 // Says nothing about the aircraft's tilt -- see isUpsidedown() for that.
 bool isAttitudeEstimateReady(void);
