@@ -45,6 +45,7 @@
 
 #include "pg/servos.h"
 #include "pg/servo_curve.h"
+#include "pg/servo_follow.h"
 #include "pg/servo_trim.h"
 #include "pg/bus_servo.h"
 
@@ -110,6 +111,33 @@ bool isServoOutputInUse(uint8_t servo)
     return servo < servoCount;
 }
 
+/*
+ * The servo whose mixer output drives this one: its primary when it follows another
+ * servo on the same surface (servoFollows PG), otherwise the servo itself. Only one
+ * level is followed: a primary must drive itself, and must be in use, or the follow
+ * setting is ignored (validateAndFixServoConfig() also clears the invalid ones).
+ */
+uint8_t getServoPrimary(uint8_t servo)
+{
+    if (servo >= MAX_SUPPORTED_SERVOS)
+        return servo;
+
+    const uint8_t primary = servoFollows(servo)->primary;
+    if (primary == 0 || primary > MAX_SUPPORTED_SERVOS)
+        return servo;
+
+    const uint8_t index = primary - 1;
+    if (index == servo || servoFollows(index)->primary != 0 || !isServoOutputInUse(index))
+        return servo;
+
+    return index;
+}
+
+bool isServoFollower(uint8_t servo)
+{
+    return getServoPrimary(servo) != servo;
+}
+
 static int axisTrimDirection(int axis, int servo)
 {
     // A servo whose output isn't used would only hold the axis back at its trim limit.
@@ -122,9 +150,12 @@ static int axisTrimDirection(int axis, int servo)
 
     const bool rateReversed = mixerInputs(axisInput[axis])->rate < 0;
 
+    // A follower moves with its primary's mixer output, then applies its own reverse.
+    const uint8_t source = getServoPrimary(servo);
+
     for (int r = 0; r < MIXER_RULE_COUNT; r++) {
         const mixerRule_t *rule = mixerRules(r);
-        if (rule->oper && rule->output == mixerServoOutputIndex(servo) &&
+        if (rule->oper && rule->output == mixerServoOutputIndex(source) &&
             rule->input == axisInput[axis]) {
             const bool flagReversed = servoParams(servo)->flags & SERVO_FLAG_REVERSED;
             const bool weightReversed = (rule->weight != 0 ? rule->weight : rule->weightNeg) < 0;
@@ -401,6 +432,19 @@ void validateAndFixServoConfig(void)
         servo->min = constrain(servo->min, SERVO_LIMIT_MIN, 0);
         servo->max = constrain(servo->max, 0, SERVO_LIMIT_MAX);
     }
+
+    // A servo can only follow another servo that drives itself: never itself, never
+    // a follower (no chains or loops), and only one of the servos that exist.
+    for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
+        servoFollow_t *follow = servoFollowsMutable(i);
+        const int primary = follow->primary;
+        if (primary == 0)
+            continue;
+        if (primary > MAX_SUPPORTED_SERVOS || primary - 1 == i ||
+            servoFollows(primary - 1)->primary != 0) {
+            follow->primary = 0;
+        }
+    }
 }
 
 // Every servo has the same signal range whether it is sent on a PWM output, a
@@ -544,14 +588,15 @@ static inline float limitTravel(uint8_t servo, float pos, float min, float max)
     // constrainf() in common/maths.h). Only a NaN fails both comparisons
     // and would otherwise fall through untouched -- isfinitef() catches
     // that remaining case without changing how Inf is already handled.
+    // A follower at its limit holds back the primary's mixer output, which drives it.
     if (pos > max) {
-        mixerSaturateServoOutput(servo);
+        mixerSaturateServoOutput(getServoPrimary(servo));
         return max;
     } else if (pos < min) {
-        mixerSaturateServoOutput(servo);
+        mixerSaturateServoOutput(getServoPrimary(servo));
         return min;
     } else if (!isfinitef(pos)) {
-        mixerSaturateServoOutput(servo);
+        mixerSaturateServoOutput(getServoPrimary(servo));
         return min;
     }
     return pos;
@@ -585,17 +630,30 @@ float geometryCorrection(float pos)
 
 void servoUpdate(void)
 {
+    float base[MAX_SUPPORTED_SERVOS];
     float input[MAX_SUPPORTED_SERVOS];
 
     if (!servoCountRefresh--)
         servoUpdateCount();
 
+    // Each servo's own command: its override on the bench, otherwise its mixer output.
     for (int i = 0; i < servoCount; i++)
     {
         if (!ARMING_FLAG(ARMED) && hasServoOverride(i))
-            input[i] = servoOverride[i] / 1000.0f;
+            base[i] = servoOverride[i] / 1000.0f;
         else
-            input[i] = mixerGetServoOutput(i);
+            base[i] = mixerGetServoOutput(i);
+    }
+
+    for (int i = 0; i < servoCount; i++)
+    {
+        // A follower takes its primary's command, so it moves with the primary on the
+        // bench too (an override on the primary), unless it has an override of its own.
+        const uint8_t primary = getServoPrimary(i);
+        if (primary != i && !(!ARMING_FLAG(ARMED) && hasServoOverride(i)))
+            input[i] = base[primary];
+        else
+            input[i] = base[i];
 
 #ifdef USE_SERVO_GEOMETRY_CORRECTION
         const servoParam_t *servo = servoParams(i);
@@ -632,8 +690,11 @@ void servoUpdate(void)
         // elevator, rudder, ...) move on their own hinges, unlike a
         // helicopter swashplate, so one servo running into its speed limit
         // must never slow down an unrelated surface.
-        if (servo->speed > 0)
-            pos = limitSpeed(servoInput[i], pos, servo->speed);
+        // A follower uses its primary's speed limit, so the servos on one surface
+        // always move together.
+        const uint16_t speed = servoParams(getServoPrimary(i))->speed;
+        if (speed > 0)
+            pos = limitSpeed(servoInput[i], pos, speed);
 
         servoInput[i] = pos;
 

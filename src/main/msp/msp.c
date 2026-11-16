@@ -130,6 +130,7 @@
 #include "pg/fbus_master.h"
 #include "pg/rx_input_backup.h"
 #include "pg/bus_servo.h"
+#include "pg/servo_follow.h"
 #include "pg/logic_condition.h"
 #ifdef USE_SRXL2_ESC
 #include "pg/srxl2_esc.h"
@@ -1134,6 +1135,14 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
     case MSP_SERVO_OVERRIDE:
         for (int i = 0; i < getServoCount(); i++) {
             sbufWriteU16(dst, getServoOverride(i));
+        }
+        break;
+
+    case MSP2_WING_SERVO_FOLLOW:
+        // U8 count, then one U8 per servo: the servo it follows (1-based, 0 = none)
+        sbufWriteU8(dst, getServoCount());
+        for (int i = 0; i < getServoCount(); i++) {
+            sbufWriteU8(dst, servoFollows(i)->primary);
         }
         break;
 #endif
@@ -3507,6 +3516,25 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         const uint8_t servo = sbufReadU8(src);
         const int16_t offset = sbufReadU16(src);
         if (!setServoProbe(servo, offset, sbufReadU16(src))) {
+            return MSP_RESULT_ERROR;
+        }
+        break;
+    }
+
+    case MSP2_WING_SET_SERVO_FOLLOW: {
+        // U8 servo, U8 the servo it follows (1-based, 0 = none). A servo can only follow
+        // one that drives itself, so set a primary back to 0 before making it a follower.
+        if (dataSize != 2) {
+            return MSP_RESULT_ERROR;
+        }
+        const uint8_t servo = sbufReadU8(src);
+        const uint8_t primary = sbufReadU8(src);
+        if (servo >= MAX_SUPPORTED_SERVOS || primary > MAX_SUPPORTED_SERVOS || primary == servo + 1) {
+            return MSP_RESULT_ERROR;
+        }
+        servoFollowsMutable(servo)->primary = primary;
+        validateAndFixServoConfig();
+        if (servoFollows(servo)->primary != primary) {
             return MSP_RESULT_ERROR;
         }
         break;

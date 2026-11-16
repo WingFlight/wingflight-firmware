@@ -73,6 +73,10 @@ int servoTravelMax(uint8_t index);
 // is larger), and the output stays inside the min/max travel limits.
 #define SERVO_TRIM_LIMIT_PERCENT     20
 bool isServoOutputInUse(uint8_t servo);
+// Servos on one surface (servoFollows PG): the servo whose mixer output drives this
+// one, which is the servo itself unless it follows another.
+uint8_t getServoPrimary(uint8_t servo);
+bool isServoFollower(uint8_t servo);
 int getServoSavedTrim(uint8_t servo);
 void setServoSavedTrim(uint8_t servo, int value);
 int getServoAxisRuntimeTrim(int axis);

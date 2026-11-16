@@ -183,6 +183,8 @@
 #define PG_PROP_HANG_CONFIG          1023
 #define PG_SERVO_TRIMS               1024
 #define PG_FBUS_MUX_FPGA_CONFIG      1025
+// 1026 is PG_REVERSE_FLIGHT_CONFIG on an open branch (feature/4d).
+#define PG_SERVO_FOLLOWS             1027
 
 // OSD configuration -- removed (OSD)
 //#define PG_OSD_FONT_CONFIG 2047

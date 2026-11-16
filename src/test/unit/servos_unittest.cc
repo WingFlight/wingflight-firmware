@@ -34,6 +34,7 @@ extern "C" {
 #include "pg/bus_servo.h"
 #include "pg/mixer.h"
 #include "pg/servo_curve.h"
+#include "pg/servo_follow.h"
 #include "pg/servo_trim.h"
 #include "pg/servos.h"
 
@@ -41,6 +42,7 @@ servoParam_t servoParams_SystemArray[MAX_SUPPORTED_SERVOS];
 servoConfig_t servoConfig_System;
 servoCurve_t servoCurves_SystemArray[MAX_SUPPORTED_SERVOS];
 servoTrim_t servoTrims_SystemArray[MAX_SUPPORTED_SERVOS];
+servoFollow_t servoFollows_SystemArray[MAX_SUPPORTED_SERVOS];
 mixerRule_t mixerRules_SystemArray[MIXER_RULE_COUNT];
 mixerInput_t mixerInputs_SystemArray[MIXER_INPUT_COUNT];
 
@@ -78,6 +80,7 @@ protected:
         memset(&servoConfig_System, 0, sizeof(servoConfig_System));
         memset(servoCurves_SystemArray, 0, sizeof(servoCurves_SystemArray));
         memset(servoTrims_SystemArray, 0, sizeof(servoTrims_SystemArray));
+        memset(servoFollows_SystemArray, 0, sizeof(servoFollows_SystemArray));
         memset(mixerRules_SystemArray, 0, sizeof(mixerRules_SystemArray));
         memset(mixerInputs_SystemArray, 0, sizeof(mixerInputs_SystemArray));
         memset(mixerOutput, 0, sizeof(mixerOutput));
@@ -302,4 +305,135 @@ TEST_F(ServosTest, ServoCountFollowsTheBusChannelCount)
         servoUpdate();
     }
     EXPECT_EQ(4, getServoCount());
+}
+
+// Two or more servos on one control surface: a follower takes its primary's mixer
+// output and applies its own reverse, balance curve, scale, trim and limits.
+TEST_F(ServosTest, FollowerTakesThePrimarysMixerOutput)
+{
+    start(4, 0);
+    servoFollowsMutable(1)->primary = 1;
+    servoParamsMutable(1)->flags = SERVO_FLAG_REVERSED;
+    servoParamsMutable(1)->rpos = 400;
+    setServoSavedTrim(1, 20);
+    // Its own mixer output is ignored
+    setMixer(1, 1.0f);
+    setMixer(0, -0.5f);
+    servoUpdate();
+
+    EXPECT_TRUE(isServoFollower(1));
+    EXPECT_FALSE(isServoFollower(0));
+    EXPECT_EQ(0, getServoPrimary(1));
+    EXPECT_EQ(1250, getServoOutput(0));
+    // Reversed: -0.5 becomes +0.5, on its own +scale of 400, plus its trim
+    EXPECT_EQ(1500 + 200 + 20, getServoOutput(1));
+
+    // A balance curve on the follower only
+    servoCurve_t *curve = servoCurvesMutable(1);
+    curve->count = 2;
+    curve->points[0] = { -1000, 50 };
+    curve->points[1] = { 1000, 50 };
+    servoUpdate();
+    // -0.5 + 0.05, reversed to +0.45
+    EXPECT_EQ(1500 + 180 + 20, getServoOutput(1));
+}
+
+TEST_F(ServosTest, FollowerMovesWithAnOverrideOnThePrimary)
+{
+    start(4, 0);
+    servoFollowsMutable(2)->primary = 1;
+    setServoOverride(0, 500);
+    servoUpdate();
+    EXPECT_EQ(1750, getServoOutput(0));
+    EXPECT_EQ(1750, getServoOutput(2));
+
+    // An override of its own wins
+    setServoOverride(2, -1000);
+    servoUpdate();
+    EXPECT_EQ(1000, getServoOutput(2));
+
+    // Overrides only work disarmed: then it is the mixer again
+    armingFlags = ARMED;
+    setMixer(0, 0.2f);
+    servoUpdate();
+    EXPECT_EQ(1600, getServoOutput(0));
+    EXPECT_EQ(1600, getServoOutput(2));
+}
+
+TEST_F(ServosTest, FollowerUsesThePrimarysSpeed)
+{
+    start(4, 0);
+    servoFollowsMutable(1)->primary = 1;
+    // Start both from center (the speed limit carries the last position over)
+    servoUpdate();
+    servoParamsMutable(0)->speed = 600;
+    servoParamsMutable(1)->speed = 0;
+    setMixer(0, 1.0f);
+    servoUpdate();
+    EXPECT_NEAR(1501.0f, getServoOutputFloat(0), 0.01f);
+    EXPECT_NEAR(1501.0f, getServoOutputFloat(1), 0.01f);
+}
+
+TEST_F(ServosTest, FollowerAtItsLimitSaturatesThePrimary)
+{
+    start(4, 0);
+    servoFollowsMutable(1)->primary = 1;
+    servoParamsMutable(1)->max = 200;
+    setMixer(0, 1.0f);
+    servoUpdate();
+    EXPECT_EQ(1700, getServoOutput(1));
+    EXPECT_TRUE(saturated(0));
+    EXPECT_FALSE(saturated(1));
+}
+
+TEST_F(ServosTest, InvalidFollowIsIgnoredAndCleared)
+{
+    start(4, 0);
+    setMixer(0, 0.5f);
+    setMixer(1, -0.5f);
+    setMixer(2, 0.2f);
+
+    // Itself
+    servoFollowsMutable(0)->primary = 1;
+    // A chain: S3 follows S2, which follows S1
+    servoFollowsMutable(1)->primary = 1;
+    servoFollowsMutable(2)->primary = 2;
+    // A servo that isn't in use, and one that doesn't exist
+    servoFollowsMutable(3)->primary = 9;
+    servoUpdate();
+
+    EXPECT_FALSE(isServoFollower(0));
+    EXPECT_FALSE(isServoFollower(2));
+    EXPECT_FALSE(isServoFollower(3));
+    EXPECT_EQ(1600, getServoOutput(2));
+
+    servoFollowsMutable(4)->primary = MAX_SUPPORTED_SERVOS + 1;
+    validateAndFixServoConfig();
+    EXPECT_EQ(0, servoFollows(0)->primary);
+    EXPECT_EQ(1, servoFollows(1)->primary);
+    EXPECT_EQ(0, servoFollows(2)->primary);
+    // Kept: S9 exists, it is only not in use on this board
+    EXPECT_EQ(9, servoFollows(3)->primary);
+    EXPECT_EQ(0, servoFollows(4)->primary);
+}
+
+TEST_F(ServosTest, StickTrimMovesAFollowerWithItsPrimary)
+{
+    start(4, 0);
+    mixerInputsMutable(MIXER_IN_STABILIZED_ROLL)->rate = 1000;
+    mixerRule_t *rule = mixerRulesMutable(0);
+    rule->oper = MIXER_OP_SET;
+    rule->input = MIXER_IN_STABILIZED_ROLL;
+    rule->output = mixerServoOutputIndex(0);
+    rule->weight = 1000;
+    rule->weightNeg = 1000;
+
+    // S2 follows S1 and is mounted the other way round
+    servoFollowsMutable(1)->primary = 1;
+    servoParamsMutable(1)->flags = SERVO_FLAG_REVERSED;
+
+    set_ADJUSTMENT_SERVO_TRIM_ROLL(30);
+    EXPECT_EQ(30, getServoSavedTrim(0));
+    EXPECT_EQ(-30, getServoSavedTrim(1));
+    EXPECT_EQ(30, get_ADJUSTMENT_SERVO_TRIM_ROLL());
 }

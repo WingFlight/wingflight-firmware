@@ -378,4 +378,8 @@
 // state, U8 combo index, U8 combo count, U8 pinSwap, U8 inverted, U16 valid
 // frames on this wiring, U8 port open.
 #define MSP2_WING_FBUS_MASTER_TRIAL           0x5F37
+// Servos on one control surface: which servo each one follows (servoFollows PG, 1-based,
+// 0 = none). 0x5F38-0x5F39 are taken on an open branch.
+#define MSP2_WING_SERVO_FOLLOW                0x5F3A
+#define MSP2_WING_SET_SERVO_FOLLOW            0x5F3B
 #define MSP_V2_FRAME                         255

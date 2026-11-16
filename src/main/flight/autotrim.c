@@ -78,11 +78,14 @@ static bool isTrimmableServo(int servo)
     if (!isServoOutputInUse(servo))
         return false;
 
+    // A follower is driven by its primary's rules, so it is trimmed when the primary is.
+    const uint8_t source = getServoPrimary(servo);
+
     for (int i = 0; i < MIXER_RULE_COUNT; i++) {
         const mixerRule_t *rule = mixerRules(i);
 
         if (rule->oper &&
-            rule->output == mixerServoOutputIndex(servo) &&
+            rule->output == mixerServoOutputIndex(source) &&
             rule->input >= MIXER_IN_STABILIZED_ROLL && rule->input <= MIXER_IN_STABILIZED_YAW) {
             return true;
         }

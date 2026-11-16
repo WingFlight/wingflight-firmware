@@ -102,6 +102,7 @@ bool cliMode = false;
 #include "drivers/io_impl.h"
 
 #include "pg/bus_servo.h"
+#include "pg/servo_follow.h"
 #include "pg/servo_trim.h"
 #include "pg/logic_condition.h"
 #include "drivers/light_led.h"
@@ -2680,6 +2681,32 @@ static void printServoTrim(dumpFlags_t dumpMask, const servoTrim_t *servoTrims, 
     }
 }
 
+// Servos that follow another on the same surface (servoFollows PG), as
+// "servo follow <servo> <primary>", 0 for none. Lists the servos in use, and any
+// other that isn't at its default.
+static void printServoFollow(dumpFlags_t dumpMask, const servoFollow_t *servoFollows, const servoFollow_t *defaultServoFollows, const char *headingStr)
+{
+    const char *format = "servo follow %u %u";
+    const uint8_t servoCount = getServoCount();
+
+    headingStr = cliPrintSectionHeading(dumpMask, false, headingStr);
+
+    for (uint32_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
+        bool equalsDefault = false;
+        if (defaultServoFollows) {
+            equalsDefault = servoFollows[i].primary == defaultServoFollows[i].primary;
+        }
+        if (i >= servoCount && (!defaultServoFollows || equalsDefault)) {
+            continue;
+        }
+        if (defaultServoFollows) {
+            headingStr = cliPrintSectionHeading(dumpMask, !equalsDefault, headingStr);
+            cliDefaultPrintLinef(dumpMask, equalsDefault, format, i + 1, defaultServoFollows[i].primary);
+        }
+        cliDumpPrintLinef(dumpMask, equalsDefault, format, i + 1, servoFollows[i].primary);
+    }
+}
+
 // Lists the servos in use, and any other that isn't at its default.
 static void printServo(dumpFlags_t dumpMask, const servoParam_t *servoParams, const servoParam_t *defaultServoParams, const char *headingStr)
 {
@@ -2841,6 +2868,28 @@ static void cliServo(const char *cmdName, char *cmdline)
             // Limited to SERVO_TRIM_LIMIT_PERCENT of the servo's scale.
             setServoSavedTrim(index - 1, atoi(args[VALUE]));
             cliPrintLinef("servo trim %d %d", index, getServoSavedTrim(index - 1));
+        }
+        else {
+            cliShowInvalidArgumentCountError(cmdName);
+        }
+    }
+    else if (strcasecmp(args[FUNC], "follow") == 0) {
+        if (count == 1) {
+            printServoFollow(DUMP_MASTER, servoFollows(0), NULL, NULL);
+        }
+        else if (count == 3) {
+            enum { FUNC=0, INDEX, VALUE };
+            const int index = atoi(args[INDEX]);
+            const int primary = (strcasecmp(args[VALUE], "off") == 0) ? 0 : atoi(args[VALUE]);
+            if (index < 1 || index > MAX_SUPPORTED_SERVOS ||
+                primary < 0 || primary > MAX_SUPPORTED_SERVOS || primary == index) {
+                cliShowArgumentRangeError(cmdName, NULL, 0, 0);
+                return;
+            }
+            servoFollowsMutable(index - 1)->primary = primary;
+            // Clears it again if the primary is itself a follower
+            validateAndFixServoConfig();
+            cliPrintLinef("servo follow %d %d", index, servoFollows(index - 1)->primary);
         }
         else {
             cliShowInvalidArgumentCountError(cmdName);
@@ -7045,6 +7094,7 @@ static void printConfig(const char *cmdName, char *cmdline, bool doDiff)
 #ifdef USE_SERVOS
             printServo(dumpMask, servoParams_CopyArray, servoParams(0), "servo");
             printServoTrim(dumpMask, servoTrims_CopyArray, servoTrims(0), "servo trim");
+            printServoFollow(dumpMask, servoFollows_CopyArray, servoFollows(0), "servo follow");
 #endif
 
             printMixerInputs(dumpMask, mixerInputs_CopyArray, mixerInputs(0), "mixer input");
@@ -7444,6 +7494,8 @@ const clicmd_t cmdTable[] = {
                     "flags <servo> <[+|-]FLAG> ...\r\n\t"
                     "trim\r\n\t"
                     "trim <servo> <us>\r\n\t"
+                    "follow\r\n\t"
+                    "follow <servo> <primary>|off\r\n\t"
                     "override\r\n\t"
                     "override <value>|off\r\n\t"
                     "override <servo> <value>|off",
