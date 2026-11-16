@@ -435,11 +435,7 @@ static void imuCalculateEstimatedAttitude(timeUs_t currentTimeUs)
     previousIMUUpdateTime = currentTimeUs;
 
 #ifdef USE_MAG
-    if (sensors(SENSOR_MAG) && compassIsHealthy()
-#ifdef USE_GPS_RESCUE
-        && !gpsRescueDisableMag()
-#endif
-        ) {
+    if (sensors(SENSOR_MAG) && compassIsHealthy()) {
         useMag = true;
     }
 #endif

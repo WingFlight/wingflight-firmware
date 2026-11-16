@@ -24,7 +24,7 @@
 
 #include "pg/gps_nav.h"
 
-extern int32_t navAngle[ANGLE_INDEX_COUNT]; // NOTE: ANGLES ARE IN CENTIDEGREES, same convention as gpsRescueAngle
+extern int32_t navAngle[ANGLE_INDEX_COUNT]; // NOTE: ANGLES ARE IN CENTIDEGREES
 
 void navLoiterStart(void);
 void navRthStart(void);

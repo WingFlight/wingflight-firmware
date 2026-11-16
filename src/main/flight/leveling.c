@@ -101,9 +101,6 @@ static float calcLevelTargetAngle(int axis)
     const float angleLimit = level.AngleLimit[axis];
     float angle = angleLimit * getLevelModeDeflection(axis);
 
-#ifdef USE_GPS_RESCUE
-    angle += gpsRescueAngle[axis] / 100.0f; // ANGLE IS IN CENTIDEGREES
-#endif
 #ifdef USE_GPS_NAV
     angle += navAngle[axis] / 100.0f; // ANGLE IS IN CENTIDEGREES
 #endif
