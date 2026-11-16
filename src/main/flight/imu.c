@@ -396,8 +396,7 @@ static float imuCalcKpGain(timeUs_t currentTimeUs, bool useAcc, const float *gyr
     return ret;
 }
 
-// Converts Euler angles (decidegrees) to a quaternion. Used by imuComputeQuaternionFromRPY
-// (GPS heading reinit, below) and exposed unconditionally, not only under USE_GPS. The yaw negation matches
+// Converts Euler angles (decidegrees) to a quaternion. The yaw negation matches
 // imuUpdateEulerAngles()/setpoint.c's documented CW-stick-vs-gyro-sign convention; don't re-derive
 // this elsewhere, it's easy to get the sign wrong in a way that only shows up as a wrong heading.
 void imuEulerToQuaternion(int16_t roll, int16_t pitch, int16_t yaw, quaternion *out)
@@ -424,30 +423,6 @@ void imuEulerToQuaternion(int16_t roll, int16_t pitch, int16_t yaw, quaternion *
     out->z = scRoll.cos * scPitch.cos * scYaw.sin - scRoll.sin * scPitch.sin * scYaw.cos;
 }
 
-#if defined(USE_GPS)
-static void imuComputeQuaternionFromRPY(quaternionProducts *quatProd, int16_t initialRoll, int16_t initialPitch, int16_t initialYaw)
-{
-    quaternion q0123;
-    imuEulerToQuaternion(initialRoll, initialPitch, initialYaw, &q0123);
-
-    quatProd->xx = sq(q0123.x);
-    quatProd->yy = sq(q0123.y);
-    quatProd->zz = sq(q0123.z);
-
-    quatProd->xy = q0123.x * q0123.y;
-    quatProd->xz = q0123.x * q0123.z;
-    quatProd->yz = q0123.y * q0123.z;
-
-    quatProd->wx = q0123.w * q0123.x;
-    quatProd->wy = q0123.w * q0123.y;
-    quatProd->wz = q0123.w * q0123.z;
-
-    imuComputeRotationMatrix();
-
-    attitudeIsEstablished = true;
-}
-#endif
-
 static void imuCalculateEstimatedAttitude(timeUs_t currentTimeUs)
 {
     static timeUs_t previousIMUUpdateTime;
@@ -470,17 +445,11 @@ static void imuCalculateEstimatedAttitude(timeUs_t currentTimeUs)
 #endif
 #if defined(USE_GPS)
     if (!useMag && sensors(SENSOR_GPS) && STATE(GPS_FIX) && gpsSol.numSat >= 5 && gpsSol.groundSpeed >= GPS_COG_MIN_GROUNDSPEED) {
-        // Use GPS course over ground to correct attitude.values.yaw
+        // Use GPS course over ground to correct attitude.values.yaw. The heading converges through the
+        // filter; it is deliberately not snapped to the course, which would step the yaw that ATTHOLD
+        // and the hold engine are holding.
         courseOverGround = DECIDEGREES_TO_RADIANS(gpsSol.groundCourse);
         useCOG = true;
-
-        if (useCOG && shouldInitializeGPSHeading()) {
-            // Reset our reference and reinitialize quaternion.  This will likely ideally happen more than once per flight, but for now,
-            // shouldInitializeGPSHeading() returns true only once.
-            imuComputeQuaternionFromRPY(&qP, attitude.values.roll, attitude.values.pitch, gpsSol.groundCourse);
-
-            useCOG = false; // Don't use the COG when we first reinitialize.  Next time around though, yes.
-        }
     }
 #endif
 
@@ -538,19 +507,6 @@ void imuUpdateAttitude(timeUs_t currentTimeUs)
     }
 }
 #endif // USE_ACC
-
-bool shouldInitializeGPSHeading(void)
-{
-    static bool initialized = false;
-
-    if (!initialized) {
-        initialized = true;
-
-        return true;
-    }
-
-    return false;
-}
 
 float getCosTiltAngle(void)
 {
