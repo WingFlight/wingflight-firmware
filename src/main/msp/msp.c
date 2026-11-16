@@ -131,6 +131,7 @@
 #include "pg/rx_input_backup.h"
 #include "pg/bus_servo.h"
 #include "pg/logic_condition.h"
+#include "pg/servo_name.h"
 #ifdef USE_SRXL2_ESC
 #include "pg/srxl2_esc.h"
 #endif
@@ -1283,6 +1284,17 @@ static bool mspProcessOutCommand(int16_t cmdMSP, sbuf_t *dst)
         }
         break;
     }
+
+#ifdef USE_SERVOS
+    case MSP2_WING_SERVO_NAMES:
+        // Every servo, so a name stays visible on a servo not currently in use
+        sbufWriteU8(dst, MAX_SUPPORTED_SERVOS);
+        sbufWriteU8(dst, SERVO_NAME_LENGTH);
+        for (uint8_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
+            sbufWriteData(dst, servoNames(i)->name, SERVO_NAME_LENGTH);
+        }
+        break;
+#endif
 
     case MSP2_WING_TV_EFFECTIVE_PID_GAINS: {
         tvPidRuntimeGains_t runtimeGains;
@@ -3526,6 +3538,23 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         setServoSavedTrim(servo, trim);
         break;
     }
+
+#ifdef USE_SERVOS
+    case MSP2_WING_SET_SERVO_NAME: {
+        // U8 servo, then up to SERVO_NAME_LENGTH bytes of name (none clears it)
+        if (dataSize < 1 || dataSize > 1 + SERVO_NAME_LENGTH) {
+            return MSP_RESULT_ERROR;
+        }
+        const uint8_t servo = sbufReadU8(src);
+        char name[SERVO_NAME_LENGTH];
+        const uint8_t len = dataSize - 1;
+        sbufReadData(src, name, len);
+        if (!setServoName(servo, name, len)) {
+            return MSP_RESULT_ERROR;
+        }
+        break;
+    }
+#endif
 
     case MSP_SET_SERVO_CENTER:
         // payload: U8 idx + U16 mid  => 3 bytes
