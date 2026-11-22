@@ -1,3 +1,8 @@
+# 0.0.44
+
+Use with the 0.0.43 or 0.0.44 Configurator and Lua suites (MSP API 22.16, unchanged). Updating resets nothing.
+Make the setup wizards' gyro check easy to see: while a setup wizard (Configurator or Ethos suite) holds ANGLE on, tilting the model 30 degrees moves the roll and pitch surfaces at least half their travel, and proportionally less below that, whatever the level strength, rates, F and throttle or speed attenuation are set to. Before, the flight response was used, quartered on the ground, and the surfaces often barely moved. ANGLE from a switch is unchanged, armed or not.
+
 # 0.0.43
 
 Use with the 0.0.43 Configurator and Lua suites (MSP API 22.16, unchanged); the 0.0.42 ones work too, without servo names and F.Bus wiring detection.
