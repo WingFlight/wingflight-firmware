@@ -40,6 +40,7 @@
 #include "fc/core.h"
 #include "fc/rc.h"
 #include "fc/rc_controls.h"
+#include "fc/rc_modes.h"
 #include "fc/runtime_config.h"
 
 #include "flight/imu.h"
@@ -51,6 +52,11 @@
 #include "sensors/gyro.h"
 
 #include "leveling.h"
+
+// Bench check (see levelingBenchCheck()): tilt that gives the full response, and the least
+// surface travel F gives at that tilt.
+#define LEVEL_BENCH_FULL_ANGLE      30.0f
+#define LEVEL_BENCH_MIN_THROW       0.5f
 
 typedef struct {
     float Gain;
@@ -108,6 +114,13 @@ static float calcLevelTargetAngle(int axis)
     return constrainf(angle, -angleLimit, angleLimit);
 }
 
+// True while a setup wizard holds ANGLE on through the mode override (bench only: the
+// override cannot be set, and does not survive, while armed).
+bool levelingBenchCheck(void)
+{
+    return isModeOverrideForcing(BOXANGLE);
+}
+
 void angleModeReset(void)
 {
     level.Engaged[FD_ROLL] = false;
@@ -137,12 +150,26 @@ float angleModeApply(int axis, float pidSetpoint)
 
         float errorAngle = level.Target[axis] - currentAngle;
 
-        if (!isAirborne())
-            errorAngle *= 0.25f;
+        if (levelingBenchCheck()) {
+            // ANGLE forced by the mode override: a setup wizard is asking the pilot to tilt
+            // the model by hand and watch the surfaces push back. The flight response is
+            // too small to see (quartered on the ground, and scaled by a tune that may be
+            // gentle), so map the tilt straight to surface travel instead:
+            // LEVEL_BENCH_FULL_ANGLE of tilt gives at least LEVEL_BENCH_MIN_THROW from F,
+            // whatever the level strength, rates or F are set to.
+            const float kf = pidGetFeedforward(axis, 1.0f);
+            const float benchRate = (kf > 0) ? fmaxf(maxRate, LEVEL_BENCH_MIN_THROW / kf) : maxRate;
 
-        // Rate damping goes through the rate PID's F term, so it scales with the airframe's tune.
-        pidSetpoint = errorAngle * level.Gain - gyro.gyroADCf[axis] * level.Damping;
-        pidSetpoint = constrainf(pidSetpoint, -maxRate, maxRate);
+            pidSetpoint = constrainf(errorAngle / LEVEL_BENCH_FULL_ANGLE, -1.0f, 1.0f) * benchRate;
+        }
+        else {
+            if (!isAirborne())
+                errorAngle *= 0.25f;
+
+            // Rate damping goes through the rate PID's F term, so it scales with the airframe's tune.
+            pidSetpoint = errorAngle * level.Gain - gyro.gyroADCf[axis] * level.Damping;
+            pidSetpoint = constrainf(pidSetpoint, -maxRate, maxRate);
+        }
     }
 #ifdef USE_GPS_NAV
     else if (axis == FD_YAW && FLIGHT_MODE(LOITER_MODE | RTH_MODE)) {

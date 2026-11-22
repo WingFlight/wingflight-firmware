@@ -134,6 +134,7 @@ bool isModeOverrideAllowed(boxId_e boxId);
 bool setModeOverride(const boxBitmask_t *mask, uint16_t timeoutMs);
 void clearModeOverride(void);
 bool isModeOverrideActive(void);
+bool isModeOverrideForcing(boxId_e boxId);
 uint16_t getModeOverride(boxBitmask_t *mask);
 
 

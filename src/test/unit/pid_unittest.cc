@@ -54,6 +54,8 @@ float getMotor1Speedf(void) { return 0; }
 float rescueApply(uint8_t, float setpoint) { return setpoint; }
 float angleModeApply(int, float pidSetpoint) { return pidSetpoint; }
 void angleModeReset(void) {}
+bool benchCheck = false;
+bool levelingBenchCheck(void) { return benchCheck; }
 float getSpoolUpRatio(void) { return 1.0f; }
 float mixerGetInput(uint8_t) { return 0.0; }
 bool mixerSaturated(uint8_t) { return false; }
@@ -305,6 +307,18 @@ TEST_F(PIDAttenuationTest, AttenuationNeverDropsBelowFloor)
     const float floored = rollOutputAt(10, 240);
     EXPECT_GT(full, 0);
     EXPECT_NEAR(floored, full * PID_ATTENUATION_MIN, fabsf(full) * 1e-4f);
+}
+
+TEST_F(PIDAttenuationTest, BenchCheckIgnoresAttenuation)
+{
+    // A setup wizard forcing ANGLE: the gyro check must not shrink with the idle TPA
+    onlyRoll(100, 0);
+    const float full = rollOutputAt(100, 240);
+    benchCheck = true;
+    const float bench = rollOutputAt(25, 240);
+    benchCheck = false;
+    EXPECT_GT(full, 0);
+    EXPECT_NEAR(bench, full, fabsf(full) * 1e-4f);
 }
 
 TEST_F(PIDAttenuationTest, ManualFeedforwardIgnoresAttenuation)

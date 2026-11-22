@@ -1067,6 +1067,14 @@ static float pidThrottleAttenuation(void)
 // so a zero here would leave the sticks almost nothing to move.
 static float pidSurfaceAttenuation(void)
 {
+#ifdef USE_ACC
+    // A setup wizard's gyro check, at zero throttle and no airspeed: don't let a curve
+    // that is low at idle shrink the response the pilot is looking for.
+    if (levelingBenchCheck()) {
+        return 1.0f;
+    }
+#endif
+
     return fmaxf(pidThrottleAttenuation() * speedAttenGetScale(), PID_ATTENUATION_MIN);
 }
 

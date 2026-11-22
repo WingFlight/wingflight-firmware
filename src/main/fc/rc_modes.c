@@ -185,6 +185,13 @@ bool isModeOverrideActive(void)
     return modeOverrideSet;
 }
 
+// True while the override is forcing this mode on (and has not lapsed). Only possible on the
+// bench: the override is refused and cleared while armed.
+bool isModeOverrideForcing(boxId_e boxId)
+{
+    return isModeOverrideActive() && bitArrayGet(&modeOverrideMask, boxId);
+}
+
 // Returns the forced modes and the time left before they lapse (0 when none are forced).
 uint16_t getModeOverride(boxBitmask_t *mask)
 {

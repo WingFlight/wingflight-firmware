@@ -3,6 +3,28 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## ANGLE Bench Check Under the Mode Override
+
+The setup wizards (Configurator and the Ethos Lua suite) force ANGLE with
+`MSP2_WING_SET_MODE_OVERRIDE` and ask the pilot to tilt the model and watch the
+surfaces push back. That used the flight response, which is quartered on the
+ground and follows the tune, so the surfaces often barely moved: about 7 % of
+travel at 30° of tilt with the defaults.
+
+While the override is forcing ANGLE (`isModeOverrideForcing(BOXANGLE)`, bench
+only: the override is refused and cleared when armed):
+
+- Roll and pitch tilt maps straight to surface travel. 30° of tilt gives the
+  rate profile's full-stick rate, raised if needed so that F alone gives at
+  least half travel, and proportionally less below 30°. `angle_level_strength`,
+  `angle_level_damping` and the on-ground quarter do not apply.
+- Throttle and GPS speed attenuation (`fw_tpa_gain`, `fw_tpa_curve`, SPA) is
+  not applied, so a curve that is low at idle does not shrink the response.
+
+ANGLE from a switch, armed or not, is unchanged, and so are yaw and the other
+modes the override can force. No MSP or settings change; the API version is
+unchanged.
+
 ## F.Bus Master Wiring Detection
 
 New `MSP2_WING_FBUS_MASTER_TRIAL` (0x5F37) finds which pin and polarity the

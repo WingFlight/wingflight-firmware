@@ -23,6 +23,7 @@ extern "C" {
 #include "build/debug.h"
 #include "flight/trainer.h"
 #include "flight/leveling.h"
+#include "fc/rc_modes.h"
 #include "pg/rates.h"
 #include "flight/imu.h"
 #include "pg/accel.h"
@@ -38,7 +39,14 @@ uint16_t flightModeFlags;
 uint8_t getCurrentPidProfileIndex(void) { return profileIndex; }
 float getDeflection(int axis) { return stick[axis]; }
 bool isUpsidedown(void) { return false; }
-bool isAirborne(void) { return true; }
+static bool airborne;
+bool isAirborne(void) { return airborne; }
+
+// ANGLE forced by the mode override (a setup wizard's gyro check), and the F gain it reads
+static bool angleForced;
+static float feedforwardGain;
+bool isModeOverrideForcing(boxId_e boxId) { return angleForced && boxId == BOXANGLE; }
+float pidGetFeedforward(int, float rate) { return feedforwardGain * rate; }
 
 // Rate profile full-stick rate and PID loop period that leveling.c reads
 static float fullStickRate;
@@ -68,6 +76,9 @@ class AcroTrainerTest : public ::testing::Test {
         currentPidProfile = pidProfilesMutable(0);
         fullStickRate = 2000;
         loopDT = 0.001f;
+        airborne = true;
+        angleForced = false;
+        feedforwardGain = 0;
         angleModeReset();
 
         // Configure trainer: gain=75 (7.5x), angle_limit=20, lookahead=50ms
@@ -354,6 +365,62 @@ TEST_F(AcroTrainerTest, AngleDampingSubtractsMeasuredRate)
     EXPECT_FLOAT_EQ(angleModeApply(FD_ROLL, 0), -50);
     gyro.gyroADCf[FD_PITCH] = -60;
     EXPECT_FLOAT_EQ(angleModeApply(FD_PITCH, 0), 30);
+}
+
+TEST_F(AcroTrainerTest, AngleOnGroundIsQuartered)
+{
+    pidProfile_t *profile = pidProfilesMutable(0);
+    profile->angle.level_strength = 40;
+    levelConfigsMutable(0)->damping = 0;
+    levelingInit(profile);
+    fullStickRate = 500;
+    airborne = false;
+
+    setAngle(FD_ROLL, 30);
+    EXPECT_FLOAT_EQ(settleAngleMode(FD_ROLL), -30);
+}
+
+TEST_F(AcroTrainerTest, AngleBenchCheckMapsTiltToThrow)
+{
+    // A gentle tune on the ground: level strength 1.0, 200 deg/s, and F giving 0.2 throw
+    // at full stick. In flight terms 15 degrees of tilt would ask for under 4 deg/s.
+    pidProfile_t *profile = pidProfilesMutable(0);
+    profile->angle.level_strength = 10;
+    levelingInit(profile);
+    fullStickRate = 200;
+    feedforwardGain = 0.001f;
+    airborne = false;
+    angleForced = true;
+
+    // 30 degrees gives 0.5 throw from F, half of that at 15 degrees, and no more beyond 30
+    setAngle(FD_ROLL, 30);
+    EXPECT_NEAR(pidGetFeedforward(FD_ROLL, settleAngleMode(FD_ROLL)), -0.5f, 1e-4f);
+    setAngle(FD_ROLL, 15);
+    EXPECT_NEAR(pidGetFeedforward(FD_ROLL, settleAngleMode(FD_ROLL)), -0.25f, 1e-4f);
+    setAngle(FD_PITCH, -60);
+    EXPECT_NEAR(pidGetFeedforward(FD_PITCH, settleAngleMode(FD_PITCH)), 0.5f, 1e-4f);
+
+    // Moving the model adds nothing: the response is the tilt alone
+    gyro.gyroADCf[FD_ROLL] = 100;
+    EXPECT_NEAR(pidGetFeedforward(FD_ROLL, settleAngleMode(FD_ROLL)), -0.25f, 1e-4f);
+}
+
+TEST_F(AcroTrainerTest, AngleBenchCheckKeepsAStrongTune)
+{
+    // F already gives more than the floor at full stick: full tilt asks for the full rate
+    pidProfile_t *profile = pidProfilesMutable(0);
+    levelingInit(profile);
+    fullStickRate = 400;
+    feedforwardGain = 0.002f;
+    airborne = false;
+    angleForced = true;
+
+    setAngle(FD_ROLL, 30);
+    EXPECT_FLOAT_EQ(settleAngleMode(FD_ROLL), -400);
+
+    // No F at all: fall back to the rate profile's full-stick rate
+    feedforwardGain = 0;
+    EXPECT_FLOAT_EQ(settleAngleMode(FD_ROLL), -400);
 }
 
 TEST_F(AcroTrainerTest, AxisLimitsFollowSelectedProfileAndKeepLegacyDefaults)
