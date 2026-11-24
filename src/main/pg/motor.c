@@ -32,7 +32,7 @@
 #include "pg/pg_ids.h"
 #include "pg/motor.h"
 
-PG_REGISTER_WITH_RESET_FN(motorConfig_t, motorConfig, PG_MOTOR_CONFIG, 2);
+PG_REGISTER_WITH_RESET_FN(motorConfig_t, motorConfig, PG_MOTOR_CONFIG, 3);
 
 void pgResetFn_motorConfig(motorConfig_t *motorConfig)
 {
@@ -41,7 +41,7 @@ void pgResetFn_motorConfig(motorConfig_t *motorConfig)
     motorConfig->dev.useUnsyncedPwm = false;
     motorConfig->minthrottle = 1070;
     motorConfig->maxthrottle = 2000;
-    motorConfig->mincommand = 1000;
+    motorConfig->mincommand = 980;
 
 #ifdef USE_DSHOT_DMAR
     motorConfig->dev.useBurstDshot = ENABLE_DSHOT_DMAR;

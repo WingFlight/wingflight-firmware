@@ -3,6 +3,17 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## Motor Off Default Lowered to 980 µs
+
+The default of `min_command` (Motor Off, the PWM pulse sent while the motor is
+stopped) is now 980 µs, down from 1000 µs. Some ESCs do not treat 1000 µs as
+throttle off and refuse to arm or initialise.
+
+The motor parameter group version is bumped, so the motor settings stored by an
+older build (protocol, endpoints, pole counts, gear ratios, motor pins) reset to
+defaults on upgrade. No MSP change. See
+[src/main/pg/motor.c](src/main/pg/motor.c).
+
 ## ANGLE Bench Check Under the Mode Override
 
 The setup wizards (Configurator and the Ethos Lua suite) force ANGLE with
