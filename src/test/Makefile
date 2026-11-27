@@ -461,6 +461,13 @@ fbus_sniffer_unittest_DEFINES := \
         USE_FBUS_MASTER= \
         USE_FBUS_SNIFFER=
 
+crsf_sniffer_unittest_SRC := \
+        $(USER_DIR)/drivers/crsf_sniffer.c
+
+crsf_sniffer_unittest_DEFINES := \
+        USE_CRSF_SENSORS= \
+        USE_CRSF_SNIFFER=
+
 trim_monitor_unittest_SRC := \
         $(USER_DIR)/flight/trim_monitor.c
 

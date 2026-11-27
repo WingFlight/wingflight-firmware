@@ -395,4 +395,15 @@
 // request from the radio that was not passed on), U8 physical ID, U8 frame ID, U16 App ID,
 // U32 data. Frames in a reply are removed from the capture.
 #define MSP2_WING_FBUS_SNIFFER                0x5F3C
+// CRSF sniffer (drivers/crsf_sniffer.h): the frames the CRSF sensors port receives, for
+// debugging. Only in builds with USE_CRSF_SNIFFER. Request: U8 flags, optional (bit 0
+// capture on, bit 1 also frames with a bad CRC), U8 frame type, optional (0: every type);
+// none only reads. A request with bit 0 clear stops the capture and empties it, and the
+// capture stops by itself when no request has had bit 0 set for 5 s. Reply: U8 payload
+// version (1), U8 flags of the running capture (0 when off), U32 time (ms), U16 frames
+// dropped since the last reply, U8 frames left to read, U8 frame count, then per frame,
+// oldest first: U32 time (ms), U8 flags (bit 0 CRC ok, bit 1 decoded, bit 2 skipped: lost
+// because the decoder had not taken the previous frame), U8 length, then the frame from
+// its address byte to its CRC. Frames in a reply are removed from the capture.
+#define MSP2_WING_CRSF_SNIFFER                0x5F3D
 #define MSP_V2_FRAME                         255

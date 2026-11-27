@@ -27,6 +27,7 @@
 #include "common/maths.h"
 #include "common/utils.h"
 #include "drivers/crsf_sensors.h"
+#include "drivers/crsf_sniffer.h"
 #include "drivers/nvic.h"
 #include "drivers/serial.h"
 #include "drivers/time.h"
@@ -370,14 +371,20 @@ static void crsfSensorsDataReceive(uint16_t c, void *data)
             debugRxCrcOkCount++;
             debugLastFrameType = rxBuffer[2];
             debugLastFrameLength = rxExpectedLength;
-            if (!rxFrameReady) {
+            // one frame is held for the task: a frame arriving before it took the
+            // previous one is lost (the sniffer shows these as skipped)
+            const bool taken = !rxFrameReady;
+            if (taken) {
                 memcpy((void *)processFrame.data, (const void *)rxBuffer, rxExpectedLength);
                 processFrame.length = rxExpectedLength;
                 processFrame.valid = true;
                 rxFrameReady = true;
             }
+            crsfSnifferRecord(millis(), CRSF_SNIFFER_CRC_OK | (taken ? CRSF_SNIFFER_DECODED : CRSF_SNIFFER_SKIPPED),
+                              rxBuffer, rxExpectedLength);
         } else {
             debugRxCrcFailCount++;
+            crsfSnifferRecord(millis(), 0, rxBuffer, rxExpectedLength);
         }
         rxPosition = 0;
         rxExpectedLength = 0;
