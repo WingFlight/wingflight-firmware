@@ -12,8 +12,11 @@ Each frame has a time, where it was seen (from the radio, to the device, from
 the device, back to the radio), physical ID, frame ID, App ID and data. A
 request from the radio that was not passed on to a device is marked.
 
-The capture is off until a client asks for it, and stops when the client has
-not asked for 5 seconds. By default it holds configuration traffic only (reads,
+A developer option: it is only in builds made with
+`make OPTIONS="USE_FBUS_SNIFFER"`, so release builds carry neither its code
+nor its buffer, and answer the command as unsupported. The capture is off
+until a client asks for it, and stops when the client has not asked for 5
+seconds. By default it holds configuration traffic only (reads,
 writes, responses and the polls that collect them); a flag adds telemetry. The
 payloads are described in
 [src/main/msp/msp_protocol.h](src/main/msp/msp_protocol.h), the capture in

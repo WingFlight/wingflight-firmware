@@ -385,7 +385,7 @@
 #define MSP2_WING_SERVO_NAMES                 0x5F3A
 #define MSP2_WING_SET_SERVO_NAME              0x5F3B
 // FBUS sniffer (drivers/fbus_sniffer.h): the frames passing between the radio and the
-// devices on the FBUS master line, for debugging. Request: U8 flags, optional (bit 0
+// devices on the FBUS master line, for debugging. Only in builds with USE_FBUS_SNIFFER. Request: U8 flags, optional (bit 0
 // capture on, bit 1 also telemetry data frames and polls); none only reads. A request with
 // bit 0 clear stops the capture and empties it, and the capture stops by itself when no
 // request has had bit 0 set for 5 s. Reply: U8 payload version (1), U8 flags of the

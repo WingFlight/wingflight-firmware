@@ -2659,6 +2659,7 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         }
         break;
 
+#ifdef USE_FBUS_SNIFFER
     case MSP2_WING_FBUS_SNIFFER: {
         // see msp_protocol.h for the payloads
         const timeMs_t nowMs = millis();
@@ -2686,6 +2687,7 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         }
         break;
     }
+#endif
 #endif
 
 #ifdef USE_ESC_SENSOR

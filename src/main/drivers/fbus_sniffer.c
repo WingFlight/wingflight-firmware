@@ -20,7 +20,7 @@
 
 #include "platform.h"
 
-#if defined(USE_FBUS_MASTER)
+#if defined(USE_FBUS_MASTER) && defined(USE_FBUS_SNIFFER)
 
 #include "build/atomic.h"
 
@@ -148,4 +148,4 @@ uint16_t fbusSnifferTakeDropped(void)
     return dropped;
 }
 
-#endif // USE_FBUS_MASTER
+#endif // USE_FBUS_MASTER && USE_FBUS_SNIFFER

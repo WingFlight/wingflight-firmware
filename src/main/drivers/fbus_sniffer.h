@@ -27,6 +27,10 @@
   the radio (the receiver's FBUS line, rx/fbus.c) and the devices on the FBUS master line
   (drivers/fbus_master.c), for debugging over MSP2_WING_FBUS_SNIFFER. Off until a client
   asks for it, and off again when the client stops asking.
+
+  A developer option: only in builds made with OPTIONS="USE_FBUS_SNIFFER". Without it
+  the capture, its buffer and the MSP command are left out, and fbusSnifferRecord() is
+  an empty inline function.
  */
 
 // Frames kept until the client reads them. Further ones are counted as dropped.
@@ -60,6 +64,8 @@ typedef struct {
     uint32_t data;
 } fbusSnifferFrame_t;
 
+#if defined(USE_FBUS_MASTER) && defined(USE_FBUS_SNIFFER)
+
 // A request from the client. With FBUS_SNIFFER_FLAG_ON the capture starts, or stays on for
 // another FBUS_SNIFFER_TIMEOUT_MS; without it the capture stops and the buffer is emptied.
 void fbusSnifferRequest(uint8_t flags, timeMs_t nowMs);
@@ -81,3 +87,13 @@ uint8_t fbusSnifferGetCount(void);
 
 // Frames lost to a full buffer since the last call
 uint16_t fbusSnifferTakeDropped(void);
+
+#else
+
+static inline void fbusSnifferRecord(timeMs_t nowMs, uint8_t direction, uint8_t phyId, uint8_t prim, uint16_t appId,
+                                     uint32_t data)
+{
+    (void)nowMs; (void)direction; (void)phyId; (void)prim; (void)appId; (void)data;
+}
+
+#endif
