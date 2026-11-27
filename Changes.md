@@ -25,15 +25,21 @@ travel at 30° of tilt with the defaults.
 While the override is forcing ANGLE (`isModeOverrideForcing(BOXANGLE)`, bench
 only: the override is refused and cleared when armed):
 
-- Roll and pitch tilt maps straight to surface travel. 30° of tilt gives the
-  rate profile's full-stick rate, raised if needed so that F alone gives at
-  least half travel, and proportionally less below 30°. `angle_level_strength`,
+- Roll and pitch tilt maps straight to surface travel. 20° of tilt gives the
+  rate profile's full-stick rate, raised if needed so that F alone gives full
+  travel, and proportionally less below 20°. `angle_level_strength`,
   `angle_level_damping` and the on-ground quarter do not apply.
 - Throttle and GPS speed attenuation (`fw_tpa_gain`, `fw_tpa_curve`, SPA) is
   not applied, so a curve that is low at idle does not shrink the response.
 
-ANGLE from a switch, armed or not, is unchanged, and so are yaw and the other
-modes the override can force. No MSP or settings change; the API version is
+- Yaw has no attitude to level to, so the swing of the nose is added up from the
+  yaw rate and treated like tilt: 20° of swing gives full rudder travel against
+  it. The swing fades over about 3 s, so the rudder returns to center after the
+  model stops. Before, the rudder only moved while the model was turning, and
+  by very little.
+
+ANGLE from a switch, armed or not, is unchanged, and so are the other modes the
+override can force. No MSP or settings change; the API version is
 unchanged.
 
 ## F.Bus Master Wiring Detection

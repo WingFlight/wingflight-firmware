@@ -383,7 +383,7 @@ TEST_F(AcroTrainerTest, AngleOnGroundIsQuartered)
 TEST_F(AcroTrainerTest, AngleBenchCheckMapsTiltToThrow)
 {
     // A gentle tune on the ground: level strength 1.0, 200 deg/s, and F giving 0.2 throw
-    // at full stick. In flight terms 15 degrees of tilt would ask for under 4 deg/s.
+    // at full stick. In flight terms 10 degrees of tilt would ask for under 3 deg/s.
     pidProfile_t *profile = pidProfilesMutable(0);
     profile->angle.level_strength = 10;
     levelingInit(profile);
@@ -392,17 +392,17 @@ TEST_F(AcroTrainerTest, AngleBenchCheckMapsTiltToThrow)
     airborne = false;
     angleForced = true;
 
-    // 30 degrees gives 0.5 throw from F, half of that at 15 degrees, and no more beyond 30
-    setAngle(FD_ROLL, 30);
+    // 20 degrees gives full throw from F, half of that at 10 degrees, and no more beyond 20
+    setAngle(FD_ROLL, 20);
+    EXPECT_NEAR(pidGetFeedforward(FD_ROLL, settleAngleMode(FD_ROLL)), -1.0f, 1e-4f);
+    setAngle(FD_ROLL, 10);
     EXPECT_NEAR(pidGetFeedforward(FD_ROLL, settleAngleMode(FD_ROLL)), -0.5f, 1e-4f);
-    setAngle(FD_ROLL, 15);
-    EXPECT_NEAR(pidGetFeedforward(FD_ROLL, settleAngleMode(FD_ROLL)), -0.25f, 1e-4f);
     setAngle(FD_PITCH, -60);
-    EXPECT_NEAR(pidGetFeedforward(FD_PITCH, settleAngleMode(FD_PITCH)), 0.5f, 1e-4f);
+    EXPECT_NEAR(pidGetFeedforward(FD_PITCH, settleAngleMode(FD_PITCH)), 1.0f, 1e-4f);
 
     // Moving the model adds nothing: the response is the tilt alone
     gyro.gyroADCf[FD_ROLL] = 100;
-    EXPECT_NEAR(pidGetFeedforward(FD_ROLL, settleAngleMode(FD_ROLL)), -0.25f, 1e-4f);
+    EXPECT_NEAR(pidGetFeedforward(FD_ROLL, settleAngleMode(FD_ROLL)), -0.5f, 1e-4f);
 }
 
 TEST_F(AcroTrainerTest, AngleBenchCheckKeepsAStrongTune)
@@ -411,7 +411,7 @@ TEST_F(AcroTrainerTest, AngleBenchCheckKeepsAStrongTune)
     pidProfile_t *profile = pidProfilesMutable(0);
     levelingInit(profile);
     fullStickRate = 400;
-    feedforwardGain = 0.002f;
+    feedforwardGain = 0.004f;
     airborne = false;
     angleForced = true;
 
@@ -421,6 +421,44 @@ TEST_F(AcroTrainerTest, AngleBenchCheckKeepsAStrongTune)
     // No F at all: fall back to the rate profile's full-stick rate
     feedforwardGain = 0;
     EXPECT_FLOAT_EQ(settleAngleMode(FD_ROLL), -400);
+}
+
+TEST_F(AcroTrainerTest, AngleBenchCheckTurnsYawSwingIntoThrow)
+{
+    pidProfile_t *profile = pidProfilesMutable(0);
+    levelingInit(profile);
+    fullStickRate = 200;
+    feedforwardGain = 0.001f;
+    airborne = false;
+
+    // ANGLE from a switch leaves yaw alone
+    gyro.gyroADCf[FD_YAW] = 100;
+    EXPECT_FLOAT_EQ(angleModeApply(FD_YAW, 0), 0);
+
+    // Forced by the override: 100 deg/s for 0.1 s is about 10 degrees of swing, half throw
+    // against the swing, and it stays after the model stops
+    angleForced = true;
+    float setpoint = 0;
+    for (int i = 0; i < 100; i++) {
+        setpoint = angleModeApply(FD_YAW, 0);
+    }
+    EXPECT_NEAR(pidGetFeedforward(FD_YAW, setpoint), -0.5f, 0.02f);
+    gyro.gyroADCf[FD_YAW] = 0;
+    EXPECT_NEAR(pidGetFeedforward(FD_YAW, angleModeApply(FD_YAW, 0)), -0.5f, 0.02f);
+
+    // A bigger swing gives full throw and no more
+    gyro.gyroADCf[FD_YAW] = -400;
+    for (int i = 0; i < 500; i++) {
+        setpoint = angleModeApply(FD_YAW, 0);
+    }
+    EXPECT_NEAR(pidGetFeedforward(FD_YAW, setpoint), 1.0f, 1e-4f);
+
+    // Held still, the swing fades and the rudder recentres
+    gyro.gyroADCf[FD_YAW] = 0;
+    for (int i = 0; i < 20000; i++) {
+        setpoint = angleModeApply(FD_YAW, 0);
+    }
+    EXPECT_NEAR(pidGetFeedforward(FD_YAW, setpoint), 0, 0.01f);
 }
 
 TEST_F(AcroTrainerTest, AxisLimitsFollowSelectedProfileAndKeepLegacyDefaults)
