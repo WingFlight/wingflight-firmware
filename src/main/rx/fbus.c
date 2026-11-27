@@ -615,6 +615,7 @@ static uint8_t frameStatus(rxRuntimeState_t *rxRuntimeConfig)
                                     const bool relayed = fbusMasterRelayRequest(phyId, frameId,
                                                                                 frame->downlink.telemetryData.valueId,
                                                                                 frame->downlink.telemetryData.data);
+                                    UNUSED(relayed);   // for the sniffer only, which can be left out
                                     fbusSnifferRecord(millis(),
                                                       FBUS_SNIFFER_FROM_RADIO | (relayed ? 0 : FBUS_SNIFFER_NOT_RELAYED),
                                                       phyId, frameId, frame->downlink.telemetryData.valueId,

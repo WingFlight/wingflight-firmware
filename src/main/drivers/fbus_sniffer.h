@@ -30,7 +30,7 @@
 
   A developer option: only in builds made with OPTIONS="USE_FBUS_SNIFFER". Without it
   the capture, its buffer and the MSP command are left out, and fbusSnifferRecord() is
-  an empty inline function.
+  an empty macro.
  */
 
 // Frames kept until the client reads them. Further ones are counted as dropped.
@@ -90,10 +90,7 @@ uint16_t fbusSnifferTakeDropped(void);
 
 #else
 
-static inline void fbusSnifferRecord(timeMs_t nowMs, uint8_t direction, uint8_t phyId, uint8_t prim, uint16_t appId,
-                                     uint32_t data)
-{
-    (void)nowMs; (void)direction; (void)phyId; (void)prim; (void)appId; (void)data;
-}
+// a macro, so its arguments (millis()...) are not evaluated either: no code at all
+#define fbusSnifferRecord(nowMs, direction, phyId, prim, appId, data) do { } while (0)
 
 #endif
