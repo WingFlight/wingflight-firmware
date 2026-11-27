@@ -3,6 +3,25 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## FBUS Sniffer
+
+New `MSP2_WING_FBUS_SNIFFER` (0x5F3C) captures the frames passing through the
+flight controller between the radio and the devices on the FBUS master line,
+for debugging device configuration (Ethos Device config, XAct servo scripts).
+Each frame has a time, where it was seen (from the radio, to the device, from
+the device, back to the radio), physical ID, frame ID, App ID and data. A
+request from the radio that was not passed on to a device is marked.
+
+A developer option: it is only in builds made with
+`make OPTIONS="USE_FBUS_SNIFFER"`, so release builds carry neither its code
+nor its buffer, and answer the command as unsupported. The capture is off
+until a client asks for it, and stops when the client has not asked for 5
+seconds. By default it holds configuration traffic only (reads,
+writes, responses and the polls that collect them); a flag adds telemetry. The
+payloads are described in
+[src/main/msp/msp_protocol.h](src/main/msp/msp_protocol.h), the capture in
+[src/main/drivers/fbus_sniffer.h](src/main/drivers/fbus_sniffer.h).
+
 ## Motor Off Default Lowered to 980 µs
 
 The default of `min_command` (Motor Off, the PWM pulse sent while the motor is

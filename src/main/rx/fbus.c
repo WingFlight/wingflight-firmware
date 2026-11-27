@@ -35,6 +35,7 @@
 #include "drivers/time.h"
 #include "drivers/fbus_master.h"
 #include "drivers/fbus_sensor.h"
+#include "drivers/fbus_sniffer.h"
 
 #ifdef MSP_FIRMWARE_UPDATE__WARNING_DEAD_CODE__
 #include "fc/firmware_update.h"
@@ -611,8 +612,14 @@ static uint8_t frameStatus(rxRuntimeState_t *rxRuntimeConfig)
                                 // (sent to 0x1B) or a request sent to the device's own ID
                                 const int8_t phyId = fbusPhyIdStripCheckBits(downlinkPhyID);
                                 if (phyId >= 0) {
-                                    fbusMasterRelayRequest(phyId, frameId, frame->downlink.telemetryData.valueId,
-                                                           frame->downlink.telemetryData.data);
+                                    const bool relayed = fbusMasterRelayRequest(phyId, frameId,
+                                                                                frame->downlink.telemetryData.valueId,
+                                                                                frame->downlink.telemetryData.data);
+                                    UNUSED(relayed);   // for the sniffer only, which can be left out
+                                    fbusSnifferRecord(millis(),
+                                                      FBUS_SNIFFER_FROM_RADIO | (relayed ? 0 : FBUS_SNIFFER_NOT_RELAYED),
+                                                      phyId, frameId, frame->downlink.telemetryData.valueId,
+                                                      frame->downlink.telemetryData.data);
                                 }
 #endif
                             } else if (downlinkPhyID != FBUS_FC_COMMON_ID) {
@@ -739,6 +746,7 @@ static bool processFrame(const rxRuntimeState_t *rxRuntimeConfig)
                 if (phyId >= 0 && fbusMasterRelayGetAnswer(phyId, &prim, &appId, &data)) {
                     const smartPortPayload_t answer = { .frameId = prim, .valueId = appId, .data = data };
                     writeUplinkFramePhyID(downlinkPhyID, &answer);
+                    fbusSnifferRecord(millis(), FBUS_SNIFFER_TO_RADIO, phyId, prim, appId, data);
                     forwardedSensor = true;
                     clearToSend = false;
                 }
@@ -767,6 +775,8 @@ static bool processFrame(const rxRuntimeState_t *rxRuntimeConfig)
                             .data = sensorFrame.valid ? sensorFrame.data : 0,
                         };
                         writeUplinkFramePhyID(downlinkPhyID, &forwardPayload);
+                        fbusSnifferRecord(millis(), FBUS_SNIFFER_TO_RADIO, phyId, forwardPayload.frameId,
+                                          forwardPayload.valueId, forwardPayload.data);
                         forwardedSensor = true;
                         clearToSend = false;
                     }

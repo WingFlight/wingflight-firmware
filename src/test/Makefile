@@ -454,6 +454,13 @@ fbus_sensor_unittest_SRC := \
 fbus_sensor_unittest_DEFINES := \
         USE_FBUS_MASTER=
 
+fbus_sniffer_unittest_SRC := \
+        $(USER_DIR)/drivers/fbus_sniffer.c
+
+fbus_sniffer_unittest_DEFINES := \
+        USE_FBUS_MASTER= \
+        USE_FBUS_SNIFFER=
+
 trim_monitor_unittest_SRC := \
         $(USER_DIR)/flight/trim_monitor.c
 
