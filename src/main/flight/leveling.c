@@ -57,6 +57,9 @@
 // surface travel F gives at that tilt.
 #define LEVEL_BENCH_FULL_ANGLE      20.0f
 #define LEVEL_BENCH_MIN_THROW       1.0f
+// Yaw has no attitude to level to: the bench check turns the yaw rate into a swing angle,
+// which fades over this time so the rudder recentres and gyro drift cannot build up.
+#define LEVEL_BENCH_YAW_FADE_TIME   3.0f
 
 typedef struct {
     float Gain;
@@ -64,6 +67,7 @@ typedef struct {
     float AngleLimit[2];
     float Target[2];
     bool Engaged[2];
+    float BenchYaw;
 } level_t;
 
 static FAST_DATA_ZERO_INIT level_t level;
@@ -125,6 +129,7 @@ void angleModeReset(void)
 {
     level.Engaged[FD_ROLL] = false;
     level.Engaged[FD_PITCH] = false;
+    level.BenchYaw = 0;
 }
 
 float angleModeApply(int axis, float pidSetpoint)
@@ -170,6 +175,22 @@ float angleModeApply(int axis, float pidSetpoint)
             pidSetpoint = errorAngle * level.Gain - gyro.gyroADCf[axis] * level.Damping;
             pidSetpoint = constrainf(pidSetpoint, -maxRate, maxRate);
         }
+    }
+    else if (axis == FD_YAW && levelingBenchCheck()) {
+        // The gyro check on yaw. The rate response alone is over as soon as the model stops
+        // turning and is too small to see, so add up how far the nose has been swung and
+        // push back against that, like the tilt above: LEVEL_BENCH_FULL_ANGLE of swing
+        // gives at least LEVEL_BENCH_MIN_THROW from F. The swing fades, so the rudder
+        // returns to center a few seconds after the model stops.
+        const float dT = pidGetDT();
+        const float maxRate = fabsf(applyRatesCurve(axis, 1.0f));
+        const float kf = pidGetFeedforward(axis, 1.0f);
+        const float benchRate = (kf > 0) ? fmaxf(maxRate, LEVEL_BENCH_MIN_THROW / kf) : maxRate;
+
+        level.BenchYaw += gyro.gyroADCf[axis] * dT - level.BenchYaw * dT / LEVEL_BENCH_YAW_FADE_TIME;
+        level.BenchYaw = constrainf(level.BenchYaw, -LEVEL_BENCH_FULL_ANGLE, LEVEL_BENCH_FULL_ANGLE);
+
+        pidSetpoint -= level.BenchYaw / LEVEL_BENCH_FULL_ANGLE * benchRate;
     }
 #ifdef USE_GPS_NAV
     else if (axis == FD_YAW && FLIGHT_MODE(LOITER_MODE | RTH_MODE)) {
