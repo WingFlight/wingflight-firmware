@@ -64,6 +64,7 @@
 #include "drivers/fbus_sniffer.h"
 #include "drivers/fbus_xact.h"
 #include "drivers/crsf_sensors.h"
+#include "drivers/crsf_sniffer.h"
 #include "drivers/flash.h"
 #include "drivers/io.h"
 #include "drivers/motor.h"
@@ -2688,6 +2689,35 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
         break;
     }
 #endif
+#endif
+
+#if defined(USE_CRSF_SENSORS) && defined(USE_CRSF_SNIFFER)
+    case MSP2_WING_CRSF_SNIFFER: {
+        // see msp_protocol.h for the payloads
+        const timeMs_t nowMs = millis();
+        if (sbufBytesRemaining(src) >= 1) {
+            const uint8_t flags = sbufReadU8(src);
+            const uint8_t frameType = sbufBytesRemaining(src) >= 1 ? sbufReadU8(src) : 0;
+            crsfSnifferRequest(flags, frameType, nowMs);
+        }
+
+        sbufWriteU8(dst, 1); // payload version
+        sbufWriteU8(dst, crsfSnifferGetFlags(nowMs));
+        sbufWriteU32(dst, nowMs);
+        sbufWriteU16(dst, crsfSnifferTakeDropped());
+        // frames left and frame count are known once the frames are written
+        uint8_t *counts = sbufPtr(dst);
+        sbufWriteU8(dst, 0);
+        sbufWriteU8(dst, 0);
+        // the frames go straight into the reply: at most 512 bytes of them
+        const int room = sbufBytesRemaining(dst);
+        uint8_t frames = 0;
+        const uint16_t written = crsfSnifferRead(sbufPtr(dst), (uint16_t)MIN(room, 512), &frames);
+        sbufAdvance(dst, written);
+        counts[0] = crsfSnifferGetCount();
+        counts[1] = frames;
+        break;
+    }
 #endif
 
 #ifdef USE_ESC_SENSOR

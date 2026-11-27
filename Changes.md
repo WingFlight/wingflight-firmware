@@ -3,6 +3,20 @@
 This file is collecting the changes in the firmware that are affecting
 the APIs or flight performance.
 
+## CRSF Sniffer
+
+New `MSP2_WING_CRSF_SNIFFER` (0x5F3D) captures the frames the CRSF sensors
+port receives, whole: their bytes, whether the CRC matched, and whether the
+sensor decoder used them. The driver holds one frame between its receive
+interrupt and its task, so a frame arriving before the task took the previous
+one is lost; the capture shows these as skipped. A frame type filter and the
+frames with a bad CRC are optional.
+
+A developer option like the FBUS sniffer: only in builds made with
+`make OPTIONS="USE_CRSF_SNIFFER"`. The payloads are described in
+[src/main/msp/msp_protocol.h](src/main/msp/msp_protocol.h), the capture in
+[src/main/drivers/crsf_sniffer.h](src/main/drivers/crsf_sniffer.h).
+
 ## FBUS Sniffer
 
 New `MSP2_WING_FBUS_SNIFFER` (0x5F3C) captures the frames passing through the
