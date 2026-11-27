@@ -39,6 +39,7 @@
 #include "drivers/sbus_output.h"
 #include "drivers/fbus_master.h"
 #include "drivers/fbus_sensor.h"
+#include "drivers/fbus_sniffer.h"
 #include "drivers/fbus_xact.h"
 
 #include "flight/mixer.h"
@@ -534,6 +535,9 @@ static void processDownlinkFrame(uint8_t *data)
 
         downlink.phyID = decodedPhyId;
         validFrameCount++;
+        fbusSnifferRecord(millis(), FBUS_SNIFFER_FROM_DEVICE, downlink.phyID, downlink.prim, downlink.appId,
+                          downlink.data[0] | (downlink.data[1] << 8) | (downlink.data[2] << 16) |
+                          ((uint32_t)downlink.data[3] << 24));
         if (fbusMasterTelemetryState == FBUS_MASTER_SCAN_PHY_ID) {
             bool alreadyInList = false;
             for (uint8_t i = 0; i < physIdsfound; i++) {
@@ -679,6 +683,9 @@ void fbusMasterUpdate(timeUs_t currentTimeUs)
     fbusMasterDownlink_t downlink;
     fbusMasterPrepareDownlink(&downlink, currentTimeUs);
     memcpy(frame + controlSize, &downlink, sizeof(downlink));
+    fbusSnifferRecord(millis(), FBUS_SNIFFER_TO_DEVICE, downlink.phyID & 0x1F, downlink.prim, downlink.appId,
+                      downlink.data[0] | (downlink.data[1] << 8) | (downlink.data[2] << 16) |
+                      ((uint32_t)downlink.data[3] << 24));
 
     const size_t frameSize = controlSize + sizeof(downlink);
 

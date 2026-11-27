@@ -384,4 +384,15 @@
 // N printable ASCII bytes (none clears it).
 #define MSP2_WING_SERVO_NAMES                 0x5F3A
 #define MSP2_WING_SET_SERVO_NAME              0x5F3B
+// FBUS sniffer (drivers/fbus_sniffer.h): the frames passing between the radio and the
+// devices on the FBUS master line, for debugging. Request: U8 flags, optional (bit 0
+// capture on, bit 1 also telemetry data frames and polls); none only reads. A request with
+// bit 0 clear stops the capture and empties it, and the capture stops by itself when no
+// request has had bit 0 set for 5 s. Reply: U8 payload version (1), U8 flags of the
+// running capture (0 when off), U32 time (ms), U16 frames dropped since the last reply,
+// U8 frames left to read, U8 frame count, then per frame, oldest first: U32 time (ms),
+// U8 direction (0 from radio, 1 to device, 2 from device, 3 to radio; bit 7 set on a
+// request from the radio that was not passed on), U8 physical ID, U8 frame ID, U16 App ID,
+// U32 data. Frames in a reply are removed from the capture.
+#define MSP2_WING_FBUS_SNIFFER                0x5F3C
 #define MSP_V2_FRAME                         255

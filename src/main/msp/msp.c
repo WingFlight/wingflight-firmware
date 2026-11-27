@@ -61,6 +61,7 @@
 #include "drivers/fbus_mux_fpga.h"
 #include "drivers/rx_input_backup.h"
 #include "drivers/fbus_sensor.h"
+#include "drivers/fbus_sniffer.h"
 #include "drivers/fbus_xact.h"
 #include "drivers/crsf_sensors.h"
 #include "drivers/flash.h"
@@ -2657,6 +2658,34 @@ static mspResult_e mspFcProcessOutCommandWithArg(mspDescriptor_t srcDesc, int16_
             sbufWriteU8(dst, status.portOpen);
         }
         break;
+
+    case MSP2_WING_FBUS_SNIFFER: {
+        // see msp_protocol.h for the payloads
+        const timeMs_t nowMs = millis();
+        if (sbufBytesRemaining(src) >= 1) {
+            fbusSnifferRequest(sbufReadU8(src), nowMs);
+        }
+
+        // 13 bytes a frame: a reply stays well inside the smallest MSP output buffer
+        fbusSnifferFrame_t frames[16];
+        const uint8_t count = fbusSnifferRead(frames, ARRAYLEN(frames));
+
+        sbufWriteU8(dst, 1); // payload version
+        sbufWriteU8(dst, fbusSnifferGetFlags(nowMs));
+        sbufWriteU32(dst, nowMs);
+        sbufWriteU16(dst, fbusSnifferTakeDropped());
+        sbufWriteU8(dst, fbusSnifferGetCount());
+        sbufWriteU8(dst, count);
+        for (uint8_t i = 0; i < count; i++) {
+            sbufWriteU32(dst, frames[i].timeMs);
+            sbufWriteU8(dst, frames[i].direction);
+            sbufWriteU8(dst, frames[i].phyId);
+            sbufWriteU8(dst, frames[i].prim);
+            sbufWriteU16(dst, frames[i].appId);
+            sbufWriteU32(dst, frames[i].data);
+        }
+        break;
+    }
 #endif
 
 #ifdef USE_ESC_SENSOR
