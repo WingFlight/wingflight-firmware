@@ -55,8 +55,8 @@
 
 // Bench check (see levelingBenchCheck()): tilt that gives the full response, and the least
 // surface travel F gives at that tilt.
-#define LEVEL_BENCH_FULL_ANGLE      30.0f
-#define LEVEL_BENCH_MIN_THROW       0.5f
+#define LEVEL_BENCH_FULL_ANGLE      20.0f
+#define LEVEL_BENCH_MIN_THROW       1.0f
 
 typedef struct {
     float Gain;
